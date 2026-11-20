@@ -25,6 +25,11 @@ plugins (probes of 2026-11-20), so everything a foreman needs is in the project'
 ruleset. After a change to the pipeline: `factory/bin/sync.sh <project folder>` for each project
 in `projects.toml`, and commit there.
 
+**Trust, once per project, by the human.** A local foreman starts with `claude --bg` in a worktree
+under `<project>/.claude/worktrees/`, and Claude Code refuses a folder nobody trusted yet. The
+human runs `claude` once in the project's folder and accepts the trust prompt; no agent accepts it
+or edits the trust setting for them. Until then the project's slices run in the cloud only.
+
 ## Config
 
 `<project>/factory/config.toml`; `factory/config.example.toml` explains each key. The scripts read
