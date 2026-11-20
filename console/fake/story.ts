@@ -9,6 +9,9 @@ const done = (id: string, i: number, at: number, extra: object = {}) =>
   upd({ sessionUpdate: "tool_call_update", toolCallId: id, status: "completed", ...extra }, { i, at });
 const diff = (path: string, oldText: string, newText: string) => [{ type: "diff", path, oldText, newText }];
 
+/** The ask waits 10 minutes from when the fake is made, so the status line counts down. */
+export const expiresAt = Date.now() + 600_000;
+
 export const story: string[][] = [
   [
     upd({ sessionUpdate: "user_message_chunk", content: text("Fix the retry bug in sync.ts") }, { i: 1, at: 1000 }),
@@ -38,9 +41,9 @@ export const story: string[][] = [
   ],
   [
     call("e2", "Edit src/sync.ts", "edit", { locations: [{ path: "src/sync.ts" }], content: diff("src/sync.ts", "retry(0)", "retry(base)") }),
-    w({ type: "entry", entry: { v: 1, i: 8, kind: "ask", at: 7000, body: { toolCallId: "e2", reach: "edits in ~/work/sync", input: { file_path: "src/sync.ts" }, expiresAt: 1763600900000,
+    w({ type: "entry", entry: { v: 1, i: 8, kind: "ask", at: 7000, body: { toolCallId: "e2", reach: "edits in ~/work/sync", input: { file_path: "src/sync.ts" }, expiresAt: expiresAt,
       toolCall: { toolCallId: "e2", title: "Edit src/sync.ts", kind: "edit", status: "pending", locations: [{ path: "src/sync.ts" }], content: diff("src/sync.ts", "retry(0)", "retry(base)") } } } }),
-    w({ type: "turn", state: { state: "waiting", asks: ["e2"], expiresAt: 1763600900000 } }),
+    w({ type: "turn", state: { state: "waiting", asks: ["e2"], expiresAt: expiresAt } }),
     w({ type: "queue", inputs: [{ n: 1, input: "also add a test" }] }),
     w({ type: "usage", "context-used": 42000, "context-window": 200000, "compact-at": 160000 }),
   ],
