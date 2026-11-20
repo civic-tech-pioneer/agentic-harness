@@ -577,7 +577,10 @@ fn ac2_package_runner_table_is_exact() {
             ],
         ),
         ("pnpm", &pm),
-        ("yarn", &pm),
+        (
+            "yarn",
+            &["install", "add", "test", "list", "audit", "outdated"],
+        ),
         (
             "uv",
             &["pip", "sync", "lock", "add", "remove", "tree", "venv"],
