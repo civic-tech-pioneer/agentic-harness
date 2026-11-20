@@ -5,9 +5,9 @@ spec chain (`VISION.md`, `FUNCTIONAL.md`, then this); code follows it, and
 where this file disagrees with the two above, this file is fixed.
 `ARCHITECTURE-PROPOSAL.md` (revision 4) is the record of why; this file
 states the rules. The human answered the open points of the proposal
-(section 15, `N<n>`) on 2026-11-20, except N5 and N11; each answer is a rule
-in the section that owns its fact, cited as `(N<n>, the human, 2026-11-20)`.
-N5 (17) and N11 (`FUNCTIONAL.md` section 5) stay open.
+(section 15, `N<n>`, and N11 of `FUNCTIONAL.md`) on 2026-11-20, except N5;
+each answer is a rule in the section that owns its fact, cited as
+`(N<n>, the human, 2026-11-20)`. N5 (17) stays open.
 
 Sections 1 to 17 are the backend, which comes first. Section 18 is the
 console. It uses only the kernel interface of 2.3, and a console slice that
@@ -825,6 +825,7 @@ of `spec/VISION.md`.
 
 | Id | What it checks | Run by | Result recorded in |
 |---|---|---|---|
+| V6 | the cost of one item through watane's call path: with no write, and with one state write (one full fsync) | done (`proto/stream-cost-bench`) | `ARCHITECTURE-PROPOSAL.md` section 18; it is why 9.4 writes once per finished entry, never per delta |
 | V7 | latency of one judge check (`pre-tool-check`) on a real judge account | stage E, before the checked provider is built | `ARCHITECTURE-PROPOSAL.md` section 18 |
 | V8 | the stage A prototype through three layers (host stream, a mod consumer, a page consumer): order, delay and the cost of one fsync per commit (7, N4) | stage A | "V8 record", at the end of this section (numbers; whether to change 7 is the human's) |
 | V26 | whether a subagent prompt that starts with `/` runs a skill (14) | slice S1 | `ARCHITECTURE-PROPOSAL.md` section 18 |
@@ -932,8 +933,9 @@ say (layout, spacing, words).
   `caller.identity()` is the kernel's `page`, and that identity owns the
   console's sessions. The page has no other way in: no export, state key or
   stream that a client mod lacks.
-- It lists and opens only its own sessions (`list`, AGT-F-7). The sessions
-  of other clients are out until N11 is decided (`FUNCTIONAL.md` section 5).
+- It lists and opens only its own sessions (`list`, AGT-F-7). It never shows
+  the sessions of other clients; F-AGENT-6 stands (N11, the human,
+  2026-11-20).
 - The profiles it offers are those `access/page` names (9.1).
 
 ### 18.2 Stack
