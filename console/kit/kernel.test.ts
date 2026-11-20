@@ -237,7 +237,7 @@ describe("S4-fix3 AC2 reattach policy", () => {
     try {
       const synced = JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } });
       const { c, k } = mk(async (n, on, end) => {
-        if (n === 4) { queueMicrotask(() => { on(synced); end("idle-timeout"); }); return { ok: true }; }
+        if (n === 4) { queueMicrotask(() => { on(synced); on(JSON.stringify({ v: 1, i: 1, kind: "message", at: 1, body: { role: "user", content: [{ type: "text", text: "live" }] } })); end("idle-timeout"); }); return { ok: true }; }
         throw new Error("down");
       });
       const s = openSession(k, "s1", () => {});
@@ -315,6 +315,52 @@ describe("S4-fix3 AC3 old connection", () => {
       await vi.advanceTimersByTimeAsync(60_000);
       expect(views.length).toBe(shown);
       expect(n).toBe(3);
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("S4-fix4", () => {
+  const synced = JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } });
+  const entry = (n: number) => JSON.stringify({ v: 1, i: n, kind: "message", at: n, body: { role: "user", content: [{ type: "text", text: `m${n}` }] } });
+  it("ac4_streams_that_sync_and_end_at_once_back_off_and_stop_with_an_unknown_row", async () => {
+    vi.useFakeTimers();
+    try {
+      let attaches = 0;
+      const k = {
+        async attach(_s: string, _a: number, on: (j: string) => void, end: (r: string) => void) { attaches++; queueMicrotask(() => { on(synced); end("idle-timeout"); }); return { ok: true } as const; },
+        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+      };
+      let last: SessionView | undefined;
+      const s = openSession(k, "s1", (v) => { last = v; });
+      await vi.advanceTimersByTimeAsync(200_000);
+      expect(attaches).toBeGreaterThanOrEqual(5);
+      expect(attaches).toBeLessThanOrEqual(10);
+      const at = attaches;
+      await vi.advanceTimersByTimeAsync(200_000);
+      expect(attaches).toBe(at);
+      expect(last!.rows.some((r) => r.kind === "unknown")).toBe(true);
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
+  it("ac4_a_stream_open_10_s_after_synced_resets_the_count", async () => {
+    vi.useFakeTimers();
+    try {
+      let attaches = 0;
+      let end!: (r: string) => void;
+      const k = {
+        async attach(_s: string, _a: number, on: (j: string) => void, e: (r: string) => void) { attaches++; end = e; queueMicrotask(() => on(synced)); return { ok: true } as const; },
+        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+      };
+      const s = openSession(k, "s1", () => {});
+      await vi.advanceTimersByTimeAsync(11_000);
+      end("idle-timeout"); // healthy: reattaches at once
+      await vi.advanceTimersByTimeAsync(10);
+      expect(attaches).toBe(2);
+      await vi.advanceTimersByTimeAsync(11_000);
+      end("idle-timeout");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(attaches).toBe(3); // the count was reset, so the quick reattach is allowed again
       s.close();
     } finally { vi.useRealTimers(); }
   });
