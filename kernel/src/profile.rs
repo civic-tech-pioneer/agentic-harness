@@ -199,7 +199,7 @@ const RUNNERS: [&str; 51] = [
 ];
 /// Commands whose subcommands below are runners; a rule must pin a plain other subcommand.
 const SUB_RUNNERS: [(&str, &[&str]); 5] = [
-    ("npm", &["exec", "x"]),
+    ("npm", &["exec", "x", "explore"]),
     ("pnpm", &["dlx", "exec"]),
     ("yarn", &["dlx", "exec"]),
     ("uv", &["run", "tool"]),
@@ -565,11 +565,18 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
     }
     if let Some((_, subs)) = SUB_RUNNERS.iter().find(|(c, _)| *c == base) {
         match words.next() {
-            Some(s) if plain(s) && !s.starts_with('-') && !subs.contains(&s) => {}
+            Some(s) if plain(s) && !s.starts_with('-') && !sub_refused(s, subs) => {}
             _ => return Some("allows an interpreter or runner prefix"),
         }
     }
     None
+}
+
+/// A runner's second word is refused when it is a refused subcommand or alias, or a prefix of
+/// one at least two characters long: the package managers run any unique abbreviation.
+fn sub_refused(s: &str, subs: &[&str]) -> bool {
+    subs.iter()
+        .any(|x| s == *x || (s.len() >= 2 && x.starts_with(s)))
 }
 
 fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
