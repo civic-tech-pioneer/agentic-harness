@@ -116,8 +116,9 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
             }
           },
           (reason) => {
+            if (g !== gen || closed) return; // an old connection's end leaves the new one's timer alone
             if (stable) clearTimeout(stable);
-            if (g !== gen || closed || reason === "replaced") return;
+            if (reason === "replaced") return;
             if (reached && !quick) { quick = true; void connect(); }
             else fail(g, `the stream ended (${reason}) ${reached ? "again right after it synced" : "before it synced"}`);
           });

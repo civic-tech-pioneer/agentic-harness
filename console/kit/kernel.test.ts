@@ -364,4 +364,75 @@ describe("S4-fix4", () => {
       s.close();
     } finally { vi.useRealTimers(); }
   });
+  it("ac4_a_stream_open_only_9_s_after_synced_does_not_reset_the_count", async () => {
+    vi.useFakeTimers();
+    try {
+      let attaches = 0;
+      let end!: (r: string) => void;
+      const k = {
+        async attach(_s: string, _a: number, on: (j: string) => void, e: (r: string) => void) { attaches++; end = e; queueMicrotask(() => on(synced)); return { ok: true } as const; },
+        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+      };
+      const s = openSession(k, "s1", () => {});
+      await vi.advanceTimersByTimeAsync(9_000);
+      end("idle-timeout");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(attaches).toBe(2); // the one immediate reattach
+      await vi.advanceTimersByTimeAsync(9_000);
+      end("idle-timeout");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(attaches).toBe(2); // not reset: this one waits 1 s
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(attaches).toBe(3);
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
+  it("ac4_a_late_end_of_an_old_stream_does_not_cancel_the_new_streams_reset", async () => {
+    vi.useFakeTimers();
+    try {
+      const ends: Array<(r: string) => void> = [];
+      const k = {
+        async attach(_s: string, _a: number, on: (j: string) => void, e: (r: string) => void) {
+          ends.push(e);
+          queueMicrotask(() => { on(synced); if (ends.length === 1) e("idle-timeout"); });
+          return { ok: true } as const;
+        },
+        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+      };
+      const s = openSession(k, "s1", () => {});
+      await vi.advanceTimersByTimeAsync(10);
+      expect(ends.length).toBe(2); // 2 is the immediate reattach, open and synced
+      ends[0]("late");
+      await vi.advanceTimersByTimeAsync(11_000);
+      ends[1]("idle-timeout");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(ends.length).toBe(3); // 2 stayed open 10 s: reset, so it reattaches at once
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("S4-fix4 AC2 page budget", () => {
+  it("ac2_pages_that_each_add_one_index_stop_at_the_budget_then_fail", async () => {
+    vi.useFakeTimers();
+    try {
+      let attaches = 0;
+      let reads = 0;
+      const k = {
+        async attach() { attaches++; return { behind: 2_560 }; }, // budget: ceil(2560 / 256) = 10 pages
+        read: async (_s: string, after: number) => { reads++; return [JSON.stringify({ v: 1, i: after + 1, kind: "message", at: 1, body: { role: "user", content: [{ type: "text", text: "x" }] } })]; },
+        say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+      };
+      let last: SessionView | undefined;
+      const s = openSession(k, "s1", (v) => { last = v; });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(attaches).toBe(1);
+      expect(reads).toBe(10); // each page adds one index in range, yet the episode stops at its budget
+      await vi.advanceTimersByTimeAsync(200_000);
+      expect(attaches).toBe(5); // through fail(): 1, 2, 4, 8 s, then the stop
+      expect(reads).toBe(10 + 4); // later episodes start at 2305: a budget of 1 page each
+      expect(last!.rows.some((r) => r.kind === "unknown")).toBe(true);
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
 });
