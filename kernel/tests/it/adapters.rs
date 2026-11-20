@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_client_protocol_schema::v1::SessionUpdate;
-use agent_kernel::adapters::{claude::ClaudeAdapter, cut_output, unknown, Kind, Out};
+use agent_kernel::adapters::{claude::ClaudeAdapter, cut_output, responses, unknown, Kind, Out};
 use serde_json::{json, Value};
 
 fn root() -> PathBuf {
@@ -37,12 +37,14 @@ fn fixtures(name: &str) -> Vec<(String, Value)> {
 /// One input of a fixture of folder `dir`, run through that folder's adapter.
 enum Adapter {
     Claude(ClaudeAdapter),
+    Responses,
 }
 
 impl Adapter {
     fn new(dir: &str) -> Adapter {
         match dir {
             "claude" => Adapter::Claude(ClaudeAdapter::new()),
+            "responses" => Adapter::Responses,
             other => panic!("no adapter for fixture folder {other}"),
         }
     }
@@ -55,15 +57,22 @@ impl Adapter {
                 (None, Some(raw)) => a.line(raw.as_str().unwrap().as_bytes(), at),
                 _ => panic!("input has neither line nor raw"),
             },
+            Adapter::Responses => match (input.get("event"), input.get("job")) {
+                (Some(e), _) => responses::event(e, at),
+                (None, Some(j)) => responses::job_output(
+                    &j["call"],
+                    j["output"].as_str().unwrap(),
+                    j["ok"].as_bool().unwrap(),
+                    at,
+                ),
+                _ => panic!("input has neither event nor job"),
+            },
         }
     }
 }
 
 fn dirs() -> Vec<&'static str> {
-    ["claude", "responses"]
-        .into_iter()
-        .filter(|d| fixture_dir(d).is_dir())
-        .collect()
+    vec!["claude", "responses"]
 }
 
 #[test]
@@ -108,17 +117,13 @@ fn ac2_every_row_of_9_8_has_a_fixture() {
                 .to_string()
         })
         .collect();
-    assert!(rows.len() >= 12, "rows read: {rows:?}");
     let have: Vec<String> = dirs()
         .into_iter()
         .flat_map(fixtures_of)
         .map(|fx| fx["row"].as_str().expect("row").to_string())
         .collect();
-    let has_responses = dirs().contains(&"responses");
+    assert_eq!(rows.len(), 12, "rows read: {rows:?}");
     for row in rows {
-        if row.starts_with("Responses") && !has_responses {
-            continue;
-        }
         assert!(have.contains(&row), "no fixture for the 9.8 row {row:?}");
     }
 }
@@ -280,5 +285,28 @@ fn ac12_adapters_are_pure() {
         for b in banned {
             assert!(!src.contains(b), "{} uses {b}", p.display());
         }
+    }
+}
+
+#[test]
+fn ac5_responses_never_panics_on_random_input() {
+    let mut r = Rng(0x2545_F491_4F6C_DD1D);
+    for _ in 0..1000 {
+        let v = random_value(&mut r);
+        let _: Vec<Out> = responses::event(&v, 1);
+    }
+    let events: Vec<Value> = fixtures("responses")
+        .iter()
+        .flat_map(|(_, fx)| fx["input"].as_array().unwrap().clone())
+        .filter_map(|i| i.get("event").cloned())
+        .collect();
+    assert!(!events.is_empty());
+    for _ in 0..1000 {
+        let mut v = events[r.below(events.len())].clone();
+        mutate(&mut v, &mut r);
+        assert!(responses::event(&v, 1).len() < 100);
+        let mut call = json!({"type":"function_call","call_id":"c","name":"n","arguments":"{}"});
+        mutate(&mut call, &mut r);
+        assert!(responses::job_output(&call, "o", r.below(2) == 0, 1).len() < 100);
     }
 }

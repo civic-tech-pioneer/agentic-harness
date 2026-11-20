@@ -1,0 +1,312 @@
+{
+  "row": "anything else",
+  "input": [
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.web_search_call.searching",
+        "sequence_number": 7,
+        "item_id": "ws_0a1b2c3d4e5f6071",
+        "output_index": 0
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "sequence_number": 8
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": 5
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_text.delta",
+        "sequence_number": 9,
+        "item_id": "msg_1",
+        "output_index": 0,
+        "content_index": 0,
+        "delta": 7
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_item.done",
+        "sequence_number": 10,
+        "output_index": 0,
+        "item": {
+          "id": "x",
+          "type": "web_search_call",
+          "status": "completed"
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_item.done",
+        "sequence_number": 11,
+        "output_index": 0,
+        "item": {
+          "id": "fc_1",
+          "type": "function_call",
+          "call_id": 9,
+          "name": "shell",
+          "arguments": "{}"
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": [
+        1,
+        2
+      ]
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": {
+          "id": "resp_0a1b2c3d4e5f6071",
+          "object": "response",
+          "status": "in_progress"
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.in_progress",
+        "sequence_number": 1,
+        "response": {
+          "id": "resp_0a1b2c3d4e5f6071",
+          "status": "in_progress"
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.completed",
+        "sequence_number": 12,
+        "response": {
+          "id": "resp_0a1b2c3d4e5f6071",
+          "status": "completed",
+          "usage": {
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "total_tokens": 15
+          }
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.failed",
+        "sequence_number": 12,
+        "response": {
+          "id": "resp_1",
+          "status": "failed",
+          "error": {
+            "code": "server_error",
+            "message": "x"
+          }
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.incomplete",
+        "sequence_number": 12,
+        "response": {
+          "id": "resp_1",
+          "status": "incomplete",
+          "incomplete_details": {
+            "reason": "max_output_tokens"
+          }
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "error",
+        "sequence_number": 2,
+        "code": "rate_limit_exceeded",
+        "message": "slow down",
+        "param": null
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_item.done",
+        "sequence_number": 9,
+        "output_index": 0,
+        "item": {
+          "id": "msg_0a1b2c3d4e5f6071",
+          "type": "message",
+          "status": "completed",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "still adapted",
+              "annotations": [],
+              "logprobs": []
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expected": [
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "response.web_search_call.searching",
+              "sequence_number": 7,
+              "item_id": "ws_0a1b2c3d4e5f6071",
+              "output_index": 0
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "sequence_number": 8
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": 5
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "response.output_text.delta",
+              "sequence_number": 9,
+              "item_id": "msg_1",
+              "output_index": 0,
+              "content_index": 0,
+              "delta": 7
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "response.output_item.done",
+              "sequence_number": 10,
+              "output_index": 0,
+              "item": {
+                "id": "x",
+                "type": "web_search_call",
+                "status": "completed"
+              }
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "response.output_item.done",
+              "sequence_number": 11,
+              "output_index": 0,
+              "item": {
+                "id": "fc_1",
+                "type": "function_call",
+                "call_id": 9,
+                "name": "shell",
+                "arguments": "{}"
+              }
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": [
+              1,
+              2
+            ]
+          }
+        }
+      }
+    ],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "still adapted"
+          }
+        },
+        "entry": {
+          "kind": "message",
+          "body": {
+            "role": "agent",
+            "content": [
+              {
+                "type": "text",
+                "text": "still adapted"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  ]
+}

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 pub mod claude;
+pub mod responses;
 
 /// The largest tool output kept whole, in bytes (9.4).
 pub const OUTPUT_CUT: usize = 65_536;
