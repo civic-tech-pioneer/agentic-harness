@@ -1,0 +1,38 @@
+# <project>/factory/config.toml: the factory's settings for this project (.claude/factory/README.md).
+# Scripts read the `key = "value"` lines with sed: keep each on one line.
+
+# The GitHub repository: cloud foremen clone it, the ruleset guards its main.
+repo = "civic-tech-pioneer/<name>"
+
+# The task gate: run from the project root by check.sh after every implementer run, and by CI.
+# Exit 0 passes. TASK and BASE are set (the task id, the commit the task started from).
+# A watane mod: the factory's mod gate (watane-dev doctor, then its contract tests).
+gate = ".claude/factory/check-mod.sh"
+
+# Run once in each new worktree before the foreman starts (an APFS clone of build output, say).
+worktree_prep = ""
+
+# The Anthropic cloud environment for cloud foremen.
+cloud_env = "env_01KZVAm2cjSpN4wbfAFeQNPD"
+
+# The model a local or cloud foreman runs on.
+foreman_model = "claude-opus-5-5"
+
+# Slices that need the Mac stay local: a path prefix here in a sketch's Touches keeps it local.
+local_only = ""
+
+# The spec chain, why > what > how: the priority of truth, highest first. Code comes after.
+spec = ["spec/VISION.md", "spec/FUNCTIONAL.md", "spec/TECHNICAL.md"]
+
+# The section that lists the project's security boundaries, each with the files that hold it.
+# A slice whose diff touches one of those files gets the adversary. Empty: no boundaries yet.
+boundaries = "spec/TECHNICAL.md section 6"
+
+[agents]
+# codex: Sol through .claude/factory/impl.sh (local only); or the name of an agent in .claude/agents.
+# A cloud foreman, which has no Codex, always uses the agent named in implementer_cloud.
+implementer = "codex"
+implementer_cloud = "implementer"
+validator = "validator"
+acceptance = "user-sim"
+adversary = "adversary"
