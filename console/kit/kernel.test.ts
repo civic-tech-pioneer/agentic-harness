@@ -205,6 +205,21 @@ describe("S4-fix3 AC2 reattach policy", () => {
       s.close();
     } finally { vi.useRealTimers(); }
   });
+  it("ac2_streams_that_sync_and_end_at_once_reattach_at_once_only_once_in_a_row", async () => {
+    vi.useFakeTimers();
+    try {
+      const synced = JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } });
+      const { c, k } = mk(async (n, on, end) => { if (n < 1_000) queueMicrotask(() => { on(synced); end("idle-timeout"); }); return { ok: true }; });
+      const s = openSession(k, "s1", () => {});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(c.attaches).toBe(2);
+      await vi.advanceTimersByTimeAsync(900);
+      expect(c.attaches).toBe(2);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(c.attaches).toBe(4); // 3 after the wait syncs and ends: 4 at once, then a wait again
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
   it("ac2_stream_that_ends_five_times_without_sync_stops_with_an_unknown_row", async () => {
     vi.useFakeTimers();
     try {
@@ -221,15 +236,21 @@ describe("S4-fix3 AC2 reattach policy", () => {
     vi.useFakeTimers();
     try {
       const synced = JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } });
-      const { c, k } = mk(async (n, on) => {
-        if (n <= 3) throw new Error("down");
-        if (n === 4) { on(synced); return { ok: true }; }
+      const { c, k } = mk(async (n, on, end) => {
+        if (n === 4) { queueMicrotask(() => { on(synced); end("idle-timeout"); }); return { ok: true }; }
         throw new Error("down");
       });
       const s = openSession(k, "s1", () => {});
-      await vi.advanceTimersByTimeAsync(1_000 + 2_000 + 4_000 + 10);
-      expect(c.attaches).toBe(4);
-      // reset by the sync of attach 4: the next failure waits 1 s again (no further end here, so force one)
+      await vi.advanceTimersByTimeAsync(1_000 + 2_000 + 4_000 + 10); // t=7.01 s: 4 syncs and ends, 5 at once fails
+      expect(c.attaches).toBe(5);
+      await vi.advanceTimersByTimeAsync(900); // reset: 1 s, not the 8 s of a 4th failure in a row
+      expect(c.attaches).toBe(5);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(c.attaches).toBe(6);
+      await vi.advanceTimersByTimeAsync(1_800); // then 2 s
+      expect(c.attaches).toBe(6);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(c.attaches).toBe(7);
       s.close();
     } finally { vi.useRealTimers(); }
   });
@@ -265,6 +286,35 @@ describe("S4-fix3 AC3 old connection", () => {
       await vi.advanceTimersByTimeAsync(60_000);
       expect(views.length).toBe(shown);
       expect(n).toBe(2);
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
+  it("ac3_late_event_and_end_of_an_old_synced_connection_leave_the_new_one_alone", async () => {
+    vi.useFakeTimers();
+    try {
+      const synced = JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } });
+      const ons: Array<(j: string) => void> = [];
+      const ends: Array<(r: string) => void> = [];
+      let n = 0;
+      const k = {
+        async attach(_s: string, _a: number, on: (j: string) => void, end: (r: string) => void) {
+          n++; ons.push(on); ends.push(end);
+          if (n === 1) queueMicrotask(() => { on(synced); end("idle-timeout"); }); // 2 at once
+          if (n === 2) queueMicrotask(() => end("lost-grant")); // 3 after 1 s
+          return { ok: true } as const;
+        },
+        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+      };
+      const views: SessionView[] = [];
+      const s = openSession(k, "s1", (v) => views.push(v));
+      await vi.advanceTimersByTimeAsync(1_100);
+      expect(n).toBe(3);
+      const shown = views.length;
+      ons[0](JSON.stringify({ i: 0, type: "x" }));
+      ends[0]("again");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(views.length).toBe(shown);
+      expect(n).toBe(3);
       s.close();
     } finally { vi.useRealTimers(); }
   });
