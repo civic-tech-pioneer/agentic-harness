@@ -615,6 +615,7 @@ fn ac2_package_runner_table_is_exact() {
         }
         for w in all.iter().filter(|w| !words.contains(w)) {
             refused(&format!("Bash({runner} {w})"));
+            refused(&format!("Bash({} {w})", runner.to_uppercase()));
         }
         for r in [
             format!("Bash({runner})"),
