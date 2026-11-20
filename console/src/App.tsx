@@ -43,10 +43,13 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
 
   const needsYou = useCallback(() => {
     const id = view.openAsks[0];
-    const btn = id === undefined ? null : scroller.current?.ownerDocument.querySelector<HTMLElement>(`[data-call="${CSS.escape(id)}"] [data-ask-first]`);
-    if (!btn) return;
-    btn.scrollIntoView?.({ block: "center" });
-    btn.focus();
+    const card = id === undefined ? null : scroller.current?.ownerDocument.querySelector<HTMLElement>(`[data-call="${CSS.escape(id)}"]`);
+    const btn = card?.querySelector<HTMLElement>("[data-ask-first]");
+    if (!card || !btn) return;
+    // The card's header says what asks, so it is what comes into view; focus must not scroll it away again.
+    const shorter = card.getBoundingClientRect().height < (scroller.current?.clientHeight ?? 0);
+    card.scrollIntoView?.({ block: shorter ? "nearest" : "start" });
+    btn.focus({ preventScroll: true });
   }, [view.openAsks]);
 
   return (
