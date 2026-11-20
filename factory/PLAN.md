@@ -75,6 +75,31 @@ Outcomes:
 Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Not the record, not `kernel/`.
 Protects: *core* (*guard* for 2 and 3).
 
+### S11: the transcript store: entries, parts and pages (in flight (cloud), routine trig_01SrbFBAegdjggbPmwt45bFR)
+
+Story: a kernel maker runs `cargo test` in `kernel/` and sees a session's transcript stored and
+read back as 9.4 and 9.1 say, against an in-memory key-value state of host 7's shape (get, put,
+delete; 4 MiB per value; no prefix scan), for transcripts of 10 and of 10 000 entries.
+Outcomes:
+1. Append: indexes start at 1 and rise by one; chunks `entries/<id>/<n>` hold at most 256 entries
+   or 1 MiB; the session record's `chunks` lists each chunk's first index, so a read touches only
+   the chunks it needs (a test counts the gets).
+2. An entry over 256 KiB is stored as consecutive `part` entries cut at UTF-8 boundaries, the
+   whole carrying the last part's index; a reader joins parts across pages; a read whose `after`
+   falls inside a group starts at its first part.
+3. `read(after, before?, max)` returns `page {entries, last}` ascending, at most `max` (at most
+   256) and 2 MiB, with `before` paging backwards; `last` is the high-water index; every page
+   makes progress.
+4. The replay decision of `attach`: at most 128 entries and 2 MiB after `after`, else
+   `behind {through}`; the stream part of attach is left out.
+5. An entry of unknown `kind` or newer `v` reads as `unreadable` with its raw text and keeps its
+   `i`. Also: drop `ls` from yarn's runner words (S3 debt; 4.1 text comes with S6 or S10).
+Touches: `kernel/` only. Not `design/`: a spec question is a `BLOCKED`, with the option that keeps
+the others open built meanwhile.
+Fakes: the host's key-value state (an in-memory map behind a small trait in `kernel/`).
+Leaves out: streams and live pushes, queue, sessions (9.3), quotas, `expires-at` from the item.
+Protects: *core*.
+
 ## Sketched
 
 ### S7: the console stays fast on a long session (cloud, after S9 merges: same files)
@@ -101,7 +126,7 @@ check items carry `tool_use_id` and `expires-at` on the host's clock; the host n
 a stdout line whose top-level type is one of its item types (it wraps it as unknown); 14 names
 `kernel/src/adapters/`; 9.8 gains rows (or a "gives nothing" list) for `hook_started`,
 `tool_progress`, `task_progress`; check option `none` is not drawn as an allow. Then the kernel
-follow-up (S11): take `expires-at` from the item when present; drop `yarn ls` (S3).
+follow-up (a kernel slice after S10): take `expires-at` from the item when present.
 Touches: `design/TECHNICAL.md`, `AGENTS.md`. Protects: *core* (*guard* for the 4.5 lines). If S8's
 row-coverage test reads a 9.8 "From" cell that changes, edit its fixture's `row` in the same slice.
 
@@ -155,8 +180,8 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   `Main-2` found the gaps that became S9. Implementer runs 2/1/1 + fixes 1/1/1/1/2/1. Suite:
   `npm test` 167 tests 6.2 s, gate 24 s, `npm run test:slow` 7.5 s.
 
-- **S8** the kernel's adapters (PR #10, opened and armed by the PO, 2026-11-20 23:4x UTC; 19 min
-  in flight). `cargo test` in `kernel/` turns each row of 9.8 into its ACP v1 update and entry from
+- **S8** the kernel's adapters (PR #10, opened and armed by the PO, merged 2026-11-20 23:42 UTC;
+  19 min in flight). `cargo test` in `kernel/` turns each row of 9.8 into its ACP v1 update and entry from
   golden fixtures; unknown lines become `unknown`, never an error. Real libraries: claude-codes
   =2.1.330, agent-client-protocol-schema =1.20.0. Adversary HELD with a RISK on 4.5 (PO decision
   below); user-sim ACCEPTED. Implementer runs 1/1. Suite: 66 tests 0.23 s; gate 13 s.
