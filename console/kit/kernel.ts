@@ -19,7 +19,8 @@ export function decisionJson(d: { outcome: "allow" | "deny"; for?: "session"; re
 
 const PAGE = 256;
 const RETRY_MS = 1000;
-const MAX_STUCK = 3;
+const MAX_DELAY_MS = 30_000;
+const MAX_TRIES = 5;
 
 /** Opens a session: attaches after the last index shown, pages when behind, reattaches when the stream drops. */
 export function openSession(kernel: Kernel, session: string, onView: (v: SessionView) => void): { close(): void } {
@@ -27,7 +28,7 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   let closed = false;
   let gen = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let stuck = 0;
+  let tries = 0;
 
   const fetching = new Set<number>();
   /** Reads entry n back for its `~p<n>` row: once if it is read, at most 3 times (1 s apart) if the read fails. */
@@ -54,46 +55,65 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   };
 
   /** Pages in the entries before `through`; returns the cause when a page makes no progress. */
-  async function pageIn(through: number): Promise<string | undefined> {
+  async function pageIn(g: number, through: number): Promise<string | undefined> {
     const base = view;
     const pages: string[][] = [];
     let hi = through;
     if (!Number.isInteger(through) || through > Number.MAX_SAFE_INTEGER) return "the kernel's `behind` is not an index";
     if (through <= base.lastIndex) return "the kernel's `behind` is not past the last index shown";
-    while (hi > base.lastIndex && !closed) {
+    while (hi > base.lastIndex && !closed && g === gen) {
       const lo = Math.max(base.lastIndex, hi - PAGE);
       if (lo === hi) return "the kernel's `behind` is too large to page";
       const page = await kernel.read(session, lo, hi - lo);
+      if (closed || g !== gen) return undefined;
       if (!page.length) return "the kernel returned no entries for a page it is behind on";
       pages.unshift(page);
       hi = lo;
       show(pages.flat().reduce(safeReduce, base));
     }
+    if (closed || g !== gen) return undefined;
     if (view.lastIndex < through) throw new Error("the kernel's pages stop short of its own `behind`");
     return undefined;
   }
 
+  /** The one reattach policy: a failed try waits 1 s, 2 s, 4 s ... up to 30 s; the 5th in a row stops the console. */
+  function fail(g: number, cause: string, shown = false) {
+    if (closed || g !== gen) return;
+    if (++tries >= MAX_TRIES) { if (!shown) show(withUnknown(view, cause)); return; }
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { if (!closed && g === gen) void connect(); }, Math.min(RETRY_MS * 2 ** (tries - 1), MAX_DELAY_MS));
+  }
+
   async function connect() {
+    if (timer) clearTimeout(timer);
     timer = undefined;
     const g = ++gen;
+    let reached = false;
     try {
       for (;;) {
-        if (closed) return;
+        if (closed || g !== gen) return;
         view = { ...view, synced: false };
         const r = await kernel.attach(session, view.lastIndex,
-          (json) => { if (g === gen && !closed) show(safeReduce(view, json)); },
-          (reason) => { if (g === gen && !closed && reason !== "replaced") void connect(); });
-        if (!("behind" in r)) return;
-        const cause = await pageIn(r.behind);
+          (json) => {
+            if (g !== gen || closed) return;
+            show(safeReduce(view, json));
+            if (view.synced) { reached = true; tries = 0; }
+          },
+          (reason) => {
+            if (g !== gen || closed || reason === "replaced") return;
+            if (reached) void connect(); else fail(g, `the stream ended (${reason}) before it synced`);
+          });
+        if (closed || g !== gen || !("behind" in r)) return;
+        const cause = await pageIn(g, r.behind);
+        if (closed || g !== gen) return;
         if (cause) {
           show(withUnknown(view, cause));
-          if (++stuck < MAX_STUCK && !closed && g === gen) timer = setTimeout(() => void connect(), RETRY_MS);
+          fail(g, cause, true);
           return;
         }
-        stuck = 0;
       }
-    } catch {
-      if (!closed && g === gen) timer = setTimeout(() => void connect(), RETRY_MS);
+    } catch (e) {
+      fail(g, `the kernel failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
