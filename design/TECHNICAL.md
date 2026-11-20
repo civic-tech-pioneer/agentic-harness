@@ -70,7 +70,7 @@ interface streams {                                  // no grant
 record item { seq: u64, body: list<u8> }
 enum sink-outcome { taken, defer }
 interface stream-sink { items: func(s: string, items: list<item>) -> sink-outcome; ended: func(s: string, outcome: outcome); }   // host-only export
-interface stream-producer { ready: func(s: string); }                                                         // host-only export
+interface stream-producer { ready: func(s: string); ended: func(s: string, outcome: outcome); }               // host-only export
 
 interface claude-types { /* launch, decision, session-error, start-error: shared types, no grant */ }
 interface claude-code { start: func(launch: string) -> result<stream-id, start-error>; }        // grant: Claude Code (unchecked)
@@ -157,7 +157,7 @@ record page { entries: list<string>, last: u64 }
 record session-info { id: string, title: string, profile: string, backend: string, turn: string, updated: u64 }
 record queued-input { n: u64, input: string }
 record refusal { field: string, backend: string, model: string, reason: string }
-variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow, behind(u64), too-large(u64) }
+variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow, behind(u64), too-large(u64), busy }
 
 interface offers {                                   // a collect (W34)
   skills: func() -> list<offered-skill>;
@@ -168,7 +168,7 @@ interface offers {                                   // a collect (W34)
 `input`, `overlay`, `decision` and `caps` are JSON: ACP content blocks, an
 overlay document (9.2), `{allow | deny, for?: "session", reason?, input?}`,
 and ACP client capabilities. `allow` in `take-back` is the id of an `allow`
-entry (9.4). `too-large(u64)` carries the limit in bytes (9.3). `read`: 9.4.
+entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5); its message names the cap. `read`: 9.4.
 
 ## 3. Streams (H1)
 
@@ -191,7 +191,8 @@ entry (9.4). `too-large(u64)` carries the limit in bytes (9.3). `read`: 9.4.
 | In flight | 256 items or 4 MiB per stream; `push` past it fails `full`; `ready` when below half; host streams stop reading their source |
 | Page queue | lossless, per connection, apart from the host 9.3 bus |
 | Ends | close, cancel, disable, removal or update of either side, lost grant or consent, closed page connection, `consumer-failed`, `idle-timeout`, app quit; each side gets `ended(outcome)` |
-| Forwarding | a forwarding mod defers when a `push` to its own downstream stream fails `full`, and resumes in its `stream-producer.ready` for that downstream stream. The checked provider (10) and the kernel (for its owner's live stream, 9.4) both do so |
+| Forwarding | a forwarding mod defers when a `push` to its own downstream stream fails `full`, and resumes in its `stream-producer.ready` for that downstream stream. When that downstream stream ends (any outcome: closed, `replaced`, `lagging`, page gone), `stream-producer.ended` runs and the mod resumes its deferred upstream: the kernel then has no live stream and stores entries without pushing them; the checked provider cancels its `claude` stream The checked provider (10) and the kernel (for its owner's live stream, 9.4) both do so |
+| Deferral ends | a stream deferred for 5 minutes without `resume` ends `consumer-failed` (host backstop); the kernel holds a deferral of a session's upstream for at most 10 s (9.4) |
 | Restart | streams are memory only; old ids are `unknown-stream` |
 | Limits | 32 open streams per consumer; 4 MiB per item (`too-large`); 4 `claude` processes per origin client, 8 in all |
 
@@ -493,22 +494,22 @@ in `queue/<id>` (9.1), at most 32 inputs, each numbered from 1 per session.
 **Sizes.** Every input (`start`, `say`, an `interrupt` replacement) is at
 most 256 KiB serialized, else `too-large(262144)`. The queue holds at most 32
 inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
-`queued` stay under 2 MiB. The record is at most 512 KiB; its variable fields:
+`queued` carry at most 2 MiB of inputs, under the 4 MiB item (3). The record is at most 512 KiB; its variable fields:
 
 | Field | Cap | Past it |
 |---|---|---|
-| `key` (a client key, also in `key/<owner>/<key>`) | 256 bytes | `too-large` |
-| `title` | 256 bytes | `rename` refuses `too-large` |
+| `key` (a client key, also in `key/<owner>/<key>`) | 256 bytes | `too-large(256)` |
+| `title` | 256 bytes | `rename` refuses `too-large(256)` |
 | `children` | live children only, at most 20 (9.7); a finished child leaves the list, its id stays in the parent's transcript | – |
-| `allows` | 64 session allows of at most 1 KiB each | an answer `for: session` is refused `too-large`; the ask stays open |
-| `chunks` | 16 384 chunk starts | the session is at its quota: the turn ends `stopped {quota}` and new input is refused `quota` |
+| `allows` | at most 64 session allows and 64 KiB in all, each at most 1 KiB | an answer `for: session` is refused `too-large(65536)`; the ask stays open |
+| `chunks` | 16 384 chunk starts | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
 
 | Turn state | Meaning |
 |---|---|
 | `running {activity?}` | a turn is under way; `activity` while it lasts: `checking {on}` (the checked provider asks its judge, 10), `compacting`, `consent {what}` (a request waits for the participant in the app, 8). The activity is live only: pushed as a `turn` update, never stored in the record or as an entry, so it costs no write |
 | `waiting {asks}` | an ask is open |
 | `paused {until}` | a usage limit, or retries ran out; a timer resumes it |
-| `idle {stop}` | `completed`, `interrupted`, `stopped {limit}`, `failed {error}` |
+| `idle {stop}` | `completed`, `interrupted`, `stopped {limit}` (names the limit), `failed {error}` |
 | `unknown` | written after a restart for a session that was running |
 | `resume-lost` | `claude` refused a resume; the next `say` starts a new Claude session seeded with a summary |
 
@@ -567,7 +568,7 @@ An entry is JSON:
   live updates. A previous live stream of the session ends `replaced`.
 - **Replay fits the stream window.** `attach` replays at most 128 entries and
   2 MiB, half the in-flight limit of 3. When more entries lie after `after`,
-  it opens nothing and returns `behind {through}`; the client pages with
+  it opens nothing and returns `behind {through}`, `through` being the session's high-water index (`last` of `read`); the client pages with
   `read` first, then attaches again. `read` returns at most `max` (at most
   256) entries and at most 2 MiB, so every replay call stays within its
   budget, whatever the length of the transcript.
@@ -582,7 +583,12 @@ An entry is JSON:
   `stream-producer.ready`. Outside an item call (a `say`, an `answer`, a
   timer) it cannot defer: if a push to the owner's live stream fails `full`,
   it closes that stream with outcome `lagging`, and the client attaches again
-  after its last index.
+  after its last index. A deferral of a session's upstream lasts at most 10 s
+  (timer `lagging/<session>`): then the kernel closes the owner's live stream
+  `lagging` and resumes upstream, so a page that stays connected but stops
+  reading cannot freeze a session. When the owner's stream ends mid-deferral
+  (3, `stream-producer.ended`), the kernel resumes upstream and stores
+  entries without pushing them.
 - **No partial replay.** A message still being written is not replayed: its
   text so far lives only in the deltas already sent, and keeping it would cost
   a state write per delta (V6). A client that attaches mid-message drops that
@@ -625,11 +631,15 @@ An entry is JSON:
   host refuses them (5), while compaction happens on the server by token
   count, after a request is accepted. So the kernel sets `compact_threshold`
   to at most 200 000 tokens (about 800 KB of text), and measures each body
-  before sending. Over 896 KiB, it leaves out `encrypted_content` reasoning,
-  oldest first, then cuts tool outputs older than the last 4 steps to 8 KiB
-  (marked). Still over 1 MiB: the turn ends `failed {too-large}` and the next
-  `say` continues as for `resume-lost`, from a summary. Trimming starts a new
-  prefix (cache), once; the request after it extends that one. `instructions`
+  before sending. Over 896 KiB, it sets a trim mark at the first item of the
+  last 4 steps and trims every item before the mark (`encrypted_content`
+  reasoning left out, oldest first, then tool outputs cut to 8 KiB, marked)
+  until the body is at most 768 KiB. The mark is kept in the loop state and
+  does not move until a body is over 896 KiB again; every later request sends
+  the items before it trimmed the same way, so it extends the trimmed request.
+  Still over 1 MiB after trimming everything before the mark: the turn ends
+  `failed {too-large}` and the next `say` continues as for `resume-lost`,
+  from a summary. Trimming starts a new prefix (cache), once. `instructions`
   stay byte-stable.
 - **Compaction items** returned by the server are stored in the wire history
   and sent back as input; a `compaction` entry marks them. A compaction and a
@@ -646,13 +656,14 @@ An entry is JSON:
   provider streams (Claude sessions; the host's limit of 8 `claude`), 8 model
   requests (`https-stream.start` of this loop), 16 tool jobs; one session
   holds at most 8 job slots, and one owner at most half of each kind (4
-  provider, 4 request, 8 job slots), on top of the per-session cap; a child session counts against its root's owner. Owners that are different mods acting together can still take every slot: an accepted limit (availability, not a boundary of 14). State: `slots` and `slots/wait/<n>` (9.1). The
+  provider, 4 request, 8 job slots), on top of the per-session cap. A `start` or a `say` that needs a Claude session's provider stream when its owner holds 4, or all 8 are held, is refused `busy` (2.3, 12); it never waits. A Claude session idle for 10 minutes releases its provider stream (the kernel cancels it; the next `say` resumes the Claude session with `session {resume}`, 4.1), so slots do not stay held by idle sessions. A child session counts against its root's owner. Owners that are different mods acting together can still take every slot: an accepted limit (availability, not a boundary of 14). State: `slots` and `slots/wait/<n>` (9.1). The
   loop state keeps a step's calls not yet started (`pending`); they start in
   waves as job slots free. A request that finds no request slot waits in
   `ready` in the FIFO. Every `ended` of a kernel-consumed stream frees its
   slot and starts the oldest waiting work whose session and owner are under
   their caps in the same call; work at a cap stays in the FIFO and never
-  blocks another owner's. The restart pass
+  blocks another owner's. A FIFO entry whose session no longer waits
+  (interrupt, cancel, delete, restart) is skipped and removed when reached. The restart pass
   that writes `unknown` (9.3) sets the counts to zero (streams are memory
   only, 3).
 - **Parallel:** the jobs of a step start together, up to the free job slots,
@@ -768,7 +779,10 @@ when `claude-codes` cannot parse it.
      the launch input itself was dropped (step 8).
   5. `say` from the kernel is judged the same way (steps 2 to 4), one input
      at a time in order; it returns at once, and the input reaches `claude`
-     only after its safe verdict.
+     only after its safe verdict. An unsafe verdict on a later input denies
+     that input only: a verdict item, the turn ends `idle {failed {judge}}`,
+     the `claude` stream stays; only the launch's unsafe verdict cancels it
+     (step 4).
   6. A `check` is judged the same way and answered by `claude-session.answer`:
      `none` when safe, `deny` after an unsafe or unsure verdict, an unreadable
      one, an error or the deadline. An `ask` is answered only with `deny` (unsafe,
@@ -841,9 +855,9 @@ when `claude-codes` cannot parse it.
 | `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
-| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `too-large {limit}` | kernel | 9, 9.3 |
+| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 |
 | `not-owner`, `not-direct` | providers | 2.2, 10 (`not-owner`: the caller is not the kernel) |
-| `unknown-input`, `unknown-allow`, `behind {through}` | kernel | 9.3, 9.6, 9.4 |
+| `unknown-input`, `unknown-allow`, `behind {through}` (`through`: the high-water index) | kernel | 9.3, 9.6, 9.4 |
 | `too-large` | OpenAI loop outcome | 9.5, body budget |
 
 Each error also carries a message that names the cause (F-QUAL-3).
@@ -926,13 +940,13 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` host state: timers per mod, kept across restarts (7).
 - [ ] `host/TECHNICAL.md` `caller.identity()` (9.3, 14).
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
-- [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure (3; P03).
+- [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended` (2.1, 3; P03).
 - [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7).
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
 - [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
 - [ ] `host/TECHNICAL.md` account kind `judge` and its binding (provider identity compared exactly, `account` exactly `openai` or `judge`, `POST`, origin after one parse with `[http]`, no redirects, `no-account`, ending live judge streams when the key is removed) (5, 10, 12; N10).
 - [ ] `pkg/TECHNICAL.md` 4.5: rows for the imports and exports of 2.1 (2.1).
-- [ ] `pkg/TECHNICAL.md` 4.5: the changed `stream-sink` export and `streams.resume` import (2.1; P03).
+- [ ] `pkg/TECHNICAL.md` 4.5: the changed `stream-sink` export, the `stream-producer.ended` export and the `streams.resume` import (2.1; P03).
 - [ ] `pkg/TECHNICAL.md` 5.1 and 7.2: two grant kinds (4.2, 8).
 - [ ] `app/TECHNICAL.md` new section: Sign in with ChatGPT and the account file (5).
 - [ ] `app/TECHNICAL.md` new section: the consent words and their storage (8).
@@ -1061,7 +1075,8 @@ of `spec/VISION.md`.
     request of another session still starts; after a restart the slot counts
     start from zero.
 40. (9.5, case 2) The three tests of case 2: trimming by the body budget, a
-    compaction and a summary restart each start one new prefix.
+    compaction and a summary restart each start one new prefix; the trimming
+    test says: the next 3 requests extend the trimmed one.
 41. (9.4) `read` with `before` gives the newest page first; paging back to
     index 0, then attaching after the newest index shown, shows every entry
     once; `last` is the high-water index.
@@ -1100,6 +1115,19 @@ of `spec/VISION.md`.
     (and, in a second test, unsafe): X reaches the fake `claude` only after the
     launch's safe verdict, and never after an unsafe one. A refused
     `timers.after` for a judge call denies that `on` at once.
+51. (3, 9.4, 10) The owner stream ends mid-deferral: upstream resumes and
+    nothing is lost from the transcript. A page that stops reading: `lagging`
+    after 10 s, and a reattach misses and doubles nothing. A consumer that
+    never resumes: `consumer-failed` after 5 minutes. A checked provider whose
+    downstream ends cancels its `claude` stream.
+52. (9.5, 2.3) A `start` or `say` when the owner holds 4 provider streams, or
+    all 8 are held, is `busy` and does not wait; a Claude session idle for 10
+    minutes releases its stream, and the next `say` resumes it with `session
+    {resume}`.
+53. (9.3) A client key over 256 bytes and a `rename` over 256 bytes are
+    `too-large(256)`; the 65th session allow is `too-large(65536)` and its ask
+    stays open; a session at 16 384 chunks ends its turn `stopped {limit:
+    quota}` and new input is `quota`.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
@@ -1124,16 +1152,16 @@ length. A long session cannot hold the slot.
 
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
-| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; case 36 for the host part (3); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 41, 45, 49; the budgets of stage B |
+| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; case 36 and 51 for the host part (3); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48; the budgets of stage D |
-| E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
+| E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24; the budgets of stage F; N5 decided |
 
 Budgets (the "Load" kind of 16). All p95; measured by a slow load test on the
 stage's fakes, recorded with the date and the machine in 16, "Budget record";
-a stage is done only within them.
+a stage is done only within them. Writer busy share: the share of wall time the host's state writer (host 7, one per host) spends in commits, fsync included, over the load run. B and D run with 2 owners (two client mods), so the per-owner caps hold; stage A's 8 host streams come from a test source in the host's own tests (no H2–H4).
 
 | Stage | Load | Item delay, source to page | Stop, to idle at the page | Writer busy share | State bytes read and written |
 |---|---|---|---|---|---|
