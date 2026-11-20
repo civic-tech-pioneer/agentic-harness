@@ -46,7 +46,7 @@ function parseCall(o: Rec): CallPatch | undefined {
   return c;
 }
 
-export function parseTurn(o: unknown): { state: TurnState; extra: TurnExtra } | undefined {
+function parseTurn(o: unknown): { state: TurnState; extra: TurnExtra } | undefined {
   if (!isRec(o)) return undefined;
   switch (o.state) {
     case "running": {

@@ -32,7 +32,7 @@ describe("AC5 reattach and reload", () => {
     const keys = after.rows.map((r) => r.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
-  it("ac5_a_drop_while_the_kernel_went_on_replays_the_new_entries_once", async () => {
+  it("ac5_after_a_drop_the_live_steps_match_a_fresh_open_with_nothing_doubled", async () => {
     const k = fakeKernel(story);
     const a = open(k);
     await flush();

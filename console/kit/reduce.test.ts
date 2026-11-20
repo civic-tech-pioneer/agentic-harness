@@ -151,6 +151,6 @@ describe("AC7 story", () => {
     const seen: string[] = [];
     void k.attach("s", 0, (j) => seen.push(j), () => {});
     for (let n = 0; n < story.length; n++) k.play();
-    expect(seen.length).toBeGreaterThan(story.flat().length - 1);
+    expect(seen).toEqual([JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } }), ...story.flat()]);
   });
 });
