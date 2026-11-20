@@ -646,7 +646,7 @@ An entry is JSON:
   provider streams (Claude sessions; the host's limit of 8 `claude`), 8 model
   requests (`https-stream.start` of this loop), 16 tool jobs; one session
   holds at most 8 job slots, and one owner at most half of each kind (4
-  provider, 4 request, 8 job slots), on top of the per-session cap. State: `slots` and `slots/wait/<n>` (9.1). The
+  provider, 4 request, 8 job slots), on top of the per-session cap; a child session counts against its root's owner. Owners that are different mods acting together can still take every slot: an accepted limit (availability, not a boundary of 14). State: `slots` and `slots/wait/<n>` (9.1). The
   loop state keeps a step's calls not yet started (`pending`); they start in
   waves as job slots free. A request that finds no request slot waits in
   `ready` in the FIFO. Every `ended` of a kernel-consumed stream frees its
@@ -724,7 +724,8 @@ when `claude-codes` cannot parse it.
 - **Unchecked:** `start` calls `claude-code.start`, then `streams.hand-off`,
   and returns `{stream, direct: true}`. Its other functions return
   `not-direct`.
-- **Checked:** it forwards every item unchanged, answers every `check`
+- **Checked:** it forwards every item unchanged (an `ask` item reaches the
+  kernel at once; only its answer waits for the verdict, step 6), answers every `check`
   (`none` when safe, `deny` otherwise), judges every `ask` and input, and
   pushes each verdict as an item
   `{"type":"verdict","on":<on>,"verdict":…,"reasons":[…]}` (`on`: step 3). No
@@ -757,10 +758,14 @@ when `claude-codes` cannot parse it.
      readable verdict is final, and so is the timer: it firing first is
      `unsafe`, and a later verdict is ignored. A new attempt starts only after
      an error or an ending with no readable verdict, from the `ended` of the
-     one before, only while the deadline is ahead; at most 3 attempts.
+     one before, only while the deadline is ahead; at most 3 attempts. A
+     refused `timers.after` (`bad-id`, `too-many`) is an `unsafe` verdict for
+     that `on` at once.
   4. Safe on the launch and its input: `claude-session.say(input)`. Unsafe: a
      verdict item, then it cancels the `claude` stream and closes its own; the
      kernel ends the turn `idle {failed {judge}}` with the verdict's reasons.
+     No input reaches `claude` before the launch's safe verdict, also when
+     the launch input itself was dropped (step 8).
   5. `say` from the kernel is judged the same way (steps 2 to 4), one input
      at a time in order; it returns at once, and the input reaches `claude`
      only after its safe verdict.
@@ -1090,6 +1095,11 @@ of `spec/VISION.md`.
     deferring call is dropped.
 49. (9.4) Paging backwards with `read` through a 3 MiB entry, with pages that
     end inside its part group, joins it whole, byte for byte.
+50. (10) `start` with the consent pending, `interrupt`, `say X`; after
+    `initialized` the judge answers input/2 safe at once and the launch late
+    (and, in a second test, unsafe): X reaches the fake `claude` only after the
+    launch's safe verdict, and never after an unsafe one. A refused
+    `timers.after` for a judge call denies that `on` at once.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
@@ -1118,7 +1128,7 @@ length. A long session cannot hold the slot.
 | B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 41, 45, 49; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48; the budgets of stage D |
-| E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 37, 38, 42–44, 46, 47; the budgets of stage E |
+| E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24; the budgets of stage F; N5 decided |
 
 Budgets (the "Load" kind of 16). All p95; measured by a slow load test on the
