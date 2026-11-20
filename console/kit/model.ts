@@ -27,7 +27,7 @@ export type Row =
   | { kind: "unknown"; key: string; i?: number; raw: unknown };
 export interface PlanItem { content: string; status: "pending"|"in_progress"|"completed" }
 /** The reducer's own bookkeeping; a reader of the view ignores it. */
-export interface Internal { lost: boolean; thoughtAt?: number }
+export interface Internal { lost: boolean; partial?: boolean; thoughtAt?: number }
 export interface SessionView {
   rows: Row[]; openAsks: string[]; turn: TurnState | null;
   queue: { n: number; input: string }[]; plan: PlanItem[] | null;

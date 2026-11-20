@@ -6,7 +6,7 @@ export type CallPatch = Partial<ToolCall> & { id: string };
 export type Msg =
   | { t: "message"; i: number; role: "user" | "agent"; text: string; thought?: { text: string; seconds: number } }
   | { t: "tool"; i: number; call: CallPatch }
-  | { t: "ask"; i: number; ask: Ask }
+  | { t: "ask"; i: number; ask: Ask; call?: CallPatch }
   | { t: "allow"; i: number; id: string; reach: string; given: boolean; by: string }
   | { t: "verdict"; i: number; toolCallId: string; outcome: string; reasons: string[]; by: string }
   | { t: "turn"; i?: number; state: TurnState; extra: TurnExtra }
@@ -108,7 +108,8 @@ function parseEntry(e: Rec): Msg {
         if ((d.outcome !== "allow" && d.outcome !== "deny") || str(d.by) === undefined) return bad;
         ask.decision = { outcome: d.outcome, by: d.by as string, ...(d.for === "session" ? { for: "session" as const } : {}), ...(str(d.reason) !== undefined ? { reason: d.reason as string } : {}) };
       }
-      return { t: "ask", i, ask };
+      const call = isRec(b.toolCall) ? parseCall(b.toolCall) : undefined;
+      return { t: "ask", i, ask, ...(call ? { call } : {}) };
     }
     case "allow": {
       const id = str(b.id), reach = str(b.reach), by = str(b.by);
