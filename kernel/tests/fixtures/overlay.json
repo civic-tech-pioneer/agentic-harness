@@ -1,0 +1,6 @@
+{
+  "system-prompt-append": "Only src/.",
+  "tools-": ["Edit"],
+  "deny+": ["Bash"],
+  "max-turns": 10
+}

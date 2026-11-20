@@ -1,0 +1,8 @@
+{
+  "tools": ["Read", "Edit"],
+  "mode": "manual",
+  "deny": ["Write"],
+  "max-turns": 20,
+  "system-prompt": {"append": "Be brief."},
+  "subagents": [{"name": "r", "description": "d", "prompt": "p", "tools": ["Read", "Edit"]}]
+}

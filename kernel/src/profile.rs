@@ -126,17 +126,62 @@ pub(crate) const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub(crate) const MODES: [&str; 4] = ["manual", "accept-edits", "plan", "dont-ask"];
 /// The tool allowlist of the `claude-code-shell` grant (4.2).
 pub(crate) const TOOLS: [&str; 12] = [
-    "Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit", "Skill", "Task", "TodoWrite", "Bash",
-    "WebFetch", "WebSearch",
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "NotebookEdit",
+    "Skill",
+    "Task",
+    "TodoWrite",
+    "Bash",
+    "WebFetch",
+    "WebSearch",
 ];
 const PER_SESSION: [&str; 4] = ["workspace", "extra-workspaces", "agent-handle", "session"];
 /// Commands that run any code given to them, or run the next word as a command (4.1). Names
 /// starting with `python` are runners too.
 const RUNNERS: [&str; 39] = [
-    "bash", "sh", "zsh", "fish", "dash", "ksh", "mksh", "csh", "tcsh", "ash", "pwsh", "env",
-    "node", "deno", "bun", "bunx", "npx", "uvx", "perl", "ruby", "php", "lua", "awk", "osascript",
-    "eval", "exec", "source", ".", "command", "builtin", "xargs", "sudo", "doas", "su", "nohup",
-    "nice", "timeout", "time", "stdbuf",
+    "bash",
+    "sh",
+    "zsh",
+    "fish",
+    "dash",
+    "ksh",
+    "mksh",
+    "csh",
+    "tcsh",
+    "ash",
+    "pwsh",
+    "env",
+    "node",
+    "deno",
+    "bun",
+    "bunx",
+    "npx",
+    "uvx",
+    "perl",
+    "ruby",
+    "php",
+    "lua",
+    "awk",
+    "osascript",
+    "eval",
+    "exec",
+    "source",
+    ".",
+    "command",
+    "builtin",
+    "xargs",
+    "sudo",
+    "doas",
+    "su",
+    "nohup",
+    "nice",
+    "timeout",
+    "time",
+    "stdbuf",
 ];
 /// Commands whose subcommands below are runners; a rule must pin a plain other subcommand.
 const SUB_RUNNERS: [(&str, &[&str]); 5] = [
@@ -149,12 +194,14 @@ const SUB_RUNNERS: [(&str, &[&str]); 5] = [
 
 pub(crate) fn model_ok(s: &str) -> bool {
     (1..=64).contains(&s.len())
-        && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'[' | b']'))
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'[' | b']'))
 }
 
 fn slug_ok(s: &str) -> bool {
     (1..=64).contains(&s.len())
-        && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 fn p(field: impl Into<String>, reason: impl Into<String>) -> Problem {
@@ -163,7 +210,7 @@ fn p(field: impl Into<String>, reason: impl Into<String>) -> Problem {
 
 // ---- parse ----
 
-fn kind(v: &Value) -> &'static str {
+pub(crate) fn kind(v: &Value) -> &'static str {
     match v {
         Value::Null => "null",
         Value::Bool(_) => "a boolean",
@@ -174,11 +221,11 @@ fn kind(v: &Value) -> &'static str {
     }
 }
 
-fn wrong(field: &str, want: &str, v: &Value) -> Problem {
+pub(crate) fn wrong(field: &str, want: &str, v: &Value) -> Problem {
     p(field, format!("must be {want}, not {}", kind(v)))
 }
 
-fn string(v: &Value, field: &str, out: &mut Vec<Problem>) -> Option<String> {
+pub(crate) fn string(v: &Value, field: &str, out: &mut Vec<Problem>) -> Option<String> {
     match v.as_str() {
         Some(s) => Some(s.to_string()),
         None => {
@@ -198,7 +245,7 @@ fn boolean(v: &Value, field: &str, out: &mut Vec<Problem>) -> Option<bool> {
     }
 }
 
-fn uint(v: &Value, field: &str, out: &mut Vec<Problem>) -> Option<u64> {
+pub(crate) fn uint(v: &Value, field: &str, out: &mut Vec<Problem>) -> Option<u64> {
     if let Some(n) = v.as_u64() {
         return Some(n);
     }
@@ -210,7 +257,12 @@ fn uint(v: &Value, field: &str, out: &mut Vec<Problem>) -> Option<u64> {
     None
 }
 
-fn narrow<T: TryFrom<u64>>(v: &Value, field: &str, range: &str, out: &mut Vec<Problem>) -> Option<T> {
+pub(crate) fn narrow<T: TryFrom<u64>>(
+    v: &Value,
+    field: &str,
+    range: &str,
+    out: &mut Vec<Problem>,
+) -> Option<T> {
     let n = uint(v, field, out)?;
     match T::try_from(n) {
         Ok(t) => Some(t),
@@ -221,7 +273,7 @@ fn narrow<T: TryFrom<u64>>(v: &Value, field: &str, range: &str, out: &mut Vec<Pr
     }
 }
 
-fn list(v: &Value, field: &str, out: &mut Vec<Problem>) -> Vec<String> {
+pub(crate) fn list(v: &Value, field: &str, out: &mut Vec<Problem>) -> Vec<String> {
     let Some(items) = v.as_array() else {
         out.push(wrong(field, "an array of strings", v));
         return Vec::new();
@@ -244,18 +296,27 @@ fn system_prompt(v: &Value, out: &mut Vec<Problem>) -> Option<SystemPrompt> {
         out.push(wrong(f, "an object {replace | append: text}", v));
         return None;
     };
-    for k in m.keys().filter(|k| !["replace", "append"].contains(&k.as_str())) {
+    for k in m
+        .keys()
+        .filter(|k| !["replace", "append"].contains(&k.as_str()))
+    {
         out.push(p(format!("{f}.{k}"), "not a system-prompt field"));
     }
-    let given: Vec<(&String, &Value)> =
-        m.iter().filter(|(k, _)| ["replace", "append"].contains(&k.as_str())).collect();
+    let given: Vec<(&String, &Value)> = m
+        .iter()
+        .filter(|(k, _)| ["replace", "append"].contains(&k.as_str()))
+        .collect();
     if given.len() != 1 {
         out.push(p(f, "must be exactly one of replace or append"));
         return None;
     }
     let (k, val) = given[0];
     let text = string(val, &format!("{f}.{k}"), out)?;
-    Some(if k == "replace" { SystemPrompt::Replace(text) } else { SystemPrompt::Append(text) })
+    Some(if k == "replace" {
+        SystemPrompt::Replace(text)
+    } else {
+        SystemPrompt::Append(text)
+    })
 }
 
 fn unknown_keys(m: &Map<String, Value>, known: &[&str], prefix: &str, out: &mut Vec<Problem>) {
@@ -276,7 +337,12 @@ fn subagents(v: &Value, out: &mut Vec<Problem>) -> Vec<Subagent> {
             out.push(wrong(&pre, "an object", item));
             continue;
         };
-        unknown_keys(m, &["name", "description", "prompt", "tools", "model"], &format!("{pre}."), out);
+        unknown_keys(
+            m,
+            &["name", "description", "prompt", "tools", "model"],
+            &format!("{pre}."),
+            out,
+        );
         let text = |key: &str, required: bool, out: &mut Vec<Problem>| match m.get(key) {
             Some(x) => string(x, &format!("{pre}.{key}"), out).unwrap_or_default(),
             None => {
@@ -289,14 +355,25 @@ fn subagents(v: &Value, out: &mut Vec<Problem>) -> Vec<Subagent> {
         let name = text("name", true, out);
         let description = text("description", true, out);
         let prompt = text("prompt", true, out);
-        let tools = m.get("tools").map(|x| list(x, &format!("{pre}.tools"), out)).unwrap_or_default();
-        let model = m.get("model").and_then(|x| string(x, &format!("{pre}.model"), out));
-        res.push(Subagent { name, description, prompt, tools, model });
+        let tools = m
+            .get("tools")
+            .map(|x| list(x, &format!("{pre}.tools"), out))
+            .unwrap_or_default();
+        let model = m
+            .get("model")
+            .and_then(|x| string(x, &format!("{pre}.model"), out));
+        res.push(Subagent {
+            name,
+            description,
+            prompt,
+            tools,
+            model,
+        });
     }
     res
 }
 
-fn skills(v: &Value, out: &mut Vec<Problem>) -> Vec<Skill> {
+pub(crate) fn skills(v: &Value, out: &mut Vec<Problem>) -> Vec<Skill> {
     let Some(items) = v.as_array() else {
         out.push(wrong("skills", "an array", v));
         return Vec::new();
@@ -308,10 +385,16 @@ fn skills(v: &Value, out: &mut Vec<Problem>) -> Vec<Skill> {
             out.push(wrong(&pre, "an object", item));
             continue;
         };
-        for k in m.keys().filter(|k| !["name", "files"].contains(&k.as_str())) {
+        for k in m
+            .keys()
+            .filter(|k| !["name", "files"].contains(&k.as_str()))
+        {
             out.push(p(format!("{pre}.{k}"), "not a skill field"));
         }
-        let name = m.get("name").and_then(|x| string(x, &format!("{pre}.name"), out)).unwrap_or_default();
+        let name = m
+            .get("name")
+            .and_then(|x| string(x, &format!("{pre}.name"), out))
+            .unwrap_or_default();
         let mut files = BTreeMap::new();
         match m.get("files") {
             None => {}
@@ -322,7 +405,11 @@ fn skills(v: &Value, out: &mut Vec<Problem>) -> Vec<Skill> {
                     }
                 }
             }
-            Some(x) => out.push(wrong(&format!("{pre}.files"), "an object of path to text", x)),
+            Some(x) => out.push(wrong(
+                &format!("{pre}.files"),
+                "an object of path to text",
+                x,
+            )),
         }
         res.push(Skill { name, files });
     }
@@ -335,14 +422,19 @@ fn pre_tool_check(v: &Value, out: &mut Vec<Problem>) -> Option<PreToolCheck> {
         return None;
     };
     for k in m.keys().filter(|k| k.as_str() != "timeout-s") {
-        out.push(p(format!("pre-tool-check.{k}"), "not a pre-tool-check field"));
+        out.push(p(
+            format!("pre-tool-check.{k}"),
+            "not a pre-tool-check field",
+        ));
     }
     match m.get("timeout-s") {
         None => {
             out.push(p("pre-tool-check.timeout-s", "missing"));
             None
         }
-        Some(x) => uint(x, "pre-tool-check.timeout-s", out).map(|timeout_s| PreToolCheck { timeout_s }),
+        Some(x) => {
+            uint(x, "pre-tool-check.timeout-s", out).map(|timeout_s| PreToolCheck { timeout_s })
+        }
     }
 }
 
@@ -351,12 +443,20 @@ pub fn parse_profile(json: &str) -> (Profile, Vec<Problem>) {
     let mut out = Vec::new();
     let v: Value = match serde_json::from_str(json) {
         Ok(v) => v,
-        Err(e) => return (Profile::default(), vec![p("profile", format!("not valid JSON: {e}"))]),
+        Err(e) => {
+            return (
+                Profile::default(),
+                vec![p("profile", format!("not valid JSON: {e}"))],
+            )
+        }
     };
     let Value::Object(m) = &v else {
         return (
             Profile::default(),
-            vec![p("profile", format!("not a JSON object: it is {}", kind(&v)))],
+            vec![p(
+                "profile",
+                format!("not a JSON object: it is {}", kind(&v)),
+            )],
         );
     };
     let mut pr = Profile::default();
@@ -409,14 +509,20 @@ pub fn parse_profile(json: &str) -> (Profile, Vec<Problem>) {
 /// A word the shell runs as it is: no quote, escape, expansion, glob, redirection or assignment.
 /// Lowercased first: macOS file names ignore case.
 fn plain(w: &str) -> bool {
-    !w.is_empty() && w.bytes().all(|b| b.is_ascii_alphanumeric() || b"._+/~-".contains(&b))
+    !w.is_empty()
+        && w.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._+/~-".contains(&b))
 }
 
 /// Why an allow `Bash(<arg>)` rule may run any code, if it may (4.1).
 fn runner_problem(arg: &str) -> Option<&'static str> {
     let low = arg.to_lowercase();
-    let mut words = low.split(|c: char| c.is_whitespace() || c == ':').filter(|w| !w.is_empty());
-    let Some(first) = words.next() else { return Some("allows any command") };
+    let mut words = low
+        .split(|c: char| c.is_whitespace() || c == ':')
+        .filter(|w| !w.is_empty());
+    let Some(first) = words.next() else {
+        return Some("allows any command");
+    };
     if !plain(first) {
         return Some("does not start with a plain command name");
     }
@@ -442,17 +548,27 @@ fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
         None => (rule, None),
         Some(i) => match rule[i + 1..].strip_suffix(')') {
             Some(inner) if !inner.contains(['(', ')']) => (&rule[..i], Some(inner)),
-            _ => return Some(format!("rule {rule:?} must be Name or Name(arg), arg without parentheses")),
+            _ => {
+                return Some(format!(
+                    "rule {rule:?} must be Name or Name(arg), arg without parentheses"
+                ))
+            }
         },
     };
     if name.starts_with('-') || name.contains(',') || name.contains(' ') {
-        return Some(format!("rule {rule:?} has a comma, space or leading - outside the parentheses"));
+        return Some(format!(
+            "rule {rule:?} has a comma, space or leading - outside the parentheses"
+        ));
     }
-    let mcp_ok = name
-        .strip_prefix("mcp__watane__")
-        .is_some_and(|t| !t.is_empty() && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'));
+    let mcp_ok = name.strip_prefix("mcp__watane__").is_some_and(|t| {
+        !t.is_empty()
+            && t.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    });
     if !TOOLS.contains(&name) && !mcp_ok {
-        return Some(format!("rule {rule:?} names no tool of the allowlist or mcp__watane__<tool>"));
+        return Some(format!(
+            "rule {rule:?} names no tool of the allowlist or mcp__watane__<tool>"
+        ));
     }
     if is_allow && name == "Bash" {
         if let Some(why) = arg.and_then(runner_problem) {
@@ -480,28 +596,46 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
     }
     if let Some(m) = &pr.model {
         if !model_ok(m) {
-            o.push(p("model", format!("{m:?} is outside [A-Za-z0-9.\\-\\[\\]]{{1,64}}")));
+            o.push(p(
+                "model",
+                format!("{m:?} is outside [A-Za-z0-9.\\-\\[\\]]{{1,64}}"),
+            ));
         }
     }
     for m in pr.fallback_models.iter().filter(|m| !model_ok(m)) {
-        o.push(p("fallback-models", format!("{m:?} is outside [A-Za-z0-9.\\-\\[\\]]{{1,64}}")));
+        o.push(p(
+            "fallback-models",
+            format!("{m:?} is outside [A-Za-z0-9.\\-\\[\\]]{{1,64}}"),
+        ));
     }
     if pr.fallback_models.len() > 4 {
-        o.push(p("fallback-models", format!("{} entries, at most 4", pr.fallback_models.len())));
+        o.push(p(
+            "fallback-models",
+            format!("{} entries, at most 4", pr.fallback_models.len()),
+        ));
     }
     if let Some(e) = &pr.effort {
         if !EFFORTS.contains(&e.as_str()) {
-            o.push(p("effort", format!("{e:?} is not one of low, medium, high, xhigh, max")));
+            o.push(p(
+                "effort",
+                format!("{e:?} is not one of low, medium, high, xhigh, max"),
+            ));
         }
     }
     if let Some(m) = &pr.mode {
         if !MODES.contains(&m.as_str()) {
-            o.push(p("mode", format!("{m:?} is not one of manual, accept-edits, plan, dont-ask")));
+            o.push(p(
+                "mode",
+                format!("{m:?} is not one of manual, accept-edits, plan, dont-ask"),
+            ));
         }
     }
     if let Some(SystemPrompt::Replace(t) | SystemPrompt::Append(t)) = &pr.system_prompt {
         if t.len() > 64 * KIB {
-            o.push(p("system-prompt", format!("{} bytes, at most 64 KiB", t.len())));
+            o.push(p(
+                "system-prompt",
+                format!("{} bytes, at most 64 KiB", t.len()),
+            ));
         }
     }
     for t in pr.tools.iter().filter(|t| !TOOLS.contains(&t.as_str())) {
@@ -516,7 +650,10 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
     }
     if let Some(c) = &pr.pre_tool_check {
         if !(5..=120).contains(&c.timeout_s) {
-            o.push(p("pre-tool-check.timeout-s", format!("{} is outside 5..120", c.timeout_s)));
+            o.push(p(
+                "pre-tool-check.timeout-s",
+                format!("{} is outside 5..120", c.timeout_s),
+            ));
         }
     }
     let mut sub_bytes = 0;
@@ -526,21 +663,36 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
         sub_bytes += s.tools.iter().map(String::len).sum::<usize>();
         sub_bytes += s.model.as_ref().map_or(0, String::len);
         if !slug_ok(&s.name) {
-            o.push(p(format!("{pre}.name"), format!("{:?} is outside [a-z0-9-]{{1,64}}", s.name)));
+            o.push(p(
+                format!("{pre}.name"),
+                format!("{:?} is outside [a-z0-9-]{{1,64}}", s.name),
+            ));
         }
         for t in &s.tools {
             if !TOOLS.contains(&t.as_str()) {
-                o.push(p(format!("{pre}.tools"), format!("{t:?} is not a tool of the allowlist")));
+                o.push(p(
+                    format!("{pre}.tools"),
+                    format!("{t:?} is not a tool of the allowlist"),
+                ));
             } else if !pr.tools.contains(t) {
-                o.push(p(format!("{pre}.tools"), format!("{t:?} is not in the profile's tools")));
+                o.push(p(
+                    format!("{pre}.tools"),
+                    format!("{t:?} is not in the profile's tools"),
+                ));
             }
         }
         if let Some(m) = s.model.as_deref().filter(|m| !model_ok(m)) {
-            o.push(p(format!("{pre}.model"), format!("{m:?} is outside [A-Za-z0-9.\\-\\[\\]]{{1,64}}")));
+            o.push(p(
+                format!("{pre}.model"),
+                format!("{m:?} is outside [A-Za-z0-9.\\-\\[\\]]{{1,64}}"),
+            ));
         }
     }
     if sub_bytes > 64 * KIB {
-        o.push(p("subagents", format!("{sub_bytes} bytes in all, at most 64 KiB")));
+        o.push(p(
+            "subagents",
+            format!("{sub_bytes} bytes in all, at most 64 KiB"),
+        ));
     }
     if let Some(d) = pr.subagent_depth {
         if d > 3 {
@@ -551,7 +703,10 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
     for (i, s) in pr.skills.iter().enumerate() {
         let pre = format!("skills[{i}]");
         if !slug_ok(&s.name) {
-            o.push(p(format!("{pre}.name"), format!("{:?} is outside [a-z0-9-]{{1,64}}", s.name)));
+            o.push(p(
+                format!("{pre}.name"),
+                format!("{:?} is outside [a-z0-9-]{{1,64}}", s.name),
+            ));
         }
         for (path, text) in &s.files {
             skill_bytes += path.len() + text.len();
@@ -564,7 +719,10 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
         }
     }
     if skill_bytes > 1024 * KIB {
-        o.push(p("skills", format!("{skill_bytes} bytes in all, at most 1 MiB")));
+        o.push(p(
+            "skills",
+            format!("{skill_bytes} bytes in all, at most 1 MiB"),
+        ));
     }
     if let Some(j) = &pr.json_schema {
         let n = j.to_string().len();
