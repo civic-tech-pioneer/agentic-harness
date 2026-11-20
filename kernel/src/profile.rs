@@ -215,7 +215,7 @@ const PACKAGE_RUNNERS: [(&str, &[&str]); 5] = [
     ),
     (
         "yarn",
-        &["install", "add", "test", "list", "ls", "audit", "outdated"],
+        &["install", "add", "test", "list", "audit", "outdated"],
     ),
     (
         "uv",
