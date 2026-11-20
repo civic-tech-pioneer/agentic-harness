@@ -122,7 +122,9 @@ interface sessions {
 
 Every function of `sessions` refuses with `not-owner` a caller whose
 `caller.identity()` is not the identity of the kernel `mods:agent`. The checked
-provider makes no judge call for a call it refuses (10).
+provider makes no judge call for a call it refuses (10). `not-owner` and
+`not-direct` (10) are cases of the shared `start-error` and `session-error` of
+`claude-types` (2.1).
 
 ### 2.3 Kernel (`mods:agent@0.1.0`)
 
@@ -334,9 +336,10 @@ and `.husky/**`. No launch can remove them.
     publisher's mod or a preview gets `no-account`.
   - **Value.** `account` is exactly `openai` or `judge`; any other value is
     refused `destination`.
-  - **Binding.** A request with `account: "judge"` is refused before a byte
-    leaves (`destination`) unless the caller is the provider the key was
-    entered for, the method is `POST`, and the URL's origin is exactly the
+  - **Binding.** The key is looked up by the caller's identity, so a caller
+    with no key of its own gets `no-account` (Identity). A request with
+    `account: "judge"` is refused before a byte leaves (`destination`) unless
+    the caller is the provider the key was entered for, the method is `POST`, and the URL's origin is exactly the
     account's origin and is in the provider's `[http]`. The origin is compared
     after one parse, used for both the check and the connection: scheme
     `https`, no userinfo, host lower-cased without a trailing dot, the port
@@ -697,7 +700,7 @@ when `claude-codes` cannot parse it.
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
 | `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend` | kernel | 9 |
-| `not-owner` | providers | 2.2, 10 (the caller is not the kernel) |
+| `not-owner`, `not-direct` | providers | 2.2, 10 (`not-owner`: the caller is not the kernel) |
 | `unknown-input`, `unknown-allow`, `behind {through}` | kernel | 9.3, 9.6, 9.4 |
 | `too-large` | OpenAI loop outcome | 9.5, body budget |
 
@@ -778,6 +781,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` 9.3: page connection ids and their own queues (3).
 - [ ] `host/TECHNICAL.md` host state: timers per mod, kept across restarts (7).
 - [ ] `host/TECHNICAL.md` `caller.identity()` (9.3, 14).
+- [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
 - [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
 - [ ] `host/TECHNICAL.md` account kind `judge` and its binding (provider identity compared exactly, `account` exactly `openai` or `judge`, `POST`, origin after one parse with `[http]`, no redirects, `no-account`, ending live judge streams when the key is removed) (5, 10, 12; N10).
@@ -881,8 +885,8 @@ stage: it shows only what is built.
 | A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; V8 measured and recorded |
 | B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 and AGT-J6 (Claude part) on the fake; cases 5, 6, 8–18, 27–31 |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`; AGT-J4 |
-| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19, 22 |
-| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page; the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 25, 32, 33 |
+| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22 |
+| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page; the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33 |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24; N5 decided |
 
 ## 18. The console (C1)
