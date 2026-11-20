@@ -467,4 +467,15 @@ fn ac2_a_colon_is_only_the_trailing_wildcard_and_tilde_leads_nowhere() {
     ] {
         assert_eq!(one(json!({"allow": [r]})), Vec::<String>::new(), "{r}");
     }
+    for (r, why) in [
+        ("Bash(x:/run)", "a colon is only allowed as the trailing :*"),
+        ("Bash(git:status)", "colon is only allowed"),
+        ("Bash(~)", "expands to a path"),
+        ("Bash(~x:*)", "expands to a path"),
+        ("Bash(~x/y)", "path executable"),
+    ] {
+        let (_, ps) = parse(&json!({"allow": [r]}).to_string());
+        assert_eq!(fields(&ps), ["allow"], "{r}");
+        assert!(ps[0].reason.contains(why), "{r}: {}", ps[0].reason);
+    }
 }
