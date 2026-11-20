@@ -18,7 +18,11 @@ describe("S4-fix5", () => {
       expect(calls).toBeLessThanOrEqual(8);
       let el = 0;
       for (const t of [1, 2, 5]) { await vi.advanceTimersByTimeAsync((t - el) * 1000); el = t; expect(calls).toBeLessThanOrEqual(8 + 4 * t); }
+      expect(vi.getTimerCount()).toBeGreaterThan(0); // calls wait on the governor
       s.close();
+      expect(vi.getTimerCount()).toBe(0); // close drops the waiting calls and their timer
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(calls).toBeLessThanOrEqual(8 + 4 * 5);
     } finally { vi.useRealTimers(); }
   });
 

@@ -413,7 +413,7 @@ describe("S4-fix4", () => {
 });
 
 describe("S4-fix4 AC2 page budget", () => {
-  it("ac2_pages_that_each_add_one_index_stop_at_the_budget_then_fail", async () => {
+  it("ac2_pages_that_each_add_one_index_read_on_at_the_governors_pace", async () => {
     vi.useFakeTimers();
     try {
       let attaches = 0;
@@ -430,7 +430,9 @@ describe("S4-fix4 AC2 page budget", () => {
       expect(reads).toBe(10); // each page adds one index in range, read one after the other at the governor's pace
       await vi.advanceTimersByTimeAsync(100_000);
       expect(reads).toBeLessThanOrEqual(8 + 4 * 100.75); // S4-fix5: short pages are read on, the governor is the pace
-      expect(last!.rows.length).toBeGreaterThan(10);
+      expect(attaches).toBe(1); // no budget: a page that adds an index in range is progress (S4-fix5)
+      expect(reads).toBeGreaterThan(256); // past the first range of 256 one-entry pages
+      expect(last!.rows.length).toBeGreaterThanOrEqual(256);
       s.close();
     } finally { vi.useRealTimers(); }
   });
