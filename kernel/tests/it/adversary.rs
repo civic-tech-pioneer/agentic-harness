@@ -264,3 +264,28 @@ fn adv_s3_allow_runner_forwarder_reaches_exec_passes() {
         "accepted rules that reach pnpm/yarn exec: {passed:?}"
     );
 }
+
+/// `run` is on the allow list for the project's own scripts, but npm gives every project a
+/// built-in `env` script that is the `env` program, and appends the words after `--` to it:
+/// in a folder whose `package.json` is only `{"name":"p","version":"1.0.0"}`, npm 10
+/// `npm run env -- sh -c 'echo PWNED'` prints `PWNED` (the log shows `> env sh -c echo PWNED`).
+/// `env` is a refused runner, yet `Bash(npm run env:*)` (and `Bash(npm run:*)`) passes and
+/// pre-approves any program in any project with a `package.json`, no script needed.
+#[test]
+fn adv_s3_allow_npm_run_env_reaches_any_program() {
+    let mut passed = Vec::new();
+    for r in ["Bash(npm run env:*)", "Bash(npm run env -- sh:*)"] {
+        if refusals(
+            json!({"tools": ["Bash"], "sandbox": {"enabled": true}, "allow": [r]}),
+            json!({}),
+        )
+        .is_empty()
+        {
+            passed.push(r);
+        }
+    }
+    assert!(
+        passed.is_empty(),
+        "accepted rules that run npm's built-in env script: {passed:?}"
+    );
+}
