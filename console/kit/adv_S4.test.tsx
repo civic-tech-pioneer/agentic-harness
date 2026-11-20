@@ -211,3 +211,40 @@ describe("adversary S4 fix: reads, rows and paging", () => {
     expect(last.rows.map((r) => r.kind)).toEqual(["unknown"]);
   });
 });
+
+// Adversary, slice S4 rerun on S4-fix1: a kernel feed that the fix still lets through.
+describe("adversary S4 rerun: refetch and paging", () => {
+  it("adv_S4_user_entry_on_the_stream_and_from_read_shows_twice_under_one_key", async () => {
+    // AC3 "no row key appears twice": entry 5 arrives on the stream (the refetch path accepts any message for a ~p row) and again from read
+    const user = j({ v: 1, i: 5, kind: "message", at: 1, body: { role: "user", content: [text("hi")] } });
+    const k: Kernel = {
+      async attach(_s, _a, on) {
+        on(j({ _meta: { watane: { type: "synced", through: 4, writing: true } } }));
+        on(j({ sessionUpdate: "agent_message_chunk", content: text("x"), _meta: { watane: { i: 5 } } }));
+        on(j({ _meta: { watane: { type: "entry", entry: JSON.parse(user) } } }));
+        return { ok: true };
+      },
+      read: () => new Promise((r) => setTimeout(() => r([user]), 0)),
+      async say() { return 0; }, async answer() {}, async interrupt() {}, async takeBack() {},
+    };
+    let last: SessionView = emptyView;
+    const s = openSession(k, "s1", (v) => { last = v; });
+    await new Promise((r) => setTimeout(r, 100));
+    s.close();
+    const keys = last.rows.map((r) => r.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("adv_S4_behind_at_or_below_the_last_index_reattaches_without_end_or_pause", async () => {
+    // AC6: a `behind` that names nothing to page makes no progress; openSession re-attaches at once, again and again
+    let attaches = 0;
+    const k: Kernel = {
+      async attach() { attaches++; return attaches > 10_000 ? { ok: true } : { behind: 0 }; },
+      read: async () => [], async say() { return 0; }, async answer() {}, async interrupt() {}, async takeBack() {},
+    };
+    const s = openSession(k, "s1", () => {});
+    await new Promise((r) => setTimeout(r, 50));
+    s.close();
+    expect(attaches).toBeLessThanOrEqual(3);
+  });
+});
