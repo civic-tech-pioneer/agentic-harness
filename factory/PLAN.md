@@ -5,8 +5,7 @@ Kept by the product owner (`/po`). The factory's process: `.claude/factory/READM
 ## Order of work
 
 The vision (`design/VISION.md`) has no numbered steps; the order is `design/TECHNICAL.md`
-section 17. All three design files are drafts: no build slice depends on an open point (N1 to
-N10) until the human answered it and a design slice made the drafts the contract.
+section 17. Since S2 the three design files are the contract; N5 stays open until stage F.
 
 | Stage | Builds | Where | State |
 |---|---|---|---|
@@ -18,37 +17,15 @@ N10) until the human answered it and a design slice made the drafts the contract
 | E | Checked provider (needs a judge account, V7) | provider repo; host if N10 = host | waits on V7 |
 | F | Delegation and counters (kernel 9.7), factory profiles | kernel | needs N5 |
 
-**Cross-project dependency.** Stages A to D put code in watane (`../watane`: host, dev, pkg,
+**Cross-project dependency.** Stages A to D put code in watane (`../../watane`: host, dev, pkg,
 app), which runs its own older factory and is not on this generic one. Each such stage becomes
 one watane slice (provider, first) plus one slice here or in a provider repo (consumer). The
 interface between them is `design/TECHNICAL.md` section 2.1 (`watane:host@0.1.0` additions) and
 the watane contract rows of section 15. None of them is this product owner's to hand out until
 watane is on the generic factory, or the human hands stage A to watane's own product owner. Stage
-A has no consumer here at all: it is pure watane.
+A's backend is pure watane; its console part (TECHNICAL 17) is this repository's.
 
 ## In flight
-
-### S2: the agent layer's contract (in flight (cloud), routine trig_01D59fStFZruNVCJ2QeRNPpi)
-
-Story: a foreman of stage A or B (a coding agent) opens this repo and reads the agent layer's
-`VISION.md`, `FUNCTIONAL.md` and `TECHNICAL.md` as contracts: no draft marks, every open point
-answered where its fact lives, and an `AGENTS.md` that tells it where things are.
-Outcomes:
-1. No "draft" marks left in `design/VISION.md`, `FUNCTIONAL.md`, `TECHNICAL.md`; each of N1 to
-   N10 but N5 (and R1) is stated as a rule in the document that owns it, as the human answered (below),
-   and no "N<n> is open" wording remains.
-2. TECHNICAL section 14 names, for each boundary, the files (present or planned, in this repo or
-   watane's) that hold it, so `factory/config.toml` `boundaries` finds files.
-3. TECHNICAL section 15 lists the watane contract changes (N3) as a checklist a watane slice can
-   apply row by row, each with its target document and section.
-4. A new `AGENTS.md` at the root (`CLAUDE.md` pointing to it): where things are, which files are
-   contracts and which records (proposal, reviews, comparisons), the gate, and that host code
-   lives in watane.
-5. The order of work in TECHNICAL 17 names, per stage, which repository builds which part.
-Touches: `design/VISION.md`, `design/FUNCTIONAL.md`, `design/TECHNICAL.md`, `AGENTS.md`,
-`CLAUDE.md`. Not the proposal, reviews or comparisons (records). Not watane.
-Leaves out: any code; editing watane's `spec/`.
-Protects: *core*. N5 stays open: write it as open, to be decided at stage F.
 
 ### S3: the kernel's core: profiles, overlays, the refuse table (in flight (cloud), routine trig_019eJBAcTCobEJRhVgtoZkCd)
 
@@ -94,9 +71,7 @@ Fakes: the kernel: a scripted feed in `console/` behind the same shape as `attac
 (TECHNICAL 2.3, 9.4). Leaves out: profiles and offer pages, the real host.
 Protects: *core*. The PO compares it with the frames before acceptance.
 
-## Sketched
-
-### S5: the performance review's must-dos in the contract (cloud, after S2 merges)
+### S5: the performance review's must-dos in the contract (in flight (cloud), routine R5)
 
 Story: a foreman of stage A, B or D reads TECHNICAL and finds a bound for every size and wait the
 performance review (`research_notes/performance-review-2026-11-20.md`) found missing, each with
@@ -109,8 +84,12 @@ Outcomes:
    writer busy share, bytes per step), so "V8 measured" has a passing number.
 3. P13: `read` pages backwards (`before` cursor), so the console's "newest first" holds.
 4. Each new rule has a numbered case in TECHNICAL 16.
+5. TECHNICAL 10: the checked provider's first judge call waits until the workspace consent is held
+   (S2 adversary RISK 3, deputy decision).
 Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Not the record.
 Leaves out: P07 to P12 (S6), P14 (S7). Protects: *core* (*guard* for P01, P02: a cap that holds).
+
+## Sketched
 
 ### S6: the review's should-dos P07 to P12 (cloud, after S5)
 
@@ -143,7 +122,20 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 
 ## Done
 
+- **S2** the agent layer's contract (PR #3, merged 2026-11-20 22:02 UTC, ~20 min in flight). A
+  foreman now reads VISION, FUNCTIONAL and TECHNICAL as contracts: N1-N4, N6-N11 and R1 are
+  rules; N5 open until stage F; TECHNICAL 14 names files per boundary; 15 is a watane checklist;
+  17 names the repository per stage; AGENTS.md exists. Adversary BREACHED 2 (any mod could drive
+  the checked provider; boundary files missing), fixed, HELD. User-sim REJECTED twice on a gap
+  older than the slice (how a launch gets a scratch workspace id); named in TECHNICAL 4.6 as a
+  precondition of stage B's first slice, accepted by the PO. Implementer runs 1/1/2/1. No suite.
+
 ## Deputy decisions
+
+- 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
+  now named as a precondition of stage B (TECHNICAL 4.6), not a defect of the slice.
+- 2026-11-20 Adversary RISK 3 of S2: the checked provider's first judge call waits until the
+  workspace consent is held (option b; one TECHNICAL 10 line to undo). Written in by S5.
 
 - 2026-11-20 The performance review (68a27f3, another session, on the human's ask) becomes
   slices S5 (must-dos P01-P06, P13, P15), S6 (P07-P12), S7 (P14, console). Its record and the
@@ -220,5 +212,10 @@ S2 writes each into the document that owns it.
   prompt; the skill does not say so, and an unattended PO cannot start any local foreman. The
   skill (or adopt.sh) should have the human trust the project once, or create local worktrees
   where trust is inherited.
+
+- 2026-11-20 S2 foreman: user-sim and adversary are built around red code tests; on a documents
+  slice they report checks instead (worked, outside their format). The skill's `gh` steps do not
+  apply in the cloud (no `gh`; it used the GitHub MCP tools). It reported "about 2 hours in
+  flight" for 20 minutes: a cloud foreman cannot tell elapsed time either.
 
 ## Suite time
