@@ -137,7 +137,8 @@ describe("app", () => {
     for (let n = 0; n < story.length; n++) f.play(n);
     render(<App kernel={f} info={storyInfo} />);
     await screen.findByRole("button", { name: "Needs you (1)" });
-    expect(document.querySelector(".wa-irow")).toHaveTextContent("Claude Sonnet· Ask before edits");
+    // Each tag is its own box; the "·" between them is aria-hidden, so the words never run together.
+    expect(Array.from(document.querySelectorAll(".wa-tag"), (t) => t.lastChild?.textContent)).toEqual(["Claude Sonnet", "Ask before edits"]);
     await userEvent.setup().click(screen.getByRole("button", { name: "Stop" }));
     expect(screen.getByRole("button", { name: "Stopping…" })).toBeInTheDocument();
   });
