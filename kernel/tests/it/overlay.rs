@@ -147,3 +147,73 @@ fn ac4_subagent_depth_compares_to_default_one() {
     let ps = apply_overlay(&p, &ov(json!({"subagent-depth": 2})).0).1;
     assert_eq!(fields(&ps), ["overlay.subagent-depth"]);
 }
+
+#[test]
+fn ac3_skills_plus_cannot_replace_a_skill_by_name() {
+    let mut p = base();
+    p.skills = parse_profile(r#"{"skills":[{"name":"s","files":{"SKILL.md":"profile"}}]}"#)
+        .0
+        .skills;
+    let o = ov(
+        json!({"skills+": [{"name": "t"}, {"name": "s", "files": {"SKILL.md": "x"}},
+        {"name": "t"}]}),
+    )
+    .0;
+    let (c, ps) = apply_overlay(&p, &o);
+    assert_eq!(
+        fields(&ps),
+        ["overlay.skills+[1].name", "overlay.skills+[2].name"]
+    );
+    assert_eq!(c.skills.len(), 2);
+    assert_eq!(c.skills[0].files["SKILL.md"], "profile");
+}
+
+#[test]
+fn ac4_a_limit_above_or_beside_the_profile_is_refused() {
+    let mut p = base();
+    p.max_tool_errors = Some(4);
+    p.max_tokens = Some(50);
+    p.max_budget_usd = Some(2.0);
+    p.subagent_depth = Some(2);
+    let o = ov(
+        json!({"max-tool-errors": 5, "max-tokens": 51, "max-budget-usd": 2.5, "subagent-depth": 3}),
+    )
+    .0;
+    let (c, ps) = apply_overlay(&p, &o);
+    assert_eq!(
+        fields(&ps),
+        [
+            "overlay.max-tool-errors",
+            "overlay.max-tokens",
+            "overlay.max-budget-usd",
+            "overlay.subagent-depth"
+        ]
+    );
+    assert_eq!(
+        (
+            c.max_tool_errors,
+            c.max_tokens,
+            c.max_budget_usd,
+            c.subagent_depth
+        ),
+        (Some(4), Some(50), Some(2.0), Some(2))
+    );
+    // only a typed overlay can hold a NaN; it must not lift the profile's budget
+    let nan = agent_kernel::Overlay {
+        max_budget_usd: Some(f64::NAN),
+        ..Default::default()
+    };
+    let (c, ps) = apply_overlay(&p, &nan);
+    assert_eq!(fields(&ps), ["overlay.max-budget-usd"]);
+    assert_eq!(c.max_budget_usd, Some(2.0));
+    // on a profile without a budget the NaN is set, and the grammar refuses it
+    let c = apply_overlay(&base(), &nan).0;
+    let ps = agent_kernel::grammar_problems(&c);
+    assert_eq!(fields(&ps), ["max-budget-usd"]);
+}
+
+#[test]
+fn ac1_a_typed_overlay_refuses_unknown_keys_too() {
+    assert!(serde_json::from_str::<agent_kernel::Overlay>(r#"{"allow+":["Bash"]}"#).is_err());
+    assert!(serde_json::from_str::<agent_kernel::Overlay>(r#"{"max-turns":3}"#).is_ok());
+}

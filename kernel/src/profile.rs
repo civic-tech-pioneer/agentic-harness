@@ -733,7 +733,7 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
     if let Some(n) = pr.max_turns.filter(|n| !(1..=1000).contains(n)) {
         o.push(p("max-turns", format!("{n} is outside 1..1000")));
     }
-    if let Some(n) = pr.max_budget_usd.filter(|n| *n <= 0.0) {
+    if let Some(n) = pr.max_budget_usd.filter(|n| n.is_nan() || *n <= 0.0) {
         o.push(p("max-budget-usd", format!("{n} is not positive")));
     }
     if pr.max_tool_errors == Some(0) {

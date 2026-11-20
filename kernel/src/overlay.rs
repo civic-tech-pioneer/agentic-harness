@@ -7,9 +7,10 @@ use crate::profile::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Overlay {
     #[serde(
         rename = "system-prompt-append",
@@ -101,11 +102,13 @@ fn cap<T: PartialOrd + std::fmt::Display>(
     out: &mut Vec<Problem>,
 ) {
     let Some(w) = want else { return };
+    // `w <= h` and not `!(w > h)`: a NaN (only a typed overlay can hold one) is refused.
     match have {
-        Some(h) if w > h => out.push(Problem::new(
-            format!("overlay.{key}"),
-            format!("{w} is higher than the profile's {h}; an overlay can only narrow"),
-        )),
+        Some(h) if !matches!(w.partial_cmp(&h), Some(Ordering::Less | Ordering::Equal)) => out
+            .push(Problem::new(
+                format!("overlay.{key}"),
+                format!("{w} is higher than the profile's {h}; an overlay can only narrow"),
+            )),
         _ => *slot = Some(w),
     }
 }
@@ -128,7 +131,20 @@ pub fn apply_overlay(p: &Profile, o: &Overlay) -> (Profile, Vec<Problem>) {
             None => SystemPrompt::Append(t.clone()),
         });
     }
-    c.skills.extend(o.skills_plus.iter().cloned());
+    // An added skill may not take the name of another: it would replace that skill's files.
+    for (i, s) in o.skills_plus.iter().enumerate() {
+        if c.skills.iter().any(|k| k.name == s.name) {
+            out.push(Problem::new(
+                format!("overlay.skills+[{i}].name"),
+                format!(
+                    "{:?} is already a skill; an overlay can only add skills",
+                    s.name
+                ),
+            ));
+        } else {
+            c.skills.push(s.clone());
+        }
+    }
     c.tools.retain(|t| !o.tools_minus.contains(t));
     for s in &mut c.subagents {
         s.tools.retain(|t| !o.tools_minus.contains(t));
