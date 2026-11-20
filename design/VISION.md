@@ -16,7 +16,9 @@ each provider has its own repository (R1, `TECHNICAL.md` sections 1 and 17).
 Its small host part lands in
 watane, whose `spec/VISION.md`, `spec/FUNCTIONAL.md` and `spec/TECHNICAL.md`
 then gain the rows that `TECHNICAL.md` section 15 lists. Paths such as
-`spec/…`, `host/…` and `factory/…` in these files are watane's; `design/`,
+`spec/…` and `host/…` in these files are watane's, and so is its `factory/` other
+than `factory/config.toml`, `factory/PLAN.md` and `factory/tasks/`, which are this
+repository's; `design/`,
 `proto/` and `research_notes/` are this mod's.
 
 ## Why

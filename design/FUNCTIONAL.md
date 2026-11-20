@@ -44,7 +44,7 @@ where it belongs.
 | session allow | An answer to an ask that allows that kind of call for the rest of the session. |
 | queue | The inputs an owner sent during a turn, waiting for it to end. |
 
-## 2. Proposed rows for `spec/FUNCTIONAL.md`
+## 2. Rows accepted (N3) for `spec/FUNCTIONAL.md`, applied by a watane slice (`TECHNICAL.md` 15)
 
 - **F-AGENT-5** With the participant's consent, a mod can run agent sessions on the participant's own Claude or ChatGPT subscription. watane holds no key and runs no service for it. (agent layer)
 - **F-AGENT-6** An agent session is private to the client that started it. The client may publish what it chooses.
