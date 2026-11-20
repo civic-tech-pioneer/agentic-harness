@@ -50,15 +50,13 @@ Touches: `design/VISION.md`, `design/FUNCTIONAL.md`, `design/TECHNICAL.md`, `AGE
 Leaves out: any code; editing watane's `spec/`.
 Protects: *core*. N5 stays open: write it as open, to be decided at stage F.
 
-## Sketched
+### S1: the open probes of section 18 (in flight (local), SESSION)
 
-### S1: the open probes of section 18 (local: needs the participant's `claude` login)
-
-Story: a maker runs `python3 proto/claude-probes/probes.py v26 v27` on the Mac and sees, for the
-current `claude`, (v26) whether a subagent prompt that starts with `/` runs a skill the profile
-denies, and (v27) whether the shell grant's sandbox blocks a connection to loopback.
+Story: a maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on the Mac and sees, for the
+current `claude`, (subagent-slash) whether a subagent prompt that starts with `/` runs a skill the profile
+denies, and (loopback) whether the shell grant's sandbox blocks a connection to loopback.
 Outcomes:
-1. `probes.py` runs each new probe by its id, alone, and prints a result line like the others.
+1. `probes.py` runs each new probe by its name, alone, and prints a result line like the others.
 2. Proposal section 18 gains rows V26 and V27 with the result, the `claude` version and the
    effect on the design; TECHNICAL 14's "not probed" line is not edited here (S2 owns it).
 3. A breach (either one runs or connects) is written as the design effect and flagged to the PO.
@@ -66,9 +64,66 @@ Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` sect
 Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
 Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 
+### S3: the kernel's core: profiles, overlays, the refuse table (in flight (cloud), routine R3)
+
+Story: a client mod's maker (a coding agent) runs
+`cargo run --manifest-path kernel/Cargo.toml --example check -- <profile.json> <overlay.json> <backend> <model>`
+and sees every refusal at once, as `refusal {field, backend, model, reason}` JSON lines, or none.
+Outcomes:
+1. An overlay that adds tools, allow rules, workspaces, subagent profiles or a weaker mode is
+   refused, naming each field (AGT-F-3, case 26); one that appends instructions, adds skills,
+   removes tools, adds deny rules or lowers limits compiles.
+2. A profile set to OpenAI with file tools, a workspace, `max-budget-usd` or a path rule is
+   refused, every field named at once (AGT-F-4, TECHNICAL 11); nothing is dropped silently.
+3. `check` starts nothing and needs no host: the crate builds and tests natively.
+4. Kernel errors (TECHNICAL 12, kernel rows) are one Rust type with a fixed code and a message
+   naming the cause (AGT-F-40).
+5. `factory/config.toml` `gate` becomes `factory/gate.sh`: `cargo test` and
+   `cargo clippy --all-targets -- -D warnings` in `kernel/`; `npm ci && npm test` in `console/`
+   when `console/package.json` exists; `.claude/factory/check-mod.sh` when `wit/world.wit` exists.
+Touches: `kernel/` (new crate `agent-kernel`, lib plus `examples/check.rs`), `factory/gate.sh`,
+`factory/config.toml` (`gate` line only). Not `design/` while S2 is in flight: a spec question is
+a `BLOCKED`.
+Fakes: nothing of the host; no WIT yet (the `watane:host@0.1.0` additions do not exist).
+Leaves out: offers (adoption, hashes), sessions, state, the launch-document grammar of 4.1 beyond
+the fields the refuse table names.
+Protects: *guard* (overlays only narrow).
+
+### S4: the console on a scripted session (in flight (cloud), routine R4)
+
+Story: Alice opens the console (`console/`, served by its dev server) on a scripted fake kernel
+and sees a session as the first target describes (TECHNICAL 18): her message, thinking folded,
+reads folded to "Explored · n reads", an edit as a card with its diff, an open ask with its bar
+and "Needs you (1)", the status line, and after a reload the same transcript with nothing doubled.
+Outcomes:
+1. `npm test` in `console/` passes and covers each row of 18.3 from a scripted ACP v1 feed with
+   `_meta.watane` items.
+2. Reload mid-session: the console attaches after its last index; replayed items before `synced`
+   double nothing (18.3).
+3. `npm run build` writes `ui/` with no inline script, no `eval`, no outside URL (18.2); a test
+   greps the output for these.
+4. The layout values of 18.4 hold at 1280 px and under 760 px (sidebar hidden).
+Touches: `console/` (incl. `console/kit/`), `ui/`. Not `kernel/`, not `factory/`, not `design/`.
+Fakes: the kernel: a scripted feed in `console/` behind the same shape as `attach`/`read`
+(TECHNICAL 2.3, 9.4). Leaves out: profiles and offer pages, the real host.
+Protects: *core*. The PO compares it with the frames before acceptance.
+
+## Sketched
+
 ## Done
 
 ## Deputy decisions
+
+- 2026-11-20 The human is away overnight (standing orders from the session that started this
+  PO): no questions to the human until morning; the PO decides and records here.
+- 2026-11-20 The kernel's pure logic is a plain Rust crate in `kernel/`, tested natively, with no
+  WIT until watane has the 2.1 additions; the WASM component wraps it later (keeps R1 and the
+  host interfaces open).
+- 2026-11-20 One gate script `factory/gate.sh` (S3) runs every part that exists: kernel, console,
+  mod contract. Later slices add no gate lines.
+- 2026-11-20 The console is built against a scripted fake kernel feed of ACP v1 plus
+  `_meta.watane` (N6), so it needs no host.
+- 2026-11-20 S1 runs locally: its outcomes need the Mac's logged-in `claude`.
 
 ## Human answers (2026-11-20, through the PO)
 
@@ -115,5 +170,9 @@ S2 writes each into the document that owns it.
   skill assumes the PO alone writes `main` besides merges; nothing tells another session that a
   slice owns those files. A `Touches` lock visible outside PLAN.md (or a PR for every design
   change) would have caught it.
+
+- 2026-11-20 PO error: `git commit -a` in a checkout another session also edits swept that
+  session's uncommitted `design/TECHNICAL.md` edits into plan commit 5e46864, on main. Nothing
+  lost; S2 will rebase over it. The po skill should say: commit `factory/PLAN.md` by path only.
 
 ## Suite time
