@@ -157,7 +157,9 @@ impl ClaudeAdapter {
         } else {
             ToolCallStatus::Completed
         };
-        let content = vec![agent_client_protocol_schema::v1::ToolCallContent::from(text)];
+        let content = vec![agent_client_protocol_schema::v1::ToolCallContent::from(
+            text,
+        )];
         let (title, input) = match self.tools.remove(&r.tool_use_id) {
             Some((n, i)) => (Value::String(n), i),
             None => (Value::Null, Value::Null),
