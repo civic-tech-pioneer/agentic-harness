@@ -268,6 +268,20 @@ fn ac5_rule_grammar_has_no_bypass() {
         "mcp__watane__a.b",
         "mcp__watane__a b",
         "mcp__other__x",
+        // AC3: shell syntax, non-ASCII, path executables
+        "Bash(./scripts/fmt.sh)",
+        "Bash(/usr/bin/git status)",
+        "Bash(git status $HOME)",
+        "Bash(git 'status')",
+        "Bash(git \"status\")",
+        "Bash(git sta\\tus)",
+        "Bash(git status;ls)",
+        "Bash(git status | cat)",
+        "Bash(git status > x)",
+        "Bash(git {a,b})",
+        "Bash(git `x`)",
+        "Bash(git status &)",
+        "Bash(g\u{131}t status)",
     ] {
         assert_eq!(one(json!({"allow": [r]})), ["allow"], "{r:?}");
     }
@@ -277,7 +291,8 @@ fn ac5_rule_grammar_has_no_bypass() {
         "Bash(npm run build)",
         "Bash(uv pip install:*)",
         "Bash(cargo test)",
-        "Bash(./scripts/fmt.sh)",
+        "Bash(npm test)",
+        "Bash(cargo build --release)",
         "mcp__watane__ls_x-1(a)",
     ] {
         assert_eq!(one(json!({"allow": [r]})), Vec::<String>::new(), "{r:?}");
@@ -337,7 +352,25 @@ fn ac3d_frontmatter_keeps_name_and_description_only() {
         ["skills[0].files"],
         "an indented mapping is still top level"
     );
-    assert!(skill_md("---\n  name: s\n  description: >\n    long\n---\n").is_empty());
+    assert_eq!(
+        fields(&skill_md(
+            "---\n  name: s\n  description: >\n    long\n---\n"
+        )),
+        ["skills[0].files"],
+        "an indented top-level block is refused"
+    );
+    assert!(skill_md("---\nname: s\ndescription: >-\n  folded\n  more text\n---\nb").is_empty());
+    for bad in [
+        "---\r\nname: s\rallowed-tools: x\n---\n",
+        "\u{feff}---\nallowed-tools: x\n---\n",
+        "\n---\nallowed-tools: x\n---\n",
+        "---\nname: s\n\tallowed-tools: x\n---\n",
+        "---\n{allowed-tools: x}\n---\n",
+        "---\nname: a\nname: b\n---\n",
+        "---\nname: s\u{e9}\n---\n",
+    ] {
+        assert_eq!(fields(&skill_md(bad)), ["skills[0].files"], "{bad:?}");
+    }
     assert_eq!(
         fields(&skill_md("---\r\nallowed-tools: x\r\n---\r\n")),
         ["skills[0].files"]

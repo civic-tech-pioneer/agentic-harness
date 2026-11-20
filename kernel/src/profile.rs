@@ -597,6 +597,23 @@ fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
         ));
     }
     if is_allow && name == "Bash" {
+        if let Some(c) = arg.and_then(|a| {
+            a.chars()
+                .find(|c| !c.is_ascii() || "`${};|&<>'\"\\".contains(*c))
+        }) {
+            return Some(format!(
+                "rule {rule:?} has the character {c:?}, which the shell reads as more than a word"
+            ));
+        }
+        if arg.is_some_and(|a| {
+            a.split(|c: char| c.is_whitespace() || c == ':')
+                .find(|w| !w.is_empty())
+                .is_some_and(|w| w.contains('/'))
+        }) {
+            return Some(format!(
+                "rule {rule:?} starts with a path executable the agent may rewrite"
+            ));
+        }
         if let Some(why) = arg.and_then(runner_problem) {
             return Some(format!("rule {rule:?} {why}"));
         }
@@ -616,33 +633,44 @@ fn bad_path(path: &str) -> bool {
     })
 }
 
-/// The first frontmatter key of a `SKILL.md` besides `name` and `description`, if any (4.1).
-fn extra_frontmatter_key(text: &str) -> Option<String> {
-    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    let mut lines = text.lines();
-    if lines.next()?.trim_end() != "---" {
+/// Why the frontmatter of a `SKILL.md` is refused, if it has one that is not plainly
+/// `name:` and `description:` (4.1). Anything that might read as frontmatter must be strict.
+fn frontmatter_problem(text: &str) -> Option<String> {
+    let rest = text.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
+    if !rest.starts_with("---") {
         return None;
     }
-    // The first key's indent is the top level (YAML lets the whole mapping be indented); a
-    // line indented deeper continues the key above it.
-    let mut top = None;
-    for line in lines {
-        if line.trim_end() == "---" {
+    let Some(body) = text
+        .strip_prefix("---\n")
+        .or_else(|| text.strip_prefix("---\r\n"))
+    else {
+        return Some("frontmatter must start with --- and a newline at byte 0".into());
+    };
+    let mut seen: Vec<&str> = Vec::new();
+    for raw in body.split('\n') {
+        let line = raw.strip_suffix('\r').unwrap_or(raw);
+        if line == "---" {
             return None;
         }
-        let body = line.trim_start_matches([' ', '\t']);
-        if body.is_empty() || body.starts_with(['#', '-']) {
+        if let Some(c) = line.chars().find(|c| !(' '..='~').contains(c)) {
+            return Some(format!(
+                "frontmatter has the character {c:?}: only printable ASCII is allowed"
+            ));
+        }
+        if line.starts_with(' ') && !seen.is_empty() {
             continue;
         }
-        let indent = line.len() - body.len();
-        if indent > *top.get_or_insert(indent) {
-            continue;
-        }
-        let line = body;
-        let key = line.split(':').next().unwrap_or(line);
-        let key = key.trim().trim_matches(['"', '\'']);
-        if !["name", "description"].contains(&key) || !line.contains(':') {
-            return Some(key.to_string());
+        let key = ["name", "description"]
+            .into_iter()
+            .find(|k| line.strip_prefix(k).is_some_and(|r| r.starts_with(':')));
+        match key {
+            Some(k) if !seen.contains(&k) => seen.push(k),
+            Some(k) => return Some(format!("frontmatter key {k:?} appears twice")),
+            None => {
+                return Some(format!(
+                    "frontmatter line {line:?}: only name and description are allowed"
+                ))
+            }
         }
     }
     None
@@ -801,13 +829,8 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
                 ));
             }
             if low == "skill.md" {
-                if let Some(k) = extra_frontmatter_key(text) {
-                    o.push(p(
-                        format!("{pre}.files"),
-                        format!(
-                            "{path} frontmatter key {k:?}: only name and description are allowed"
-                        ),
-                    ));
+                if let Some(why) = frontmatter_problem(text) {
+                    o.push(p(format!("{pre}.files"), format!("{path} {why}")));
                 }
             }
         }
