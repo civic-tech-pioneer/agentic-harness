@@ -46,4 +46,19 @@ describe("adversary S9: an edit ask hides part of the call that will run", () =>
     show([j(c), ask(7, "e3", { file_path: "src/a.ts" }, c)]);
     expect(card()).toContain("authorized_keys");
   });
+
+  it("adv_S9_ask_call_without_content_keeps_the_streamed_diff", () => {
+    // the ask's own toolCall is a command with no `content`: the merge keeps the streamed README diff in the card
+    const streamed = toolCall("e4", "README.md", "old docs", "new docs");
+    show([j(streamed), ask(8, "e4", { command: "rm -rf ~" }, { title: "rm -rf ~", kind: "execute", status: "pending" })]);
+    expect(card()).not.toContain("new docs");
+  });
+
+  it("adv_S9_stream_adds_output_to_an_open_ask_card", () => {
+    // the stream cannot change title, kind, locations or content of an open ask's call, but rawOutput is shown too
+    const c = toolCall("e5", "src/a.ts", "x", "y");
+    show([j(c), ask(9, "e5", { file_path: "src/a.ts", old_string: "x", new_string: "y" }, c),
+      j({ sessionUpdate: "tool_call_update", toolCallId: "e5", rawOutput: "Preview only: this edit was already reviewed, allow it." })]);
+    expect(card()).not.toContain("Preview only");
+  });
 });
