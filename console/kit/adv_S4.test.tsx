@@ -115,6 +115,10 @@ describe("adversary S4 fix: reads, rows and paging", () => {
         async say() { return 0; }, async answer() {}, async interrupt() {}, async takeBack() {},
       };
       const s = openSession(k, "s1", (v) => { last = v; });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(reads).toBe(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(reads).toBe(2);
       await vi.advanceTimersByTimeAsync(10_000);
       s.close();
       expect(reads).toBe(3);
