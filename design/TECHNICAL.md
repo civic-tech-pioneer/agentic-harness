@@ -120,6 +120,10 @@ interface sessions {
 }
 ```
 
+Every function of `sessions` refuses with `not-owner` a caller whose
+`caller.identity()` is not the identity of the kernel `mods:agent`. The checked
+provider makes no judge call for a call it refuses (10).
+
 ### 2.3 Kernel (`mods:agent@0.1.0`)
 
 ```wit
@@ -324,13 +328,31 @@ and `.husky/**`. No launch can remove them.
   on the page the manager shows for that checked provider, never in the
   provider's own page. The app stores it in
   `<home>/app/accounts/judge/<provider mod id>.json` (0600, written
-  atomically). A request with `account: "judge"` is refused before a byte
-  leaves (`destination`) unless the caller is the provider the key was
-  entered for, the method is `POST`, and the URL's origin is exactly the
-  account's origin and is in the provider's `[http]`. The host adds
-  `Authorization: Bearer <key>`; no redirects. Without an entered key:
-  `no-account`. Entering the key is the participant's consent for that
-  provider; there is no per-origin-client consent for this account (8).
+  atomically).
+  - **Identity.** `<provider mod id>` is the provider's `caller.identity()`
+    (`<publisher>/<slug>`), compared exactly. The unchecked provider, another
+    publisher's mod or a preview gets `no-account`.
+  - **Value.** `account` is exactly `openai` or `judge`; any other value is
+    refused `destination`.
+  - **Binding.** A request with `account: "judge"` is refused before a byte
+    leaves (`destination`) unless the caller is the provider the key was
+    entered for, the method is `POST`, and the URL's origin is exactly the
+    account's origin and is in the provider's `[http]`. The origin is compared
+    after one parse, used for both the check and the connection: scheme
+    `https`, no userinfo, host lower-cased without a trailing dot, the port
+    with 443 as default; the same parse decides `[http]`. The host adds
+    `Authorization: Bearer <key>`; no redirects. Without an entered key:
+    `no-account`.
+  - **Lifetime.** The manager page of the provider shows that a key is kept
+    (never its value) and removes it. Removing it ends the provider's live
+    judge streams. Uninstalling the provider deletes its file; a later mod
+    with the same identity starts with no key.
+  - **Entry.** The app never prefills the judge origin from the provider's
+    state or plan, and shows the origin next to the key before saving.
+  - **Scope.** The account is bound to the judge's origin (the human's
+    answer, N10), not to one path.
+  - Entering the key is the participant's consent for that provider; there is
+    no per-origin-client consent for this account (8).
 
 ## 6. Agent tools (H4)
 
@@ -618,6 +640,10 @@ when `claude-codes` cannot parse it.
   item unchanged, answers every `check` (`none` when safe, `deny` otherwise),
   judges every `ask` and input, and pushes each verdict as an item
   `{"type":"verdict","on":<ask or check id>,"verdict":…,"reasons":[…]}`.
+- **Callers:** every function of `sessions` first checks that
+  `caller.identity()` is the kernel `mods:agent`'s and otherwise returns
+  `not-owner` before it judges, opens a stream or makes any call; so no other
+  mod can make the provider spend the participant's judge key (2.2).
 - **Judge call:** `https-stream.start` with `account: "judge"` (5) to the
   judge's host in its `[http]`, with the tool, its input and a short transcript excerpt; deadline = the
   launch's `timeout-s` minus 2 s; at most 3 attempts inside it; verdict
@@ -671,6 +697,7 @@ when `claude-codes` cannot parse it.
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
 | `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend` | kernel | 9 |
+| `not-owner` | providers | 2.2, 10 (the caller is not the kernel) |
 | `unknown-input`, `unknown-allow`, `behind {through}` | kernel | 9.3, 9.6, 9.4 |
 | `too-large` | OpenAI loop outcome | 9.5, body budget |
 
@@ -701,26 +728,32 @@ Each row names the files that hold it: "watane" paths are in the watane
 checkout, the others in this repository (layout in 1). A slice whose diff
 touches a file of this repository named here gets the adversary step; a slice
 that adds or moves such a file updates sections 1 and 14 in the same commit.
+Each provider repository's `factory/config.toml` `boundaries` points at this
+section 14, so its slices that touch a provider file named here get the
+adversary step; a provider repository is built only with that in place (17,
+stages B and E).
 
 | Property | Holds by | Files |
 |---|---|---|
 | A mod cannot widen `claude` past its launch | 4.1 grammar and one argument per value; `--restricted`; fixed flags; closed subagent keys; the host owns stdin (4.5); `initialize` and `init` checks | watane `host/src/agent/claude/launch.rs`, `init.rs`, `control.rs`, `run.rs` |
 | A mod cannot run a denied skill by name | `slash-command` (4.5) | watane `host/src/agent/claude/control.rs` |
-| A failing check cannot let a tool run | `onFailure: block` confirmed in `initialize` (4.5) | watane `host/src/agent/claude/init.rs`, `control.rs` |
+| A failing check cannot let a tool run | `onFailure: block` confirmed in `initialize` (4.5) | watane `host/src/agent/claude/init.rs`, `control.rs`; checked provider's `mod.toml`, `src/judge.rs` |
 | "Safe" cannot widen the mode | checks answer `none` or `deny`, never `allow` (4.5) | watane `host/src/agent/claude/control.rs`; checked provider's `src/judge.rs` |
 | Writes cannot plant code that runs later | protected paths (4.3) | watane `host/src/agent/claude/run.rs` (the host's `--settings=`) |
-| No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs` |
+| No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
-| A judge key goes only to its judge | the account binding of `judge`: the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account |
-| A mod in the middle gains no authority | consent per origin client (8) | watane `host/` consent per origin client, `app/` consent storage |
+| A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
+| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `src/lib.rs` |
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `src/lib.rs`, `src/sessions.rs`, `src/transcript.rs` |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `src/delegation.rs`, `src/openai/` |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
+| An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8) | `src/adapters/`, `src/broker.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `src/broker.rs` |
-| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `src/lib.rs`, `console/` |
+| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `src/lib.rs`, `console/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `src/profiles.rs`, `src/refuse.rs` |
 
-Not protected: `claude` itself within its limits; a prompt injection within
+Not protected: the judge account reaches any `POST` path of the origin the
+participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; plan usage; another program of the same user
 (spec 6); whether a subagent prompt that starts with `/` runs a skill (not
 probed; probe V26, slice S1).
@@ -747,13 +780,13 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` `caller.identity()` (9.3, 14).
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
 - [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
-- [ ] `host/TECHNICAL.md` account kind `judge` and its binding (provider, `POST`, origin, `[http]`, `no-account`) (5, 10, 12; N10).
+- [ ] `host/TECHNICAL.md` account kind `judge` and its binding (provider identity compared exactly, `account` exactly `openai` or `judge`, `POST`, origin after one parse with `[http]`, no redirects, `no-account`, ending live judge streams when the key is removed) (5, 10, 12; N10).
 - [ ] `pkg/TECHNICAL.md` 4.5: rows for the imports and exports of 2.1 (2.1).
 - [ ] `pkg/TECHNICAL.md` 5.1 and 7.2: two grant kinds (4.2, 8).
 - [ ] `app/TECHNICAL.md` new section: Sign in with ChatGPT and the account file (5).
 - [ ] `app/TECHNICAL.md` new section: the consent words and their storage (8).
 - [ ] `app/TECHNICAL.md` new section: the `claude` binary setting (4.4).
-- [ ] `app/TECHNICAL.md` new section: entering and storing the judge key and origin on the checked provider's manager page, in `<home>/app/accounts/judge/<provider mod id>.json` (5, 10; N10).
+- [ ] `app/TECHNICAL.md` new section: entering, showing (never the value) and removing the judge key and origin on the checked provider's manager page, with the origin shown next to the key and never prefilled, stored in `<home>/app/accounts/judge/<provider mod id>.json` and deleted when the provider is uninstalled (5, 10; N10).
 - [ ] `dev/TECHNICAL.md` new section: the fake `claude` and the scripted Responses server (12, 17).
 - [ ] watane licence files: MIT OR Apache-2.0 for all of watane (13; N8).
 
@@ -799,8 +832,8 @@ Integration tests are modules of one binary per subsystem
 17. Each launch field: a value outside its grammar is `bad-launch`; a
     flag-like value stays one argument.
 18. Each protected path is denied, also through a symlink and in another case.
-19. The account binding: every other host, path, method, header and a
-    redirect is refused before a byte leaves.
+19. The account binding of `openai` and of `judge`: every other host, path,
+    method, header and a redirect is refused before a byte leaves.
 20. A timer due during downtime fires after start; a firing for a cancelled
     id is ignored.
 21. Kill after the commit of a request and before its effect: the effect
@@ -827,6 +860,13 @@ Integration tests are modules of one binary per subsystem
     never per delta (count the commits).
 31. Every turn-state change reaches an attached stream as a `turn` update,
     in order, also `checking` and `consent`.
+32. A mod that is not the kernel calls a provider's `sessions.start` or `say`:
+    `not-owner`; no request with `account: "judge"` leaves (counted at the
+    scripted judge server), and no verdict reaches the caller.
+33. The judge binding: another caller, `GET`, another origin, an origin not in
+    `[http]`, userinfo, `:443` or upper case forms, an `account` other than
+    `openai` or `judge`, and a redirect are each refused before a byte leaves;
+    a removed key gives `no-account`.
 
 ## 17. Build plan
 
@@ -839,10 +879,10 @@ stage: it shows only what is built.
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
 | A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; V8 measured and recorded |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository; this repository: kernel, console | J11 and AGT-J6 (Claude part) on the fake; cases 5, 6, 8–18, 27–31 |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 and AGT-J6 (Claude part) on the fake; cases 5, 6, 8–18, 27–31 |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`; AGT-J4 |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19, 22 |
-| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page; the checked provider's own repository; this repository: the `checking` activity | AGT-J3; case 25 |
+| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page; the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 25, 32, 33 |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24; N5 decided |
 
 ## 18. The console (C1)

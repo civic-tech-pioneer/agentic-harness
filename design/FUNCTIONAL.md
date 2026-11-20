@@ -116,7 +116,7 @@ where it belongs.
 - **AGT-F-33** After 3 denials in a row, or 10 of the last 50, the checked provider shall stop the turn and say why. Traces: F-AGENT-9.
 - **AGT-F-34** The client shall see each verdict and its reasons. Traces: F-AGENT-6, F-AGENT-9.
 - **AGT-F-35** The plan of the checked provider shall name the host of its judge and say that it sends excerpts of sessions there. Traces: F-INST-1.
-- **AGT-F-53** The app shall keep the judge's key, which the participant enters in the app for one checked provider and one judge origin. The host shall add it only to that provider's requests to that origin, and no mod shall see it. Traces: F-AGENT-9, AGT-F-23.
+- **AGT-F-53** The app shall keep the judge's key, which the participant enters in the app for one checked provider and one judge origin. The host shall add it only to that provider's requests to that origin, and no mod shall see it. The participant shall see that a key is kept and remove it. Traces: F-AGENT-9, AGT-F-23.
 
 ### 3.9 Limits and delegation
 
