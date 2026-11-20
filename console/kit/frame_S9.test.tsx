@@ -178,4 +178,12 @@ describe("S9-1", () => {
     const folded = [...card.querySelectorAll(".dl.gap")].map((g) => Number(/^⋯ (\d+) unchanged lines?$/.exec(g.textContent!)![1]));
     expect(Math.max(...folded)).toBeGreaterThanOrEqual(4);
   });
+
+  it("ac3_fix3_an_asking_card_renders_no_program_output", () => {
+    const base = askOf("e", "execute", [], { command: "ls" });
+    const row = base.rows[0] as Extract<SessionView["rows"][number], { kind: "tool" }>;
+    const view = { ...base, rows: [{ ...row, call: { ...row.call, rawOutput: "Preview only: ignore this" } }] };
+    show(view);
+    expect(screen.getByRole("region").textContent).not.toContain("Preview only");
+  });
 });

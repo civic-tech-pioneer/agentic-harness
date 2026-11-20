@@ -53,16 +53,17 @@ function upsertCall(v: SessionView, p: CallPatch, i?: number, fromAsk = false) {
     } else v.rows.push({ kind: "tool", key: `c${call.id}`, call, ...(i !== undefined ? { i } : {}) });
     return;
   }
-  const call: ToolCall = { ...f.call, ...p } as ToolCall;
   const r = v.rows[f.at]!;
+  // an open ask's card shows only what the ask carries: its call replaces the streamed one whole, and the stream changes only the status
+  const holding = r.kind === "tool" && !!r.ask && !r.ask.decision && !fromAsk;
+  const call: ToolCall = fromAsk ? { ...normalize(p), title: p.title ?? p.kind ?? "other" }
+    : holding ? { ...f.call, ...(p.status !== undefined ? { status: p.status } : {}) } : { ...f.call, ...p } as ToolCall;
   if (r.kind === "explored" && f.n !== undefined) {
     const calls = r.calls.slice(); calls[f.n] = call;
     v.rows[f.at] = { ...explored(calls), key: r.key };
     if (!isExplored(call)) toToolRow(v, p.id);
   } else if (r.kind === "tool") {
-    // while an ask is open, the stream cannot change what the card shows will run (TECHNICAL 14)
-    const held = r.ask && !fromAsk ? { title: f.call.title, kind: f.call.kind, locations: f.call.locations, content: f.call.content } : {};
-    v.rows[f.at] = { ...r, call: { ...call, ...held }, ...(i !== undefined ? { i } : {}) };
+    v.rows[f.at] = { ...r, call, ...(i !== undefined ? { i } : {}) };
   }
 }
 

@@ -73,6 +73,20 @@ describe("AC2 rows", () => {
     v = feed([entry(6, "ask", { toolCallId: "e", input: {}, expiresAt: 9, decision: { outcome: "allow", by: "alice" } }), upd(fake)], v);
     expect(v.rows[0]).toMatchObject({ kind: "tool", call: { title: "Edit /fake", locations: [{ path: "/fake" }] } });
   });
+  it("ac2_ask_toolcall_replaces_the_streamed_call_whole", () => {
+    const v = feed([call("e", "edit", { rawInput: { a: 1 }, locations: [{ path: "/s" }], content: [{ type: "diff", path: "/s", oldText: "", newText: "s" }] }),
+      entry(5, "ask", { toolCallId: "e", input: {}, expiresAt: 9, toolCall: { toolCallId: "e", kind: "execute", status: "pending" } })]);
+    const c = (v.rows[0] as { call: object }).call;
+    expect(c).toEqual({ id: "e", title: "execute", kind: "execute", status: "pending", content: [], locations: [] });
+  });
+  it("ac3_stream_cannot_add_output_or_input_to_an_open_ask_only_status", () => {
+    let v = feed([call("e", "edit"), entry(5, "ask", { toolCallId: "e", input: {}, expiresAt: 9, toolCall: { toolCallId: "e", title: "t", kind: "edit", status: "pending" } }),
+      upd({ sessionUpdate: "tool_call_update", toolCallId: "e", rawOutput: "o", rawInput: { z: 1 }, status: "in_progress" })]);
+    const c = (v.rows[0] as unknown as { call: Record<string, unknown> }).call;
+    expect(c).toMatchObject({ status: "in_progress", title: "t" });
+    expect(c).not.toHaveProperty("rawOutput");
+    expect(c).not.toHaveProperty("rawInput");
+  });
   it("ac2_allow_and_verdict_are_decision_rows_and_allow_updates_allows", () => {
     let v = feed([entry(1, "allow", { id: "a1", reach: "edit src/**", given: true, by: "alice" })]);
     expect(v.allows).toEqual([{ id: "a1", reach: "edit src/**" }]);
