@@ -288,3 +288,44 @@ describe("adversary S4 rerun 3: paging pace", () => {
     expect(reads).toBeLessThanOrEqual(3);
   });
 });
+
+// Adversary, slice S4 rerun 4 on S4-fix4: the read and attach pace under answers the fix still accepts.
+describe("adversary S4 rerun 4: paging and re-attach pace", () => {
+  it("adv_S4_one_entry_pages_under_a_huge_behind_read_back_to_back", async () => {
+    // every page adds one index inside its range (the first after `after`), so no page fails; the budget
+    // ceil((through - lastIndex) / 256) is about 4 million pages for this `behind`, all read without pause
+    let reads = 0;
+    const k: Kernel = {
+      async attach() { return { behind: 1_000_000_000 }; },
+      read: (_s, after) => (++reads > 200 ? new Promise<string[]>(() => {})
+        : Promise.resolve([j({ v: 1, i: after + 1, kind: "message", at: 1, body: { role: "user", content: [text("m")] } })])),
+      async say() { return 0; }, async answer() {}, async interrupt() {}, async takeBack() {},
+    };
+    const s = openSession(k, "s1", () => {});
+    await new Promise((r) => setTimeout(r, 50));
+    s.close();
+    expect(reads).toBeLessThanOrEqual(3);
+  });
+
+  it("adv_S4_stream_that_syncs_sends_one_item_and_ends_reattaches_without_pause", async () => {
+    // any message after `synced` counts as a live item and resets tries and `quick`, so the immediate
+    // reattach is granted again every time: synced, one item, end, attach at once, without bound
+    let attaches = 0;
+    const k: Kernel = {
+      async attach(_s, _a, on, end) {
+        attaches++;
+        if (attaches < 10_000) queueMicrotask(() => {
+          on(j({ _meta: { watane: { type: "synced", through: 0 } } }));
+          on(j({ _meta: { watane: { type: "queue", inputs: [] } } }));
+          end("consumer-failed");
+        });
+        return { ok: true };
+      },
+      read: async () => [], async say() { return 0; }, async answer() {}, async interrupt() {}, async takeBack() {},
+    };
+    const s = openSession(k, "s1", () => {});
+    await new Promise((r) => setTimeout(r, 50));
+    s.close();
+    expect(attaches).toBeLessThanOrEqual(3);
+  });
+});
