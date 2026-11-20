@@ -67,11 +67,12 @@ where it belongs.
 
 - **AGT-F-6** When a client starts a session or sends an input with a key that it used before for that session, the kernel shall return the first result and change nothing. A deleted session's keys stay used. Traces: F-AGENT-5, F-QUAL-3.
 - **AGT-F-7** The kernel shall let only the owner of a session attach to it, read it, send input, answer its asks, interrupt, cancel, rename or delete it, and list the owner's own sessions. Traces: F-AGENT-6.
-- **AGT-F-8** When the owner attaches after an index, the kernel shall send every stored entry after that index, then a marker that the replay is complete, then live updates, with no entry missing or doubled. If more entries lie after that index than one replay may carry, then the kernel shall say so, and the owner shall read them in pages first. The work of each call shall have a bound that does not grow with the transcript. A second attach of the same owner shall end the first. Traces: F-AGENT-6, AGT-F-39.
+- **AGT-F-8** When the owner attaches after an index, the kernel shall send every stored entry after that index, then a marker that the replay is complete, then live updates, with no entry missing or doubled. If more entries lie after that index than one replay may carry, then the kernel shall say so, and the owner shall read them in pages first, from either end. The work of each call shall have a bound that does not grow with the transcript. A second attach of the same owner shall end the first. Traces: F-AGENT-6, AGT-F-39.
 - **AGT-F-9** The kernel shall give the client one event format for both backends. If a backend sends output that the kernel does not know, then the kernel shall keep it as an unknown entry and the session shall go on. Traces: F-AGENT-5.
 - **AGT-F-10** The kernel shall show the state of each session's turn as it changes: running (and, while it lasts, checking with the judge, making room in the context, or waiting for the participant's consent in the app), waiting for an answer, paused until a time, or idle with its reason (completed, interrupted, stopped by a limit, failed). After a cancel or a restart it shall never show a turn as running. Traces: F-AGENT-6, F-QUAL-3.
-- **AGT-F-11** When the owner sends input during a turn, the kernel shall queue it, in order, up to 32 inputs, and start the next turn with it. When the owner interrupts with a replacement input, the kernel shall end the turn and start the next with that input. Traces: F-AGENT-5.
+- **AGT-F-11** When the owner sends input during a turn, the kernel shall queue it, in order, up to 32 inputs and 2 MiB, and start the next turn with it. When the owner interrupts with a replacement input, the kernel shall end the turn and start the next with that input. The kernel shall refuse an input larger than its limit and name the limit. Traces: F-AGENT-5.
 - **AGT-F-41** The kernel shall let the owner see the queued inputs of a session and take one out before a turn takes it. Traces: AGT-F-11, F-AGENT-6.
+- **AGT-F-54** The kernel shall keep and return every entry whole, whatever its size, and every read and replay shall make progress. Traces: AGT-F-8, AGT-F-9.
 - **AGT-F-12** When the owner cancels a session, the kernel shall end its turn, deny every open ask, and cancel its child sessions. Traces: F-AGENT-6.
 - **AGT-F-13** The kernel shall never delete a session on its own. If an owner exceeds its quota, then the kernel shall refuse new sessions of that owner and name the quota. Traces: F-RUN-8.
 
@@ -102,6 +103,7 @@ where it belongs.
 
 - **AGT-F-26** An agent shall reach only the toolsets that the participant approved for its session's origin client. Each tool call shall run as its own call of the tool's mod, with its own budget. Traces: F-AGENT-1, F-AGENT-3, F-AGENT-7.
 - **AGT-F-27** After a restart, the kernel shall run again only the open tool calls whose mod marked them safe to repeat, and record every other open call as aborted. Traces: F-QUAL-3.
+- **AGT-F-55** When an agent asks for more tool calls than the kernel may run at once, the kernel shall run them in turns, each exactly once, and keep room for other sessions' requests to the model. Traces: AGT-F-26, AGT-F-39.
 
 ### 3.7 Consent
 
@@ -112,7 +114,7 @@ where it belongs.
 
 ### 3.8 The checked provider
 
-- **AGT-F-32** The checked provider shall ask its judge before a session starts, before each input, before each tool call and before each permission ask. If the judge says unsafe or unsure, answers something unreadable, is slow or is down, then the provider shall deny. If the judge says safe, then the provider shall leave the decision to the profile. Traces: F-AGENT-9.
+- **AGT-F-32** The checked provider shall ask its judge before a session starts, before each input, before each tool call and before each permission ask. If the judge says unsafe or unsure, answers something unreadable, is slow or is down, then the provider shall deny. If the judge says safe, then the provider shall leave the decision to the profile. The provider shall send nothing of a session to its judge before the participant has consented to the session's workspace, and shall pass nothing to Claude Code before its verdict. Traces: F-AGENT-9.
 - **AGT-F-33** After 3 denials in a row, or 10 of the last 50, the checked provider shall stop the turn and say why. Traces: F-AGENT-9.
 - **AGT-F-34** The client shall see each verdict and its reasons. Traces: F-AGENT-6, F-AGENT-9.
 - **AGT-F-35** The plan of the checked provider shall name the host of its judge and say that it sends excerpts of sessions there. Traces: F-INST-1.
