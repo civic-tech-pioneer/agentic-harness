@@ -92,7 +92,7 @@ impl fmt::Display for KernelError {
             KernelError::Backend(m) => write!(f, "backend: {m}"),
             KernelError::UnknownInput(n) => write!(f, "unknown-input: no input number {n}"),
             KernelError::UnknownAllow(id) => write!(f, "unknown-allow: no pending ask {id}"),
-            KernelError::Behind(n) => write!(f, "behind: the history is compacted through {n}"),
+            KernelError::Behind(n) => write!(f, "behind: {n} entries stored, page with read"),
         }
     }
 }

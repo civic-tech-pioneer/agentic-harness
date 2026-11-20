@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 license = "MIT OR Apache-2.0"
-description = "The agent kernel's error type and profile check (TECHNICAL 9.2, 11, 12)."
+description = "The agent kernel's error type and profile check, and the transcript over host state (TECHNICAL 9.1, 9.2, 9.4, 11, 12)."
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
