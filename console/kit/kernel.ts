@@ -26,10 +26,9 @@ const STABLE_MS = 10_000;
 
 const BURST = 8;
 const REFILL_PER_S = 4;
-const MIN_SHORT_PAGE = 16;
 
 /** The one rate governor: a token bucket of 8 calls refilled at 4 per second; a call without a token waits for one. */
-function governor() {
+export function governor() {
   let tokens = BURST;
   let last = Date.now();
   const queue: Array<() => void> = [];
@@ -111,7 +110,6 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
         let top = c;
         for (const e of page) { const m = parse(e); if ("i" in m && typeof m.i === "number" && m.i > top && m.i <= hi) top = m.i; }
         if (top === c) return "the kernel returned a page that adds no entry inside the range it asked for";
-        if (top < hi && page.length < MIN_SHORT_PAGE) return "the kernel returned pages too short to read on";
         chunk.push(page);
         c = top;
       }
