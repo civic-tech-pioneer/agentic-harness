@@ -33,18 +33,27 @@ needs more adds it to the backend sections first (17).
 
 **This repository** is the kernel `mods:agent` and its console (R1, the human,
 2026-11-20). Each provider, the unchecked and the checked, lives in its own
-repository, not here. Planned layout (the first build slice may rename these;
-if it does, it updates sections 1 and 14 in the same commit):
+repository, not here. The kernel's pure logic is a plain Rust crate, `kernel/`
+(`agent-kernel`, serde only), with its own tests; the WASM mod wraps the crate
+later (PLAN, deputy decision "The kernel's pure logic is a plain Rust crate").
+Layout: the files marked built exist; the others are planned (the first build
+slice that touches one may rename it; if it does, it updates sections 1 and 14
+in the same commit):
 
-- `mod.toml`, `wit/world.wit` (2.3, the imports of 2.1)
-- `src/lib.rs` (exports; owner checks by `caller.identity()`, 9.3)
-- `src/profiles.rs` (9.2 compilation, overlays, offers adoption) and
-  `src/refuse.rs` (11)
-- `src/sessions.rs` (9.3: records, keys, queue, quota) and `src/transcript.rs`
-  (9.4: entries, attach, `synced`)
-- `src/broker.rs` (9.6, session allows) and `src/delegation.rs` (9.7:
-  delegates, limits, counters)
-- `src/openai/` (9.5: loop, repair, errors) and `src/adapters/` (9.8)
+- built: `kernel/src/lib.rs` (exports), `kernel/src/error.rs` (12: codes,
+  problems, refusals), `kernel/src/profile.rs` (4.1, 4.2, 9.2: parsing and
+  grammar), `kernel/src/overlay.rs` (9.2: overlays that only narrow),
+  `kernel/src/refuse.rs` (11), `kernel/src/check.rs` (9.2 `check`: every
+  refusal at once), `kernel/examples/check.rs` (the maker's command) and
+  `kernel/tests/it/` (the tests)
+- planned: `mod.toml`, `wit/world.wit` (2.3, the imports of 2.1), at the root
+- planned: `kernel/src/sessions.rs` (9.3: records, keys, queue, quota) and
+  `kernel/src/transcript.rs` (9.4: entries, attach, `synced`)
+- planned: `kernel/src/broker.rs` (9.6, session allows) and
+  `kernel/src/delegation.rs` (9.7: delegates, limits, counters)
+- planned: `kernel/src/openai/` (9.5: loop, repair, errors) and
+  `kernel/src/adapters/` (9.8); the mod's `lib.rs` exports and owner checks by
+  `caller.identity()` (9.3) are part of the wrapper
 - `console/` (source) and `ui/` (built from it), 18
 
 A provider repository holds `mods:claude-code` with `src/lib.rs`; the checked
@@ -212,15 +221,15 @@ fields. Each value goes out as one `--flag=value` argument.
 | `fallback-models` | the same, at most 4 | `--fallback-model=` |
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max` | `--effort=` |
 | `system-prompt` | `{replace \| append: text}`, at most 64 KiB | `--system-prompt=` / `--append-system-prompt=` |
-| `tools` | names from the grant's allowlist (4.2) | `--tools=` |
-| `allow`, `deny` | `Name` or `Name(arg)`; Name from the allowlist or `mcp__watane__<tool>`; no comma, space or leading `-` outside the parentheses; an allow `Bash(<prefix>…)` with an interpreter or runner prefix (`bash`, `sh`, `zsh`, `env`, `python*`, `node`, `npx`, `uv run`, `devbox run`, ...) is refused | `--allowedTools=`, `--disallowedTools=` each |
+| `tools` | names from the grant's allowlist (4.2); an absent `tools` and `[]` both mean no built-in tools | `--tools=` |
+| `allow`, `deny` | `Name` or `Name(arg)`; Name from the allowlist or `mcp__watane__<tool>`; no comma, space or leading `-` outside the parentheses; an allow `Bash(…)` follows the grammar below | `--allowedTools=`, `--disallowedTools=` each |
 | `mode` | `manual`, `accept-edits`, `plan`, `dont-ask` | `--permission-mode=` |
 | `ask` | bool | `--permission-prompts=host --permission-prompt-tool=stdio`, or `--permission-prompts=none` |
 | `pre-tool-check` | `{timeout-s: 5..120}` | the host's PreToolUse callback in `initialize` (4.5) |
 | `agent-handle` | a handle the origin client holds | `--mcp-config=/dev/fd/3` |
 | `subagents` | each exactly `{name [a-z0-9-]{1,64}, description, prompt, tools ⊆ tools, model}`; any other key is refused by name; 64 KiB in all (N9, the human, 2026-11-20: subagents stay `--agents=` flags) | `--agents=` |
 | `subagent-depth` | 0..3, default 1; 0 also removes `Task` | env `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` |
-| `skills` | `{name [a-z0-9-]{1,64}, files}`; paths under the skill folder, no `..`, 1 MiB in all; frontmatter keeps `name` and `description` only | the run folder's plugin, `--plugin-dir=` |
+| `skills` | `{name [a-z0-9-]{1,64}, files}`; paths under the skill folder, no `..`, 1 MiB in all; a `SKILL.md` that starts with `---` has strict frontmatter, below | the run folder's plugin, `--plugin-dir=` |
 | `sandbox` | the typed record of 4.2; required with the shell grant | the host's `--settings=` |
 | `json-schema` | at most 64 KiB, valid JSON Schema | `--json-schema=` |
 | `max-turns` | 1..1000 | `--max-turns=` |
@@ -228,6 +237,43 @@ fields. Each value goes out as one `--flag=value` argument.
 | `session` | `{new: uuid}`, `{resume: uuid, at?: uuid, drops-turn?: uuid}`, `{fork: uuid, at?: uuid}` | `--session-id=`, `--resume=`, `--fork-session`, `--resume-session-at=`, `--resume-drops-turn=` |
 | `persist` | bool | `--no-session-persistence` when false |
 | `partial` | bool | `--include-partial-messages` |
+
+The allow grammar for `Bash` (deny rules are not held to it). An allow
+`Bash(<arg>)` is refused unless all of these hold:
+
+- Bare `Bash`, with no parentheses, is refused: it allows any command.
+- `<arg>` has no non-ASCII character and none of `` ` ``, `$`, `{`, `}`, `;`,
+  `|`, `&`, `<`, `>`, `'`, `"`, `\`: the shell would read more than a word.
+- A colon appears only as one trailing `:*`.
+- The first word (split on whitespace, after that `:*` is removed) is no path
+  (no `/`), has no `~`, and is made only of `A-Za-z0-9._+-`.
+- The first word, lowercased, is not an interpreter or runner. The list is in
+  `kernel/src/profile.rs`; its families are: shells (`bash`, `sh`, `zsh`,
+  `fish`, `dash`, `ksh`, `pwsh`, ...), `env`, every name starting `python`,
+  JavaScript and script runtimes (`node`, `deno`, `bun`, `bunx`, `npx`,
+  `pnpx`, `yarnpkg`, `corepack`, `uvx`, `perl`, `ruby`, `php`, `lua`, `awk`
+  and kin), multiplexers and wrappers (`busybox`, `setsid`, `nice`, `nohup`,
+  `timeout`, `time`, `xargs`, `watch`, `flock`, `sudo`, `doas`, `su`, ...),
+  and shell builtins that run text (`eval`, `exec`, `source`, `.`,
+  `command`, `builtin`). `find` is allowed only with no `*` and no `-exec`,
+  `-execdir`, `-ok` or `-okdir`.
+- A package runner (table) needs a second word from its row and no option
+  word (starting `-`) after it, and the rule has no `*` or `:*` anywhere
+  (fail-closed: an option or a forwarder can name a program to run).
+
+| Runner | Second words allowed |
+|---|---|
+| `npm` | `install`, `i`, `ci`, `test`, `ls`, `list`, `audit`, `outdated` |
+| `pnpm` | `install`, `add`, `test`, `list`, `ls`, `audit`, `outdated` |
+| `yarn` | `install`, `add`, `test`, `list`, `audit`, `outdated` (not `ls`: yarn runs a script named `ls`) |
+| `uv` | `pip`, `sync`, `lock`, `add`, `remove`, `tree`, `venv` |
+| `devbox` | `install`, `add` |
+
+The `skills` frontmatter rule. Frontmatter starts with `---` and a newline at
+byte 0 (leading white space or a byte order mark before `---` is refused). It
+ends at a line `---`. Its keys are `name` and `description`, each once; an
+indented line continues the key above it; any other line is refused. Every
+character is printable ASCII (space to `~`). Each refusal names its reason.
 
 ### 4.2 Grants and tools
 
@@ -479,8 +525,26 @@ A profile holds the launch fields of 4.1 that are not chosen per session
 `backend` (`claude` or `openai`), `toolsets`, `delegates` (profile names),
 `max-tool-errors`, `max-tokens`, `ask-expiry` and `subagent-limits`.
 
-An overlay holds `system-prompt-append`, `skills+`, `tools-`, `deny+`, and
-lower values of the limits. Anything else is refused (`refused`).
+Those four per-session fields are refused in a profile (`refused`, the field
+named). `ask-expiry` is in seconds, a whole number from 0 up; Claude accepts
+only 600 (11). `max-tool-errors` is 1..4294967295, `max-tokens` a whole number.
+
+An overlay holds exactly these keys:
+
+| Key | Effect |
+|---|---|
+| `system-prompt-append` | text added after the profile's prompt |
+| `skills+` | skills added; one named like an existing skill is refused |
+| `tools-` | tools removed, also from each subagent's `tools` |
+| `deny+` | deny rules added |
+| `max-turns` (1..1000), `max-tool-errors` (1..4294967295), `max-tokens`, `max-budget-usd`, `subagent-depth` (0..3; the profile's value defaults to 1) | each only lowered: a higher value is refused, naming the profile's value; where the profile sets none, the overlay's value stands |
+
+Every other key is refused as `overlay.<key>`. The widening keys are refused
+by name: `tools` and `tools+` (adds tools), `allow` and `allow+` (adds allow
+rules), `workspace`, `extra-workspaces` and `workspaces+` (adds workspaces),
+`subagents` and `subagents+` (adds subagent profiles), `mode` (changes the
+permission mode), `system-prompt` (replaces the instructions); any other key
+is "not an overlay field".
 
 No profile field reads workspace instructions (`AGENTS.md`, `CLAUDE.md`)
 (N7, the human, 2026-11-20); an opt-in profile field is later
@@ -489,6 +553,10 @@ No profile field reads workspace instructions (`AGENTS.md`, `CLAUDE.md`)
 Compilation: profile, then adopted offers it names, then the overlay; then the
 refuse table (11) for the backend and model. Every refusal is returned at
 once; `check` runs only this step.
+
+Code to change (next kernel slice), where `kernel/` differs from this text:
+
+- `yarn ls` is in `PACKAGE_RUNNERS` (`kernel/src/profile.rs`); drop it.
 
 ### 9.3 Sessions
 
@@ -904,7 +972,7 @@ when `claude-codes` cannot parse it.
 | `json-schema` | flag; the kernel checks the answer; a missing `structured_output` fails | `text.format`; a schema outside the strict subset refused; the kernel checks the answer |
 | `max-turns`, `max-tool-errors`, `max-tokens` | flag and counters | counters |
 | `max-budget-usd` | flag | refused |
-| `ask-expiry` | refused unless 10 minutes or absent | a timer |
+| `ask-expiry` | refused unless 600 (seconds) or absent | a timer |
 | `persist` | flag | `false` keeps the transcript in memory only |
 
 ## 12. Errors
@@ -971,14 +1039,14 @@ stages B and E).
 | No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
-| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` |
-| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `src/lib.rs`, `src/sessions.rs`, `src/transcript.rs` |
-| A runaway agent stops | counters and delegation limits in the kernel (9.7) | `src/delegation.rs`, `src/openai/` |
-| A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
-| An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8) | `src/adapters/`, `src/broker.rs` |
-| A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `src/broker.rs` |
-| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `src/lib.rs`, `console/`, `ui/` |
-| A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `src/profiles.rs`, `src/refuse.rs` |
+| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `kernel/src/lib.rs` |
+| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/src/sessions.rs`, `kernel/src/transcript.rs` |
+| A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
+| A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `kernel/src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
+| An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs` |
+| A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
+| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `kernel/src/lib.rs`, `console/`, `ui/` |
+| A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
 
 Not protected: the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
