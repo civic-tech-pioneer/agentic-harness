@@ -6,8 +6,8 @@ repo = "civic-tech-pioneer/agentic-harness"
 
 # The task gate: run from the project root by check.sh after every implementer run, and by CI.
 # Exit 0 passes. TASK and BASE are set (the task id, the commit the task started from).
-# A watane mod: the factory's mod gate (watane-dev doctor, then its contract tests).
-gate = ".claude/factory/check-mod.sh"
+# Runs check-mod.sh (links, mod contract), then the kernel crate and the console when they exist.
+gate = "factory/gate.sh"
 
 # Run once in each new worktree before the foreman starts (an APFS clone of build output, say).
 worktree_prep = ""
