@@ -27,7 +27,8 @@ describe("the page", () => {
     const side = screen.getByRole("navigation", { name: "Sessions" });
     expect(within(side).getByText(INFO.title)).toBeInTheDocument();
     const head = screen.getByRole("banner");
-    for (const t of [INFO.title, INFO.profile, INFO.provider, INFO.workspace]) expect(within(head).getByText(t)).toBeInTheDocument();
+    expect(within(head).getByText("Profile", { exact: false })).toHaveTextContent("Profile Careful");
+    for (const t of [INFO.title, "Claude Code · no judge", INFO.workspace, "21%"]) expect(within(head).getByText(t)).toBeInTheDocument();
     expect(within(head).getByRole("meter")).toHaveAttribute("aria-valuetext", "42k / 200k tokens");
     const kinds = new Set([...container.querySelectorAll(".wa-row")].map((r) => r.getAttribute("data-kind")));
     for (const k of ["user", "thought", "agent", "explored", "tool"]) expect(kinds).toContain(k);
@@ -136,17 +137,18 @@ describe("header", () => {
   it("ac3_meter_shows_used_over_window_with_a_text_equivalent", () => {
     const m = meter({ used: 42000, window: 200000, compactAt: 160000 });
     expect(m).toHaveAttribute("aria-valuenow", "42000");
-    expect(screen.getByText("42k / 200k")).toBeInTheDocument();
-    expect(screen.queryByText("Filling up")).toBeNull();
+    expect(screen.getByText("21%")).toBeInTheDocument();
+    expect(m).toHaveAttribute("aria-valuetext", "42k / 200k tokens");
   });
   it("ac3_meter_turns_amber_with_a_word_at_80_percent_of_compact_at", () => {
     meter({ used: 128000, window: 200000, compactAt: 160000 });
-    expect(screen.getByText("Filling up")).toBeInTheDocument();
+    expect(screen.getByRole("meter")).toHaveAttribute("aria-valuetext", "128k / 200k tokens, filling up");
     expect(document.querySelector(".wa-meter")).toHaveAttribute("data-warn", "true");
+    expect(document.querySelector(".wa-bar")).toHaveClass("hi");
   });
   it("ac3_meter_turns_amber_at_80_percent_of_the_window_without_compact_at", () => {
     meter({ used: 160000, window: 200000 });
-    expect(screen.getByText("Filling up")).toBeInTheDocument();
+    expect(document.querySelector(".wa-bar")).toHaveClass("hi");
   });
 });
 
