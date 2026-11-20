@@ -3,13 +3,17 @@
 Why this mod exists and what comes first. With `FUNCTIONAL.md` (what) and
 `TECHNICAL.md` (how) it is this mod's spec chain, in that order of truth
 (`factory/config.toml`, `spec`); code comes after. When two disagree, the
-lower one is fixed. Where an open point of `ARCHITECTURE-PROPOSAL.md`
-(section 15, `N<n>`) is undecided, the three state the proposal's current
-choice and say so; settling one is the human's, and a build slice that
-depends on an undecided point waits for that answer. `AGENTS.md` says which
+lower one is fixed. The human answered the open points of
+`ARCHITECTURE-PROPOSAL.md` (section 15, `N<n>`) on 2026-11-20, and each
+answer is a rule where its fact lives. Two remain open: N5 (the factory's
+implementer, decided at stage F, `TECHNICAL.md` section 17) and N11
+(`FUNCTIONAL.md` section 5). A build slice that depends on one waits for the
+answer. `AGENTS.md` says which
 files are contracts and which are records.
 
-The layer lives in this mod, `agentic-harness`; its small host part lands in
+The layer lives in this repository, the kernel `mods:agent` with its console;
+each provider has its own repository (R1, `TECHNICAL.md` sections 1 and 17).
+Its small host part lands in
 watane, whose `spec/VISION.md`, `spec/FUNCTIONAL.md` and `spec/TECHNICAL.md`
 then gain the rows that `TECHNICAL.md` section 15 lists. Paths such as
 `spec/…`, `host/…` and `factory/…` in these files are watane's; `design/`,

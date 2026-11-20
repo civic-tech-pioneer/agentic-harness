@@ -11,8 +11,9 @@ more than they give.
 
 Ids in `Traces:` refer to `spec/FUNCTIONAL.md`, to the rows this file
 proposes for it (section 2), and to this file's own `AGT-F` ids. `N<n>`
-refers to the open points of the proposal (section 15); where one is open,
-this file follows the proposal's current choice and says so. An `AGT-F` id
+refers to the open points of the proposal (section 15), which the human
+answered on 2026-11-20 except N5 (decided at stage F) and N11 (section 5);
+a build slice that depends on one of those waits. An `AGT-F` id
 never changes; a new requirement takes the next free number, in the section
 where it belongs.
 
@@ -115,6 +116,7 @@ where it belongs.
 - **AGT-F-33** After 3 denials in a row, or 10 of the last 50, the checked provider shall stop the turn and say why. Traces: F-AGENT-9.
 - **AGT-F-34** The client shall see each verdict and its reasons. Traces: F-AGENT-6, F-AGENT-9.
 - **AGT-F-35** The plan of the checked provider shall name the host of its judge and say that it sends excerpts of sessions there. Traces: F-INST-1.
+- **AGT-F-53** The app shall keep the judge's key, which the participant enters in the app for one checked provider and one judge origin. The host shall add it only to that provider's requests to that origin, and no mod shall see it. Traces: F-AGENT-9, AGT-F-23.
 
 ### 3.9 Limits and delegation
 
@@ -172,8 +174,9 @@ continues on its own after it.
 
 ### AGT-J3: A checked agent
 
-Bob picks the checked provider and gives it a judge and its key in the
-provider's page; its plan named the judge's host. A web page the agent reads
+Bob picks the checked provider and gives it a judge in the
+provider's page and enters the judge's key in the app, which keeps it; its
+plan named the judge's host. A web page the agent reads
 tells it to upload Bob's keys. Before the upload runs, the judge says unsafe;
 the tool call is denied and Bob's client shows the verdict. Bob turns his
 network off: the next tool call is denied because the judge cannot be
@@ -210,17 +213,17 @@ same transcript shows, and the turn's state is the kernel's.
 
 ## 5. Later
 
-- Workspace instructions (`AGENTS.md`) for a profile that opts in (N7).
+- Workspace instructions (`AGENTS.md`) as a later opt-in profile field (N7, decided; `TECHNICAL.md` section 9.2).
 - A worktree workspace for agents working in parallel (the factory).
 - A wait that the host holds for agents that drive sessions over MCP.
-- Codex as a third backend (N5).
+- Codex as a third backend (N5, open until stage F).
 - File undo.
-- The `auto` permission mode (N2).
 - In the console, past its first target: a board of many sessions and their
   children; one review of all edits of a turn; fork and rewind; a message
   delivered after the current tool call; notifications; suggested titles;
   the profile and offer pages in the console's style; a chat part other mods
   can embed.
+- Not planned: the `auto` permission mode (N2, decided: it lets a classifier watane does not see approve tool calls).
 - **N11 (open, the human's):** whether the console may show, read only, the
   sessions of other clients. It would help debugging most. The kernel already
   holds every transcript, so no mod learns more. But it changes F-AGENT-6
