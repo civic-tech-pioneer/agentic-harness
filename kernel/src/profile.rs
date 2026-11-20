@@ -828,7 +828,7 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
                     format!("path {path:?} equals another path when lowercased"),
                 ));
             }
-            if low == "skill.md" {
+            if low.rsplit('/').next() == Some("skill.md") {
                 if let Some(why) = frontmatter_problem(text) {
                     o.push(p(format!("{pre}.files"), format!("{path} {why}")));
                 }
