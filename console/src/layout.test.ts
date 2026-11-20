@@ -76,6 +76,13 @@ describe("layout", () => {
   });
 
   it("ac7_ask_arguments_output_and_diff_keep_their_line_breaks", () => {
-    for (const sel of [/\.wa-args dd\s*\{[^}]*white-space:\s*pre-wrap/, /\.wa-diff, \.wa-output\s*\{[^}]*white-space:\s*pre-wrap/]) expect(kit).toMatch(sel);
+    for (const sel of [/\.wa-args dd\s*\{[^}]*white-space:\s*pre-wrap/, /\.wa-diff, \.wa-output\s*\{[^}]*white-space:\s*pre-wrap/, /\.dl\s*\{[^}]*white-space:\s*pre-wrap/]) expect(kit).toMatch(sel);
+  });
+
+  it("s9_1_diff_tints_chevron_turn_and_button_radius", () => {
+    expect(kit).toMatch(/\.dl\.add\s*\{[^}]*background:\s*var\(--wa-add\)/);
+    expect(kit).toMatch(/\.dl\.del\s*\{[^}]*background:\s*var\(--wa-del\)/);
+    expect(kit).toMatch(/\.foldbtn\.open \.chev\s*\{[^}]*transform:\s*rotate\(90deg\)/);
+    expect(kit).toMatch(/\.btn\s*\{[^}]*height:\s*36px[^}]*border-radius:\s*var\(--radius-button\)/);
   });
 });

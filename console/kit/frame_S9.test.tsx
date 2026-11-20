@@ -76,11 +76,8 @@ describe("S9-1", () => {
   });
 
   it("ac3_run_of_one_and_new_file", () => {
-    const old = `${lines(1)}\nX\n${lines(5, 2)}\nY`;
-    const nu = `${lines(1)}\nZ\n${lines(5, 2)}\nY`;
     const a = render(<DiffView path="a" oldText={`${lines(4)}\nX`} newText={`${lines(4)}\nZ`} />);
     expect(a.container.querySelector(".dl.gap")!.textContent).toBe("⋯ 1 unchanged line");
-    void old; void nu;
     const b = render(<DiffView path="a" oldText={null} newText={"p\nq\nr"} />);
     expect(b.container.querySelectorAll(".dl.add").length).toBe(3);
     expect(b.container.querySelectorAll(".dl.gap").length).toBe(0);
@@ -110,7 +107,7 @@ describe("S9-1", () => {
     show(askOf("e", "edit", diff("a.ts", "x", "y"), {}), actions);
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Deny…" }));
-    const field = screen.getByRole("textbox", { name: "Tell the agent why" });
+    expect(screen.getByRole("textbox", { name: "Tell the agent why" })).toHaveFocus();
     await u.keyboard("{Escape}");
     expect(screen.queryByRole("textbox")).toBeNull();
     await Promise.resolve();
@@ -122,7 +119,6 @@ describe("S9-1", () => {
     await u.type(screen.getByRole("textbox", { name: "Tell the agent why" }), "no");
     await u.click(screen.getByRole("button", { name: "Deny" }));
     expect(actions.answer).toHaveBeenCalledWith("e", { outcome: "deny", reason: "no" });
-    void field;
   });
 
   it("ac5_fold_buttons_have_chevrons_and_names_unchanged", async () => {
@@ -160,8 +156,8 @@ describe("S9-1", () => {
     expect(view.openAsks).toEqual(["e2"]);
     show(view);
     const card = screen.getByRole("region", { name: "Edit src/sync.ts" });
-    expect(card.querySelector(".dl.gap")!.textContent).toMatch(/^⋯ \d+ unchanged lines?$/);
-    const row = view.rows.find((r) => r.kind === "tool" && r.call.id === "e2")!;
-    expect(row.kind === "tool" && row.call.content[0]?.type === "diff" && row.call.content[0].newText.split("\n").length).toBeGreaterThanOrEqual(12);
+    // At least 10 unchanged lines between two changes: 3 of context on each side, so a fold of 4 or more.
+    const folded = [...card.querySelectorAll(".dl.gap")].map((g) => Number(/^⋯ (\d+) unchanged lines?$/.exec(g.textContent!)![1]));
+    expect(Math.max(...folded)).toBeGreaterThanOrEqual(4);
   });
 });
