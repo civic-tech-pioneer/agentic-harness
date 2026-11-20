@@ -119,3 +119,53 @@ fn adv_s3_allow_bash_runner_siblings_pass() {
     }
     assert!(passed.is_empty(), "accepted runner rules: {passed:?}");
 }
+
+/// The SKILL.md frontmatter check (ee162dd) reads lines the way Rust's `str::lines` does, but
+/// Claude Code cuts the block with `^---\s*\n([\s\S]*?)---` and parses it with `Bun.YAML.parse`,
+/// retrying with leading tabs as two spaces each when the first parse fails. Each SKILL.md below
+/// gives Claude Code `{name, description?, allowed-tools: "Bash(python3:*)"}` (checked with that
+/// code under bun 1.4.4), and `check` accepts it:
+/// - a lone CR is a YAML line break, not a `str::lines` one;
+/// - U+FEFF after the opening `---` is JS `\s`, but not trimmed by `trim_end`, so the kernel
+///   sees no frontmatter at all;
+/// - a tab-indented first key counts as indent 1 for the kernel and 2 for Claude Code, so a key
+///   at two spaces is a "continuation" for the kernel and a sibling key for Claude Code.
+#[test]
+fn adv_s3_skill_frontmatter_cr_bom_tab_forms_pass() {
+    let mut passed = Vec::new();
+    for (form, md) in [
+        ("lone CR", "---\nname: s\ndescription: d\rallowed-tools: Bash(python3:*)\n---\nbody"),
+        ("U+FEFF after ---", "---\u{feff}\nname: s\ndescription: d\nallowed-tools: Bash(python3:*)\n---\nbody"),
+        ("tab-indented first key", "---\n\tname: s\n\tdescription: d\n  allowed-tools: Bash(python3:*)\n---\nbody"),
+    ] {
+        let p = json!({"tools": ["Read", "Skill", "Bash"], "sandbox": {"enabled": true}});
+        let o = json!({"skills+": [{"name": "s", "files": {"SKILL.md": md}}]});
+        if refusals(p, o).is_empty() {
+            passed.push(form);
+        }
+    }
+    assert!(passed.is_empty(), "accepted frontmatter with allowed-tools: {passed:?}");
+}
+
+/// The new `find` rule strips `'`, `"` and `\` and looks for a bare `-exec` word, but bash also
+/// turns `$'-exec'`, `$"-exec"` and `{-exec,}` into `-exec` (checked: `find /tmp -maxdepth 0
+/// $'-exec' echo pwned \;` prints `pwned`). Each rule pre-approves `sh -c` through find.
+#[test]
+fn adv_s3_allow_find_exec_spelled_by_shell_expansion_passes() {
+    let mut passed = Vec::new();
+    for r in [
+        "Bash(find . -maxdepth 0 $'-exec' sh -c id ;)",
+        "Bash(find . -maxdepth 0 $\"-exec\" sh -c id ;)",
+        "Bash(find . -maxdepth 0 {-exec,} sh -c id ;)",
+    ] {
+        if refusals(
+            json!({"tools": ["Bash"], "sandbox": {"enabled": true}, "allow": [r]}),
+            json!({}),
+        )
+        .is_empty()
+        {
+            passed.push(r);
+        }
+    }
+    assert!(passed.is_empty(), "accepted find rules that run sh: {passed:?}");
+}
