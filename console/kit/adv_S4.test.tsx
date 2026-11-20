@@ -248,3 +248,24 @@ describe("adversary S4 rerun: refetch and paging", () => {
     expect(attaches).toBeLessThanOrEqual(3);
   });
 });
+
+// Adversary, slice S4 rerun 2 on S4-fix2: AC3 "connect() never attaches twice without a pause".
+describe("adversary S4 rerun 2: re-attach pacing", () => {
+  it("adv_S4_stream_that_ends_at_once_reattaches_without_pause", async () => {
+    // TECHNICAL 3 stream ends (lost grant, consumer-failed, idle-timeout): a stream the kernel ends right after
+    // attach makes onEnd call connect() at once, with no 1 s wait and no bound, so attaches spin
+    let attaches = 0;
+    const k: Kernel = {
+      async attach(_s, _a, _on, end) {
+        attaches++;
+        if (attaches < 10_000) queueMicrotask(() => end("consumer-failed"));
+        return { ok: true };
+      },
+      read: async () => [], async say() { return 0; }, async answer() {}, async interrupt() {}, async takeBack() {},
+    };
+    const s = openSession(k, "s1", () => {});
+    await new Promise((r) => setTimeout(r, 50));
+    s.close();
+    expect(attaches).toBeLessThanOrEqual(3);
+  });
+});
