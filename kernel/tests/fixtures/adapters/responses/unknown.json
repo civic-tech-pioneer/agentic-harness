@@ -167,6 +167,104 @@
           ]
         }
       }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_item.done",
+        "sequence_number": 13,
+        "output_index": 0,
+        "item": {
+          "id": "msg_2",
+          "type": "message",
+          "status": "completed",
+          "role": "user",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "hi",
+              "annotations": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_item.done",
+        "sequence_number": 14,
+        "output_index": 0,
+        "item": {
+          "id": "msg_3",
+          "type": "message",
+          "status": "completed",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "a",
+              "annotations": []
+            },
+            {
+              "type": "output_audio",
+              "data": "AAAA"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.reasoning_summary_text.delta",
+        "sequence_number": 15,
+        "item_id": "rs_1",
+        "output_index": 0,
+        "summary_index": 0,
+        "delta": null
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_text.delta",
+        "sequence_number": 16,
+        "item_id": "msg_4",
+        "output_index": 0,
+        "content_index": 0,
+        "delta": "",
+        "logprobs": []
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_item.done",
+        "sequence_number": 17,
+        "output_index": 0,
+        "item": {
+          "id": "msg_4",
+          "type": "message",
+          "status": "completed",
+          "role": "assistant",
+          "content": []
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "job": {
+        "call": {
+          "id": "fc_2",
+          "type": "function_call",
+          "status": "completed",
+          "name": "shell",
+          "arguments": "{}"
+        },
+        "output": "done",
+        "ok": false
+      }
     }
   ],
   "expected": [
@@ -304,6 +402,103 @@
                 "text": "still adapted"
               }
             ]
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "response.output_item.done",
+              "sequence_number": 13,
+              "output_index": 0,
+              "item": {
+                "id": "msg_2",
+                "type": "message",
+                "status": "completed",
+                "role": "user",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "hi",
+                    "annotations": []
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "response.output_item.done",
+              "sequence_number": 14,
+              "output_index": 0,
+              "item": {
+                "id": "msg_3",
+                "type": "message",
+                "status": "completed",
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "a",
+                    "annotations": []
+                  },
+                  {
+                    "type": "output_audio",
+                    "data": "AAAA"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "response.reasoning_summary_text.delta",
+              "sequence_number": 15,
+              "item_id": "rs_1",
+              "output_index": 0,
+              "summary_index": 0,
+              "delta": null
+            }
+          }
+        }
+      }
+    ],
+    [],
+    [],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "call": {
+                "id": "fc_2",
+                "type": "function_call",
+                "status": "completed",
+                "name": "shell",
+                "arguments": "{}"
+              },
+              "output": "done",
+              "ok": false
+            }
           }
         }
       }
