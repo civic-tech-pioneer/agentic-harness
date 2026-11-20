@@ -46,7 +46,7 @@ describe("layout", () => {
     expect(rule(theme, "button")).toMatch(/min-height:\s*36px/);
     expect(rule(theme, ".wa-chip")).toMatch(/height:\s*32px/);
     expect(rule(kit, ".wa-row")).toMatch(/min-height:\s*44px/);
-    expect(rule(theme, ".wa-session-row")).toMatch(/min-height:\s*44px/);
+    expect(rule(theme, ".wa-srow")).toMatch(/min-height:\s*44px/);
     const root = rule(theme, ":root");
     expect(token(root, "--radius-button")).toBe("9px");
     expect(token(root, "--radius-input")).toBe("18px");

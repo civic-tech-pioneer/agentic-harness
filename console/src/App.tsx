@@ -1,12 +1,12 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { decisionJson, emptyView, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Kernel, type SessionView } from "../kit";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
 
 let sent = 0;
-export function App({ kernel, info }: { kernel: Kernel; info: SessionInfo }) {
+export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[] }) {
   const [view, setView] = useState<SessionView>(emptyView);
   const [stopping, setStopping] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -51,7 +51,7 @@ export function App({ kernel, info }: { kernel: Kernel; info: SessionInfo }) {
 
   return (
     <div className="wa-app">
-      <Sidebar info={info} />
+      <Sidebar info={info} turn={view.turn?.state} sessions={sessions} />
       <main className="wa-main">
         <Header info={info} view={view} actions={actions} />
         <ThreadProvider view={view} actions={actions}>
@@ -64,6 +64,7 @@ export function App({ kernel, info }: { kernel: Kernel; info: SessionInfo }) {
             }}>
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
           </div>
+          {/* S9-2: pass session={{ model: info.model, mode: info.mode }} and stopping={stopping} */}
           <Dock view={view} actions={actions} onNeedsYou={needsYou}
             status={<StatusLine view={view} now={now} stopping={stopping} actions={actions} onNeedsYou={needsYou} />} />
         </ThreadProvider>
