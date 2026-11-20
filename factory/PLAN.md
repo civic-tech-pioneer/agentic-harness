@@ -82,6 +82,7 @@ S2 writes each into the document that owns it.
 - **N8** watane gets MIT OR Apache-2.0 for all of it. A watane change: cross-project, not ours.
 - **N9** Subagents stay `--agents=` flags, capped at 64 KiB.
 - **N10** The host keeps the judge's key as an account bound to the judge's origin.
+- **N11** The console shows only its own sessions; F-AGENT-6 stays as it is (asked after commit 3926a0d raised it).
 - **R1** This repository is the kernel `mods:agent`; each provider has its own repository.
 
 ## Waiting on the human
@@ -108,5 +109,11 @@ S2 writes each into the document that owns it.
   `Waiting on the human`); added `Human answers`.
 - 2026-11-20 po skill 4: "use AskUserQuestion only on a turn the human's own message started";
   a PO started by another session on the human's behalf cannot tell. Worked here; worth a line.
+
+- 2026-11-20 a second session committed a design change (3926a0d: AGENTS.md, console, N11) to
+  this checkout 14 s after the PO's plan commit, overlapping S2's sketch (AGENTS.md, drafts). The
+  skill assumes the PO alone writes `main` besides merges; nothing tells another session that a
+  slice owns those files. A `Touches` lock visible outside PLAN.md (or a PR for every design
+  change) would have caught it.
 
 ## Suite time

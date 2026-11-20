@@ -121,7 +121,7 @@ interface sessions {                                 // the owner only, by calle
 record session-info { id: string, title: string, profile: string, backend: string, turn: string, updated: u64 }
 record queued-input { n: u64, input: string }
 record refusal { field: string, backend: string, model: string, reason: string }
-variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow }
+variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow, behind(u64) }
 
 interface offers {                                   // a collect (W34)
   skills: func() -> list<offered-skill>;
@@ -145,7 +145,7 @@ entry (9.4).
 | Wrong caller, unknown or ended id | `not-yours`, `unknown-stream` |
 | Id | 128 random bits, never reused |
 | Sequence | each item numbered from 1 per stream |
-| Batch | every waiting item, up to 256 items or 1 MiB, one `stream-sink.items` call |
+| Batch | every waiting item, up to 256 items or 1 MiB but always at least one item, one `stream-sink.items` call |
 | Failed batch | delivered once more with the same numbers; a second failure ends the stream `consumer-failed` |
 | Commit | items pushed in a call are queued when that call commits; a failed call's pushes are dropped |
 | Item call's caller | `host` for host streams, `mod:<producer>` for mod streams |
@@ -364,7 +364,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `key/<owner>/<key>` | the result of the first call with that key; kept after a delete |
 | `session/<id>` | the session record (9.3) |
 | `owner/<owner>/<n>` | page n of the owner's session ids, 256 per page |
-| `entries/<id>/<n>` | chunk n of the transcript: at most 256 entries or 1 MiB |
+| `entries/<id>/<n>` | chunk n of the transcript: at most 256 entries or 1 MiB; the session record's `chunks` lists the first index of each, so a read starts at the right chunk without reading the ones before |
 | `wire/<id>/<n>` | chunk n of the OpenAI wire history |
 | `loop/<id>` | the OpenAI loop state (9.5) |
 | `quota/<owner>` | the owner's bytes and session count |
@@ -389,11 +389,11 @@ Session record: `id`, `owner`, `key`, `profile`, `backend`, `title`,
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
 `queue` (at most 32 inputs, each numbered from 1 per session), `allows`
 (session allows, 9.6), `counters {turns, tool-errors-in-a-row, tokens}`,
-`next-index`, `created`, `updated`.
+`chunks` (the first index of each entry chunk, 9.1), `next-index`, `created`, `updated`.
 
 | Turn state | Meaning |
 |---|---|
-| `running {activity?}` | a turn is under way; `activity` while it lasts: `checking {on}` (the checked provider asks its judge, 10), `compacting`, `consent {what}` (a request waits for the participant in the app, 8) |
+| `running {activity?}` | a turn is under way; `activity` while it lasts: `checking {on}` (the checked provider asks its judge, 10), `compacting`, `consent {what}` (a request waits for the participant in the app, 8). The activity is live only: pushed as a `turn` update, never stored in the record or as an entry, so it costs no write |
 | `waiting {asks}` | an ask is open |
 | `paused {until}` | a usage limit, or retries ran out; a timer resumes it |
 | `idle {stop}` | `completed`, `interrupted`, `stopped {limit}`, `failed {error}` |
@@ -439,8 +439,16 @@ An entry is JSON:
   `i > after`, open the owner's stream and register it as the session's live
   stream; push those entries, then `{"type":"synced","through":<i>}`; then
   live updates. A previous live stream of the session ends `replaced`.
-- After `synced`, the message being written, if any, is pushed as one chunk
-  of what it holds so far; later chunks follow live.
+- **Replay fits the stream window.** `attach` replays at most 128 entries and
+  2 MiB, half the in-flight limit of 3. When more entries lie after `after`,
+  it opens nothing and returns `behind {through}`; the client pages with
+  `read` first, then attaches again. `read` returns at most `max` (at most
+  256) entries and at most 2 MiB, so every replay call stays within its
+  budget, whatever the length of the transcript.
+- **No partial replay.** A message still being written is not replayed: its
+  text so far lives only in the deltas already sent, and keeping it would cost
+  a state write per delta (V6). A client that attaches mid-message drops that
+  message's later deltas and shows it whole when its entry arrives.
 - Live updates are ACP `SessionUpdate`s (v1), each with `_meta.watane.i` when
   it finishes an entry. N6 (ACP v2) is open.
 - Besides the entries, these go out live under `_meta.watane` and are not
@@ -473,6 +481,14 @@ An entry is JSON:
   `aborted` for a missing output, drop an output without a call, keep call
   order; drop failed turns; replay reasoning only with `encrypted_content`,
   without ids, and only to the model that made it.
+- **Body budget.** ChatGPT sign-in refuses bodies over about 1 MiB, and the
+  host refuses them (5), while compaction happens on the server by token
+  count, after a request is accepted. So the kernel sets `compact_threshold`
+  to at most 200 000 tokens (about 800 KB of text), and measures each body
+  before sending. Over 896 KiB, it leaves out `encrypted_content` reasoning,
+  oldest first, then cuts tool outputs older than the last 4 steps to 8 KiB
+  (marked). Still over 1 MiB: the turn ends `failed {too-large}` and the next
+  `say` continues as for `resume-lost`, from a summary.
 - **Compaction items** returned by the server are stored in the wire history
   and sent back as input; a `compaction` entry marks them. The kernel never
   sends a `compaction_trigger` item or calls `/responses/compact`, which the
@@ -608,7 +624,8 @@ when `claude-codes` cannot parse it.
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
 | `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend` | kernel | 9 |
-| `unknown-input`, `unknown-allow` | kernel | 9.3, 9.6 |
+| `unknown-input`, `unknown-allow`, `behind {through}` | kernel | 9.3, 9.6, 9.4 |
+| `too-large` | OpenAI loop outcome | 9.5, body budget |
 
 Each error also carries a message that names the cause (F-QUAL-3).
 
@@ -738,8 +755,11 @@ Integration tests are modules of one binary per subsystem
     same call asks again; `claude` never received the rule.
 29. An ask entry carries its tool call id, input and `expires-at`; the host
     denies it at that time.
-30. An attach mid-message pushes the text so far after `synced`, then the
-    rest, with nothing doubled.
+30. An attach mid-message shows that message once, whole, from its entry;
+    no delta of it is shown. An attach with more than 128 entries or 2 MiB
+    behind is `behind`; paging with `read`, then attaching, misses and
+    doubles nothing. Streaming a turn writes state once per finished entry,
+    never per delta (count the commits).
 31. Every turn-state change reaches an attached stream as a `turn` update,
     in order, also `checking` and `consent`.
 
@@ -800,8 +820,11 @@ say (layout, spacing, words).
 ### 18.3 From the kernel to the screen
 
 On open and on every reconnect: `attach(session, after: <last index shown>,
-caps)`. The items before `synced` replace nothing that is already shown, and
-an index already shown is dropped. Then live updates follow.
+caps)`; on `behind`, page with `read` (newest pages first, so the end of the
+transcript shows at once), then attach again. The items before `synced`
+replace nothing that is already shown, and an index already shown is
+dropped. Then live updates follow. A message that was being written at
+attach shows "Writing…" until its entry arrives.
 
 | Kernel gives | Console shows |
 |---|---|
