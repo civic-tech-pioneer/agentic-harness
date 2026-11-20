@@ -49,9 +49,9 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
 export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; status: ReactNode;
   session?: { model?: string; mode?: string }; stopping?: boolean }) {
   const { view } = props;
-  const [opened, setOpened] = useState(false);
+  const [opened, setOpened] = useState<boolean | null>(null);
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
-  const folded = (view.openAsks.length > 0 || view.queue.length > 0) && !opened;
+  const folded = !(opened ?? !(view.openAsks.length > 0 || view.queue.length > 0));
   return (
     <div className="wa-dock">
       {view.openAsks.length ? (
@@ -62,14 +62,10 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
       ) : null}
       {view.plan?.length ? (
         <section className="wa-plan" aria-label="Plan">
-          {folded ? (
-            <button type="button" className="wa-plan-head" aria-expanded={false} onClick={() => setOpened(true)}>
-              <svg className="wa-chev" width="14" height="14" strokeWidth="2" {...svg}><path d="M9 6l6 6-6 6" /></svg>
-              Plan · {done} of {view.plan.length} done
-            </button>
-          ) : (
-            <p className="wa-plan-head">{done} of {view.plan.length} done</p>
-          )}
+          <button type="button" className="wa-plan-head" aria-expanded={!folded} onClick={() => setOpened(folded)}>
+            <svg className="wa-chev" width="14" height="14" strokeWidth="2" {...svg}><path d="M9 6l6 6-6 6" /></svg>
+            Plan · {done} of {view.plan.length} done
+          </button>
           {folded ? null : <ul>{view.plan.map((p, n) => <li key={n} data-status={p.status}>{p.content}</li>)}</ul>}
         </section>
       ) : null}

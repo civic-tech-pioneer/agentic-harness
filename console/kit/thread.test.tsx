@@ -279,6 +279,17 @@ describe("StatusLine", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("ac9_waiting_subject_falls_back_to_the_title_and_the_clock_stops_at_zero", () => {
+    status({ state: "waiting", asks: ["t"], expiresAt: T + 5_000 }, { rows: [call("t", "Run npm test", "execute")], asks: ["t"] });
+    expect(word()).toBe("Waiting for you · Execute Run npm test");
+    expect(screen.getByText("· denied in 0:00 if unanswered")).toBeInTheDocument();
+  });
+
+  it("ac9_running_clock_is_m_ss_from_a_minute", () => {
+    status({ state: "running", since: T - 63_000 });
+    expect(screen.getByText("· 1:15")).toHaveAttribute("aria-hidden", "true");
+  });
+
   it("ac9_paused_bars_resume_now", () => {
     const until = new Date(2026, 0, 2, 7, 5).getTime();
     const s = status({ state: "paused", until });
