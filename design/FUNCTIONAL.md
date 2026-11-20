@@ -114,7 +114,7 @@ where it belongs.
 
 ### 3.8 The checked provider
 
-- **AGT-F-32** The checked provider shall ask its judge before a session starts, before each input, before each tool call and before each permission ask. If the judge says unsafe or unsure, answers something unreadable, is slow or is down, then the provider shall deny. If the judge says safe, then the provider shall leave the decision to the profile. The provider shall send nothing of a session to its judge before the participant has consented to the session's workspace, and shall pass nothing to Claude Code before its verdict. Traces: F-AGENT-9.
+- **AGT-F-32** The checked provider shall ask its judge before a session's first input reaches Claude Code, before each input, before each tool call and before each permission ask. If the judge says unsafe or unsure, answers something unreadable, is slow or is down, then the provider shall deny. If the judge says safe, then the provider shall leave the decision to the profile. The provider shall send nothing of a session to its judge before the participant has consented to the session's workspace, and shall pass nothing to Claude Code before its verdict. Traces: F-AGENT-9.
 - **AGT-F-33** After 3 denials in a row, or 10 of the last 50, the checked provider shall stop the turn and say why. Traces: F-AGENT-9.
 - **AGT-F-34** The client shall see each verdict and its reasons. Traces: F-AGENT-6, F-AGENT-9.
 - **AGT-F-35** The plan of the checked provider shall name the host of its judge and say that it sends excerpts of sessions there. Traces: F-INST-1.
