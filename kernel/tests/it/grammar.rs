@@ -288,7 +288,6 @@ fn ac5_rule_grammar_has_no_bypass() {
     for r in [
         "Bash(git status:*)",
         "Bash(npm test:*)",
-        "Bash(npm run build)",
         "Bash(uv pip install:*)",
         "Bash(cargo test)",
         "Bash(npm test)",
@@ -490,7 +489,6 @@ fn ac3_runner_abbreviations_refused_and_project_scripts_pass() {
         "Bash(npm test)",
         "Bash(npm install)",
         "Bash(npm ci)",
-        "Bash(npm run build)",
         "Bash(uv pip install x)",
         "Bash(pnpm install)",
         "Bash(npm i x)",
@@ -499,6 +497,12 @@ fn ac3_runner_abbreviations_refused_and_project_scripts_pass() {
         assert!(one(r).is_empty(), "{r}");
     }
     for r in [
+        "Bash(npm run build)",
+        "Bash(npm run env:*)",
+        "Bash(npm run:*)",
+        "Bash(npm install --script-shell=x)",
+        "Bash(npm ci -- x)",
+        "Bash(uv venv --python x)",
         "Bash(npm exe:*)",
         "Bash(npm ex:*)",
         "Bash(npm explore:*)",
@@ -524,7 +528,6 @@ fn ac2_package_runner_second_word_is_an_allow_list() {
         "Bash(npm test)",
         "Bash(npm install)",
         "Bash(npm ci)",
-        "Bash(npm run build)",
         "Bash(npm i x)",
         "Bash(pnpm install)",
         "Bash(yarn install)",
@@ -561,14 +564,12 @@ fn ac2_package_runner_second_word_is_an_allow_list() {
 /// runner reason, and so are the new first-word runners.
 #[test]
 fn ac2_package_runner_table_is_exact() {
-    let pm = [
-        "install", "add", "test", "run", "list", "ls", "audit", "outdated",
-    ];
+    let pm = ["install", "add", "test", "list", "ls", "audit", "outdated"];
     let table: [(&str, &[&str]); 5] = [
         (
             "npm",
             &[
-                "install", "i", "ci", "test", "run", "ls", "list", "audit", "outdated",
+                "install", "i", "ci", "test", "ls", "list", "audit", "outdated",
             ],
         ),
         ("pnpm", &pm),
@@ -579,7 +580,8 @@ fn ac2_package_runner_table_is_exact() {
         ),
         ("devbox", &["install", "add"]),
     ];
-    let all: Vec<&str> = table.iter().flat_map(|(_, w)| w.iter().copied()).collect();
+    let mut all: Vec<&str> = table.iter().flat_map(|(_, w)| w.iter().copied()).collect();
+    all.push("run");
     let refused = |r: &str| {
         let (_, ps) = parse(&json!({"allow": [r]}).to_string());
         assert_eq!(fields(&ps), ["allow"], "{r}");
