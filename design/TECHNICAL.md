@@ -46,7 +46,8 @@ in the same commit):
   `kernel/src/refuse.rs` (11), `kernel/src/check.rs` (9.2 `check`: every
   refusal at once), `kernel/examples/check.rs` (the maker's command) and
   `kernel/tests/it/` (the tests)
-- planned: `mod.toml`, `wit/world.wit` (2.3, the imports of 2.1), at the root
+- built: `mod.toml` at the root
+- planned: `wit/world.wit` (2.3, the imports of 2.1), at the root
 - planned: `kernel/src/sessions.rs` (9.3: records, keys, queue, quota) and
   `kernel/src/transcript.rs` (9.4: entries, attach, `synced`)
 - planned: `kernel/src/broker.rs` (9.6, session allows) and
@@ -249,16 +250,13 @@ The allow grammar for `Bash` (deny rules are not held to it). An allow
 - A colon appears only as one trailing `:*`.
 - The first word (split on whitespace, after that `:*` is removed) is no path
   (no `/`), has no `~`, and is made only of `A-Za-z0-9._+-`.
-- The first word, lowercased, is not an interpreter or runner. The list is in
-  `kernel/src/profile.rs`; its families are: shells (`bash`, `sh`, `zsh`,
-  `fish`, `dash`, `ksh`, `pwsh`, ...), `env`, every name starting `python`,
-  JavaScript and script runtimes (`node`, `deno`, `bun`, `bunx`, `npx`,
-  `pnpx`, `yarnpkg`, `corepack`, `uvx`, `perl`, `ruby`, `php`, `lua`, `awk`
-  and kin), multiplexers and wrappers (`busybox`, `setsid`, `nice`, `nohup`,
-  `timeout`, `time`, `xargs`, `watch`, `flock`, `sudo`, `doas`, `su`, ...),
-  and shell builtins that run text (`eval`, `exec`, `source`, `.`,
-  `command`, `builtin`). `find` is allowed only with no `*` and no `-exec`,
-  `-execdir`, `-ok` or `-okdir`.
+- The first word, lowercased, is not an interpreter or runner: no name
+  starting `python`, and none of these, because each runs, wraps or schedules
+  another command: `.`, `ash`, `at`, `awk`, `bash`, `builtin`, `bun`, `bunx`, `busybox`, `chroot`, `chrt`, `command`, `corepack`, `crontab`, `csh`, `dash`, `deno`, `doas`, `elixir`, `env`, `eval`, `exec`, `expect`, `fakeroot`, `fish`, `flock`, `gawk`, `gdb`, `ionice`, `irb`, `julia`, `ksh`, `ltrace`, `lua`, `mawk`, `mksh`, `nawk`, `nice`, `node`, `nohup`, `npx`, `nsenter`, `osascript`, `parallel`, `perl`, `php`, `pkexec`, `pnpx`, `pwsh`, `rscript`, `ruby`, `runuser`, `screen`, `script`, `setsid`, `sg`, `sh`, `source`, `stdbuf`, `strace`, `su`, `sudo`, `systemd-run`, `taskset`, `tclsh`, `tcsh`, `time`, `timeout`, `tmux`, `toybox`, `ts-node`, `tsx`, `unshare`, `uvx`, `watch`, `xargs`, `yarnpkg`, `zsh`.
+  This list is the rule; the list in `kernel/src/profile.rs` (`RUNNERS`) must
+  equal it (9.2, Code to change). A word not on the list is not thereby safe:
+  the shell grant's sandbox (4.2) is the limit (14, Not protected). `find` is
+  allowed only with no `*` and no `-exec`, `-execdir`, `-ok` or `-okdir`.
 - A package runner (table) needs a second word from its row and no option
   word (starting `-`) after it, and the rule has no `*` or `:*` anywhere
   (fail-closed: an option or a forwarder can name a program to run).
@@ -275,7 +273,7 @@ The `skills` frontmatter rule, for each file of a skill named `SKILL.md` in
 any case and any folder. Frontmatter starts with `---` and a newline at
 byte 0 (leading white space or a byte order mark before `---` is refused). It
 ends at a line `---`. Its keys are `name` and `description`, each once; an
-indented line continues the key above it; any other line is refused. Every
+indented line continues the key above it and may not contain `:`; any other line is refused. Every
 character is printable ASCII (space to `~`). Each refusal names its reason.
 
 ### 4.2 Grants and tools
@@ -561,6 +559,8 @@ once; `check` runs only this step.
 Code to change (next kernel slice), where `kernel/` differs from this text:
 
 - `yarn ls` is in `PACKAGE_RUNNERS` (`kernel/src/profile.rs`); drop it.
+- `RUNNERS` lacks the names of 4.1 added to it: `tsx`, `ts-node`, `tmux`, `screen`, `runuser`, `pkexec`, `chroot`, `nsenter`, `systemd-run`, `script`, `strace`, `ltrace`, `gdb`, `parallel`, `fakeroot`, `sg`, `tclsh`, `rscript`, `julia`, `expect`, `irb`, `elixir`, `at`, `crontab`; add them.
+- `frontmatter_problem` accepts a `:` in an indented (continuation) line; refuse it (4.1).
 
 ### 9.3 Sessions
 
@@ -614,7 +614,7 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
   whose deadlines are all gone frees its timer. Live session timers are at
   most 240 kernel-wide (the host allows 256 per mod, 7; 16 are kept for the
   kernel's own use); the count is in `slots` (9.1) beside the stream counts
-  and is set to the live count at restart (timers are kept across restarts, 7).
+  and is set to the live count at restart (timers are kept across restarts, 7). One owner holds at most 120 of the 240 (half, as the slots of 9.5); a child session counts against its root's owner (as 9.5). At the owner's cap the same four outcomes follow as at the kernel's cap.
   A session that needs a timer at the cap (and at the host's `too-many`, if it
   ever comes) gets, by deadline: an ask, denied at once, reason `timers`; a
   retry, the turn ends `idle {failed {timers}}`; a usage limit, `paused` with
@@ -630,6 +630,7 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
   256 MiB (host 7); 32 MiB of it is reserved for control records (session
   records, turn states, `slots`, `quota`, `stream/`, `live/` and the entries
   that record a stop), so owners together hold at most 224 MiB of the rest.
+  Past the kernel's 224 MiB account (or an owner's quota) only these writes go on, into the reserve: the entry and turn state that record a stop, ask decisions (including denials by expiry), `stream/` and `live/` keys of an `attach`, slot and timer counts, and every `delete`. `rename`, a session allow (`for: session`) and new input are refused `quota`; so is everything else past the account.
   Past an owner's 64 sessions or 64 MiB (kernel settings by default), or past
   the kernel's 224 MiB: new sessions and inputs are refused `quota`, and a
   running turn ends `stopped {limit: quota}`, written from the reserve. Only a
@@ -823,7 +824,7 @@ An entry is JSON:
   path rules are refused at compilation.
 - An ask goes to the owner when it has an attached stream; otherwise, and for
   an `agent:` owner, it is denied. Kernel asks expire after `ask-expiry`
-  (an `ask` deadline of the session's timer, 9.3; at the timer cap the ask is denied `timers`); Claude asks after 10 minutes (the host).
+  (an `ask` deadline of the session's timer, 9.3; at the timer cap the ask is denied `timers`); Claude asks after 10 minutes (the host). A kernel ask that reaches its `ask-expiry` is denied, reason `expired`, as the host denies a Claude ask at its 10 minutes (4.5); an `ask-expiry` of 0 denies at once. The session is not allowed anything by it.
 - For Claude, rules went in as flags; the broker sees only asks.
 - **Session allows.** An answer `{allow, for: session}` adds a rule to the
   session's `allows`: the tool's name, and for a file tool the workspace it
@@ -1049,7 +1050,7 @@ stages B and E).
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
 | A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` |
-| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/src/sessions.rs`, `kernel/src/transcript.rs` |
+| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/transcript.rs`; the mod's root `src/lib.rs` if the WASM wrapper's scaffold puts the exports and owner checks there |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `kernel/src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs` |
@@ -1059,7 +1060,7 @@ stages B and E).
 
 Not protected: the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
-what the profile allows; plan usage; another program of the same user
+what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others: inside the shell grant's sandbox (4.2) only; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
 (spec 6); whether a subagent prompt that starts with `/` runs a skill (not
 probed; probe V26, slice S1); whether the shell grant's sandbox blocks
 loopback (probe V27, slice S1; table in 16).
