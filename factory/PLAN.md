@@ -50,21 +50,7 @@ Touches: `design/VISION.md`, `design/FUNCTIONAL.md`, `design/TECHNICAL.md`, `AGE
 Leaves out: any code; editing watane's `spec/`.
 Protects: *core*. N5 stays open: write it as open, to be decided at stage F.
 
-### S1: the open probes of section 18 (in flight (local), SESSION)
-
-Story: a maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on the Mac and sees, for the
-current `claude`, (subagent-slash) whether a subagent prompt that starts with `/` runs a skill the profile
-denies, and (loopback) whether the shell grant's sandbox blocks a connection to loopback.
-Outcomes:
-1. `probes.py` runs each new probe by its name, alone, and prints a result line like the others.
-2. Proposal section 18 gains rows V26 and V27 with the result, the `claude` version and the
-   effect on the design; TECHNICAL 14's "not probed" line is not edited here (S2 owns it).
-3. A breach (either one runs or connects) is written as the design effect and flagged to the PO.
-Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` section 18 only.
-Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
-Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
-
-### S3: the kernel's core: profiles, overlays, the refuse table (in flight (cloud), routine R3)
+### S3: the kernel's core: profiles, overlays, the refuse table (in flight (cloud), routine trig_019eJBAcTCobEJRhVgtoZkCd)
 
 Story: a client mod's maker (a coding agent) runs
 `cargo run --manifest-path kernel/Cargo.toml --example check -- <profile.json> <overlay.json> <backend> <model>`
@@ -89,7 +75,7 @@ Leaves out: offers (adoption, hashes), sessions, state, the launch-document gram
 the fields the refuse table names.
 Protects: *guard* (overlays only narrow).
 
-### S4: the console on a scripted session (in flight (cloud), routine R4)
+### S4: the console on a scripted session (in flight (cloud), routine trig_014DLovebAdvPQZZ2vujFUcB)
 
 Story: Alice opens the console (`console/`, served by its dev server) on a scripted fake kernel
 and sees a session as the first target describes (TECHNICAL 18): her message, thinking folded,
@@ -109,6 +95,20 @@ Fakes: the kernel: a scripted feed in `console/` behind the same shape as `attac
 Protects: *core*. The PO compares it with the frames before acceptance.
 
 ## Sketched
+
+### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
+
+Story: a maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on the Mac and sees, for the
+current `claude`, (subagent-slash) whether a subagent prompt that starts with `/` runs a skill the profile
+denies, and (loopback) whether the shell grant's sandbox blocks a connection to loopback.
+Outcomes:
+1. `probes.py` runs each new probe by its name, alone, and prints a result line like the others.
+2. Proposal section 18 gains rows V26 and V27 with the result, the `claude` version and the
+   effect on the design; TECHNICAL 14's "not probed" line is not edited here (S2 owns it).
+3. A breach (either one runs or connects) is written as the design effect and flagged to the PO.
+Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` section 18 only.
+Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
+Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 
 ## Done
 
@@ -142,6 +142,12 @@ S2 writes each into the document that owns it.
 
 ## Waiting on the human
 
+- **S1 cannot start a local foreman.** `claude --bg` in a new worktree refuses: "Workspace not
+  trusted. Run `claude` in <worktree> once and accept the trust prompt". Accepting it is yours;
+  the PO does not bypass a trust prompt. Options: (a) trust `watane-mods/agentic-harness` so its
+  worktrees inherit it, then the PO starts S1; (b) run S1's probes by hand; (c) drop S1 (it is
+  *guard*, two probes). Rec: (a). Undo: none needed.
+
 - **N5 The factory's implementer needs a shell.** The human chose to decide at stage F. Options:
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
   backend in the host, a third native process kind (a new host boundary, costly to remove once
@@ -174,5 +180,10 @@ S2 writes each into the document that owns it.
 - 2026-11-20 PO error: `git commit -a` in a checkout another session also edits swept that
   session's uncommitted `design/TECHNICAL.md` edits into plan commit 5e46864, on main. Nothing
   lost; S2 will rebase over it. The po skill should say: commit `factory/PLAN.md` by path only.
+
+- 2026-11-20 po skill 3 (local): `claude --bg` in a fresh worktree stops on the workspace trust
+  prompt; the skill does not say so, and an unattended PO cannot start any local foreman. The
+  skill (or adopt.sh) should have the human trust the project once, or create local worktrees
+  where trust is inherited.
 
 ## Suite time
