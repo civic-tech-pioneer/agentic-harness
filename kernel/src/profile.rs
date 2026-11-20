@@ -34,13 +34,14 @@ impl FromStr for Backend {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum SystemPrompt {
     Replace(String),
     Append(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Skill {
     pub name: String,
     #[serde(default)]
@@ -48,24 +49,26 @@ pub struct Skill {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Subagent {
     pub name: String,
     pub description: String,
     pub prompt: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Always written, `[]` included: an absent list reads as "inherit every tool".
+    #[serde(default)]
     pub tools: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct PreToolCheck {
     pub timeout_s: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", default)]
+#[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct Profile {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backend: Option<String>,
@@ -77,7 +80,6 @@ pub struct Profile {
     pub effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<SystemPrompt>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub toolsets: Vec<String>,
@@ -142,7 +144,7 @@ pub(crate) const TOOLS: [&str; 12] = [
 const PER_SESSION: [&str; 4] = ["workspace", "extra-workspaces", "agent-handle", "session"];
 /// Commands that run any code given to them, or run the next word as a command (4.1). Names
 /// starting with `python` are runners too.
-const RUNNERS: [&str; 39] = [
+const RUNNERS: [&str; 51] = [
     "bash",
     "sh",
     "zsh",
@@ -166,6 +168,18 @@ const RUNNERS: [&str; 39] = [
     "php",
     "lua",
     "awk",
+    "gawk",
+    "mawk",
+    "nawk",
+    "busybox",
+    "toybox",
+    "setsid",
+    "ionice",
+    "chrt",
+    "taskset",
+    "unshare",
+    "flock",
+    "watch",
     "osascript",
     "eval",
     "exec",
@@ -530,6 +544,18 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
     if base.starts_with("python") || RUNNERS.contains(&base) {
         return Some("allows an interpreter or runner prefix");
     }
+    if base == "find" {
+        let rest: Vec<&str> = words.clone().collect();
+        if low.contains('*') {
+            return Some("allows any further arguments, such as -exec");
+        }
+        if rest
+            .iter()
+            .any(|w| ["-exec", "-execdir", "-ok", "-okdir"].contains(w))
+        {
+            return Some("runs commands with -exec or -ok");
+        }
+    }
     if let Some((_, subs)) = SUB_RUNNERS.iter().find(|(c, _)| *c == base) {
         match words.next() {
             Some(s) if plain(s) && !s.starts_with('-') && !subs.contains(&s) => {}
@@ -578,12 +604,39 @@ fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
     None
 }
 
+/// Plain ASCII `[A-Za-z0-9._-]` segments joined by single `/`, none `.` or `..`.
 fn bad_path(path: &str) -> bool {
-    path.is_empty()
-        || path.starts_with('/')
-        || path.starts_with('\\')
-        || path.as_bytes().get(1) == Some(&b':')
-        || path.split(['/', '\\']).any(|s| s == "..")
+    path.split('/').any(|s| {
+        s.is_empty()
+            || s == "."
+            || s == ".."
+            || !s
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    })
+}
+
+/// The first frontmatter key of a `SKILL.md` besides `name` and `description`, if any (4.1).
+fn extra_frontmatter_key(text: &str) -> Option<String> {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut lines = text.lines();
+    if lines.next()?.trim_end() != "---" {
+        return None;
+    }
+    for line in lines {
+        if line.trim_end() == "---" {
+            return None;
+        }
+        if line.is_empty() || line.starts_with([' ', '\t', '#', '-']) {
+            continue;
+        }
+        let key = line.split(':').next().unwrap_or(line);
+        let key = key.trim().trim_matches(['"', '\'']);
+        if !["name", "description"].contains(&key) || !line.contains(':') {
+            return Some(key.to_string());
+        }
+    }
+    None
 }
 
 /// The grammar rules of 4.1, 4.2 and 9.2 on a typed profile.
@@ -659,6 +712,12 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
     let mut sub_bytes = 0;
     for (i, s) in pr.subagents.iter().enumerate() {
         let pre = format!("subagents[{i}]");
+        if pr.subagents[..i].iter().any(|k| k.name == s.name) {
+            o.push(p(
+                format!("{pre}.name"),
+                format!("{:?} is already a subagent's name", s.name),
+            ));
+        }
         sub_bytes += s.name.len() + s.description.len() + s.prompt.len();
         sub_bytes += s.tools.iter().map(String::len).sum::<usize>();
         sub_bytes += s.model.as_ref().map_or(0, String::len);
@@ -702,6 +761,12 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
     let mut skill_bytes = 0;
     for (i, s) in pr.skills.iter().enumerate() {
         let pre = format!("skills[{i}]");
+        if pr.skills[..i].iter().any(|k| k.name == s.name) {
+            o.push(p(
+                format!("{pre}.name"),
+                format!("{:?} is already a skill's name", s.name),
+            ));
+        }
         if !slug_ok(&s.name) {
             o.push(p(
                 format!("{pre}.name"),
@@ -713,8 +778,28 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
             if bad_path(path) {
                 o.push(p(
                     format!("{pre}.files"),
-                    format!("path {path:?} must be relative, under the skill folder, without .."),
+                    format!("path {path:?} must be plain [A-Za-z0-9._-] segments joined by /, without . or .. segments"),
                 ));
+            }
+            let low = path.to_ascii_lowercase();
+            if s.files
+                .keys()
+                .any(|k| k != path && k.to_ascii_lowercase() == low && k < path)
+            {
+                o.push(p(
+                    format!("{pre}.files"),
+                    format!("path {path:?} equals another path when lowercased"),
+                ));
+            }
+            if low == "skill.md" {
+                if let Some(k) = extra_frontmatter_key(text) {
+                    o.push(p(
+                        format!("{pre}.files"),
+                        format!(
+                            "{path} frontmatter key {k:?}: only name and description are allowed"
+                        ),
+                    ));
+                }
             }
         }
     }
