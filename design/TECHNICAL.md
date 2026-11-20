@@ -26,7 +26,7 @@ needs more adds it to the backend sections first (17).
 | H6 Consent, accounts | app | consent words and storage, Sign in with ChatGPT, the token file, the judge key (8, 5) |
 | WIT | `host/wit/` in `watane:host@0.1.0` | the interfaces of section 2 |
 | pkg | pkg 4.5, 5.1, 7.2 | import and export rows, two grant kinds (15) |
-| dev | `dev/` | a fake `claude` and a scripted Responses server for previews and tests (12) |
+| dev | `dev/` | a fake `claude` and a scripted Responses server, which also serves a judge origin (the judge fake, 16), for previews and tests (12) |
 | M2 Kernel | mod `mods:agent`, this repository (R1, the human, 2026-11-20) | profiles, offers, sessions, transcripts, broker, OpenAI loop, delegation (9) |
 | M1 Providers | two mods `mods:claude-code`, from two publishers, each in its own repository (R1) | unchecked: start and hand off; checked: judge then forward (10) |
 | C1 Console | the kernel's page, `ui/`, built from `console/` in this repository | starting sessions, the transcript, the status line, asks, the queue, the session list (18) |
@@ -791,7 +791,7 @@ the change, and the section here it comes from.
 - [ ] `app/TECHNICAL.md` new section: the consent words and their storage (8).
 - [ ] `app/TECHNICAL.md` new section: the `claude` binary setting (4.4).
 - [ ] `app/TECHNICAL.md` new section: entering, showing (never the value) and removing the judge key and origin on the checked provider's manager page, with the origin shown next to the key and never prefilled, stored in `<home>/app/accounts/judge/<provider mod id>.json` and deleted when the provider is uninstalled (5, 10; N10).
-- [ ] `dev/TECHNICAL.md` new section: the fake `claude` and the scripted Responses server (12, 17).
+- [ ] `dev/TECHNICAL.md` new section: the fake `claude` and the scripted Responses server, which also serves a judge origin: it counts the requests that carry the judge account and plays a judge that answers safe, unsafe or unsure, is down, slow or unreadable (12, 16, 17).
 - [ ] watane licence files: MIT OR Apache-2.0 for all of watane (13; N8).
 
 ## 16. Test plan
@@ -804,7 +804,7 @@ Integration tests are modules of one binary per subsystem
 |---|---|
 | Probes | `proto/claude-probes/probes.py` and `proto/agent-spike/chatgpt-probes.py` against the real programs, rerun after each `claude` update and before raising the minimum version |
 | Golden fixtures | recorded stream-json per `claude` version; recorded Responses streams; each mapped to entries and updates, compared to a stored result |
-| Fakes | dev's fake `claude` (scripted lines, asks, checks, a hook that errors or times out, a crash) and scripted Responses server (checks every request body, answers errors and usage limits) |
+| Fakes | dev's fake `claude` (scripted lines, asks, checks, a hook that errors or times out, a crash) and scripted Responses server (checks every request body, answers errors and usage limits); the same server also serves a judge origin: it counts the requests that carry the judge account and plays a judge that answers safe, unsafe or unsure, is down, slow or unreadable (the "scripted judge server" of cases 25, 32) |
 | Hostile | one test per boundary of 14, as the attacker it names (the adversary step of a slice) |
 | Crash windows | kill the host at named points (after commit, before effect; mid-batch; mid-step) and restart for real; count effects, not return values |
 
