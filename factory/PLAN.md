@@ -92,7 +92,7 @@ highlighted once its block is complete and visible; a large-transcript fixture w
 input, Stop and scroll latency runs in `npm test`.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-### S10: the console's wire into the contract, and S8's 4.5 rules (cloud, after S6 merges: same files)
+### S10: the console's wire into the contract, and S8's 4.5 rules (in flight (cloud), routine trig_01483gqHeV4xSkpbyJMYYxmm)
 
 Story: a kernel maker of stage B reads 2.3, 9.4 and 18 and finds what S4's console relies on.
 Outcomes: S4's wire assumptions (`console/kit/wire.ts`: entries as `_meta.watane {type:"entry"}`,
@@ -167,7 +167,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   =2.1.330, agent-client-protocol-schema =1.20.0. Adversary HELD with a RISK on 4.5 (PO decision
   below); user-sim ACCEPTED. Implementer runs 1/1. Suite: 66 tests 0.23 s; gate 13 s.
 
-- **S6** the review's should-dos and S3's spec debts (PR #11, 21 min in flight). A foreman of
+- **S6** the review's should-dos and S3's spec debts (PR #11, merged 2026-11-20 23:45 UTC, 21 min in flight). A foreman of
   stage B or D finds P07-P12 as rules with cases 54-59: active history from the newest compaction
   (P07), 64 KiB transcript chunks (P08), `stream/<id>` and `live/<session>` keys (P09), one timer
   per session, 240 kernel-wide and 120 per owner (P10), host byte budgets 512/128/16 MiB (P11),
