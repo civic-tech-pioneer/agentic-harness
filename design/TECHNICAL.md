@@ -1004,7 +1004,8 @@ when `claude-codes` cannot parse it.
 | `not-owner`, `not-direct` | providers | 2.2, 10 (`not-owner`: the caller is not the kernel) |
 | `unknown-input`, `unknown-allow`, `behind {through}` (`through`: the high-water index) | kernel | 9.3, 9.6, 9.4 |
 | `too-large` | OpenAI loop outcome | 9.5, body budget |
-| `failed {timers}`, ask denial `timers` | kernel turn outcome, ask reason | 9.3 (no timer slot at the cap of 240) |
+| `failed {timers}`, ask denial `timers` | kernel turn outcome, ask reason | 9.3 (no timer slot at the cap of 240, or at the owner's 120) |
+| ask denial `expired` | kernel ask reason | 9.6 (a kernel ask reached its `ask-expiry`) |
 
 Each error also carries a message that names the cause (F-QUAL-3).
 
