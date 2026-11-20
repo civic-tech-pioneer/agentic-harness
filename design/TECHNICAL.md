@@ -518,7 +518,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `quota` | the kernel-wide account: bytes and sessions of all owners (9.3) |
 | `stream/<id>` | `{session, kind}` (`kind`: `provider`, `request`, `job`, `owner`), written in the call that opens or receives the stream, deleted on its `ended` (9.4) |
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
-| `slots` | `{provider, request, job: counts; timers; head, tail}`: the stream slots in use, the live session timers (9.3) and the ends of the waiting FIFO (9.5) |
+| `slots` | `{provider, request, job: counts; timers; boot; head, tail}`: the stream slots in use, the live session timers (9.3), the boot number (9.4) and the ends of the waiting FIFO (9.5) |
 | `slots/wait/<n>` | a session id waiting for a slot (9.5) |
 
 ### 9.2 Profiles and overlays
@@ -708,9 +708,14 @@ An entry is JSON:
   lists the open ones (9.3). An item call reads `stream/<id>` first. A call
   that only forwards a delta (no finished entry) reads `stream/<id>` and
   `live/<session>` only: no session record, no transcript chunk, no wire
-  chunk, and it writes nothing. The restart pass that writes `unknown` (9.3)
-  deletes the `stream/` keys of the session's `streams` and `live/<session>`
-  (streams are memory only, 3).
+  chunk, and it writes nothing. Streams are memory only (3), so after a
+  restart these keys are stale; nothing reads a `stream/<id>` of an old
+  stream again (ids are never reused). Each `streams` id carries the kernel's
+  boot number (a counter in `slots`, raised once per start); the first call
+  after a restart that reads a session's record (the restart pass for a
+  running one, else its next `attach`, `say`, `read` or `delete`) deletes the
+  `stream/` keys of older boots and their `live/<session>`, in the same
+  commit. Until then they stay charged to the owner (9.3, Quota).
 - **Chunk reads.** A `read` page (2 MiB) reads at most 33 chunks of 64 KiB
   plus one, so it stays bounded. Appending an entry rewrites only the last
   chunk (9.1).
@@ -976,7 +981,7 @@ when `claude-codes` cannot parse it.
 | `json-schema` | flag; the kernel checks the answer; a missing `structured_output` fails | `text.format`; a schema outside the strict subset refused; the kernel checks the answer |
 | `max-turns`, `max-tool-errors`, `max-tokens` | flag and counters | counters |
 | `max-budget-usd` | flag | refused |
-| `ask-expiry` | refused unless 600 (seconds) or absent | a timer |
+| `ask-expiry` | refused unless 600 (seconds) or absent | an `ask` deadline of the session timer (9.3) |
 | `persist` | flag | `false` keeps the transcript in memory only |
 
 ## 12. Errors
@@ -1287,8 +1292,9 @@ of `spec/VISION.md`.
     attach give back every entry once across chunk ends.
 56. (9.1, 9.4, P09) An item call carrying only a delta reads `stream/<id>` and
     `live/<session>` and nothing else, and writes nothing (count the reads and
-    commits); after a restart, no `stream/` key or `live/` key of a stream
-    from before it is left.
+    commits); after a restart, the first call that reads a session's record
+    (running or idle) leaves no `stream/` key or `live/` key of that session
+    from before the restart.
 57. (9.3, 9.5, 9.6, 7, P10) One session with an open ask, a retry and an idle
     release holds one host timer; it fires each in time order. With 240
     session timers live, a new ask is denied `timers`, a retry ends `idle
