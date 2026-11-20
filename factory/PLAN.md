@@ -46,7 +46,7 @@ Fakes: the kernel: a scripted feed in `console/` behind the same shape as `attac
 (TECHNICAL 2.3, 9.4). Leaves out: profiles and offer pages, the real host.
 Protects: *core*. The PO compares it with the frames before acceptance.
 
-### S6: the review's should-dos P07 to P12, and S3's spec debts (in flight (cloud), routine ROUTINE_S6)
+### S6: the review's should-dos P07 to P12, and S3's spec debts (in flight (cloud), routine trig_014PPn8yaasuqjGjGycvXqCg)
 
 Story: a foreman of stage B or D reads TECHNICAL and finds the remaining bounds of the performance
 review, and the rules S3 decided in code, written where they belong.
@@ -66,7 +66,7 @@ Outcomes:
 Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Not the record, not `kernel/`.
 Protects: *core* (*guard* for 2 and 3).
 
-### S8: the kernel's adapters: Claude and Responses lines to ACP v1 (in flight (cloud), routine ROUTINE_S8)
+### S8: the kernel's adapters: Claude and Responses lines to ACP v1 (in flight (cloud), routine trig_017iKEQyBp4bB3RMVZnPDTsf)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and sees each row of 9.8 turn a recorded
 Claude stream-json line or Responses event into the ACP v1 update and transcript entry it names.
