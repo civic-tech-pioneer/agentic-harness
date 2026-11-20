@@ -269,3 +269,22 @@ describe("adversary S4 rerun 2: re-attach pacing", () => {
     expect(attaches).toBeLessThanOrEqual(3);
   });
 });
+
+// Adversary, slice S4 rerun 3 on S4-fix3: "no kernel answer can make the console read in a loop without pause".
+describe("adversary S4 rerun 3: paging pace", () => {
+  it("adv_S4_pages_that_add_nothing_under_a_huge_behind_read_in_a_loop_without_pause", async () => {
+    // a `behind` far past the last index, and every page answers the same old entry: no page after the first
+    // adds an index, yet pageIn only checks progress after the last page, so it reads behind/256 pages back to back
+    let reads = 0;
+    const same = j({ v: 1, i: 1, kind: "message", at: 1, body: { role: "user", content: [text("m1")] } });
+    const k: Kernel = {
+      async attach() { return { behind: 1_000_000_000 }; },
+      read: () => (++reads > 200 ? new Promise<string[]>(() => {}) : Promise.resolve([same])),
+      async say() { return 0; }, async answer() {}, async interrupt() {}, async takeBack() {},
+    };
+    const s = openSession(k, "s1", () => {});
+    await new Promise((r) => setTimeout(r, 50));
+    s.close();
+    expect(reads).toBeLessThanOrEqual(3);
+  });
+});
