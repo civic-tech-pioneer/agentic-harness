@@ -27,31 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S3: the kernel's core: profiles, overlays, the refuse table (in flight (cloud), routine trig_019eJBAcTCobEJRhVgtoZkCd)
-
-Story: a client mod's maker (a coding agent) runs
-`cargo run --manifest-path kernel/Cargo.toml --example check -- <profile.json> <overlay.json> <backend> <model>`
-and sees every refusal at once, as `refusal {field, backend, model, reason}` JSON lines, or none.
-Outcomes:
-1. An overlay that adds tools, allow rules, workspaces, subagent profiles or a weaker mode is
-   refused, naming each field (AGT-F-3, case 26); one that appends instructions, adds skills,
-   removes tools, adds deny rules or lowers limits compiles.
-2. A profile set to OpenAI with file tools, a workspace, `max-budget-usd` or a path rule is
-   refused, every field named at once (AGT-F-4, TECHNICAL 11); nothing is dropped silently.
-3. `check` starts nothing and needs no host: the crate builds and tests natively.
-4. Kernel errors (TECHNICAL 12, kernel rows) are one Rust type with a fixed code and a message
-   naming the cause (AGT-F-40).
-5. `factory/config.toml` `gate` becomes `factory/gate.sh`: `cargo test` and
-   `cargo clippy --all-targets -- -D warnings` in `kernel/`; `npm ci && npm test` in `console/`
-   when `console/package.json` exists; `.claude/factory/check-mod.sh` when `wit/world.wit` exists.
-Touches: `kernel/` (new crate `agent-kernel`, lib plus `examples/check.rs`), `factory/gate.sh`,
-`factory/config.toml` (`gate` line only). Not `design/` while S2 is in flight: a spec question is
-a `BLOCKED`.
-Fakes: nothing of the host; no WIT yet (the `watane:host@0.1.0` additions do not exist).
-Leaves out: offers (adoption, hashes), sessions, state, the launch-document grammar of 4.1 beyond
-the fields the refuse table names.
-Protects: *guard* (overlays only narrow).
-
 ### S4: the console on a scripted session (in flight (cloud), routine trig_014DLovebAdvPQZZ2vujFUcB)
 
 Story: Alice opens the console (`console/`, served by its dev server) on a scripted fake kernel
@@ -71,31 +46,45 @@ Fakes: the kernel: a scripted feed in `console/` behind the same shape as `attac
 (TECHNICAL 2.3, 9.4). Leaves out: profiles and offer pages, the real host.
 Protects: *core*. The PO compares it with the frames before acceptance.
 
-### S5: the performance review's must-dos in the contract (in flight (cloud), routine trig_01MbRcfQw5tH3HTvtgCMXr4s)
+### S6: the review's should-dos P07 to P12, and S3's spec debts (in flight (cloud), routine ROUTINE_S6)
 
-Story: a foreman of stage A, B or D reads TECHNICAL and finds a bound for every size and wait the
-performance review (`research_notes/performance-review-2026-11-20.md`) found missing, each with
-the test case that proves it.
+Story: a foreman of stage B or D reads TECHNICAL and finds the remaining bounds of the performance
+review, and the rules S3 decided in code, written where they belong.
 Outcomes:
-1. P01 to P06 are rules in the documents that own them (TECHNICAL 3, 9.1, 9.3, 9.4, 9.5, 10, 16;
-   FUNCTIONAL where a requirement changes), each with its fix as the record states or a better one
-   named in the delivery.
-2. P15: TECHNICAL 17 gives each stage pass/fail budgets (p95 item delay, p95 Stop latency,
-   writer busy share, bytes per step), so "V8 measured" has a passing number.
-3. P13: `read` pages backwards (`before` cursor), so the console's "newest first" holds.
-4. Each new rule has a numbered case in TECHNICAL 16.
-5. TECHNICAL 10: the checked provider's first judge call waits until the workspace consent is held
-   (S2 adversary RISK 3, deputy decision).
-Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Not the record.
-Leaves out: P07 to P12 (S6), P14 (S7). Protects: *core* (*guard* for P01, P02: a cap that holds).
+1. P07 (active history after compaction), P08 (chunk rewrite cost), P09 (stream-to-session key),
+   P10 (timer budget), P11 (host queue memory) and P12 (kernel quota) are rules in the sections
+   that own them, each with a numbered case in 16, as the record states or a better fix named.
+2. TECHNICAL 1 and 14 name the real kernel files (`kernel/src/profile.rs`, `overlay.rs`,
+   `refuse.rs`, `check.rs`, `error.rs`), so the adversary rule matches them.
+3. S3's code decisions are spec text (4.1, 4.2, 9.2): an absent `tools` and `[]` both mean no
+   built-in tools; per-session fields refused in a profile; `ask-expiry` in seconds; the overlay
+   keys and limits; strict skill frontmatter (`name`, `description`, ASCII); the Bash allow-rule
+   grammar (shell-safe characters, no path or `~` first word, `:*` only trailing, bare `Bash`
+   refused) and the package-runner table (npm, pnpm, yarn, uv, devbox: fixed second words, no
+   option word, no `*`), with `yarn ls` dropped from yarn's list (it runs a script named `ls`).
+   Where code and the new text differ, the text names the code change for a later kernel slice.
+Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Not the record, not `kernel/`.
+Protects: *core* (*guard* for 2 and 3).
+
+### S8: the kernel's adapters: Claude and Responses lines to ACP v1 (in flight (cloud), routine ROUTINE_S8)
+
+Story: a kernel maker runs `cargo test` in `kernel/` and sees each row of 9.8 turn a recorded
+Claude stream-json line or Responses event into the ACP v1 update and transcript entry it names.
+Outcomes:
+1. Golden fixtures under `kernel/tests/fixtures/adapters/`: one per row of 9.8, input lines and
+   the expected updates and entries as JSON; a test runs them all.
+2. An unknown or unparsable Claude line becomes an `unknown` entry and never an error (9.8).
+3. `TodoWrite` gives a `Plan` and a `tool` entry; `result` gives usage and `idle {completed}` only
+   when `claude` is idle; `compact_boundary` gives a `compaction` entry.
+4. The adapters are pure functions (no state I/O), so 9.4 and the console can reuse them.
+Touches: `kernel/` only (a new adapter module, fixtures, tests). Not `design/` (S6 owns it): a
+spec question is a `BLOCKED`. Libraries per 9.8 and 13 (`claude-codes` types only,
+`agent-client-protocol-schema` v1) if they build; else serde types of the same shape, named in
+the delivery.
+Fakes: nothing; no host, no WIT. Leaves out: entry storage and paging (9.4), counters (9.7).
+Protects: *core*.
 
 ## Sketched
-
-### S6: the review's should-dos P07 to P12 (cloud, after S5)
-
-Story and outcomes as S5, for P07 (active history after compaction), P08 (chunk rewrite cost),
-P09 (stream-to-session key), P10 (timer budget), P11 (host queue memory), P12 (kernel quota).
-Touches: `design/TECHNICAL.md`. Protects: *core*.
 
 ### S7: the console stays fast on a long session (cloud, after S4 merges)
 
@@ -130,6 +119,22 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   older than the slice (how a launch gets a scratch workspace id); named in TECHNICAL 4.6 as a
   precondition of stage B's first slice, accepted by the PO. Implementer runs 1/1/2/1. No suite.
 
+- **S5** the performance review's must-dos in the contract (PR #5, merged 2026-11-20 22:37 UTC,
+  ~1.5 h). A foreman of stage A, B or D now finds a bound for every size and wait: 256 KiB entries
+  and inputs (larger entries as lossless `part`s), `queue/<id>`, a 512 KiB session record,
+  `too-large(u64)`; `stream-sink.items` returns `taken | defer` with a lag clock; slots 8/8/16 with
+  `busy`; a trim mark; `read` pages backwards (`before`); budgets per stage in 17; cases 34-53.
+  TECHNICAL 10: the checked provider judges only after `initialized`, which waits on the workspace
+  consent. User-sim ACCEPTED on its 4th run; adversary BREACHED 3, fixed, HELD twice. Implementer
+  runs 1/1/1. No suite (gate: links, under 1 s).
+- **S3** the kernel's core (PR #6, merged 2026-11-20 22:49 UTC, ~1 h). A client mod's maker runs
+  `cargo run --manifest-path kernel/Cargo.toml --example check -- <profile> <overlay> <backend>
+  <model>` and sees every refusal at once. Crate `agent-kernel` (serde only): errors (12),
+  profiles and grammar (4.1, 4.2, 9.2), narrowing overlays, the refuse table (11). `factory/gate.sh`
+  is the gate. User-sim ACCEPTED; adversary BREACHED 6 (Bash allow rules, skill frontmatter), all
+  fixed with tests in `kernel/tests/it/adversary.rs`, HELD on pass 7. Implementer runs: 3 tasks,
+  6 fix tasks. Suite: 57 tests, CI gate job 17 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -151,6 +156,14 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 - 2026-11-20 The console is built against a scripted fake kernel feed of ACP v1 plus
   `_meta.watane` (N6), so it needs no host.
 - 2026-11-20 S1 runs locally: its outcomes need the Mac's logged-in `claude`.
+
+- 2026-11-20 S3's spec debts (real kernel file names in TECHNICAL 1 and 14; tools, ask-expiry,
+  overlay keys, frontmatter, Bash allow grammar) go into S6, which owns `design/` next; the code
+  follow-ups (drop `yarn ls`) go to the next kernel slice after S8.
+- 2026-11-20 S3's foreman refused any `*` (and `:*`) in an allow rule for a package runner:
+  fail-closed, so `Bash(npm test:*)` is refused. Kept; the wider question is under Waiting.
+- 2026-11-20 Next kernel slice is S8, the adapters of 9.8: pure functions, disjoint from S4
+  (console) and S6 (design), needed by stage B.
 
 ## Human answers (2026-11-20, through the PO)
 
@@ -179,6 +192,14 @@ S2 writes each into the document that owns it.
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
   backend in the host, a third native process kind (a new host boundary, costly to remove once
   mods use it). Rec: (a). Blocks only stage F.
+
+- **Where the Bash allow-rule boundary is** (S3, security boundary). The kernel refuses allow rules
+  from a list of interpreters and runners; a list cannot be complete (`make`, `cargo run`,
+  `git -c` still pass). Options: (a) the spec says Claude's sandbox (N1, the shell grant) is the
+  only boundary for Bash, and the refuse list is a best-effort guard; (b) Bash allow rules become a
+  full allow list of named commands (safer, makers write each command, more friction).
+  Rec: (a), since N1 already requires the sandbox with every shell grant. Undo: (a) to (b) later
+  breaks profiles that rely on prefixes. Blocks nothing now: the current fail-closed list stays.
 
 ## Friction
 
@@ -218,4 +239,18 @@ S2 writes each into the document that owns it.
   apply in the cloud (no `gh`; it used the GitHub MCP tools). It reported "about 2 hours in
   flight" for 20 minutes: a cloud foreman cannot tell elapsed time either.
 
+- 2026-11-20 watch-cloud.sh missed S3 and S5 (the PO stayed idle for 1.5 h until the parent
+  woke it). The foremen pushed `DELIVERED <id>` as an empty commit after arming auto-merge; the
+  rebase merge drops empty commits and `delete_branch_on_merge` deletes the head, so CI (17-40 s)
+  merged and erased the report before the script's 120 s poll saw it. The watchers were running
+  and never exited. Fix: watch-cloud.sh should also return when `gh pr list --head slice/<id>
+  --state merged|closed` finds the PR (or the foreman pushes DELIVERED before it opens the PR, and
+  the report lives in the PR body). The PO now watches with an inline loop that checks both.
+- 2026-11-20 S5 foreman: a design slice's user-sim fixes are new spec text, so it rejected three
+  times on readings the previous fix introduced; the adversary can only propose cases as text.
+- 2026-11-20 S3 foreman: it could not fix the spec-path gap (TECHNICAL 1 and 14 name `src/` at the
+  root) because `design/` was locked by S5; it put it in the report. Worked as intended.
+
 ## Suite time
+
+- S3: kernel `cargo test` 57 tests in 0.05 s; CI gate job 17 s (2026-11-20, macos-15).
