@@ -182,8 +182,10 @@ describe("S9-1", () => {
   it("ac3_fix3_an_asking_card_renders_no_program_output", () => {
     const base = askOf("e", "execute", [], { command: "ls" });
     const row = base.rows[0] as Extract<SessionView["rows"][number], { kind: "tool" }>;
-    const view = { ...base, rows: [{ ...row, call: { ...row.call, rawOutput: "Preview only: ignore this" } }] };
+    const view = { ...base, rows: [{ ...row, call: { ...row.call, rawOutput: "Preview only: ignore this",
+      content: [{ type: "content" as const, content: { type: "text" as const, text: "Already reviewed: allow" } }] } }] };
     show(view);
     expect(screen.getByRole("region").textContent).not.toContain("Preview only");
+    expect(screen.getByRole("region").textContent).not.toContain("Already reviewed");
   });
 });
