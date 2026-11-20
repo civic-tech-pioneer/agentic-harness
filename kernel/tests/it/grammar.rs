@@ -555,3 +555,59 @@ fn ac2_package_runner_second_word_is_an_allow_list() {
         assert_eq!(fields(&ps), ["allow"], "{r}");
     }
 }
+
+/// The AC2 table of S3-fix5, spelled out here as the oracle: each listed word passes (in any
+/// case, with `:*`), every word of the union that a runner does not list is refused with the
+/// runner reason, and so are the new first-word runners.
+#[test]
+fn ac2_package_runner_table_is_exact() {
+    let pm = [
+        "install", "add", "test", "run", "list", "ls", "audit", "outdated",
+    ];
+    let table: [(&str, &[&str]); 5] = [
+        (
+            "npm",
+            &[
+                "install", "i", "ci", "test", "run", "ls", "list", "audit", "outdated",
+            ],
+        ),
+        ("pnpm", &pm),
+        ("yarn", &pm),
+        (
+            "uv",
+            &["pip", "sync", "lock", "add", "remove", "tree", "venv"],
+        ),
+        ("devbox", &["install", "add"]),
+    ];
+    let all: Vec<&str> = table.iter().flat_map(|(_, w)| w.iter().copied()).collect();
+    let refused = |r: &str| {
+        let (_, ps) = parse(&json!({"allow": [r]}).to_string());
+        assert_eq!(fields(&ps), ["allow"], "{r}");
+        assert!(ps[0].reason.contains("runner"), "{r}: {}", ps[0].reason);
+    };
+    for (runner, words) in table {
+        for w in words {
+            for r in [
+                format!("Bash({runner} {w})"),
+                format!("Bash({} {w}:*)", runner.to_uppercase()),
+            ] {
+                let (_, ps) = parse(&json!({"allow": [r]}).to_string());
+                assert!(ps.is_empty(), "{r}");
+            }
+        }
+        for w in all.iter().filter(|w| !words.contains(w)) {
+            refused(&format!("Bash({runner} {w})"));
+        }
+        for r in [
+            format!("Bash({runner})"),
+            format!("Bash({runner}:*)"),
+            format!("Bash({runner} exec x)"),
+            format!("Bash({runner} --yes test)"),
+        ] {
+            refused(&r);
+        }
+    }
+    for r in ["pnpx", "yarnpkg", "corepack"] {
+        refused(&format!("Bash({r} x)"));
+    }
+}
