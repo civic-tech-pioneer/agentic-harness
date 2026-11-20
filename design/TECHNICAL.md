@@ -177,8 +177,24 @@ interface offers {                                   // a collect (W34)
 ```
 
 `input`, `overlay`, `decision` and `caps` are JSON: ACP content blocks, an
-overlay document (9.2), `{allow | deny, for?: "session", reason?, input?}`,
-and ACP client capabilities. `allow` in `take-back` is the id of an `allow`
+overlay document (9.2), a decision (below), and ACP client capabilities.
+
+`decision` has exactly one of `allow`, `deny`, `none`, its value `true`:
+
+| Decision | Meaning |
+|---|---|
+| `{"allow":true}` | allow this call |
+| `{"allow":true,"for":"session"}` | allow it and add its `reach` (9.4, 9.6) to the session's allows |
+| `{"allow":true,"input":{…}}` | allow with a changed input; only for `AskUserQuestion` and `ExitPlanMode` (4.5) |
+| `{"deny":true,"reason":"<text>"}` | deny; `reason` is optional, empty when absent |
+| `{"none":true}` | no verdict: a check only (4.5) |
+
+Any other shape, or `for`, `input` or `reason` with the wrong outcome, is
+`refused` with one refusal `{field: "decision", reason}`. `answer`'s `ask` is
+the `id` of the ask entry (9.4; the ask id of the deadlines in 9.3), never the
+tool call id. A check (`kind: "check"`, 9.4) is answered only by the checked
+provider (10); the owner's `answer` to it is refused, `{field: "ask"}`.
+`allow` in `take-back` is the id of an `allow`
 entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5); its message names the cap. `read`: 9.4.
 
 ## 3. Streams (H1)
@@ -597,6 +613,29 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
 | `unknown` | written after a restart for a session that was running |
 | `resume-lost` | `claude` refused a resume; the next `say` starts a new Claude session seeded with a summary |
 
+The turn state is this JSON, one line per state:
+
+```json
+{"state":"running","since":1763600000000,"activity":{"kind":"checking","on":"<ask id>"}}
+{"state":"running","since":1763600000000,"activity":{"kind":"compacting"}}
+{"state":"running","since":1763600000000,"activity":{"kind":"consent","what":"<text>"}}
+{"state":"waiting","asks":["<ask id>"],"expires-at":1763600060000}
+{"state":"paused","until":1763603600000}
+{"state":"idle","stop":{"kind":"completed"},"seconds":12,"tools":3,"tokens":5400}
+{"state":"idle","stop":{"kind":"stopped","limit":"<limit>"}}
+{"state":"idle","stop":{"kind":"failed","error":"<error>"}}
+{"state":"unknown"}
+{"state":"resume-lost"}
+```
+
+`activity` is optional and live only; `checking` has `on` the ask id, or
+`"input"` for a check of the input. `expires-at` of `waiting` is the earliest
+open ask's. `until` of `paused` is absent for a pause with no time. `stop.kind`
+`interrupted` is as `completed`. `seconds`, `tools` and `tokens` are the turn's
+wall time, tool calls and tokens, for the footer of 18.3; each is optional.
+The body of a `turn` entry (9.4) and the `state` of a `turn` item (9.4, "The
+wire") are this JSON; the entry has no `activity`.
+
 - `start` and `say` and `answer` check `key/<owner>/<key>` first.
 - `say` while `running` or `waiting` queues; `queue-full` past 32 inputs or 2 MiB. `queued`
   lists the queue; `unqueue` removes one input not yet taken, and refuses
@@ -650,15 +689,43 @@ An entry is JSON:
 
 | Kind | Body |
 |---|---|
-| `message` | a finished ACP message (user or agent, text and content blocks) |
-| `tool` | an ACP tool call with its final status and output (output cut to 64 KiB, marked) |
-| `ask` | the ask: its tool call id, the full tool input, `expires-at`; later its decision, the reason given, and who decided |
-| `allow` | a session allow given or taken back: its reach (9.6) and who |
-| `verdict` | a checked provider's verdict and reasons |
-| `turn` | a turn state of 9.3 |
-| `compaction` | that a compaction happened, and how many tokens before |
-| `unknown` | a vendor line or event the adapters do not know, raw |
+| `message` | `{"role":"user"\|"agent","content":[<ACP content blocks>],"thought":{"text":"<text>","seconds":<n>}?}`; `thought` on an agent message is the thinking of that step joined, `seconds` from its first to its last thought chunk's `at`, rounded |
+| `tool` | an ACP ToolCall with its final status: `{"toolCallId","title","kind"?,"status","content"?,"locations"?,"rawInput"?,"rawOutput"?}`; output cut to 64 KiB, marked |
+| `ask` | the ask, below; later a decision entry that repeats it |
+| `allow` | `{"id":"<allow id>","reach":"<rule>","given":true\|false,"by":"<who>"}`: a session allow given or taken back (9.6) |
+| `verdict` | `{"on":"<ask id>"\|"input","toolCallId":"<id>"?,"outcome":"safe"\|"unsafe","reasons":[…],"by":"<provider>"}`; `toolCallId` when `on` is an ask |
+| `turn` | the turn JSON of 9.3 without `activity` |
+| `compaction` | `{"tokens-before":<n>?}` |
+| `unknown` | `{"raw":<the JSON value, or the line as a string>}`: a vendor line or event the adapters do not know |
 | `part` | one slice of an entry over 256 KiB, as below |
+
+**Naming.** Names ACP has keep ACP's spelling (`toolCallId`, `toolCall`,
+`rawInput`, `sessionUpdate`); the kernel's own keys are kebab-case
+(`expires-at`, `context-used`).
+
+The body of an `ask`:
+
+```json
+{"id":"<ask id>","kind":"ask","toolCallId":"<the call's own id>",
+ "toolCall":{"toolCallId":"<the same>","title":"…","rawInput":{}},
+ "input":{},"expires-at":1763600060000,"reach":"Edit(<workspace>/**)"}
+```
+
+`kind` is `ask` or `check`. `toolCall` is the ACP ToolCall, its `rawInput` the
+input; `input` is the full input. `reach` is the session allow that
+`{"allow":true,"for":"session"}` would add (9.6); it is absent when none is
+offered (a check, an `agent:` owner). A decision is a later `ask` entry that
+repeats every field of the ask and adds:
+
+```json
+"decision":{"outcome":"allow"|"deny"|"none","by":"<who>","for":"session"?,"reason":"<text>"?}
+```
+
+`by` is `owner`; `session-allow`; `checked` (the checked provider); `kernel`
+(a kernel ask's expiry, `timers`, no owner stream, `cancel`); or `host` (a
+Claude ask the host resolved: `reason` is the host's `by`, `expired` or
+`cancelled`). Repeating the ask lets a page that starts at the decision show
+the card.
 
 - Indexes start at 1, increase by one, never change. Deltas are never
   entries.
@@ -676,7 +743,9 @@ An entry is JSON:
   whole entry or part, and paging always makes progress. No content is cut by
   this rule (tool output stays cut at 64 KiB, as before).
 - Reading an entry of an older `v` upgrades it in memory; an unknown `kind`
-  or newer `v` reads as `{"kind": "unreadable", "raw": …}`. Nothing is
+  or newer `v` reads as `{"kind": "unreadable", "raw": …}`. An `unreadable`
+  entry keeps its `i` (and `at` when it has one), so paging, replay from
+  `i + 1` and the drop of shown indexes (18.3) still hold. Nothing is
   migrated in bulk.
 - `attach(session, after, caps)`: in one call, read the entries with
   `i > after`, open the owner's stream and register it as the session's live
@@ -735,8 +804,54 @@ An entry is JSON:
   not used (N6, the human, 2026-11-20).
 - Besides the entries, these go out live under `_meta.watane` and are not
   stored: `{"type":"turn"}` with every change of the turn state (9.3),
-  `{"type":"queue"}` (9.3), and `{"type":"usage","context-used",
-  "context-window","compact-at"?}` after each step (9.7).
+  `{"type":"queue"}` (9.3), and `{"type":"usage",…}` after each step (9.7).
+
+**The wire.** Every stream message is one JSON object:
+
+```json
+{"sessionUpdate":"agent_message_chunk","content":{…},"_meta":{"watane":{"at":1763600000000,"i":42}}}
+{"_meta":{"watane":{"type":"entry","entry":{"v":1,"i":43,"kind":"ask","at":1763600000000,"body":{…}}}}}
+{"_meta":{"watane":{"type":"synced","through":43,"writing":true}}}
+{"_meta":{"watane":{"type":"turn","state":{"state":"idle","stop":{"kind":"completed"}}}}}
+{"_meta":{"watane":{"type":"queue","inputs":[{"n":1,"input":"<input JSON>"}]}}}
+{"_meta":{"watane":{"type":"usage","context-used":1200,"context-window":200000,"compact-at":180000}}}
+```
+
+- An ACP v1 `SessionUpdate` carries `_meta.watane.at` (ms, the kernel's clock
+  when it adapted the line) on every live update, and `_meta.watane.i` on the
+  update that finishes an entry (`message`, `tool`).
+- An entry with no ACP form (`ask`, `allow`, `verdict`, `turn`, `compaction`,
+  `unknown`, `part`) goes out as an `entry` item, live and in replay. In
+  replay every entry goes out as an `entry` item; a client also accepts a bare
+  entry object. An ask goes out once, as its `entry` item: there is no separate
+  `ask` update.
+- `synced` ends the replay. `writing` is true when a message was being written
+  at the attach (18.3, "Writing…"), absent otherwise.
+- Right after `synced`, before any live update, `attach` pushes the current
+  `turn` item, the `queue` item, the last `usage` item when there was one, and
+  the turn's last `Plan` update when the turn has one.
+- `turn`: `state` is the turn JSON of 9.3. `queue`: `inputs` as `queued` gives
+  them. `usage`: `compact-at` is optional.
+
+**Code to change.** The wire above differs from the code in these places.
+
+- Console, a console slice after S9: read `expires-at` (not `expiresAt`) in
+  the ask body and the `waiting` turn.
+- Console, a console slice after S9: `answer` with the ask entry's `id`, not
+  the tool call id.
+- Console, a console slice after S9: accept `paused` without `until`.
+- Console, a console slice after S9: accept a `verdict` without `toolCallId`
+  (`on: "input"`).
+- Console, a console slice after S9: accept a decision entry `by` value it
+  does not know, and show it as text.
+- Console, a console slice after S9: draw a `check` with no Allow button.
+- Kernel, S12: the ask entry body `tool-call-id` becomes `toolCallId`, and it
+  gains `toolCall` and `reach`.
+- Kernel, S12: the `ask` `_meta.watane` item becomes the `entry` item (no
+  separate ask update, no `options`).
+- Kernel, S12: `ask-resolved` becomes a decision entry that repeats the ask.
+- Kernel, S12: a finished agent message carries `thought`.
+- Kernel, S12: live updates carry `_meta.watane.at`.
 
 ### 9.5 The OpenAI loop
 
@@ -1111,8 +1226,10 @@ the change, and the section here it comes from.
 ## 16. Test plan
 
 Integration tests are modules of one binary per subsystem
-(`<sub>/tests/it/<file>.rs`). The kernel and providers are tested with
-`watane-dev test` in this repository; the console as 18.7 says.
+(`<sub>/tests/it/<file>.rs`). The kernel crate is tested with `cargo test` in
+`kernel/` until the WASM wrapper exists (then `watane-dev test`); the
+providers with `watane-dev test`; the console with `npm test` in `console/`
+(18.7).
 
 | Kind | What |
 |---|---|
@@ -1315,6 +1432,13 @@ of `spec/VISION.md`.
     `delete`; owners together stop at 224 MiB with `quota`; a turn running
     when the account fills ends `stopped {limit: quota}` and that entry is
     written; the reserve is never used by a turn's other entries.
+60. (2.3) Each of the five decision shapes is accepted as its outcome; each of
+    `{}`, `{"allow":true,"deny":true}`, `{"deny":true,"for":"session"}` and
+    `{"allow":"yes"}` is refused `{field: "decision"}`; the owner's answer to a
+    check is refused `{field: "ask"}`.
+61. (9.4) A stored entry of a newer `v` reads as `unreadable` with its own `i`;
+    attach after it replays from `i + 1`, and a client that showed it drops it
+    on replay.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
@@ -1389,9 +1513,10 @@ say (layout, spacing, words).
   source is in `console/`; the build writes `ui/`, which the host serves as
   any mod's page (host 8.3): same-origin script files, no inline script, no
   `eval`, no WebAssembly, no frames, no outside site.
-- State: assistant-ui's ACP runtime. Its adapter is extended for the
-  `_meta.watane` items of 9.4 (`ask`, `allow`, `verdict`, `turn`, `queue`,
-  `usage`, `synced`, entry indexes).
+- State: assistant-ui's External-store runtime (`useExternalStoreRuntime`),
+  fed by the console's own reducer over the wire of 9.4
+  (`console/kit/wire.ts`, `console/kit/reduce.ts`). The ACP adapter of
+  assistant-ui is not published, so the console reads ACP itself.
 - Rendering: Shiki with its JavaScript regex engine for code, anser
   (escaped) for program output, and a diff view that needs no `eval`.
 - Every dependency is pinned in a lockfile, and the build records a hash of
@@ -1416,7 +1541,7 @@ attach shows "Writing…" until its entry arrives.
 | `AgentThoughtChunk` | "Thinking…", open while it streams; then folded to "Thought for n s" |
 | `ToolCall` of reads and searches in a row | one folded line, "Explored · n reads, m searches" |
 | `ToolCall` of an edit, a program run, or any failed call | a card: name, argument, diff or output, status; a failed one open |
-| `ask` (unanswered) | the card of its tool call with the ask bar; "Needs you (n)" above the input |
+| `ask` (unanswered) | the card of its tool call with the ask bar (a `check` has no Allow button); "Needs you (n)" above the input |
 | `ask` (decided), `allow`, `verdict` | a decision line: who, what, the reason |
 | `Plan` | the plan above the input, "n of m done" |
 | `turn` | the status line (18.5); at a turn's end, a footer line of time, tools and tokens |

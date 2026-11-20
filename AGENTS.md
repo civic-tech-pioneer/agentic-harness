@@ -49,9 +49,10 @@ Each behaviour is proven at the lowest level that shows it
 
 | Level | Command |
 |---|---|
-| Gate (doctor, contract tests) | `.claude/factory/check-mod.sh` |
-| Kernel and providers | `watane-dev test --json` |
-| Console views | the component test run that the first console slice adds, and names here |
+| Gate (links, mod contract, kernel, console) | `factory/gate.sh` (runs `.claude/factory/check-mod.sh`, then each part below that exists) |
+| Kernel crate | `cargo test` in `kernel/` (until the WASM wrapper exists; then `watane-dev test --json`) |
+| Console views | `npm test` in `console/` (in the gate) |
+| Console page (slow) | `npm run test:slow` in `console/`: Chromium layout and open-at-the-end checks; run before a console slice delivers |
 | Probes of the real programs | `proto/claude-probes/probes.py`, `proto/agent-spike/chatgpt-probes.py` (by hand, after a `claude` update) |
 
 ## Do not touch
