@@ -213,7 +213,8 @@ same transcript shows, and the turn's state is the kernel's.
 
 ## 5. Later
 
-- Workspace instructions (`AGENTS.md`) as a later opt-in profile field (N7, decided; `TECHNICAL.md` section 9.2).
+- Workspace instructions (`AGENTS.md`) as a later opt-in profile field (N7,
+  decided; `TECHNICAL.md` section 9.2).
 - A worktree workspace for agents working in parallel (the factory).
 - A wait that the host holds for agents that drive sessions over MCP.
 - Codex as a third backend (N5, open until stage F).
@@ -223,8 +224,10 @@ same transcript shows, and the turn's state is the kernel's.
   delivered after the current tool call; notifications; suggested titles;
   the profile and offer pages in the console's style; a chat part other mods
   can embed.
-- Not planned: the `auto` permission mode (N2, decided: it lets a classifier watane does not see approve tool calls).
 - **N11 (open, the human's):** whether the console may show, read only, the
   sessions of other clients. It would help debugging most. The kernel already
   holds every transcript, so no mod learns more. But it changes F-AGENT-6
   ("private to the client that started it"), so it waits for the human.
+
+Not planned: the `auto` permission mode (N2, decided: it lets a classifier
+watane does not see approve tool calls).
