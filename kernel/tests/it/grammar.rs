@@ -479,3 +479,33 @@ fn ac2_a_colon_is_only_the_trailing_wildcard_and_tilde_leads_nowhere() {
         assert!(ps[0].reason.contains(why), "{r}: {}", ps[0].reason);
     }
 }
+
+#[test]
+fn ac3_runner_abbreviations_refused_and_project_scripts_pass() {
+    let one = |r: &str| {
+        let (_, ps) = parse(&json!({"allow": [r]}).to_string());
+        ps
+    };
+    for r in [
+        "Bash(npm test)",
+        "Bash(npm install)",
+        "Bash(npm ci)",
+        "Bash(npm run build)",
+        "Bash(uv pip install x)",
+        "Bash(pnpm install)",
+    ] {
+        assert!(one(r).is_empty(), "{r}");
+    }
+    for r in [
+        "Bash(npm exe:*)",
+        "Bash(npm ex:*)",
+        "Bash(npm explore:*)",
+        "Bash(npm expl x)",
+        "Bash(pnpm dl x)",
+        "Bash(uv ru x)",
+    ] {
+        let ps = one(r);
+        assert_eq!(fields(&ps), ["allow"], "{r}");
+        assert!(ps[0].reason.contains("runner"), "{r}: {}", ps[0].reason);
+    }
+}
