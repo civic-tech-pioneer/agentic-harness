@@ -19,6 +19,7 @@ export function decisionJson(d: { outcome: "allow" | "deny"; for?: "session"; re
 
 const PAGE = 256;
 const RETRY_MS = 1000;
+const MAX_STUCK = 3;
 
 /** Opens a session: attaches after the last index shown, pages when behind, reattaches when the stream drops. */
 export function openSession(kernel: Kernel, session: string, onView: (v: SessionView) => void): { close(): void } {
@@ -26,6 +27,7 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   let closed = false;
   let gen = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let stuck = 0;
 
   const fetching = new Set<number>();
   /** Reads entry n back for its `~p<n>` row: once if it is read, at most 3 times (1 s apart) if the read fails. */
@@ -56,7 +58,8 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
     const base = view;
     const pages: string[][] = [];
     let hi = through;
-    if (!(through <= Number.MAX_SAFE_INTEGER)) return "the kernel's `behind` is not an index";
+    if (!Number.isInteger(through) || through > Number.MAX_SAFE_INTEGER) return "the kernel's `behind` is not an index";
+    if (through <= base.lastIndex) return "the kernel's `behind` is not past the last index shown";
     while (hi > base.lastIndex && !closed) {
       const lo = Math.max(base.lastIndex, hi - PAGE);
       if (lo === hi) return "the kernel's `behind` is too large to page";
@@ -82,7 +85,12 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
           (reason) => { if (g === gen && !closed && reason !== "replaced") void connect(); });
         if (!("behind" in r)) return;
         const cause = await pageIn(r.behind);
-        if (cause) { show(withUnknown(view, cause)); return; }
+        if (cause) {
+          show(withUnknown(view, cause));
+          if (++stuck < MAX_STUCK) timer = setTimeout(() => void connect(), RETRY_MS);
+          return;
+        }
+        stuck = 0;
       }
     } catch {
       if (!closed && g === gen) timer = setTimeout(() => void connect(), RETRY_MS);

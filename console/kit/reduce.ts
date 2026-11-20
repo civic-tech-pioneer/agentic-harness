@@ -137,13 +137,13 @@ export function settle(view: SessionView, n: number, entry: string | null): Sess
   if (appended.length) {
     const rows = base.rows.slice(0, view.rows.length);
     rows.splice(k, 1, ...appended);
-    return { ...base, rows };
+    return { ...base, rows: uniqueKeys(rows) };
   }
   let raw: unknown = "could not be read";
   if (entry !== null) { try { raw = JSON.parse(entry); } catch { raw = entry; } }
   const rows = view.rows.slice();
   rows.splice(view.rows.findIndex((r) => r.key === key), 1, { kind: "unknown", key: `e${n}`, i: n, raw });
-  return { ...view, rows };
+  return { ...view, rows: uniqueKeys(rows) };
 }
 
 export function reduce(view: SessionView, message: string): SessionView {
@@ -180,7 +180,9 @@ export function reduce(view: SessionView, message: string): SessionView {
       if (m.role === "user") {
         const row: Row = { kind: "user", key: `e${m.i}`, i: m.i, text: m.text };
         const last = v.rows[v.rows.length - 1];
-        if (last?.kind === "user" && last.key.startsWith("~")) v.rows[v.rows.length - 1] = row; else v.rows.push(row);
+        const p = v.rows.findIndex((r) => r.key === `~p${m.i}`);
+        if (p >= 0) v.rows[p] = row;
+        else if (last?.kind === "user" && last.key.startsWith("~")) v.rows[v.rows.length - 1] = row; else v.rows.push(row);
         break;
       }
       const rows: Row[] = [];
@@ -249,7 +251,15 @@ export function reduce(view: SessionView, message: string): SessionView {
     }
   }
   if (i !== undefined) v.lastIndex = Math.max(v.lastIndex, i);
+  v.rows = uniqueKeys(v.rows);
   return v;
+}
+
+/** 18.3 invariant: no key appears twice; the first row of a key stays. */
+function uniqueKeys(rows: Row[]): Row[] {
+  const seen = new Set<string>();
+  const out = rows.filter((r) => !seen.has(r.key) && seen.add(r.key));
+  return out.length === rows.length ? rows : out;
 }
 
 /** The streaming row at the end of the rows becomes the entry `i`; a folded thought before it too. */

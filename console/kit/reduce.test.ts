@@ -1,7 +1,7 @@
 // TECHNICAL 18.3: the reducer, one test per row of the table, replay and mid-message attach.
 import { describe, expect, it } from "vitest";
 import { emptyView, type SessionView } from "./model";
-import { reduce } from "./reduce";
+import { reduce, settle } from "./reduce";
 import { fakeKernel } from "../fake/kernel";
 import { story } from "../fake/story";
 
@@ -164,5 +164,28 @@ describe("AC7 story", () => {
     void k.attach("s", 0, (j) => seen.push(j), () => {});
     for (let n = 0; n < story.length; n++) k.play();
     expect(seen).toEqual([JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } }), ...story.flat()]);
+  });
+});
+
+describe("S4-fix2 AC2 unique keys", () => {
+  const user = entry(5, "message", { role: "user", content: [txt("hi")] });
+  const start = () => feed([meta({ type: "synced", through: 4, writing: true }), upd({ sessionUpdate: "agent_message_chunk", content: txt("x") }, { i: 5 })]);
+  const unique = (v: SessionView) => expect(new Set(v.rows.map((r) => r.key)).size).toBe(v.rows.length);
+  it("ac2_stream_then_read_keeps_unique_keys", () => {
+    const v = settle(reduce(start(), meta({ type: "entry", entry: JSON.parse(user) })), 5, user);
+    unique(v);
+    expect(v.rows.some((r) => r.key.startsWith("~p"))).toBe(false);
+  });
+  it("ac2_read_then_stream_keeps_unique_keys", () => {
+    const v = reduce(settle(start(), 5, user), meta({ type: "entry", entry: JSON.parse(user) }));
+    unique(v);
+    expect(v.rows.filter((r) => r.key === "e5")).toHaveLength(1);
+  });
+  it("ac2_read_returning_null_keeps_unique_keys", () => {
+    const v = settle(reduce(start(), meta({ type: "entry", entry: JSON.parse(user) })), 5, null);
+    unique(v);
+    const w = settle(start(), 5, null);
+    unique(w);
+    expect(w.rows.some((r) => r.key.startsWith("~p"))).toBe(false);
   });
 });
