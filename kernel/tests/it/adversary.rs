@@ -233,3 +233,34 @@ fn adv_s3_allow_npm_exec_abbreviation_passes() {
         "accepted rules that run npm exec: {passed:?}"
     );
 }
+
+/// The sub-runner check reads only the word after the runner, but pnpm's `recursive` command
+/// and its aliases `m` and `multi` forward the next word as the subcommand: `pnpm m exec <cmd>`
+/// is `pnpm exec -r <cmd>` (checked with pnpm 10.28 in a workspace with one package:
+/// `pnpm m exec sh -c 'echo PWNED'` prints `PWNED`). yarn 1's `workspace <name>` forwards the
+/// same way: `yarn workspace p exec touch W` ran `touch` (yarn 1.22). So `Bash(pnpm m:*)`,
+/// `Bash(pnpm recursive:*)` and `Bash(yarn workspace:*)` pass and pre-approve the refused
+/// `exec`, which runs any program.
+#[test]
+fn adv_s3_allow_runner_forwarder_reaches_exec_passes() {
+    let mut passed = Vec::new();
+    for r in [
+        "Bash(pnpm m:*)",
+        "Bash(pnpm recursive:*)",
+        "Bash(pnpm multi exec:*)",
+        "Bash(yarn workspace:*)",
+    ] {
+        if refusals(
+            json!({"tools": ["Bash"], "sandbox": {"enabled": true}, "allow": [r]}),
+            json!({}),
+        )
+        .is_empty()
+        {
+            passed.push(r);
+        }
+    }
+    assert!(
+        passed.is_empty(),
+        "accepted rules that reach pnpm/yarn exec: {passed:?}"
+    );
+}
