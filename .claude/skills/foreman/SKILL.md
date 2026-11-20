@@ -141,6 +141,8 @@ merges by hand.
 2. Push `slice/<id>`, open its PR and arm auto-merge:
    `gh pr create --base main --head slice/<id> --title "<id>: <outcome>" --body "<the report>"`,
    then `gh pr merge <n> --auto --rebase`. The ruleset holds it until the required checks pass.
+   A sketch marked `PO arms` (a page or UI the product owner compares with its design): open the
+   PR without auto-merge, say so in the report; the product owner arms it after the comparison.
    If `gh` is missing or not signed in, say `no PR: <why>` in the report; the product owner opens
    it and arms it.
 3. Report to the product owner:
