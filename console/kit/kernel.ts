@@ -29,6 +29,8 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   let gen = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let tries = 0;
+  /** The last attach was the immediate reattach after a synced stream: the next one waits. */
+  let quick = false;
 
   const fetching = new Set<number>();
   /** Reads entry n back for its `~p<n>` row: once if it is read, at most 3 times (1 s apart) if the read fails. */
@@ -81,7 +83,7 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
     if (closed || g !== gen) return;
     if (++tries >= MAX_TRIES) { if (!shown) show(withUnknown(view, cause)); return; }
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => { if (!closed && g === gen) void connect(); }, Math.min(RETRY_MS * 2 ** (tries - 1), MAX_DELAY_MS));
+    timer = setTimeout(() => { if (!closed && g === gen) { quick = false; void connect(); } }, Math.min(RETRY_MS * 2 ** (tries - 1), MAX_DELAY_MS));
   }
 
   async function connect() {
@@ -101,7 +103,8 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
           },
           (reason) => {
             if (g !== gen || closed || reason === "replaced") return;
-            if (reached) void connect(); else fail(g, `the stream ended (${reason}) before it synced`);
+            if (reached && !quick) { quick = true; void connect(); }
+            else fail(g, `the stream ended (${reason}) ${reached ? "again right after it synced" : "before it synced"}`);
           });
         if (closed || g !== gen || !("behind" in r)) return;
         const cause = await pageIn(g, r.behind);
