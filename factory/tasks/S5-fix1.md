@@ -35,7 +35,7 @@ AC4. Effects of a deferred call: 2.1 and 7 list `claude-session.say`, `answer`, 
      received that input exactly once; a `timers.cancel` in a deferred call is dropped with it
      and made again on redelivery."
 AC5. Judge ids: the timer is `judge/<own stream>/<on>`; `on` is the host's ask or check id, or
-     `launch`, or `input/<n>` (the kernel's input number, 9.3); the provider's judge state is
+     `launch`, or `input/<n>` (the provider's own input count); the provider's judge state is
      keyed by (own stream, `on`). Case 46: two sessions with the same `on` keep their own
      deadlines and verdicts.
 AC6. Interrupt: an `interrupt` drops every input of the session still waiting for its verdict

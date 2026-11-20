@@ -750,7 +750,9 @@ when `claude-codes` cannot parse it.
   3. Every judge call spans calls: `https-stream.start` (a request, 7), a
      timer `judge/<own stream>/<on>` at the deadline (`timeout-s` minus 2 s),
      the verdict read from the judge stream's items. `on` is the host's ask or
-     check id, or `launch`, or `input/<n>` (the kernel's input number, 9.3);
+     check id, or `launch`, or `input/<n>` (the provider's own count of the
+     inputs on that stream, from 1, the launch input first; `say` in 2.2 carries
+     no kernel input number);
      the provider's judge state is keyed by (own stream, `on`). The first
      readable verdict is final, and so is the timer: it firing first is
      `unsafe`, and a later verdict is ignored. A new attempt starts only after
