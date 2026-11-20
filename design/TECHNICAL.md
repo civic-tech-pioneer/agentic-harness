@@ -4,8 +4,10 @@ How the agent layer does what `FUNCTIONAL.md` says. It is the last of the
 spec chain (`VISION.md`, `FUNCTIONAL.md`, then this); code follows it, and
 where this file disagrees with the two above, this file is fixed.
 `ARCHITECTURE-PROPOSAL.md` (revision 4) is the record of why; this file
-states the rules. Where an open point of the proposal (section 15, `N<n>`) is
-undecided, this file follows the proposal's current choice and marks it.
+states the rules. The human answered the open points of the proposal
+(section 15, `N<n>`) on 2026-11-20, except N5 and N11; each answer is a rule
+in the section that owns its fact, cited as `(N<n>, the human, 2026-11-20)`.
+N5 (17) and N11 (`FUNCTIONAL.md` section 5) stay open.
 
 Sections 1 to 17 are the backend, which comes first. Section 18 is the
 console. It uses only the kernel interface of 2.3, and a console slice that
@@ -25,9 +27,28 @@ needs more adds it to the backend sections first (17).
 | WIT | `host/wit/` in `watane:host@0.1.0` | the interfaces of section 2 |
 | pkg | pkg 4.5, 5.1, 7.2 | import and export rows, two grant kinds (15) |
 | dev | `dev/` | a fake `claude` and a scripted Responses server for previews and tests (12) |
-| M2 Kernel | mod `mods:agent`, this repository (R1, open: `factory/PLAN.md`) | profiles, offers, sessions, transcripts, broker, OpenAI loop, delegation (9) |
-| M1 Providers | two mods `mods:claude-code`, from two publishers | unchecked: start and hand off; checked: judge then forward (10) |
+| M2 Kernel | mod `mods:agent`, this repository (R1, the human, 2026-11-20) | profiles, offers, sessions, transcripts, broker, OpenAI loop, delegation (9) |
+| M1 Providers | two mods `mods:claude-code`, from two publishers, each in its own repository (R1) | unchecked: start and hand off; checked: judge then forward (10) |
 | C1 Console | the kernel's page, `ui/`, built from `console/` in this repository | starting sessions, the transcript, the status line, asks, the queue, the session list (18) |
+
+**This repository** is the kernel `mods:agent` and its console (R1, the human,
+2026-11-20). Each provider, the unchecked and the checked, lives in its own
+repository, not here. Planned layout (the first build slice may rename these;
+if it does, it updates sections 1 and 14 in the same commit):
+
+- `mod.toml`, `wit/world.wit` (2.3, the imports of 2.1)
+- `src/lib.rs` (exports; owner checks by `caller.identity()`, 9.3)
+- `src/profiles.rs` (9.2 compilation, overlays, offers adoption) and
+  `src/refuse.rs` (11)
+- `src/sessions.rs` (9.3: records, keys, queue, quota) and `src/transcript.rs`
+  (9.4: entries, attach, `synced`)
+- `src/broker.rs` (9.6, session allows) and `src/delegation.rs` (9.7:
+  delegates, limits, counters)
+- `src/openai/` (9.5: loop, repair, errors) and `src/adapters/` (9.8)
+- `console/` (source) and `ui/` (built from it), 18
+
+A provider repository holds `mods:claude-code` with `src/lib.rs`; the checked
+one also `src/judge.rs` (10: judge call, verdict parse, breaker).
 
 A new source file starts with a `//!` line that cites its section here, as
 every watane file does.
@@ -177,7 +198,7 @@ fields. Each value goes out as one `--flag=value` argument.
 | `ask` | bool | `--permission-prompts=host --permission-prompt-tool=stdio`, or `--permission-prompts=none` |
 | `pre-tool-check` | `{timeout-s: 5..120}` | the host's PreToolUse callback in `initialize` (4.5) |
 | `agent-handle` | a handle the origin client holds | `--mcp-config=/dev/fd/3` |
-| `subagents` | each exactly `{name [a-z0-9-]{1,64}, description, prompt, tools ⊆ tools, model}`; any other key is refused by name; 64 KiB in all | `--agents=` |
+| `subagents` | each exactly `{name [a-z0-9-]{1,64}, description, prompt, tools ⊆ tools, model}`; any other key is refused by name; 64 KiB in all (N9, the human, 2026-11-20: subagents stay `--agents=` flags) | `--agents=` |
 | `subagent-depth` | 0..3, default 1; 0 also removes `Task` | env `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` |
 | `skills` | `{name [a-z0-9-]{1,64}, files}`; paths under the skill folder, no `..`, 1 MiB in all; frontmatter keeps `name` and `description` only | the run folder's plugin, `--plugin-dir=` |
 | `sandbox` | the typed record of 4.2; required with the shell grant | the host's `--settings=` |
@@ -195,7 +216,9 @@ fields. Each value goes out as one `--flag=value` argument.
 | Claude Code (unchecked), `claude-code` | `Read`, `Write`, `Edit`, `Glob`, `Grep`, `NotebookEdit`, `Skill`, `Task`, `TodoWrite` | a workspace |
 | Claude Code with shell and web (unchecked), `claude-code-shell` | the above and `Bash`, `WebFetch`, `WebSearch` | a workspace; `sandbox.enabled: true`; writes only in the workspaces; loopback denied; none of `excludedCommands`, `allowUnsandboxedCommands`, `allowUnixSockets`, `allowLocalBinding`; a network allowlist of plain domain names |
 
-Two grants follow N1 (open).
+There are two grants (N1, the human, 2026-11-20): `claude-code`, file tools in
+confined folders, and `claude-code-shell`, shell and web inside Claude's
+sandbox.
 
 ### 4.3 Protected paths
 
@@ -212,7 +235,7 @@ and `.husky/**`. No launch can remove them.
   --system-prompt-snapshot=off` and the host's `--settings=`. Never
   `--safe-mode`, `--bare`, `--plugin-url`, `--worktree`, `--bg`, `--cloud`,
   `--remote-control`, `--chrome`, `--ide`, `--file`, `--betas`, `auto` or a
-  bypass mode (N2: `auto` stays out).
+  bypass mode (N2, the human, 2026-11-20: `auto` stays out).
 - **Binary.** The one the participant picked in Settings, at or above the
   minimum version: the first that answers `initialize` with
   `hook_on_failure_supported` and has the protected-path symlink fixes
@@ -295,6 +318,19 @@ and `.husky/**`. No launch can remove them.
   `<home>/app/accounts/openai.json` (0600, written atomically, refreshes
   serialised). The host asks the app for a fresh access token per request
   through an in-process trait; without an app, `no-app`.
+- **Judge account** (N10, the human, 2026-11-20). The host keeps the judge's
+  key as an account `judge`, as it keeps the OpenAI tokens. The participant
+  enters the key and the judge's origin (`https://host[:port]`) in the app,
+  on the page the manager shows for that checked provider, never in the
+  provider's own page. The app stores it in
+  `<home>/app/accounts/judge/<provider mod id>.json` (0600, written
+  atomically). A request with `account: "judge"` is refused before a byte
+  leaves (`destination`) unless the caller is the provider the key was
+  entered for, the method is `POST`, and the URL's origin is exactly the
+  account's origin and is in the provider's `[http]`. The host adds
+  `Authorization: Bearer <key>`; no redirects. Without an entered key:
+  `no-account`. Entering the key is the participant's consent for that
+  provider; there is no per-origin-client consent for this account (8).
 
 ## 6. Agent tools (H4)
 
@@ -322,7 +358,10 @@ and `.husky/**`. No launch can remove them.
   stream's first item or as `ended`.
 - **Durable first.** A chain that issues a request commits with full
   durability before the host applies it, whatever the durability of other
-  calls (N4).
+  calls (N4, the human, 2026-11-20: every commit keeps the host's full
+  durability, one fsync per write; the proposal's per-batch option is not
+  built). V8 (stage A) measures the cost; whether to change this is the
+  human's then.
 - **Timers.** Per mod: ids of at most 128 bytes, at most 256 live, delays up
   to 30 days, stored in host state (`timers/<mod>/<id>` → due time). A due
   timer fires as a top-level call of the mod's `timer-sink.fired(id)`; one
@@ -331,7 +370,7 @@ and `.husky/**`. No launch can remove them.
 
 ## 8. Consent (H6)
 
-| Consent | Asked when | Kept for | Words (draft) |
+| Consent | Asked when | Kept for | Words |
 |---|---|---|---|
 | Workspace | a launch names a folder new for the origin client | (origin client, folder) | "Let {origin client} have agents work in {folder} ({profile}, through {provider})?" |
 | Account | an `https-stream` with `account` new for the origin client | (origin client, account) | "Let {origin client} use your ChatGPT plan?" |
@@ -378,6 +417,10 @@ A profile holds the launch fields of 4.1 that are not chosen per session
 
 An overlay holds `system-prompt-append`, `skills+`, `tools-`, `deny+`, and
 lower values of the limits. Anything else is refused (`refused`).
+
+No profile field reads workspace instructions (`AGENTS.md`, `CLAUDE.md`)
+(N7, the human, 2026-11-20); an opt-in profile field is later
+(`FUNCTIONAL.md` section 5).
 
 Compilation: profile, then adopted offers it names, then the overlay; then the
 refuse table (11) for the backend and model. Every refusal is returned at
@@ -450,7 +493,9 @@ An entry is JSON:
   a state write per delta (V6). A client that attaches mid-message drops that
   message's later deltas and shows it whole when its entry arrives.
 - Live updates are ACP `SessionUpdate`s (v1), each with `_meta.watane.i` when
-  it finishes an entry. N6 (ACP v2) is open.
+  it finishes an entry. The wire is ACP v1; the kernel adds its own entry ids
+  (`_meta.watane.i`), turn state (`turn`) and replay end (`synced`); ACP v2 is
+  not used (N6, the human, 2026-11-20).
 - Besides the entries, these go out live under `_meta.watane` and are not
   stored: `{"type":"turn"}` with every change of the turn state (9.3),
   `{"type":"queue"}` (9.3), and `{"type":"usage","context-used",
@@ -573,18 +618,20 @@ when `claude-codes` cannot parse it.
   item unchanged, answers every `check` (`none` when safe, `deny` otherwise),
   judges every `ask` and input, and pushes each verdict as an item
   `{"type":"verdict","on":<ask or check id>,"verdict":…,"reasons":[…]}`.
-- **Judge call:** `https-stream.start` to the judge's host in its `[http]`,
-  with the tool, its input and a short transcript excerpt; deadline = the
+- **Judge call:** `https-stream.start` with `account: "judge"` (5) to the
+  judge's host in its `[http]`, with the tool, its input and a short transcript excerpt; deadline = the
   launch's `timeout-s` minus 2 s; at most 3 attempts inside it; verdict
   `{safe | unsafe | unsure, reasons}`; anything else, a timeout or an error
-  is unsafe.
+  is unsafe; so is a refusal of the account (`destination`, `no-account`),
+  and a missing or wrong key therefore denies.
 - **Breaker:** 3 denials in a row or 10 of the last 50: `interrupt`, and a
   verdict item that says why. Every verdict item carries `denials-in-a-row`.
 - **Checking:** before each judge call the provider pushes
   `{"type":"checking","on":<ask or check id>}`; the kernel shows it as the
   activity `checking` (9.3) until the verdict.
-- **Settings** (judge host, key, thresholds) only from its own page, in its
-  state. N10 (the host keeps the key) is open.
+- **Settings** (judge URL, thresholds) only from its own page, in its state.
+  The provider holds no key: the host keeps it as the account `judge`, entered
+  in the app (5; N10, the human, 2026-11-20).
 
 ## 11. Refuse table
 
@@ -620,7 +667,7 @@ when `claude-codes` cannot parse it.
 | `mismatch {field}` | claude-code outcome | 4.5 |
 | `slash-command`, `unknown-ask`, `not-allowed-here` | claude-session | 4.5 |
 | `consent-refused {what}` | any request outcome | 8 |
-| `destination`, `forbidden-header`, `too-large`, `no-app` | https-stream | 5 |
+| `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
 | `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend` | kernel | 9 |
@@ -645,52 +692,70 @@ history repair of Codex `core/src/context_manager/normalize.rs`
 (Apache-2.0) and rig `conversation/pairing.rs` (MIT); Codex Guardian's verdict
 parser and breaker (Apache-2.0); Restate `sdk-shared-core` `retries.rs`
 (MIT); Pi's compaction through rig-memory (MIT), if server compaction is ever
-refused. N8 (watane's licence) is open.
+refused. These ports rest on watane taking MIT OR Apache-2.0 for all of it
+(N8, the human, 2026-11-20; a change to watane, 15).
 
 ## 14. Security properties
 
-| Property | Holds by |
-|---|---|
-| A mod cannot widen `claude` past its launch | 4.1 grammar and one argument per value; `--restricted`; fixed flags; closed subagent keys; the host owns stdin (4.5); `initialize` and `init` checks |
-| A mod cannot run a denied skill by name | `slash-command` (4.5) |
-| A failing check cannot let a tool run | `onFailure: block` confirmed in `initialize` (4.5) |
-| "Safe" cannot widen the mode | checks answer `none` or `deny`, never `allow` (4.5) |
-| Writes cannot plant code that runs later | protected paths (4.3) |
-| No mod sees a credential | tokens in the app; MCP tokens on fd 3; handle names, not handles (5, 6) |
-| A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) |
-| A mod in the middle gains no authority | consent per origin client (8) |
-| A session is private | one consumer; owner checks by identity (3, 9.3) |
-| A runaway agent stops | counters and delegation limits in the kernel (9.7) |
-| A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) |
-| A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) |
-| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) |
+Each row names the files that hold it: "watane" paths are in the watane
+checkout, the others in this repository (layout in 1). A slice whose diff
+touches a file of this repository named here gets the adversary step; a slice
+that adds or moves such a file updates sections 1 and 14 in the same commit.
+
+| Property | Holds by | Files |
+|---|---|---|
+| A mod cannot widen `claude` past its launch | 4.1 grammar and one argument per value; `--restricted`; fixed flags; closed subagent keys; the host owns stdin (4.5); `initialize` and `init` checks | watane `host/src/agent/claude/launch.rs`, `init.rs`, `control.rs`, `run.rs` |
+| A mod cannot run a denied skill by name | `slash-command` (4.5) | watane `host/src/agent/claude/control.rs` |
+| A failing check cannot let a tool run | `onFailure: block` confirmed in `initialize` (4.5) | watane `host/src/agent/claude/init.rs`, `control.rs` |
+| "Safe" cannot widen the mode | checks answer `none` or `deny`, never `allow` (4.5) | watane `host/src/agent/claude/control.rs`; checked provider's `src/judge.rs` |
+| Writes cannot plant code that runs later | protected paths (4.3) | watane `host/src/agent/claude/run.rs` (the host's `--settings=`) |
+| No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs` |
+| A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
+| A judge key goes only to its judge | the account binding of `judge`: the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account |
+| A mod in the middle gains no authority | consent per origin client (8) | watane `host/` consent per origin client, `app/` consent storage |
+| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `src/lib.rs`, `src/sessions.rs`, `src/transcript.rs` |
+| A runaway agent stops | counters and delegation limits in the kernel (9.7) | `src/delegation.rs`, `src/openai/` |
+| A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
+| A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `src/broker.rs` |
+| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `src/lib.rs`, `console/` |
+| A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `src/profiles.rs`, `src/refuse.rs` |
 
 Not protected: `claude` itself within its limits; a prompt injection within
 what the profile allows; plan usage; another program of the same user
 (spec 6); whether a subagent prompt that starts with `/` runs a skill (not
-probed).
+probed; probe V26, slice S1).
 
 ## 15. Provides and needs
 
 **Provides:** `watane:host` interfaces of 2.1; the kernel's `mods:agent`
 interfaces of 2.3; the providers' `mods:claude-code` of 2.2.
 
-**Needs** (proposal N3):
-- `spec/VISION.md`: where the agent layer sits in the order of work (before
-  the factory, step 6).
-- `spec/FUNCTIONAL.md`: F-AGENT-5 to F-AGENT-9 and J11 (`FUNCTIONAL.md`
-  section 2). F-AGENT-2 and W6: a token also comes from a toolset consent.
-- `spec/TECHNICAL.md`: W2 (consents stored with grants), W5 (previews refuse
-  the grants and accounts), and a new W row for the agent layer's boundary.
-- `host/TECHNICAL.md`: H1 to H5 and H7; 9.3 (page connection ids and their
-  own queues); host state for timers; `caller.identity()`; tool annotations;
-  a request that waits on a consent tells its requester `consent-pending
-  {what}` once.
-- `pkg/TECHNICAL.md`: 4.5 rows for the imports and exports of 2.1; 5.1 and
-  7.2 two grant kinds.
-- `app/TECHNICAL.md`: Sign in with ChatGPT and the account file; the consent
-  words and their storage; the `claude` binary setting.
-- `dev/TECHNICAL.md`: the fake `claude` and the scripted Responses server.
+**Needs** (N3, the human, 2026-11-20: all of these changes to watane's
+contracts are accepted, F-AGENT-2 and W6 included). The checklist is applied
+by watane slices, never from this repository. Each row: the watane target,
+the change, and the section here it comes from.
+
+- [ ] `spec/VISION.md`: where the agent layer sits in the order of work (before the factory, step 6) (1).
+- [ ] `spec/FUNCTIONAL.md` F-AGENT-2 and W6: a token also comes from a toolset consent (6, 8).
+- [ ] `spec/FUNCTIONAL.md` F-AGENT-5 to F-AGENT-9 and J11 (`FUNCTIONAL.md` section 2) (3, 4, 9).
+- [ ] `spec/TECHNICAL.md` W2: consents stored with grants (8).
+- [ ] `spec/TECHNICAL.md` W5: previews refuse the grants and accounts (8).
+- [ ] `spec/TECHNICAL.md` new W row: the agent layer's boundary (14).
+- [ ] `host/TECHNICAL.md` H1 to H5 and H7 (3, 4, 5, 6, 7).
+- [ ] `host/TECHNICAL.md` 9.3: page connection ids and their own queues (3).
+- [ ] `host/TECHNICAL.md` host state: timers per mod, kept across restarts (7).
+- [ ] `host/TECHNICAL.md` `caller.identity()` (9.3, 14).
+- [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
+- [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
+- [ ] `host/TECHNICAL.md` account kind `judge` and its binding (provider, `POST`, origin, `[http]`, `no-account`) (5, 10, 12; N10).
+- [ ] `pkg/TECHNICAL.md` 4.5: rows for the imports and exports of 2.1 (2.1).
+- [ ] `pkg/TECHNICAL.md` 5.1 and 7.2: two grant kinds (4.2, 8).
+- [ ] `app/TECHNICAL.md` new section: Sign in with ChatGPT and the account file (5).
+- [ ] `app/TECHNICAL.md` new section: the consent words and their storage (8).
+- [ ] `app/TECHNICAL.md` new section: the `claude` binary setting (4.4).
+- [ ] `app/TECHNICAL.md` new section: entering and storing the judge key and origin on the checked provider's manager page, in `<home>/app/accounts/judge/<provider mod id>.json` (5, 10; N10).
+- [ ] `dev/TECHNICAL.md` new section: the fake `claude` and the scripted Responses server (12, 17).
+- [ ] watane licence files: MIT OR Apache-2.0 for all of watane (13; N8).
 
 ## 16. Test plan
 
@@ -746,8 +811,8 @@ Integration tests are modules of one binary per subsystem
     token limits stop the turn.
 24. A child beyond `delegates`, depth or live count is refused; cancelling
     the parent cancels the children.
-25. A judge that is down, slow or unreadable denies; 3 denials in a row
-    interrupt the turn.
+25. A judge that is down, slow, unreadable or without an entered key
+    denies; 3 denials in a row interrupt the turn.
 26. An overlay that widens anything is `refused`, naming each field.
 27. `unqueue` of an input a turn already took is `unknown-input`; the turn
     is not changed.
@@ -771,14 +836,14 @@ weight. The console part shows that backend in the console, so the human can
 watch it work. A console part never waits on a backend part of a later
 stage: it shows only what is built.
 
-| Stage | Backend | Console shows | Done when |
-|---|---|---|---|
-| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | cases 7, 20, 21 pass; V8 measured and recorded |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | J11 and AGT-J6 (Claude part) on the fake; cases 5, 6, 8–18, 27–31 |
-| C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | J11 on the real `claude`; AGT-J4 |
-| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | AGT-J2, AGT-J6; cases 1–4, 19, 22 |
-| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | AGT-J3; case 25 |
-| F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | AGT-J5; cases 23, 24; N5 decided |
+| Stage | Backend | Console shows | Repository | Done when |
+|---|---|---|---|---|
+| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; V8 measured and recorded |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository; this repository: kernel, console | J11 and AGT-J6 (Claude part) on the fake; cases 5, 6, 8–18, 27–31 |
+| C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`; AGT-J4 |
+| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19, 22 |
+| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page; the checked provider's own repository; this repository: the `checking` activity | AGT-J3; case 25 |
+| F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24; N5 decided |
 
 ## 18. The console (C1)
 
@@ -832,7 +897,7 @@ attach shows "Writing…" until its entry arrives.
 | `AgentThoughtChunk` | "Thinking…", open while it streams; then folded to "Thought for n s" |
 | `ToolCall` of reads and searches in a row | one folded line, "Explored · n reads, m searches" |
 | `ToolCall` of an edit, a program run, or any failed call | a card: name, argument, diff or output, status; a failed one open |
-| `ask` (open) | the card of its tool call with the ask bar; "Needs you (n)" above the input |
+| `ask` (unanswered) | the card of its tool call with the ask bar; "Needs you (n)" above the input |
 | `ask` (decided), `allow`, `verdict` | a decision line: who, what, the reason |
 | `Plan` | the plan above the input, "n of m done" |
 | `turn` | the status line (18.5); at a turn's end, a footer line of time, tools and tokens |
