@@ -184,3 +184,28 @@ fn adv_s3_allow_find_exec_spelled_by_shell_expansion_passes() {
         "accepted find rules that run sh: {passed:?}"
     );
 }
+
+/// The `/`-in-the-first-word check splits words on `:` as well as space, but Claude Code reads
+/// `:` as part of the word unless the rule ends in `:*` (`U2t`: `^(.+):\*$`), and bash runs a
+/// command word holding `/` as a path relative to the cwd. `Bash(x:/run)` is checked as first
+/// word `x`, yet pre-approves the command `x:/run`, the file `run` in the folder `x:` the agent
+/// writes (checked: `mkdir 'x:'; printf '#!/bin/sh\necho PWNED\n' > 'x:/run'; chmod +x 'x:/run';
+/// bash -c 'x:/run'` prints `PWNED`).
+#[test]
+fn adv_s3_allow_path_executable_hidden_behind_colon_passes() {
+    let mut passed = Vec::new();
+    for r in ["Bash(x:/run)", "Bash(x:/run:*)", "Bash(git:/tmp/x)"] {
+        if refusals(
+            json!({"tools": ["Bash", "Write"], "sandbox": {"enabled": true}, "allow": [r]}),
+            json!({}),
+        )
+        .is_empty()
+        {
+            passed.push(r);
+        }
+    }
+    assert!(
+        passed.is_empty(),
+        "accepted rules whose command word is a path: {passed:?}"
+    );
+}
