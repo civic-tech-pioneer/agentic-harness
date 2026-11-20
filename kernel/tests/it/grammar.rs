@@ -306,8 +306,15 @@ fn ac5_rule_grammar_has_no_bypass() {
     let ps = parse(&json!({"allow": ["Bash(/usr/bin/git status)"]}).to_string()).1;
     assert!(ps[0].reason.contains("path"), "{}", ps[0].reason);
     assert_eq!(
-        one(json!({"deny": ["Bash(git 'x' $y;z)", "Bash(/usr/bin/git)"]})),
+        one(json!({"deny": ["Bash(git 'x' $y;z)", "Bash(/usr/bin/git)", "Bash"]})),
         Vec::<String>::new()
+    );
+    let ps = parse(&json!({"allow": ["Bash"]}).to_string()).1;
+    assert_eq!(fields(&ps), ["allow"]);
+    assert!(
+        ps[0].reason.contains("allows any command"),
+        "{}",
+        ps[0].reason
     );
 }
 

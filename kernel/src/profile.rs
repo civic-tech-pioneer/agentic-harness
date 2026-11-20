@@ -597,6 +597,9 @@ fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
         ));
     }
     if is_allow && name == "Bash" {
+        if arg.is_none() {
+            return Some(format!("rule {rule:?} allows any command"));
+        }
         if let Some(c) = arg.and_then(|a| {
             a.chars()
                 .find(|c| !c.is_ascii() || "`${};|&<>'\"\\".contains(*c))
