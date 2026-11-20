@@ -5,9 +5,9 @@ Why this mod exists and what comes first. With `FUNCTIONAL.md` (what) and
 (`factory/config.toml`, `spec`); code comes after. When two disagree, the
 lower one is fixed. The human answered the open points of
 `ARCHITECTURE-PROPOSAL.md` (section 15, `N<n>`) on 2026-11-20, and each
-answer is a rule where its fact lives. Two remain open: N5 (the factory's
-implementer, decided at stage F, `TECHNICAL.md` section 17) and N11
-(`FUNCTIONAL.md` section 5). A build slice that depends on one waits for the
+answer is a rule where its fact lives, as is N11 (`FUNCTIONAL.md` section
+5). One remains open: N5 (the factory's implementer, decided at stage F,
+`TECHNICAL.md` section 17). A build slice that depends on it waits for the
 answer. `AGENTS.md` says which
 files are contracts and which are records.
 

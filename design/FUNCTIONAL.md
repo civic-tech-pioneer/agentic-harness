@@ -12,8 +12,8 @@ more than they give.
 Ids in `Traces:` refer to `spec/FUNCTIONAL.md`, to the rows this file
 proposes for it (section 2), and to this file's own `AGT-F` ids. `N<n>`
 refers to the open points of the proposal (section 15), which the human
-answered on 2026-11-20 except N5 (decided at stage F) and N11 (section 5);
-a build slice that depends on one of those waits. An `AGT-F` id
+answered on 2026-11-20 (N11 of section 5 too) except N5 (decided at stage
+F); a build slice that depends on N5 waits. An `AGT-F` id
 never changes; a new requirement takes the next free number, in the section
 where it belongs.
 
@@ -136,7 +136,7 @@ The console's first target is the canvas row named in `VISION.md`. Each
 requirement here is met by what the backend requirements it traces give, and
 by nothing else.
 
-- **AGT-F-45** The kernel's page shall hold the console. The console shall reach the kernel only through the calls every client has, and shall show and change only the sessions it started. Traces: AGT-F-7, F-AGENT-6. (Showing the sessions of other clients is open: N11.)
+- **AGT-F-45** The kernel's page shall hold the console. The console shall reach the kernel only through the calls every client has, and shall show and change only the sessions it started. Traces: AGT-F-7, F-AGENT-6. It shall never show the sessions of other clients (N11, decided).
 - **AGT-F-46** When the participant starts a session in the console, the console shall offer the profiles the console may use and both backends, and let them narrow the profile for that session. Before anything starts, it shall show every refusal of AGT-F-4 for that backend and keep Start off while one holds. It shall show what the session can reach: what is already allowed and what will be asked. Traces: AGT-F-3, AGT-F-4, AGT-F-5, AGT-F-28.
 - **AGT-F-47** The console shall show a session's transcript from its stored entries and live updates: inputs, thinking, tool calls, asks, verdicts, decisions with who made them, and the end of each turn with its time, tools and tokens. Reads and searches in a row shall fold into one line. Edits, program runs, asks and failures shall show in full, and a failed call shall show open. After a reload or a restart of watane, the same transcript shall show again, nothing missing or doubled. Traces: AGT-F-8, AGT-F-9, AGT-F-34, AGT-F-38.
 - **AGT-F-48** The console shall show one status line for the current turn: a word, a shape for each state that does not rely on colour, the time running or, for an ask, the time left, and the key that acts on it. It shall show no state, time or plan that the kernel did not report. Traces: AGT-F-10, AGT-F-42.
@@ -224,10 +224,9 @@ same transcript shows, and the turn's state is the kernel's.
   delivered after the current tool call; notifications; suggested titles;
   the profile and offer pages in the console's style; a chat part other mods
   can embed.
-- **N11 (open, the human's):** whether the console may show, read only, the
-  sessions of other clients. It would help debugging most. The kernel already
-  holds every transcript, so no mod learns more. But it changes F-AGENT-6
-  ("private to the client that started it"), so it waits for the human.
+- **N11 (decided, the human, 2026-11-20):** the console shows only its own
+  sessions; F-AGENT-6 stays as it is. Showing other clients' sessions, read
+  only, is not planned.
 
 Not planned: the `auto` permission mode (N2, decided: it lets a classifier
 watane does not see approve tool calls).
