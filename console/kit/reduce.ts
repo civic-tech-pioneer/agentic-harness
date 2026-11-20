@@ -113,7 +113,7 @@ export function reduce(view: SessionView, message: string): SessionView {
   const i = "i" in m ? m.i : undefined;
   const refetch = m.t === "message" && view.rows.some((r) => r.key === `~p${m.i}`);
   if (m.t !== "synced" && i !== undefined && i <= view.lastIndex && !refetch) return view;
-  const x: Internal = { lost: false, ...view.x };
+  const x: Internal = { ...view.x };
   const v: SessionView = { ...view, rows: view.rows.slice(), x };
 
   if (m.t === "chunk" || m.t === "call" || m.t === "plan") {
@@ -122,7 +122,14 @@ export function reduce(view: SessionView, message: string): SessionView {
 
   switch (m.t) {
     case "synced":
-      v.synced = true; v.lastIndex = Math.max(v.lastIndex, m.through); x.lost = true;
+      v.synced = true; v.lastIndex = Math.max(v.lastIndex, m.through);
+      // 9.4 no partial replay: a message being written at attach shows as "Writing…" until its entry
+      x.skip = m.writing;
+      if (m.writing) {
+        const k = v.rows.findIndex((r) => r.kind === "agent" && r.writing);
+        const row: Row = { kind: "agent", key: "~w", text: "", writing: true };
+        if (k >= 0) v.rows[k] = row; else v.rows.push(row);
+      }
       break;
     case "queue": v.queue = m.inputs; break;
     case "usage": v.usage = { used: m.used, window: m.window, ...(m.compactAt !== undefined ? { compactAt: m.compactAt } : {}) }; break;
@@ -132,7 +139,6 @@ export function reduce(view: SessionView, message: string): SessionView {
       v.rows.push({ kind: "unknown", key: i !== undefined ? `e${i}` : `u${v.rows.length}`, ...(i !== undefined ? { i } : {}), raw: m.raw });
       break;
     case "message": {
-      x.lost = false;
       if (m.role === "user") {
         const row: Row = { kind: "user", key: `e${m.i}`, i: m.i, text: m.text };
         const last = v.rows[v.rows.length - 1];
@@ -175,24 +181,32 @@ export function reduce(view: SessionView, message: string): SessionView {
       v.rows.push({ kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: `${m.outcome}: ${toolTitle(v, m.toolCallId)}`, ...(m.reasons.length ? { reason: m.reasons.join("; ") } : {}) });
       break;
     case "plan": v.plan = m.items; break;
-    case "call": upsertCall(v, m.call, m.i); x.lost = false; break;
+    case "call": upsertCall(v, m.call, m.i); break;
     case "chunk": {
       const last = v.rows[v.rows.length - 1];
+      if (x.skip && m.part !== "user") {
+        // a delta of the message being written at attach: dropped; its finishing update fetches the entry
+        if (m.part === "agent" && m.i !== undefined) {
+          const k = v.rows.findIndex((r) => r.key === "~w");
+          if (k >= 0) v.rows[k] = { kind: "agent", key: `~p${m.i}`, text: "", writing: true };
+          x.skip = false;
+        }
+        break;
+      }
       if (m.part === "thought") {
         if (last?.kind === "thought" && last.streaming) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-        else { v.rows.push({ kind: "thought", key: `~t${v.rows.length}`, text: m.text, streaming: true }); x.thoughtAt = m.at; if (x.lost) x.partial = true; }
+        else { v.rows.push({ kind: "thought", key: `~t${v.rows.length}`, text: m.text, streaming: true }); x.thoughtAt = m.at; }
         break;
       }
       if (m.part === "user") {
-        x.lost = false;
         if (last?.kind === "user" && last.key.startsWith("~")) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
         else v.rows.push({ kind: "user", key: `~u${v.rows.length}`, text: m.text });
-        if (m.i !== undefined) finish(v, m.i, false);
+        if (m.i !== undefined) finish(v, m.i);
         break;
       }
-      if (last?.kind === "agent" && last.writing && last.key !== "~w") v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-      else { v.rows.push({ kind: "agent", key: `~a${v.rows.length}`, text: m.text, writing: true }); if (x.lost) x.partial = true; }
-      if (m.i !== undefined) { finish(v, m.i, x.partial === true); x.partial = false; x.lost = false; }
+      if (last?.kind === "agent" && last.writing) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
+      else v.rows.push({ kind: "agent", key: `~a${v.rows.length}`, text: m.text, writing: true });
+      if (m.i !== undefined) finish(v, m.i);
       break;
     }
   }
@@ -201,12 +215,10 @@ export function reduce(view: SessionView, message: string): SessionView {
 }
 
 /** The streaming row at the end of the rows becomes the entry `i`; a folded thought before it too. */
-function finish(v: SessionView, i: number, partial: boolean) {
+function finish(v: SessionView, i: number) {
   const k = v.rows.length - 1;
   const r = v.rows[k]!;
-  if (r.kind === "agent" && partial) {
-    v.rows[k] = { ...r, key: `~p${i}` };
-  } else if (r.kind === "agent") {
+  if (r.kind === "agent") {
     v.rows[k] = { ...r, key: `e${i}`, i, writing: false };
     const t = v.rows[k - 1];
     if (t?.kind === "thought" && t.key.startsWith("~")) v.rows[k - 1] = { ...t, key: `e${i}-t`, i };

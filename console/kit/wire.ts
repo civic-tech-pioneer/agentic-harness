@@ -15,7 +15,7 @@ export type Msg =
   | { t: "chunk"; part: "agent" | "thought" | "user"; text: string; i?: number; at?: number }
   | { t: "call"; call: CallPatch; i?: number; at?: number }
   | { t: "plan"; items: PlanItem[]; i?: number; at?: number }
-  | { t: "synced"; through: number }
+  | { t: "synced"; through: number; writing: boolean }
   | { t: "queue"; inputs: { n: number; input: string }[] }
   | { t: "usage"; used: number; window: number; compactAt?: number };
 
@@ -159,7 +159,7 @@ function parseUpdate(o: Rec, w: Rec | undefined): Msg {
 
 function parseItem(w: Rec, o: Rec): Msg {
   switch (w.type) {
-    case "synced": { const n = num(w.through); return n === undefined ? { t: "unreadable", raw: o } : { t: "synced", through: n }; }
+    case "synced": { const n = num(w.through); return n === undefined ? { t: "unreadable", raw: o } : { t: "synced", through: n, writing: w.writing === true }; }
     case "turn": { const t = parseTurn(w.state); return t ? { t: "turn", ...t } : { t: "unreadable", raw: o }; }
     case "queue": {
       if (!Array.isArray(w.inputs)) return { t: "unreadable", raw: o };

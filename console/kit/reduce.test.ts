@@ -115,18 +115,29 @@ describe("AC3 replay", () => {
 });
 
 describe("AC4 mid-message attach", () => {
-  it("ac4_a_message_seen_after_synced_streams_and_its_entry_replaces_it_once_whole", () => {
-    let v = feed([synced(0), upd({ sessionUpdate: "agent_message_chunk", content: txt("tail ") }), upd({ sessionUpdate: "agent_message_chunk", content: txt("more") })]);
-    expect(v.rows).toHaveLength(1);
-    expect(v.rows[0]).toMatchObject({ kind: "agent", text: "tail more", writing: true });
-    v = feed([upd({ sessionUpdate: "agent_message_chunk", content: txt("end") }, { i: 5 })], v);
-    expect(v.rows).toHaveLength(1);
-    expect(v.rows[0]).toMatchObject({ writing: true, key: "~p5" });
+  const chunk = (t: string, m?: object) => upd({ sessionUpdate: "agent_message_chunk", content: txt(t) }, m);
+  it("ac4_synced_writing_drops_the_deltas_shows_writing_and_the_entry_replaces_it_once_whole", () => {
+    let v = feed([entry(4, "message", { role: "user", content: [txt("q")] }), meta({ type: "synced", through: 4, writing: true })]);
+    expect(v.rows[1]).toEqual({ kind: "agent", key: "~w", text: "", writing: true });
+    v = feed([chunk("tail "), upd({ sessionUpdate: "agent_thought_chunk", content: txt("hm") }), chunk("more")], v);
+    expect(v.rows).toHaveLength(2);
+    expect(v.rows[1]).toEqual({ kind: "agent", key: "~w", text: "", writing: true });
+    v = feed([chunk("end", { i: 5 })], v);
+    expect(v.rows[1]).toEqual({ kind: "agent", key: "~p5", text: "", writing: true });
     // the entry replaces it even though lastIndex is already at 5, and moves nothing else
-    v = feed([entry(5, "message", { role: "agent", content: [txt("whole message")] })], v);
-    expect(v.rows).toEqual([{ kind: "agent", key: "e5", i: 5, text: "whole message", writing: false }]);
-    v = feed([upd({ sessionUpdate: "agent_message_chunk", content: txt("next") })], v);
-    expect(v.rows[1]).toMatchObject({ text: "next", writing: true });
+    v = feed([entry(5, "message", { role: "agent", content: [txt("whole message")], thought: { text: "hm", seconds: 2 } })], v);
+    expect(v.rows.slice(1)).toEqual([
+      { kind: "thought", key: "e5-t", i: 5, text: "hm", streaming: false, seconds: 2 },
+      { kind: "agent", key: "e5", i: 5, text: "whole message", writing: false },
+    ]);
+    v = feed([chunk("next")], v);
+    expect(v.rows[3]).toMatchObject({ text: "next", writing: true });
+  });
+  it("ac4_without_writing_a_first_chunk_after_synced_streams", () => {
+    let v = feed([synced(0), chunk("tail "), chunk("more")]);
+    expect(v.rows).toEqual([{ kind: "agent", key: "~a0", text: "tail more", writing: true }]);
+    v = feed([chunk("!", { i: 5 })], v);
+    expect(v.rows).toEqual([{ kind: "agent", key: "e5", i: 5, text: "tail more!", writing: false }]);
   });
 });
 
