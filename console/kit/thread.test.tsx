@@ -204,8 +204,8 @@ describe("other rows", () => {
 
 describe("StatusLine", () => {
   const T = 1_700_000_000_000;
-  const status = (turn: object | null, o: { stopping?: boolean; rows?: string[] } = {}) => {
-    const view = { ...feed(...(o.rows ?? [])), turn: turn as SessionView["turn"] };
+  const status = (turn: object | null, o: { stopping?: boolean; rows?: string[]; asks?: string[] } = {}) => {
+    const view = { ...feed(...(o.rows ?? [])), turn: turn as SessionView["turn"], openAsks: o.asks ?? [] };
     const actions = mk(); const onNeedsYou = vi.fn();
     const r = render(<StatusLine view={view} now={T + 12_000} stopping={!!o.stopping} actions={actions} onNeedsYou={onNeedsYou} />);
     return { actions, onNeedsYou, ...r };
@@ -227,12 +227,12 @@ describe("StatusLine", () => {
     expect(word()).toBe("Thinking");
     expect(shape()).toBe("dot");
     expect(screen.getByRole("img", { name: "Running" })).toBeInTheDocument();
-    expect(screen.getByText("0:12")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByRole("status")).not.toHaveTextContent("0:12");
-    const b = screen.getByRole("button", { name: /Stop/ });
-    expect(b).toHaveTextContent("Esc");
-    await userEvent.setup().click(b);
-    expect(s.actions.stop).toHaveBeenCalled();
+    expect(screen.getByText("· 12 s")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("status")).not.toHaveTextContent("12");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText("Esc").tagName).toBe("KBD");
+    expect(document.querySelector(".wa-status-esc")).toHaveTextContent("Esc to stop");
+    expect(s.actions.stop).not.toHaveBeenCalled();
   });
 
   it("ac9_running_reading_names_the_file", () => {
@@ -271,12 +271,12 @@ describe("StatusLine", () => {
   });
 
   it("ac9_waiting_diamond_time_left_needs_you", async () => {
-    const s = status({ state: "waiting", asks: ["a"], expiresAt: T + 72_000 });
-    expect(word()).toBe("Waiting for you");
+    const rows = [call("a", "Edit file", "edit", { locations: [{ path: "src/sync.ts" }] }), call("b", "Edit other", "edit", { locations: [{ path: "x.ts" }] })];
+    status({ state: "waiting", asks: ["a", "b"], expiresAt: T + 72_000 }, { rows, asks: ["a", "b"] });
+    expect(word()).toBe("Waiting for you · Edit src/sync.ts");
     expect(shape()).toBe("diamond");
-    expect(screen.getByText("1:00")).toHaveAttribute("aria-hidden", "true");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Needs you" }));
-    expect(s.onNeedsYou).toHaveBeenCalled();
+    expect(screen.getByText("· denied in 1:00 if unanswered")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("ac9_paused_bars_resume_now", () => {

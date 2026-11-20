@@ -5,7 +5,11 @@ import type { Actions, SessionView } from "../kit";
 export const QUEUE_MAX = 32;
 const SHOWN = 3;
 
-export function Composer({ queued, actions }: { queued: number; actions: Actions }) {
+const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
+
+export function Composer({ queued, actions, busy = false, stopping = false, session }: {
+  queued: number; actions: Actions; busy?: boolean; stopping?: boolean; session?: { model?: string; mode?: string };
+}) {
   const [text, setText] = useState("");
   const full = queued >= QUEUE_MAX;
   const send = () => {
@@ -14,21 +18,36 @@ export function Composer({ queued, actions }: { queued: number; actions: Actions
     actions.say(t);
     setText("");
   };
+  const placeholder = full ? `The queue is full: ${QUEUE_MAX} messages wait. Remove one, or stop the turn.`
+    : busy ? "Add a message: it is queued and sent when this turn ends"
+    : "Message the agent  ·  Enter to send, Shift+Enter for a new line";
+  const tags = [session?.model, session?.mode].filter((x): x is string => !!x);
   return (
     <form className="wa-composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
-      <textarea aria-label="Message" rows={2} value={text}
-        placeholder={full ? `The queue is full (${QUEUE_MAX} inputs): wait for one to be sent` : "Say what to do next"}
+      <textarea aria-label="Message" rows={2} value={text} placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
           else if (e.key === "Escape") actions.stop();
         }} />
-      <button type="submit" className="wa-primary" disabled={full || !text.trim()}>Send</button>
+      <div className="wa-irow">
+        {tags.map((t, n) => <span key={n} className="wa-tag">{n > 0 ? <span aria-hidden="true">· </span> : null}{t}</span>)}
+        {busy ? (
+          <button type="button" className="wa-stop" onClick={() => actions.stop()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+            {stopping ? "Stopping…" : "Stop"}
+          </button>
+        ) : null}
+        <button type="submit" className="wa-send" aria-label={busy ? "Queue message" : "Send message"} disabled={full || !text.trim()}>
+          <svg width="16" height="16" strokeWidth="2.4" {...svg}><path d="M12 19V5M6 11l6-6 6 6" /></svg>
+        </button>
+      </div>
     </form>
   );
 }
 
-export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; status: ReactNode }) {
+export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; status: ReactNode;
+  session?: { model?: string; mode?: string }; stopping?: boolean }) {
   const { view } = props;
   const [opened, setOpened] = useState(false);
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
@@ -36,12 +55,18 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   return (
     <div className="wa-dock">
       {view.openAsks.length ? (
-        <button type="button" className="wa-needs" onClick={props.onNeedsYou}>Needs you ({view.openAsks.length})</button>
+        <button type="button" className="wa-needs" onClick={props.onNeedsYou}>
+          <svg width="14" height="14" strokeWidth="2.2" {...svg}><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+          Needs you ({view.openAsks.length})
+        </button>
       ) : null}
       {view.plan?.length ? (
         <section className="wa-plan" aria-label="Plan">
           {folded ? (
-            <button type="button" className="wa-plan-head" aria-expanded={false} onClick={() => setOpened(true)}>Plan · {done} of {view.plan.length} done</button>
+            <button type="button" className="wa-plan-head" aria-expanded={false} onClick={() => setOpened(true)}>
+              <svg className="wa-chev" width="14" height="14" strokeWidth="2" {...svg}><path d="M9 6l6 6-6 6" /></svg>
+              Plan · {done} of {view.plan.length} done
+            </button>
           ) : (
             <p className="wa-plan-head">{done} of {view.plan.length} done</p>
           )}
@@ -55,7 +80,8 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
         </section>
       ) : null}
       {props.status}
-      <Composer queued={view.queue.length} actions={props.actions} />
+      <Composer queued={view.queue.length} actions={props.actions} session={props.session} stopping={props.stopping}
+        busy={view.turn?.state === "running" || view.turn?.state === "waiting"} />
     </div>
   );
 }
