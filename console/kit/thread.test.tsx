@@ -92,10 +92,11 @@ describe("rows", () => {
     show(feed(call("f1", "Edit f.ts", "edit", { content: diff("f.ts", "a", "b") }),
       finish("f1", 1).replace("completed", "failed"),
       call("g1", "Edit g.ts", "edit", { content: diff("g.ts", "c", "d") }), finish("g1", 2)));
-    const f = screen.getByRole("region", { name: "Edit Edit f.ts" });
+    const f = screen.getByRole("region", { name: "Edit f.ts" });
+    expect(f.textContent).not.toContain("Edit Edit");
     expect(within(f).getByRole("button")).toHaveAttribute("aria-expanded", "true");
     expect(within(f).getByText("Failed")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Edit Edit g.ts" })).getByRole("button")).toHaveAttribute("aria-expanded", "false");
+    expect(within(screen.getByRole("region", { name: "Edit g.ts" })).getByRole("button")).toHaveAttribute("aria-expanded", "false");
   });
 });
 
@@ -122,6 +123,11 @@ describe("ask", () => {
     expect(actions.answer).toHaveBeenLastCalledWith("e2", { outcome: "deny", reason: "no thanks" });
   });
 
+  it("ac5_reach_falls_back_to_the_call_title", () => {
+    show(feed(call("e3", "Edit notes", "edit"), entry(9, "ask", { toolCallId: "e3", input: {}, expiresAt: 9 })));
+    expect(screen.getByRole("button", { name: "Allow Edit notes this session" })).toBeInTheDocument();
+  });
+
   it("ac5_esc_and_cancel_close_the_reason_field_without_a_call", async () => {
     const actions = mk();
     show(asking(), actions);
@@ -141,6 +147,7 @@ describe("other rows", () => {
     show(feed(entry(3, "ask", { toolCallId: "t", input: {}, expiresAt: 1, decision: { outcome: "deny", reason: "too broad", by: "alice" } })));
     const el = document.querySelector(".wa-decision")!;
     expect(el.textContent).toContain("alice");
+    expect(el.textContent).toContain("Denied");
     expect(el.textContent).toContain("too broad");
   });
 
@@ -199,6 +206,15 @@ describe("StatusLine", () => {
   };
   const word = () => screen.getByRole("status").textContent;
   const shape = () => document.querySelector("[data-shape]")!.getAttribute("data-shape");
+  /** An act with no kernel call yet: a disabled, described button that sends nothing to the agent. */
+  const noKernel = (s: { actions: Actions }, label: string) => {
+    const b = screen.getByRole("button", { name: label });
+    expect(b).toBeDisabled();
+    expect(b).toHaveAccessibleDescription("This console cannot do this yet.");
+    b.click();
+    expect(s.actions.say).not.toHaveBeenCalled();
+    expect(s.actions.stop).not.toHaveBeenCalled();
+  };
 
   it("ac9_running_thinking_with_clock_and_stop", async () => {
     const s = status({ state: "running", since: T });
@@ -257,13 +273,12 @@ describe("StatusLine", () => {
     expect(s.onNeedsYou).toHaveBeenCalled();
   });
 
-  it("ac9_paused_bars_resume_now", async () => {
+  it("ac9_paused_bars_resume_now", () => {
     const until = new Date(2026, 0, 2, 7, 5).getTime();
     const s = status({ state: "paused", until });
     expect(word()).toBe("Paused until 07:05");
     expect(shape()).toBe("bars");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Resume now" }));
-    expect(s.actions.say).toHaveBeenCalled();
+    noKernel(s, "Resume now");
   });
 
   it("ac9_idle_completed_ring", () => {
@@ -279,27 +294,25 @@ describe("StatusLine", () => {
     expect(shape()).toBe("ring");
   });
 
-  it("ac9_idle_failed_triangle_try_again", async () => {
+  it("ac9_idle_failed_triangle_try_again", () => {
     const s = status({ state: "idle", stop: { kind: "failed", error: "rate limit" } });
     expect(word()).toBe("Failed: rate limit");
     expect(shape()).toBe("triangle");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Try again" }));
-    expect(s.actions.say).toHaveBeenCalled();
+    noKernel(s, "Try again");
   });
 
-  it("ac9_unknown_dashed_ring_continue", async () => {
+  it("ac9_unknown_dashed_ring_continue", () => {
     const s = status({ state: "unknown" });
     expect(word()).toBe("Not running: watane restarted");
     expect(shape()).toBe("dashed-ring");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Continue" }));
-    expect(s.actions.say).toHaveBeenCalled();
+    noKernel(s, "Continue");
   });
 
   it("ac9_resume_lost_dashed_ring_continue_from_summary", () => {
-    status({ state: "resume-lost" });
+    const s = status({ state: "resume-lost" });
     expect(word()).toBe("Claude no longer has this session");
     expect(shape()).toBe("dashed-ring");
-    expect(screen.getByRole("button", { name: "Continue from a summary" })).toBeInTheDocument();
+    noKernel(s, "Continue from a summary");
   });
 
   it("ac9_stopping_shows_until_idle", () => {
