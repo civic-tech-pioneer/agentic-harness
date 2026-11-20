@@ -42,7 +42,7 @@ function toToolRow(v: SessionView, id: string): number {
   return f.at + (before.length ? 1 : 0);
 }
 
-function upsertCall(v: SessionView, p: CallPatch, i?: number) {
+function upsertCall(v: SessionView, p: CallPatch, i?: number, fromAsk = false) {
   const f = find(v, p.id);
   if (!f) {
     const call = normalize(p);
@@ -60,7 +60,9 @@ function upsertCall(v: SessionView, p: CallPatch, i?: number) {
     v.rows[f.at] = { ...explored(calls), key: r.key };
     if (!isExplored(call)) toToolRow(v, p.id);
   } else if (r.kind === "tool") {
-    v.rows[f.at] = { ...r, call, ...(i !== undefined ? { i } : {}) };
+    // while an ask is open, the stream cannot change what the card shows will run (TECHNICAL 14)
+    const held = r.ask && !fromAsk ? { title: f.call.title, kind: f.call.kind, locations: f.call.locations, content: f.call.content } : {};
+    v.rows[f.at] = { ...r, call: { ...call, ...held }, ...(i !== undefined ? { i } : {}) };
   }
 }
 
@@ -205,7 +207,7 @@ export function reduce(view: SessionView, message: string): SessionView {
         break;
       }
       // the ask's own call is the one that will run: it wins over what the stream left in the row
-      if (!find(v, m.ask.toolCallId) || m.call) upsertCall(v, m.call ?? { id: m.ask.toolCallId });
+      if (!find(v, m.ask.toolCallId) || m.call) upsertCall(v, m.call ?? { id: m.ask.toolCallId }, undefined, true);
       const at = toToolRow(v, m.ask.toolCallId);
       const row = v.rows[at] as ToolRow;
       const ask: Ask = m.ask;
