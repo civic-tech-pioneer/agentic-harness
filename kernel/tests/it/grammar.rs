@@ -298,6 +298,17 @@ fn ac5_rule_grammar_has_no_bypass() {
         assert_eq!(one(json!({"allow": [r]})), Vec::<String>::new(), "{r:?}");
     }
     assert_eq!(one(json!({"deny": ["Read(x),Bash(y)"]})), ["deny"]);
+    for r in ["Bash(git a}b)", "Bash(git status < x)"] {
+        assert_eq!(one(json!({"allow": [r]})), ["allow"], "{r:?}");
+    }
+    let ps = parse(&json!({"allow": ["Bash(git status < x)"]}).to_string()).1;
+    assert!(ps[0].reason.contains("'<'"), "{}", ps[0].reason);
+    let ps = parse(&json!({"allow": ["Bash(/usr/bin/git status)"]}).to_string()).1;
+    assert!(ps[0].reason.contains("path"), "{}", ps[0].reason);
+    assert_eq!(
+        one(json!({"deny": ["Bash(git 'x' $y;z)", "Bash(/usr/bin/git)"]})),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
@@ -374,6 +385,13 @@ fn ac3d_frontmatter_keeps_name_and_description_only() {
     assert_eq!(
         fields(&skill_md("---\r\nallowed-tools: x\r\n---\r\n")),
         ["skills[0].files"]
+    );
+    let nested =
+        json!({"skills": [{"name": "s", "files": {"x/Skill.md": "---\nhooks: x\n---\n"}}]});
+    assert_eq!(
+        fields(&parse_profile(&nested.to_string()).1),
+        ["skills[0].files"],
+        "a nested SKILL.md is checked too"
     );
 }
 
