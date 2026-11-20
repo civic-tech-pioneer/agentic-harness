@@ -94,9 +94,10 @@ describe("sidebar", () => {
   });
   it("ac5_shapes_per_state", () => {
     const all: SidebarSession[] = (["idle", "unknown"] as const).map((s) => ({ id: s, title: s, place: "X", meta: "X · " + s, state: s }));
-    render(<Sidebar info={storyInfo} turn="idle" sessions={all} />);
-    expect(screen.getAllByRole("img", { name: "Unknown" })[0]).toHaveClass("g-unknown");
-    expect(screen.getAllByRole("img", { name: "Idle" })[0]).toHaveClass("g-idle");
+    render(<Sidebar info={storyInfo} turn="running" sessions={all} />);
+    expect(within(screen.getByRole("button", { name: /unknown/ })).getByRole("img", { name: "Unknown" })).toHaveClass("g-unknown");
+    expect(within(screen.getByRole("button", { name: /idle/ })).getByRole("img", { name: "Idle" })).toHaveClass("g-idle");
+    expect(screen.getByRole("button", { name: /idle/ }).closest(".wa-group")!.querySelector(".wa-glabel")!.textContent).toBe("Recent");
   });
   it("ac5_rows_hold_their_group_while_the_pointer_is_over_the_list", () => {
     const { rerender } = render(<Sidebar info={storyInfo} turn="running" sessions={rows} />);
