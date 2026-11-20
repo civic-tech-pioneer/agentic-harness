@@ -354,10 +354,18 @@ and `.husky/**`. No launch can remove them.
 
 | Line | Item |
 |---|---|
-| `control_request` `can_use_tool` | `{"type":"ask","id":<host id>,"tool":…,"input":…}` |
-| `control_request` `hook_callback` (PreToolUse) | `{"type":"check","id":<host id>,"tool":…,"input":…}` |
+| `control_request` `can_use_tool` | `{"type":"ask","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
+| `control_request` `hook_callback` (PreToolUse) | `{"type":"check","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
 | `control_cancel_request` | `{"type":"ask-resolved","id":…,"by":"cancelled"}` |
+| a line whose top-level `type` is one of the host's item types (`ask`, `check`, `ask-resolved`, `initialized`, `wrapped`, and any item type the host adds) | never passed through: the host pushes `{"type":"wrapped","line":"<the line, as a JSON string>"}` instead |
 | any other line, known or not | the line unchanged |
+
+   `expires-at` is on the host's clock: for an ask, the time the host pushed
+   the item plus 10 minutes, the same instant at which it denies the ask
+   (step 5); for a check, the push time plus the hook's `timeout-s`. A
+   `control_request` without a `tool_use_id` is not passed as an ask or
+   check: the host answers it deny (ask) or `deny` (check) at once and pushes
+   nothing for it. So no `claude` stdout line can pass as a host item.
 
 5. Writes to stdin are only these:
 
@@ -369,7 +377,8 @@ and `.husky/**`. No launch can remove them.
 | `answer` to a check | `{}` for `none`; `{hookSpecificOutput: {hookEventName: PreToolUse, permissionDecision: deny, permissionDecisionReason}}` for `deny` | `allow` refused |
 | `interrupt` | `control_request` `interrupt` | – |
 
-   After any answer, and when an ask expires (10 minutes, deny), the host
+   After any answer, and when an ask expires (10 minutes from the push of
+   the ask item, at its `expires-at`; deny), the host
    pushes `ask-resolved {id, by}`. A second answer is `unknown-ask`. Nothing
    else is ever written: no `apply_flag_settings`, `mcp_set_servers`,
    `set_permission_mode`, `updatedPermissions` or second `initialize`.
