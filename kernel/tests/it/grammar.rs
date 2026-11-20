@@ -517,3 +517,41 @@ fn ac3_runner_abbreviations_refused_and_project_scripts_pass() {
         assert!(ps[0].reason.contains("runner"), "{r}: {}", ps[0].reason);
     }
 }
+
+#[test]
+fn ac2_package_runner_second_word_is_an_allow_list() {
+    for r in [
+        "Bash(npm test)",
+        "Bash(npm install)",
+        "Bash(npm ci)",
+        "Bash(npm run build)",
+        "Bash(npm i x)",
+        "Bash(pnpm install)",
+        "Bash(yarn install)",
+        "Bash(uv pip install x)",
+        "Bash(uv sync)",
+        "Bash(devbox add x)",
+    ] {
+        let (_, ps) = parse_profile(&json!({"allow": [r]}).to_string());
+        assert!(ps.is_empty(), "{r}");
+    }
+    for r in [
+        "Bash(pnpm m:*)",
+        "Bash(pnpm recursive exec:*)",
+        "Bash(yarn workspace p exec:*)",
+        "Bash(npm exe:*)",
+        "Bash(npm init)",
+        "Bash(npm start)",
+        "Bash(yarn build)",
+        "Bash(npm:*)",
+        "Bash(npm)",
+        "Bash(pnpx x)",
+        "Bash(yarnpkg exec x)",
+        "Bash(corepack pnpm dlx x)",
+        "Bash(uv run x)",
+        "Bash(devbox run x)",
+    ] {
+        let (_, ps) = parse_profile(&json!({"allow": [r]}).to_string());
+        assert_eq!(fields(&ps), ["allow"], "{r}");
+    }
+}

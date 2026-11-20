@@ -144,7 +144,7 @@ pub(crate) const TOOLS: [&str; 12] = [
 const PER_SESSION: [&str; 4] = ["workspace", "extra-workspaces", "agent-handle", "session"];
 /// Commands that run any code given to them, or run the next word as a command (4.1). Names
 /// starting with `python` are runners too.
-const RUNNERS: [&str; 51] = [
+const RUNNERS: [&str; 54] = [
     "bash",
     "sh",
     "zsh",
@@ -162,6 +162,9 @@ const RUNNERS: [&str; 51] = [
     "bun",
     "bunx",
     "npx",
+    "pnpx",
+    "yarnpkg",
+    "corepack",
     "uvx",
     "perl",
     "ruby",
@@ -197,13 +200,32 @@ const RUNNERS: [&str; 51] = [
     "time",
     "stdbuf",
 ];
-/// Commands whose subcommands below are runners; a rule must pin a plain other subcommand.
-const SUB_RUNNERS: [(&str, &[&str]); 5] = [
-    ("npm", &["exec", "x", "explore", "init", "create", "innit"]),
-    ("pnpm", &["dlx", "exec", "create"]),
-    ("yarn", &["dlx", "exec", "create"]),
-    ("uv", &["run", "tool"]),
-    ("devbox", &["run"]),
+/// Package runners and the only second words an allow rule may pin for them: every other
+/// subcommand, abbreviation or forwarder can reach an `exec` (4.1).
+const PACKAGE_RUNNERS: [(&str, &[&str]); 5] = [
+    (
+        "npm",
+        &[
+            "install", "i", "ci", "test", "run", "ls", "list", "audit", "outdated",
+        ],
+    ),
+    (
+        "pnpm",
+        &[
+            "install", "add", "test", "run", "list", "ls", "audit", "outdated",
+        ],
+    ),
+    (
+        "yarn",
+        &[
+            "install", "add", "test", "run", "list", "ls", "audit", "outdated",
+        ],
+    ),
+    (
+        "uv",
+        &["pip", "sync", "lock", "add", "remove", "tree", "venv"],
+    ),
+    ("devbox", &["install", "add"]),
 ];
 
 pub(crate) fn model_ok(s: &str) -> bool {
@@ -563,20 +585,12 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
             return Some("runs commands with -exec or -ok");
         }
     }
-    if let Some((_, subs)) = SUB_RUNNERS.iter().find(|(c, _)| *c == base) {
-        match words.next() {
-            Some(s) if plain(s) && !s.starts_with('-') && !sub_refused(s, subs) => {}
-            _ => return Some("allows an interpreter or runner prefix"),
+    if let Some((_, subs)) = PACKAGE_RUNNERS.iter().find(|(c, _)| *c == base) {
+        if !words.next().is_some_and(|s| subs.contains(&s)) {
+            return Some("allows an interpreter or runner prefix");
         }
     }
     None
-}
-
-/// A runner's second word is refused when it is a refused subcommand or alias, or a prefix of
-/// one at least two characters long: the package managers run any unique abbreviation.
-fn sub_refused(s: &str, subs: &[&str]) -> bool {
-    subs.iter()
-        .any(|x| s == *x || (s.len() >= 2 && x.starts_with(s)))
 }
 
 fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
