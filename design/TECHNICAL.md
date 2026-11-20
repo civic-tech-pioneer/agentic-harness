@@ -251,11 +251,13 @@ The allow grammar for `Bash` (deny rules are not held to it). An allow
 - The first word (split on whitespace, after that `:*` is removed) is no path
   (no `/`), has no `~`, and is made only of `A-Za-z0-9._+-`.
 - The first word, lowercased, is not an interpreter or runner: no name
-  starting `python`, and none of these, because each runs, wraps or schedules
-  another command: `.`, `ash`, `at`, `awk`, `bash`, `builtin`, `bun`, `bunx`, `busybox`, `chroot`, `chrt`, `command`, `corepack`, `crontab`, `csh`, `dash`, `deno`, `doas`, `elixir`, `env`, `eval`, `exec`, `expect`, `fakeroot`, `fish`, `flock`, `gawk`, `gdb`, `ionice`, `irb`, `julia`, `ksh`, `ltrace`, `lua`, `mawk`, `mksh`, `nawk`, `nice`, `node`, `nohup`, `npx`, `nsenter`, `osascript`, `parallel`, `perl`, `php`, `pkexec`, `pnpx`, `pwsh`, `rscript`, `ruby`, `runuser`, `screen`, `script`, `setsid`, `sg`, `sh`, `source`, `stdbuf`, `strace`, `su`, `sudo`, `systemd-run`, `taskset`, `tclsh`, `tcsh`, `time`, `timeout`, `tmux`, `toybox`, `ts-node`, `tsx`, `unshare`, `uvx`, `watch`, `xargs`, `yarnpkg`, `zsh`.
+  starting `python`, `pypy`, `node`, `perl`, `ruby`, `php` or `lua` (versioned
+  names such as `python3.12`, `nodejs`, `perl5.36.0`, `luajit`), and none of these, because each runs, wraps or schedules
+  another command: `.`, `ash`, `at`, `awk`, `bash`, `batch`, `builtin`, `bun`, `bunx`, `busybox`, `byobu`, `capsh`, `chroot`, `chrt`, `command`, `coproc`, `corepack`, `crontab`, `csh`, `dash`, `deno`, `doas`, `dtach`, `elixir`, `enable`, `env`, `eval`, `exec`, `expect`, `fakeroot`, `fc`, `fish`, `flock`, `gawk`, `gdb`, `ionice`, `irb`, `julia`, `ksh`, `lldb`, `ltrace`, `lua`, `mawk`, `mksh`, `nawk`, `nice`, `node`, `nohup`, `npx`, `nsenter`, `numactl`, `osascript`, `parallel`, `perl`, `php`, `pipx`, `pkexec`, `pnpx`, `prlimit`, `pwsh`, `r`, `rbash`, `rscript`, `ruby`, `run0`, `runuser`, `screen`, `script`, `sem`, `setpriv`, `setsid`, `sg`, `sh`, `source`, `ssh`, `stdbuf`, `strace`, `su`, `sudo`, `systemd-run`, `taskset`, `tclsh`, `tcsh`, `time`, `timeout`, `tmux`, `toybox`, `trap`, `ts-node`, `tsx`, `unshare`, `uvx`, `valgrind`, `watch`, `xargs`, `yarnpkg`, `zellij`, `zsh`.
   This list is the rule; the list in `kernel/src/profile.rs` (`RUNNERS`) must
-  equal it (9.2, Code to change). A word not on the list is not thereby safe:
-  the shell grant's sandbox (4.2) is the limit (14, Not protected). `find` is
+  equal it (9.2, Code to change). A list of this kind cannot be complete, so a word not on it
+  is not thereby safe: the shell grant's sandbox (4.2) is the limit (14, Not
+  protected). `find` is
   allowed only with no `*` and no `-exec`, `-execdir`, `-ok` or `-okdir`.
 - A package runner (table) needs a second word from its row and no option
   word (starting `-`) after it, and the rule has no `*` or `:*` anywhere
@@ -559,7 +561,7 @@ once; `check` runs only this step.
 Code to change (next kernel slice), where `kernel/` differs from this text:
 
 - `yarn ls` is in `PACKAGE_RUNNERS` (`kernel/src/profile.rs`); drop it.
-- `RUNNERS` lacks the names of 4.1 added to it: `tsx`, `ts-node`, `tmux`, `screen`, `runuser`, `pkexec`, `chroot`, `nsenter`, `systemd-run`, `script`, `strace`, `ltrace`, `gdb`, `parallel`, `fakeroot`, `sg`, `tclsh`, `rscript`, `julia`, `expect`, `irb`, `elixir`, `at`, `crontab`; add them.
+- `RUNNERS` lacks the names of 4.1 added to it: `tsx`, `ts-node`, `tmux`, `screen`, `runuser`, `pkexec`, `chroot`, `nsenter`, `systemd-run`, `script`, `strace`, `ltrace`, `gdb`, `parallel`, `fakeroot`, `sg`, `tclsh`, `rscript`, `julia`, `expect`, `irb`, `elixir`, `at`, `crontab`, `r`, `rbash`, `trap`, `fc`, `coproc`, `enable`, `sem`, `batch`, `run0`, `pipx`, `lldb`, `valgrind`, `capsh`, `setpriv`, `prlimit`, `numactl`, `ssh`, `dtach`, `zellij`, `byobu`, and the prefixes `pypy`, `node`, `perl`, `ruby`, `php`, `lua` beside `python`; add them.
 - `frontmatter_problem` accepts a `:` in an indented (continuation) line; refuse it (4.1).
 
 ### 9.3 Sessions
@@ -1061,7 +1063,7 @@ stages B and E).
 
 Not protected: the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
-what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others: inside the shell grant's sandbox (4.2) only; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
+what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose loopback reach is still to be probed (V27), and only for a profile the participant made with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
 (spec 6); whether a subagent prompt that starts with `/` runs a skill (not
 probed; probe V26, slice S1); whether the shell grant's sandbox blocks
 loopback (probe V27, slice S1; table in 16).
