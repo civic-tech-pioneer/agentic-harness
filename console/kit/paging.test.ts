@@ -14,7 +14,7 @@ describe("S4-fix4 AC3 paging work", () => {
     const pre = Array.from({ length: 2560 }, (_, n) => JSON.stringify({ v: 1, i: n + 1, kind: "message", at: n, body: { role: "user", content: [{ type: "text", text: `m${n + 1}` }] } }));
     const k = fakeKernel([], { preload: pre });
     const s = openSession(k, "s1", () => {});
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 1000));
     s.close();
     expect(counter.n).toBeGreaterThanOrEqual(2560); // the pages were read in
     expect(counter.n).toBeLessThanOrEqual(2560 + 256 + 10);

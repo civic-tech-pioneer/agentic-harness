@@ -24,8 +24,38 @@ const MAX_DELAY_MS = 30_000;
 const MAX_TRIES = 5;
 const STABLE_MS = 10_000;
 
+const BURST = 8;
+const REFILL_PER_S = 4;
+const MIN_SHORT_PAGE = 16;
+
+/** The one rate governor: a token bucket of 8 calls refilled at 4 per second; a call without a token waits for one. */
+function governor() {
+  let tokens = BURST;
+  let last = Date.now();
+  const queue: Array<() => void> = [];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const drain = () => {
+    timer = undefined;
+    const now = Date.now();
+    tokens = Math.min(BURST, tokens + ((now - last) / 1000) * REFILL_PER_S);
+    last = now;
+    while (queue.length && tokens >= 1) { tokens--; queue.shift()!(); }
+    if (queue.length) timer = setTimeout(drain, Math.ceil(((1 - tokens) / REFILL_PER_S) * 1000));
+  };
+  return {
+    take(): Promise<void> { return new Promise((r) => { queue.push(r); if (!timer) drain(); }); },
+    stop() { queue.length = 0; if (timer) clearTimeout(timer); timer = undefined; },
+  };
+}
+
 /** Opens a session: attaches after the last index shown, pages when behind, reattaches when the stream drops. */
-export function openSession(kernel: Kernel, session: string, onView: (v: SessionView) => void): { close(): void } {
+export function openSession(rawKernel: Kernel, session: string, onView: (v: SessionView) => void): { close(): void } {
+  const gov = governor();
+  const kernel: Kernel = {
+    ...rawKernel,
+    attach: async (...a) => { await gov.take(); return rawKernel.attach(...a); },
+    read: async (...a) => { await gov.take(); return rawKernel.read(...a); },
+  };
   let view = emptyView;
   let closed = false;
   let gen = 0;
@@ -65,20 +95,30 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   async function pageIn(g: number, through: number): Promise<string | undefined> {
     const base = view;
     const pages: string[][] = [];
+    const chunk: string[][] = [];
     let hi = through;
     if (!Number.isInteger(through) || through > Number.MAX_SAFE_INTEGER) return "the kernel's `behind` is not an index";
     if (through <= base.lastIndex) return "the kernel's `behind` is not past the last index shown";
     while (hi > base.lastIndex && !closed && g === gen) {
       const lo = Math.max(base.lastIndex, hi - PAGE);
       if (lo === hi) return "the kernel's `behind` is too large to page";
-      const page = await kernel.read(session, lo, hi - lo);
+      // a short page (the kernel's size cap) is read on from its last index until lo .. hi is covered
+      let c = lo;
+      while (c < hi && !closed && g === gen) {
+        const page = await kernel.read(session, c, hi - c);
+        if (closed || g !== gen) return undefined;
+        if (!page.length) return "the kernel returned no entries for a page it is behind on";
+        let top = c;
+        for (const e of page) { const m = parse(e); if ("i" in m && typeof m.i === "number" && m.i > top && m.i <= hi) top = m.i; }
+        if (top === c) return "the kernel returned a page that adds no entry inside the range it asked for";
+        if (top < hi && page.length < MIN_SHORT_PAGE) return "the kernel returned pages too short to read on";
+        chunk.push(page);
+        c = top;
+      }
       if (closed || g !== gen) return undefined;
-      if (!page.length) return "the kernel returned no entries for a page it is behind on";
-      if (!page.some((e) => { const m = parse(e); return "i" in m && typeof m.i === "number" && m.i > lo && m.i <= hi; }))
-        return "the kernel returned a page that adds no entry inside the range it asked for";
-      pages.unshift(page);
+      pages.unshift(chunk.splice(0).flat());
       hi = lo;
-      if (pages.length === 1) show(page.reduce(safeReduce, base)); // the newest page shows at once; the whole is reduced once below
+      if (pages.length === 1) show(pages[0].reduce(safeReduce, base)); // the newest range shows at once; the whole is reduced once below
     }
     if (closed || g !== gen) return undefined;
     show(pages.flat().reduce(safeReduce, base));
@@ -108,7 +148,7 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
             if (g !== gen || closed) return;
             const was = view.synced;
             show(safeReduce(view, json));
-            if (was) healthy();
+            if (was) tries = 0; // a live item resets the try count, not the one quick reattach
             else if (view.synced) {
               reached = true;
               if (stable) clearTimeout(stable);
@@ -137,5 +177,5 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   }
 
   void connect();
-  return { close() { closed = true; gen++; if (timer) clearTimeout(timer); if (stable) clearTimeout(stable); } };
+  return { close() { closed = true; gen++; gov.stop(); if (timer) clearTimeout(timer); if (stable) clearTimeout(stable); } };
 }
