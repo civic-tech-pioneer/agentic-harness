@@ -40,7 +40,16 @@ own four, so the project's agent survives every sync. An empty `adversary` skips
 A story that needs code in two projects (a mod and the host part it needs in watane) becomes one
 slice per project. The product owner fixes the interface between them in both sketches, hands the
 provider's slice out first, and the other once the provider merged or a fake of it is in the
-sketch. One foreman never works in two repositories.
+sketch. One foreman never works in two repositories. A provider project that is not on this
+factory yet (watane, today) is a cross-project dependency in `PLAN.md`: the consumer's slice
+fakes it, and the provider's part waits for the human or that project's own product owner.
+
+## One writer on main
+
+While a project has slices in flight, its `main` takes only the product owner's `PLAN.md`
+commits and merged PRs. Any other change (a design edit by hand, a factory sync) goes through a
+PR, after a look at the `Touches` of the slices in flight: a direct commit to files a slice owns
+makes that slice's rebase someone else's problem.
 
 ## Test pyramid
 
