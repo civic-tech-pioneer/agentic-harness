@@ -109,8 +109,7 @@ describe("ask", () => {
   it("ac5_open_ask_shows_input_diff_and_bar_and_answers", async () => {
     const actions = mk();
     show(asking(), actions);
-    expect(screen.getByText("file_path")).toBeInTheDocument();
-    expect(screen.getByText("note")).toBeInTheDocument();
+    expect(screen.getByRole("region").textContent).not.toContain("file_path");
     expect(screen.getByText("b").parentElement).toHaveAttribute("data-diff", "add");
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Allow once" }));
@@ -118,9 +117,15 @@ describe("ask", () => {
     await u.click(screen.getByRole("button", { name: "Allow edits in src this session" }));
     expect(actions.answer).toHaveBeenLastCalledWith("e2", { outcome: "allow", for: "session" });
     await u.click(screen.getByRole("button", { name: "Deny…" }));
-    await u.type(screen.getByRole("textbox", { name: "Reason" }), "no thanks");
+    await u.type(screen.getByRole("textbox", { name: "Tell the agent why" }), "no thanks");
     await u.click(screen.getByRole("button", { name: "Deny" }));
     expect(actions.answer).toHaveBeenLastCalledWith("e2", { outcome: "deny", reason: "no thanks" });
+  });
+
+  it("ac5_non_edit_ask_without_diff_still_shows_its_input", () => {
+    show(feed(call("b1", "Run ls", "execute"), entry(9, "ask", { toolCallId: "b1", input: { command: "ls -la" }, expiresAt: 9 })));
+    expect(screen.getByText("command")).toBeInTheDocument();
+    expect(screen.getByText("ls -la")).toBeInTheDocument();
   });
 
   it("ac5_no_reach_no_session_allow_button", () => {

@@ -4,6 +4,7 @@ import type { Actions, Row, ToolCall } from "../model";
 import { AskBar } from "./askbar";
 import { DiffView } from "./diff";
 import { Disclosure } from "./disclosure";
+import { Pencil, Search } from "./icons";
 import { ProgramOutput } from "./output";
 
 type Of<K extends Row["kind"]> = Extract<Row, { kind: K }>;
@@ -32,13 +33,14 @@ export function ThoughtRow({ row }: { row: Of<"thought"> }) {
 export function ExploredRow({ row }: { row: Of<"explored"> }) {
   const parts = [row.reads ? plural(row.reads, "read", "reads") : "", row.searches ? plural(row.searches, "search", "searches") : ""].filter(Boolean);
   return (
-    <Disclosure className="wa-explored" label={`Explored · ${parts.join(", ")}`}>
+    <Disclosure className="wa-explored" icon={<Search />} label={`Explored · ${parts.join(", ")}`}>
       <ul>{row.calls.map((c) => <li key={c.id}>{c.title}</li>)}</ul>
     </Disclosure>
   );
 }
 
-const STATUS: Record<ToolCall["status"], string> = { pending: "Pending", in_progress: "Running", completed: "Done", failed: "Failed" };
+const STATUS: Record<ToolCall["status"], [string, string]> = {
+  pending: ["Pending", "b-off"], in_progress: ["Running", "b-off"], completed: ["Done", "b-ok"], failed: ["Failed", "b-bad"] };
 const KIND = (k: string) => k.charAt(0).toUpperCase() + k.slice(1);
 
 function InputList({ input }: { input: unknown }) {
@@ -57,9 +59,11 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const asking = !!ask && !ask.decision;
   const path = call.locations[0]?.path;
   const name = path ? `${KIND(call.kind)} ${path}` : call.title;
+  const hasDiff = call.content.some((c) => c.type === "diff");
+  const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : STATUS[call.status];
   const body = (
     <>
-      {asking ? <InputList input={ask.input} /> : null}
+      {asking && !hasDiff ? <InputList input={ask.input} /> : null}
       {call.content.map((c, n) =>
         c.type === "diff" ? <DiffView key={n} path={c.path} oldText={c.oldText} newText={c.newText} />
         : c.type === "content" ? <ProgramOutput key={n} text={c.content.text} />
@@ -70,13 +74,14 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   );
   const head = (
     <>
-      {path ? <><span className="wa-tool-name">{KIND(call.kind)}</span>{" "}</> : null}
-      <span className="wa-tool-arg">{path ?? call.title}</span>{" "}
-      <span className="wa-tool-status" data-status={call.status}>{STATUS[call.status]}</span>
+      {call.kind === "edit" ? <Pencil /> : null}
+      {path ? <><span className="wa-tool-name name">{KIND(call.kind)}</span>{" "}</> : null}
+      {path ? <code className="wa-tool-arg">{path}</code> : <span className="wa-tool-arg">{call.title}</span>}{" "}
+      <span className={`wa-tool-status badge ${tagCls}`} data-status={call.status}>{tag}</span>
     </>
   );
   return (
-    <section className="wa-tool" data-call={call.id} data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
+    <section className={`wa-tool card${asking ? " ask" : ""}`} data-call={call.id} data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
       <ToolCard head={head} open={call.status === "failed" || asking}>{body}</ToolCard>
     </section>
   );
@@ -86,7 +91,7 @@ function ToolCard({ head, open, children }: { head: React.ReactNode; open: boole
   const [shown, setShown] = useState(open);
   return (
     <>
-      <button type="button" className="wa-tool-head" aria-expanded={shown || open} onClick={() => setShown(!shown)}>{head}</button>
+      <button type="button" className="wa-tool-head chead" aria-expanded={shown || open} onClick={() => setShown(!shown)}>{head}</button>
       {shown || open ? <div className="wa-tool-body">{children}</div> : null}
     </>
   );
