@@ -55,34 +55,15 @@ Touches: `console/`, `ui/`. Not `kernel/`, `design/`, `factory/`.
 Fakes: the same scripted kernel; extend the script where a frame shows a state it lacks.
 Protects: *polish* (*core* for 1 and 2: an ask must read as one).
 
-### S6: the review's should-dos P07 to P12, and S3's spec debts (in flight (cloud), routine trig_014PPn8yaasuqjGjGycvXqCg)
-
-Story: a foreman of stage B or D reads TECHNICAL and finds the remaining bounds of the performance
-review, and the rules S3 decided in code, written where they belong.
-Outcomes:
-1. P07 (active history after compaction), P08 (chunk rewrite cost), P09 (stream-to-session key),
-   P10 (timer budget), P11 (host queue memory) and P12 (kernel quota) are rules in the sections
-   that own them, each with a numbered case in 16, as the record states or a better fix named.
-2. TECHNICAL 1 and 14 name the real kernel files (`kernel/src/profile.rs`, `overlay.rs`,
-   `refuse.rs`, `check.rs`, `error.rs`), so the adversary rule matches them.
-3. S3's code decisions are spec text (4.1, 4.2, 9.2): an absent `tools` and `[]` both mean no
-   built-in tools; per-session fields refused in a profile; `ask-expiry` in seconds; the overlay
-   keys and limits; strict skill frontmatter (`name`, `description`, ASCII); the Bash allow-rule
-   grammar (shell-safe characters, no path or `~` first word, `:*` only trailing, bare `Bash`
-   refused) and the package-runner table (npm, pnpm, yarn, uv, devbox: fixed second words, no
-   option word, no `*`), with `yarn ls` dropped from yarn's list (it runs a script named `ls`).
-   Where code and the new text differ, the text names the code change for a later kernel slice.
-Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Not the record, not `kernel/`.
-Protects: *core* (*guard* for 2 and 3).
-
 ### S11: the transcript store: entries, parts and pages (in flight (cloud), routine trig_01SrbFBAegdjggbPmwt45bFR)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and sees a session's transcript stored and
 read back as 9.4 and 9.1 say, against an in-memory key-value state of host 7's shape (get, put,
 delete; 4 MiB per value; no prefix scan), for transcripts of 10 and of 10 000 entries.
 Outcomes:
-1. Append: indexes start at 1 and rise by one; chunks `entries/<id>/<n>` hold at most 256 entries
-   or 1 MiB; the session record's `chunks` lists each chunk's first index, so a read touches only
+1. Append: indexes start at 1 and rise by one; chunks `entries/<id>/<n>` hold what 9.1 and 9.4 say
+   on main at delivery (S6, P08, changed them to at most 64 KiB, or one entry over 64 KiB; the PO
+   checks this on delivery); the session record's `chunks` lists each chunk's first index, so a read touches only
    the chunks it needs (a test counts the gets).
 2. An entry over 256 KiB is stored as consecutive `part` entries cut at UTF-8 boundaries, the
    whole carrying the last part's index; a reader joins parts across pages; a read whose `after`
@@ -111,7 +92,7 @@ highlighted once its block is complete and visible; a large-transcript fixture w
 input, Stop and scroll latency runs in `npm test`.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-### S10: the console's wire into the contract (cloud, after S6 merges: same files)
+### S10: the console's wire into the contract, and S8's 4.5 rules (cloud, after S6 merges: same files)
 
 Story: a kernel maker of stage B reads 2.3, 9.4 and 18 and finds what S4's console relies on.
 Outcomes: S4's wire assumptions (`console/kit/wire.ts`: entries as `_meta.watane {type:"entry"}`,
@@ -186,6 +167,16 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   =2.1.330, agent-client-protocol-schema =1.20.0. Adversary HELD with a RISK on 4.5 (PO decision
   below); user-sim ACCEPTED. Implementer runs 1/1. Suite: 66 tests 0.23 s; gate 13 s.
 
+- **S6** the review's should-dos and S3's spec debts (PR #11, 21 min in flight). A foreman of
+  stage B or D finds P07-P12 as rules with cases 54-59: active history from the newest compaction
+  (P07), 64 KiB transcript chunks (P08), `stream/<id>` and `live/<session>` keys (P09), one timer
+  per session, 240 kernel-wide and 120 per owner (P10), host byte budgets 512/128/16 MiB (P11),
+  kept keys charged to their owner in a 224 MiB account (P12); real kernel files in 1 and 14;
+  4.1 names every refused first word and runtime prefix; `ask-expiry` in seconds. User-sim
+  ACCEPTED on run 2; adversary BREACHED 2 (the refused-word list), HELD on pass 3. Implementer
+  runs 1/1/1. Gate 14 s, no tests changed. Code to change, for the next kernel slice: drop
+  `yarn ls`, add the missing runner names and prefixes, the frontmatter `:` rule.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -226,6 +217,15 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   built (it reads `tool_use_id` when present, null otherwise, never guessed), and write the three
   rules into 4.5 in S10 (option 1). Also under Waiting: it is a wire rule of the watane host.
 
+- 2026-11-21 S6 settled the Bash boundary as option (a) of Waiting (TECHNICAL 14 "Not protected":
+  no refused-word list is complete; a missed word runs only inside the shell grant's sandbox, for
+  a profile the participant made or adopted). Kept; the human may still choose (b).
+- 2026-11-21 S6 open RISKs: kept keys and timers per owner are accepted limits named in 14 (same
+  pattern as slots); finding running sessions at restart without a prefix scan goes to stage B's
+  first kernel slice; the session allow on `Bash` is under Waiting.
+- 2026-11-21 Next kernel slice after S11 is S12: S6's code to change (runner names, `yarn ls`,
+  frontmatter `:`), then `expires-at` once S10 writes it.
+
 ## Human answers (2026-11-20, through the PO)
 
 S2 writes each into the document that owns it.
@@ -254,14 +254,14 @@ S2 writes each into the document that owns it.
   backend in the host, a third native process kind (a new host boundary, costly to remove once
   mods use it). Rec: (a). Blocks only stage F.
 
-- **Where the Bash allow-rule boundary is** (S3, security boundary). The kernel refuses allow rules
-  from a list of interpreters and runners; a list cannot be complete (`make`, `cargo run`,
-  `git -c` still pass). Options: (a) the spec says Claude's sandbox (N1, the shell grant) is the
-  only boundary for Bash, and the refuse list is a best-effort guard; (b) Bash allow rules become a
-  full allow list of named commands (safer, makers write each command, more friction).
-  Rec: (a), since N1 already requires the sandbox with every shell grant. Undo: (a) to (b) later
-  breaks profiles that rely on prefixes. Blocks nothing now: the current fail-closed list stays.
-
+- **Bash boundary** (S3, S6): S6 wrote option (a): Claude's sandbox is the boundary for Bash, the
+  refused-word list best effort. Your call to keep it or ask for (b), an allow list of named
+  commands (stricter; makers write each command). Undo (a) to (b): profiles that rely on
+  prefixes break.
+- **Session allow on `Bash`** (S6 RISK, security boundary). An `{allow, for: "session"}` answer to
+  a Bash ask allows any command for the rest of the session. Options: (a) hold the session allow
+  to the 4.1 allow-rule grammar (it allows only that command's prefix, refused words refused);
+  (b) name it in 14 "Not protected". Rec: (a), stricter and cheap now. Not blocking: no host yet.
 - **4.5 host items (S8, wire format, decided as option 1, veto welcome).** Ask and check items
   gain `tool_use_id` and `expires-at` (host clock), and the host never passes through a stdout line
   typed like its own items. Alternatives: (2) leave it to stage B's host slice; (3) a source marker
