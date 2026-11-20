@@ -75,24 +75,6 @@ Outcomes:
 Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Not the record, not `kernel/`.
 Protects: *core* (*guard* for 2 and 3).
 
-### S8: the kernel's adapters: Claude and Responses lines to ACP v1 (in flight (cloud), routine trig_017iKEQyBp4bB3RMVZnPDTsf)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and sees each row of 9.8 turn a recorded
-Claude stream-json line or Responses event into the ACP v1 update and transcript entry it names.
-Outcomes:
-1. Golden fixtures under `kernel/tests/fixtures/adapters/`: one per row of 9.8, input lines and
-   the expected updates and entries as JSON; a test runs them all.
-2. An unknown or unparsable Claude line becomes an `unknown` entry and never an error (9.8).
-3. `TodoWrite` gives a `Plan` and a `tool` entry; `result` gives usage and `idle {completed}` only
-   when `claude` is idle; `compact_boundary` gives a `compaction` entry.
-4. The adapters are pure functions (no state I/O), so 9.4 and the console can reuse them.
-Touches: `kernel/` only (a new adapter module, fixtures, tests). Not `design/` (S6 owns it): a
-spec question is a `BLOCKED`. Libraries per 9.8 and 13 (`claude-codes` types only,
-`agent-client-protocol-schema` v1) if they build; else serde types of the same shape, named in
-the delivery.
-Fakes: nothing; no host, no WIT. Leaves out: entry storage and paging (9.4), counters (9.7).
-Protects: *core*.
-
 ## Sketched
 
 ### S7: the console stays fast on a long session (cloud, after S9 merges: same files)
@@ -114,7 +96,14 @@ with a named console change; 9.4 says an `unreadable` entry keeps its `i`; 18.2 
 assistant-ui's External-store runtime (its ACP adapter is not published); AGENTS.md gains the
 console's test row (`npm test`, `npm run test:slow` in `console/`); the decision JSON of 2.3 is
 spelled out as the console sends it.
-Touches: `design/TECHNICAL.md`, `AGENTS.md`. Protects: *core*.
+Also from S8 (adversary RISK at "An ask shows the tool call that will run", 14), in 4.5: ask and
+check items carry `tool_use_id` and `expires-at` on the host's clock; the host never passes through
+a stdout line whose top-level type is one of its item types (it wraps it as unknown); 14 names
+`kernel/src/adapters/`; 9.8 gains rows (or a "gives nothing" list) for `hook_started`,
+`tool_progress`, `task_progress`; check option `none` is not drawn as an allow. Then the kernel
+follow-up (S11): take `expires-at` from the item when present; drop `yarn ls` (S3).
+Touches: `design/TECHNICAL.md`, `AGENTS.md`. Protects: *core* (*guard* for the 4.5 lines). If S8's
+row-coverage test reads a 9.8 "From" cell that changes, edit its fixture's `row` in the same slice.
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -166,6 +155,12 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   `Main-2` found the gaps that became S9. Implementer runs 2/1/1 + fixes 1/1/1/1/2/1. Suite:
   `npm test` 167 tests 6.2 s, gate 24 s, `npm run test:slow` 7.5 s.
 
+- **S8** the kernel's adapters (PR #10, opened and armed by the PO, 2026-11-20 23:4x UTC; 19 min
+  in flight). `cargo test` in `kernel/` turns each row of 9.8 into its ACP v1 update and entry from
+  golden fixtures; unknown lines become `unknown`, never an error. Real libraries: claude-codes
+  =2.1.330, agent-client-protocol-schema =1.20.0. Adversary HELD with a RISK on 4.5 (PO decision
+  below); user-sim ACCEPTED. Implementer runs 1/1. Suite: 66 tests 0.23 s; gate 13 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -200,6 +195,11 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   words, TECHNICAL 18.4). S7 waits for S9 (same files). S4's wire assumptions and spec notes
   become S10 after S6 (same files). Its decisions stand meanwhile: decision JSON
   `{"allow":true[,"for":"session"]}` / `{"deny":true,"reason"}`; acts with no 2.3 call shown off.
+
+- 2026-11-20 S8 BLOCKED on 4.5 (ask/check items lack the call id; a `claude` stdout line typed
+  like a host item would pass as an ask; `expires-at` on the kernel's clock). Decided: merge S8 as
+  built (it reads `tool_use_id` when present, null otherwise, never guessed), and write the three
+  rules into 4.5 in S10 (option 1). Also under Waiting: it is a wire rule of the watane host.
 
 ## Human answers (2026-11-20, through the PO)
 
@@ -236,6 +236,11 @@ S2 writes each into the document that owns it.
   full allow list of named commands (safer, makers write each command, more friction).
   Rec: (a), since N1 already requires the sandbox with every shell grant. Undo: (a) to (b) later
   breaks profiles that rely on prefixes. Blocks nothing now: the current fail-closed list stays.
+
+- **4.5 host items (S8, wire format, decided as option 1, veto welcome).** Ask and check items
+  gain `tool_use_id` and `expires-at` (host clock), and the host never passes through a stdout line
+  typed like its own items. Alternatives: (2) leave it to stage B's host slice; (3) a source marker
+  on host items, a wire change in both repos. Undo of 1: a few spec lines, one adapter field.
 
 ## Friction
 
