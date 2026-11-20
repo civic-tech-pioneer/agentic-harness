@@ -64,8 +64,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
             }}>
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
           </div>
-          {/* S9-2: pass session={{ model: info.model, mode: info.mode }} and stopping={stopping} */}
-          <Dock view={view} actions={actions} onNeedsYou={needsYou}
+          <Dock view={view} actions={actions} onNeedsYou={needsYou} session={{ model: info.model, mode: info.mode }} stopping={stopping}
             status={<StatusLine view={view} now={now} stopping={stopping} actions={actions} onNeedsYou={needsYou} />} />
         </ThreadProvider>
       </main>

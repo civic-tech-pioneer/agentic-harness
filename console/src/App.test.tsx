@@ -101,8 +101,8 @@ describe("dock", () => {
 
   it("ac2_full_queue_turns_send_off_and_the_placeholder_says_why", () => {
     dock(viewWith({ queue: Array.from({ length: 32 }, (_, n) => ({ n, input: `q${n}` })) }));
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
-    expect(screen.getByRole("textbox", { name: "Message" })).toHaveAttribute("placeholder", expect.stringMatching(/queue is full/i));
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveAttribute("placeholder", "The queue is full: 32 messages wait. Remove one, or stop the turn.");
   });
 
   it("ac2_enter_says_shift_enter_is_a_new_line_esc_stops", async () => {
