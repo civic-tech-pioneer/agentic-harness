@@ -58,6 +58,24 @@ describe("S9-1", () => {
     expect(screen.getByText("git status")).toBeInTheDocument();
   });
 
+  it("ac2_input_block_is_labelled_and_below_the_diff", () => {
+    show(askOf("e", "edit", diff("a.ts", "x", "y"), { file_path: "a.ts", note: "n" }));
+    const label = screen.getByText("Input");
+    expect(label).toHaveClass("wa-input-label");
+    const block = label.closest(".wa-input")!;
+    expect(block.textContent).toContain("file_path");
+    expect(block.textContent).toContain("note");
+    expect(screen.getByText("y").compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("ac4_one_diff_shows_its_path_only_when_it_differs_from_the_header", () => {
+    const a = show(askOf("e", "edit", diff("b.ts", "x", "y"), { file_path: "a.ts" }));
+    expect(a.container.querySelector(".wa-diff-path")!.textContent).toBe("b.ts");
+    a.unmount();
+    const b = show(askOf("e", "edit", diff("a.ts", "x", "y"), { file_path: "a.ts" }));
+    expect(b.container.querySelector(".wa-diff-path")).toBeNull();
+  });
+
   it("ac3_diff_classes_and_prefixes", () => {
     const { container } = render(<DiffView path="a" oldText="a\nb" newText="a\nc" />);
     const add = container.querySelector(".dl.add")!;

@@ -62,6 +62,17 @@ describe("AC2 rows", () => {
         content: [{ type: "diff", path: "/real", oldText: "", newText: "x" }] } })]);
     expect(v.rows[0]).toMatchObject({ kind: "tool", call: { title: "Edit /real", locations: [{ path: "/real" }], content: [{ path: "/real" }] } });
   });
+  it("ac3_stream_update_cannot_change_the_open_asks_call_until_it_is_answered", () => {
+    const real = { toolCallId: "e", title: "Edit /real", kind: "edit", status: "pending", locations: [{ path: "/real" }],
+      content: [{ type: "diff", path: "/real", oldText: "", newText: "x" }] };
+    const fake = { sessionUpdate: "tool_call_update", toolCallId: "e", title: "Edit /fake", kind: "read", locations: [{ path: "/fake" }],
+      content: [{ type: "diff", path: "/fake", oldText: "", newText: "y" }] };
+    let v = feed([call("e", "edit"), entry(5, "ask", { toolCallId: "e", input: {}, expiresAt: 9, toolCall: real }), upd(fake),
+      upd({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "in_progress" })]);
+    expect(v.rows[0]).toMatchObject({ kind: "tool", call: { title: "Edit /real", kind: "edit", status: "in_progress", locations: [{ path: "/real" }], content: [{ path: "/real", newText: "x" }] } });
+    v = feed([entry(6, "ask", { toolCallId: "e", input: {}, expiresAt: 9, decision: { outcome: "allow", by: "alice" } }), upd(fake)], v);
+    expect(v.rows[0]).toMatchObject({ kind: "tool", call: { title: "Edit /fake", locations: [{ path: "/fake" }] } });
+  });
   it("ac2_allow_and_verdict_are_decision_rows_and_allow_updates_allows", () => {
     let v = feed([entry(1, "allow", { id: "a1", reach: "edit src/**", given: true, by: "alice" })]);
     expect(v.allows).toEqual([{ id: "a1", reach: "edit src/**" }]);
