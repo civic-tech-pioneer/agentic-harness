@@ -87,7 +87,7 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
         const cause = await pageIn(r.behind);
         if (cause) {
           show(withUnknown(view, cause));
-          if (++stuck < MAX_STUCK) timer = setTimeout(() => void connect(), RETRY_MS);
+          if (++stuck < MAX_STUCK && !closed && g === gen) timer = setTimeout(() => void connect(), RETRY_MS);
           return;
         }
         stuck = 0;
