@@ -62,6 +62,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   button { transition: transform 150ms ease, border-color 150ms ease; }
   button:not(:disabled):active { transform: scale(0.96); }
   .foldbtn .chev { transition: transform 150ms ease; }
+  .wa-chev { transition: transform 150ms ease; }
 }
 
 /* shell */
@@ -100,11 +101,22 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .wa-column { max-width: 780px; margin: 0 auto; }
 
 .wa-dock { flex: none; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 780px; margin: 0 auto; padding: 8px 16px 16px; }
-.wa-needs { align-self: flex-start; background: var(--amber-bg); border-color: var(--amber); color: var(--amber); font-weight: 600; }
+.wa-needs { align-self: center; display: inline-flex; align-items: center; gap: 8px; height: 30px; min-height: 30px; padding: 0 12px; border-radius: 15px; background: var(--amber-bg); border-color: var(--amber); color: var(--amber); font-size: 12.5px; font-weight: 600; }
 .wa-plan, .wa-queue { padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); font-size: 14px; }
 .wa-plan ul, .wa-queue ul { margin: 4px 0 0; padding-left: 20px; }
 .wa-plan-head, .wa-queue-more { margin: 0; font-weight: 600; color: var(--muted); }
 .wa-plan li[data-status="completed"] { color: var(--muted); text-decoration: line-through; }
-.wa-composer { display: flex; align-items: flex-end; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-input); background: var(--panel); }
-.wa-composer textarea { flex: 1 1 auto; min-width: 0; min-height: 44px; resize: none; border: 0; background: transparent; padding: 8px; }
-.wa-composer button { border-radius: var(--radius-button); }
+.wa-plan-head { display: inline-flex; align-items: center; gap: 8px; }
+button.wa-plan-head { min-height: 32px; border: 0; background: transparent; padding: 0 8px 0 4px; font-size: 12.5px; }
+.wa-chev { flex: none; }
+.wa-plan-head[aria-expanded="true"] .wa-chev { transform: rotate(90deg); }
+.wa-composer { display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-input); background: var(--panel); }
+.wa-composer:focus-within { border-color: var(--accent); }
+.wa-composer textarea { min-width: 0; min-height: 48px; max-height: 160px; resize: none; border: 0; background: transparent; padding: 0; outline: 0; line-height: 1.5; }
+.wa-irow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wa-tag { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.wa-send { margin-left: auto; width: 36px; min-height: 36px; height: 36px; padding: 0; border: 0; border-radius: 10px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+@media (prefers-color-scheme: dark) { .wa-send { color: #151517; } }
+.wa-send:disabled { opacity: .35; cursor: default; }
+.wa-stop { margin-left: auto; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; font-weight: 500; }
+.wa-stop + .wa-send { margin-left: 0; }
