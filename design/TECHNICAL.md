@@ -302,6 +302,10 @@ and `.husky/**`. No launch can remove them.
   recorded process groups are killed.
 - **Scratch workspace** `<home>/scratch/<random>/`, named by the host, owned
   by a session; a mod sees its id. It asks no consent (8): no participant folder is in it.
+- **Not yet specified:** which call creates a scratch workspace, how a picked
+  folder becomes a workspace id, and how the kernel holds one across a resume.
+  Stage B's first slice (17) adds this to 2.1, 4.1, 4.6 and a 15 row before
+  any build slice of that stage starts.
 - **Picked workspace:** canonical, symlinks resolved. Refused: `/`, the home
   folder, the watane home and its ancestors, `~/.claude`, `~/.codex`,
   `~/.ssh`, `~/.aws`, `~/Library/Keychains`, the run and scratch trees;
