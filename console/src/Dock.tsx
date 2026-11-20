@@ -30,7 +30,9 @@ export function Composer({ queued, actions }: { queued: number; actions: Actions
 
 export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; status: ReactNode }) {
   const { view } = props;
+  const [opened, setOpened] = useState(false);
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
+  const folded = (view.openAsks.length > 0 || view.queue.length > 0) && !opened;
   return (
     <div className="wa-dock">
       {view.openAsks.length ? (
@@ -38,8 +40,12 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
       ) : null}
       {view.plan?.length ? (
         <section className="wa-plan" aria-label="Plan">
-          <p className="wa-plan-head">{done} of {view.plan.length} done</p>
-          <ul>{view.plan.map((p, n) => <li key={n} data-status={p.status}>{p.content}</li>)}</ul>
+          {folded ? (
+            <button type="button" className="wa-plan-head" aria-expanded={false} onClick={() => setOpened(true)}>Plan · {done} of {view.plan.length} done</button>
+          ) : (
+            <p className="wa-plan-head">{done} of {view.plan.length} done</p>
+          )}
+          {folded ? null : <ul>{view.plan.map((p, n) => <li key={n} data-status={p.status}>{p.content}</li>)}</ul>}
         </section>
       ) : null}
       {view.queue.length ? (

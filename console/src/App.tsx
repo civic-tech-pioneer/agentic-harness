@@ -1,5 +1,5 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { decisionJson, emptyView, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Kernel, type SessionView } from "../kit";
 import { Sidebar } from "./Sidebar";
 import { Header, type SessionInfo } from "./Header";
@@ -11,11 +11,26 @@ export function App({ kernel, info }: { kernel: Kernel; info: SessionInfo }) {
   const [stopping, setStopping] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const scroller = useRef<HTMLDivElement>(null);
+  const atEnd = useRef(true);
+  const setAt = useRef(-1);
 
   useEffect(() => {
     const s = openSession(kernel, info.id, setView);
     return () => s.close();
   }, [kernel, info.id]);
+  // 18.6 Place: follow the end while the reader is within 40 px of it (and on open).
+  const toEnd = useCallback(() => {
+    const el = scroller.current;
+    if (el && atEnd.current) { el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop; }
+  }, []);
+  useLayoutEffect(toEnd, [view, toEnd]);
+  useEffect(() => {
+    const col = scroller.current?.firstElementChild;
+    if (!col || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(toEnd);
+    ro.observe(col);
+    return () => ro.disconnect();
+  }, [toEnd]);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => { if (view.turn?.state === "idle") setStopping(false); }, [view.turn]);
 
@@ -40,7 +55,8 @@ export function App({ kernel, info }: { kernel: Kernel; info: SessionInfo }) {
       <main className="wa-main">
         <Header info={info} view={view} actions={actions} />
         <ThreadProvider view={view} actions={actions}>
-          <div className="wa-scroll" ref={scroller}>
+          <div className="wa-scroll" ref={scroller}
+            onScroll={(e) => { const el = e.currentTarget; if (el.scrollTop === setAt.current) return; atEnd.current = el.scrollHeight - el.clientHeight - el.scrollTop <= 40; }}>
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
           </div>
           <Dock view={view} actions={actions} onNeedsYou={needsYou}

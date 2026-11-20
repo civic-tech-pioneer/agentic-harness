@@ -33,7 +33,7 @@ describe("the page", () => {
     for (const k of ["user", "thought", "agent", "explored", "tool"]) expect(kinds).toContain(k);
     expect(screen.getByText("Fix the retry bug in sync.ts", { selector: ".wa-user" })).toBeInTheDocument();
     expect(screen.getByText("Needs you (1)")).toBeInTheDocument();
-    expect(screen.getByText("1 of 3 done")).toBeInTheDocument();
+    expect(screen.getByText("Plan · 1 of 3 done")).toBeInTheDocument();
     expect(screen.getByText("also add a test")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Waiting for you");
     expect(screen.getByRole("textbox", { name: "Message" })).toBeInTheDocument();
@@ -175,5 +175,53 @@ describe("reload", () => {
     expect(attaches[1].args[1]).toBe(8);
     await ready();
     expect(rowsOf(a.container)).toEqual(before);
+  });
+
+  it("ac2_open_scrolls_the_transcript_to_its_end", async () => {
+    const set = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 900 });
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTop");
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", { configurable: true, get: () => 0, set });
+    try {
+      render(<App kernel={played()} info={INFO} />);
+      await ready();
+      expect(set).toHaveBeenCalledWith(900);
+    } finally {
+      delete (HTMLElement.prototype as any).scrollHeight;
+      if (desc) Object.defineProperty(HTMLElement.prototype, "scrollTop", desc); else delete (HTMLElement.prototype as any).scrollTop;
+    }
+  });
+
+  it("ac3_plan_is_folded_while_an_ask_waits_and_opens_by_the_participant", async () => {
+    render(<App kernel={played()} info={INFO} />);
+    await ready();
+    expect(screen.queryByText("Add backoff")).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Plan · 1 of 3 done" }));
+    expect(screen.getByText("Add backoff")).toBeInTheDocument();
+  });
+
+  it("ac3_plan_is_folded_while_inputs_are_queued", () => {
+    const v: SessionView = { ...emptyView, plan: [{ content: "A", status: "completed" }], queue: [{ n: 1, input: "x" }] };
+    render(<Dock view={v} actions={mk()} onNeedsYou={() => {}} status={null} />);
+    expect(screen.getByRole("button", { name: "Plan · 1 of 1 done" })).toBeInTheDocument();
+    expect(screen.queryByText("A")).toBeNull();
+  });
+
+  it("ac3_plan_is_listed_when_nothing_waits", () => {
+    const v: SessionView = { ...emptyView, plan: [{ content: "A", status: "completed" }] };
+    render(<Dock view={v} actions={mk()} onNeedsYou={() => {}} status={null} />);
+    expect(screen.getByText("A")).toBeInTheDocument();
+  });
+
+  it("ac4_esc_and_cancel_close_the_deny_field_and_focus_deny", async () => {
+    render(<App kernel={played()} info={INFO} />);
+    await ready();
+    const u = userEvent.setup();
+    await u.click(screen.getByRole("button", { name: "Deny…" }));
+    await u.keyboard("{Escape}");
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Deny…" })));
+    await u.click(screen.getByRole("button", { name: "Deny…" }));
+    await u.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Deny…" })));
   });
 });

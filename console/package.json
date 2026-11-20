@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build && node scripts/hash.mjs",
     "test": "vitest run",
-    "test:slow": "node test/layout.slow.mjs",
+    "test:slow": "node test/layout.slow.mjs && node test/regress_S4_open_shows_end.slow.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

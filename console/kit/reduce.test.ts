@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { emptyView, type SessionView } from "./model";
 import { reduce, settle } from "./reduce";
 import { fakeKernel } from "../fake/kernel";
-import { story } from "../fake/story";
+import { story, expiresAt } from "../fake/story";
 
 const J = JSON.stringify;
 const meta = (m: object) => J({ _meta: { watane: m } });
@@ -152,7 +152,7 @@ describe("AC7 story", () => {
     expect(edits[0]).toMatchObject({ call: { status: "completed", content: [{ type: "diff", path: "src/retry.ts" }] } });
     expect(edits[1]).toMatchObject({ ask: { toolCallId: "e2" } });
     expect(v.openAsks).toEqual(["e2"]);
-    expect(v.turn).toMatchObject({ state: "waiting", expiresAt: 1763600900000 });
+    expect(v.turn).toMatchObject({ state: "waiting", expiresAt: expiresAt });
     expect(v.queue).toHaveLength(1);
     expect(v.usage).toEqual({ used: 42000, window: 200000, compactAt: 160000 });
     expect(v.plan).toHaveLength(3);
