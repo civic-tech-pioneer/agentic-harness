@@ -493,6 +493,8 @@ fn ac3_runner_abbreviations_refused_and_project_scripts_pass() {
         "Bash(npm run build)",
         "Bash(uv pip install x)",
         "Bash(pnpm install)",
+        "Bash(npm i x)",
+        "Bash(yarn install)",
     ] {
         assert!(one(r).is_empty(), "{r}");
     }
@@ -503,6 +505,12 @@ fn ac3_runner_abbreviations_refused_and_project_scripts_pass() {
         "Bash(npm expl x)",
         "Bash(pnpm dl x)",
         "Bash(uv ru x)",
+        "Bash(npm init:*)",
+        "Bash(npm create x)",
+        "Bash(npm innit x)",
+        "Bash(npm in x)",
+        "Bash(pnpm create x)",
+        "Bash(yarn create x)",
     ] {
         let ps = one(r);
         assert_eq!(fields(&ps), ["allow"], "{r}");
