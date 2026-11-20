@@ -427,10 +427,10 @@ describe("S4-fix4 AC2 page budget", () => {
       const s = openSession(k, "s1", (v) => { last = v; });
       await vi.advanceTimersByTimeAsync(500);
       expect(attaches).toBe(1);
-      expect(reads).toBe(10); // each page adds one index in range, yet the episode stops at its budget
+      expect(reads).toBe(1); // S4-fix5: a one-entry page that stops short of its range ends the episode at once
       await vi.advanceTimersByTimeAsync(200_000);
       expect(attaches).toBe(5); // through fail(): 1, 2, 4, 8 s, then the stop
-      expect(reads).toBe(10 + 4); // later episodes start at 2305: a budget of 1 page each
+      expect(reads).toBe(5); // one read per episode
       expect(last!.rows.some((r) => r.kind === "unknown")).toBe(true);
       s.close();
     } finally { vi.useRealTimers(); }
