@@ -23,7 +23,7 @@ needs more adds it to the backend sections first (17).
 | H4 Agent tools | host, `host/src/agent/tools.rs`, with the MCP broker of host 10 | handles, MCP tokens, keyed jobs (6) |
 | H5 Requests | host, the W35 request table | effects applied after a durable commit (7) |
 | H7 Timers | host, `host/src/agent/timers.rs`, host state | timers per mod, kept across restarts (7) |
-| H6 Consent, accounts | app | consent words and storage, Sign in with ChatGPT, the token file (8, 5) |
+| H6 Consent, accounts | app | consent words and storage, Sign in with ChatGPT, the token file, the judge key (8, 5) |
 | WIT | `host/wit/` in `watane:host@0.1.0` | the interfaces of section 2 |
 | pkg | pkg 4.5, 5.1, 7.2 | import and export rows, two grant kinds (15) |
 | dev | `dev/` | a fake `claude` and a scripted Responses server for previews and tests (12) |
@@ -81,7 +81,7 @@ interface claude-session {                           // no grant; caller = the s
 }
 variant decision { allow(option<string>), deny(string), none }
 
-interface https-stream {                             // [http] hosts; an account needs consent
+interface https-stream {                             // [http] hosts; `openai` needs consent
   start: func(request: string) -> result<stream-id, start-error>;
 }
 
@@ -373,7 +373,7 @@ and `.husky/**`. No launch can remove them.
 | Consent | Asked when | Kept for | Words |
 |---|---|---|---|
 | Workspace | a launch names a folder new for the origin client | (origin client, folder) | "Let {origin client} have agents work in {folder} ({profile}, through {provider})?" |
-| Account | an `https-stream` with `account` new for the origin client | (origin client, account) | "Let {origin client} use your ChatGPT plan?" |
+| Account | an `https-stream` with `account: "openai"` new for the origin client (the `judge` account asks none: entering its key is the consent, 5) | (origin client, account) | "Let {origin client} use your ChatGPT plan?" |
 | Toolset | `agent-tools.open` with a toolset new for the origin client | (origin client, toolset) | "Let {origin client}'s agents call: {functions}?" |
 
 - **Origin client:** the page's mod for a page call; the mod of the handle
