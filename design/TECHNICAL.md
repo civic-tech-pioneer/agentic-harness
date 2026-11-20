@@ -124,7 +124,9 @@ Every function of `sessions` refuses with `not-owner` a caller whose
 `caller.identity()` is not the identity of the kernel `mods:agent`. The checked
 provider makes no judge call for a call it refuses (10). `not-owner` and
 `not-direct` (10) are cases of the shared `start-error` and `session-error` of
-`claude-types` (2.1).
+`claude-types` (2.1). The kernel's identity is one fixed published value
+`<publisher>/agent`, a constant in each provider's `src/lib.rs`, compared
+exactly; no `local/…` identity and no other publisher's `agent` matches.
 
 ### 2.3 Kernel (`mods:agent@0.1.0`)
 
@@ -731,9 +733,10 @@ Each row names the files that hold it: "watane" paths are in the watane
 checkout, the others in this repository (layout in 1). A slice whose diff
 touches a file of this repository named here gets the adversary step; a slice
 that adds or moves such a file updates sections 1 and 14 in the same commit.
-Each provider repository's `factory/config.toml` `boundaries` points at this
-section 14, so its slices that touch a provider file named here get the
-adversary step; a provider repository is built only with that in place (17,
+Each provider repository keeps a copy of the provider rows of this section
+(with this repository's commit it copied, refreshed when they change) and its
+`factory/config.toml` `boundaries` points at that copy, so its slices that
+touch a provider file named here get the adversary step; a provider repository is built only with that in place (17,
 stages B and E).
 
 | Property | Holds by | Files |
@@ -746,7 +749,7 @@ stages B and E).
 | No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
-| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `src/lib.rs` |
+| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` |
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `src/lib.rs`, `src/sessions.rs`, `src/transcript.rs` |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `src/delegation.rs`, `src/openai/` |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
@@ -866,7 +869,8 @@ Integration tests are modules of one binary per subsystem
     in order, also `checking` and `consent`.
 32. A mod that is not the kernel calls a provider's `sessions.start` or `say`:
     `not-owner`; no request with `account: "judge"` leaves (counted at the
-    scripted judge server), and no verdict reaches the caller.
+    scripted judge server), and no verdict reaches the caller; the same for a
+    mod `local/agent` and a mod with slug `agent` from another publisher.
 33. The judge binding: another caller, `GET`, another origin, an origin not in
     `[http]`, userinfo, `:443` or upper case forms, an `account` other than
     `openai` or `judge`, and a redirect are each refused before a byte leaves;
