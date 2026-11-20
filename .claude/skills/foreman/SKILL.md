@@ -27,9 +27,11 @@ and no way to message the product owner. Everything below holds, with these chan
 - `gh` is missing: open the PR and arm its auto-merge with the GitHub tools this session has
   (the GitHub MCP server), else write `no PR: <why>` in the report.
 - Reports go through git. Push your work to `slice/<id>`, or to the branch this session was
-  given if that push is refused, and open the PR as section 5 says. Then add an empty commit
+  given if that push is refused. Then add an empty commit
   `git commit --allow-empty -m "DELIVERED <id>" -m "<the section 5 report>"`, or
-  `-m "BLOCKED <id>" -m "<the section 4 question>"`, push it, and end your turn. Before a
+  `-m "BLOCKED <id>" -m "<the section 4 question>"`, and push it. Only after that open the PR
+  and arm auto-merge (section 5), with the report as its body, and end your turn: the merge can
+  come within seconds, drops the empty commit and deletes the branch. Before a
   `BLOCKED`, commit and push all work, the briefs too: the product owner answers by starting a
   new cloud foreman that continues from `slice/<id>`.
 
