@@ -55,7 +55,8 @@ function InputList({ input }: { input: unknown }) {
 export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions }) {
   const { call, ask } = row;
   const asking = !!ask && !ask.decision;
-  const arg = call.locations[0]?.path ?? call.title;
+  const path = call.locations[0]?.path;
+  const name = path ? `${KIND(call.kind)} ${path}` : call.title;
   const body = (
     <>
       {asking ? <InputList input={ask.input} /> : null}
@@ -69,13 +70,13 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   );
   const head = (
     <>
-      <span className="wa-tool-name">{KIND(call.kind)}</span>{" "}
-      <span className="wa-tool-arg">{arg}</span>{" "}
+      {path ? <><span className="wa-tool-name">{KIND(call.kind)}</span>{" "}</> : null}
+      <span className="wa-tool-arg">{path ?? call.title}</span>{" "}
       <span className="wa-tool-status" data-status={call.status}>{STATUS[call.status]}</span>
     </>
   );
   return (
-    <section className="wa-tool" data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={`${KIND(call.kind)} ${arg}`}>
+    <section className="wa-tool" data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
       <ToolCard head={head} open={call.status === "failed" || asking}>{body}</ToolCard>
     </section>
   );

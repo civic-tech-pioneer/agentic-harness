@@ -7,16 +7,16 @@ function dir(p: string): string {
   return k < 0 ? "." : k === 0 ? "/" : p.slice(0, k);
 }
 
-/** What a session allow would cover, from the ask's input and its call. */
+/** What a session allow would cover, from the ask's input and its call; the call's title when the input names nothing. */
 export function reachOf(call: ToolCall, input: unknown): string {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const path = [o.file_path, o.path, call.locations[0]?.path].find((v) => typeof v === "string") as string | undefined;
   switch (call.kind) {
-    case "edit": case "delete": case "move": return path ? `edits in ${dir(path)}` : "edits";
-    case "read": return path ? `reads in ${dir(path)}` : "reads";
+    case "edit": case "delete": case "move": return path ? `edits in ${dir(path)}` : call.title;
+    case "read": return path ? `reads in ${dir(path)}` : call.title;
     case "execute": {
       const c = typeof o.command === "string" ? o.command.trim().split(/\s+/)[0] : "";
-      return c ? `${c} commands` : "commands";
+      return c ? `${c} commands` : call.title;
     }
     default: return call.title;
   }

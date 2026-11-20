@@ -1,9 +1,11 @@
 // TECHNICAL 18.5: the status line, one shape per state; only the word and its subject are live.
+import { useId } from "react";
 import type { Actions, Row, SessionView } from "./model";
 
 type Shape = "dot" | "square" | "diamond" | "bars" | "ring" | "dashed-ring" | "triangle";
 const NAMES: Record<Shape, string> = { dot: "Running", square: "Checking", diamond: "Waiting for you", bars: "Paused", ring: "Idle", "dashed-ring": "Not running", triangle: "Failed" };
-interface Spec { word: string; shape: Shape; clock?: string; act?: { label: string; key?: string; run: () => void } }
+/** An act with no `run` has no kernel call yet: it shows disabled, with a description saying so. */
+interface Spec { word: string; shape: Shape; clock?: string; act?: { label: string; key?: string; run?: () => void } }
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const clock = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${pad(s % 60)}`; };
@@ -37,18 +39,19 @@ function spec(view: SessionView, now: number, actions: Actions, onNeedsYou: () =
       return { word: runningWord(view.rows), shape: "dot", clock: clk, act: stop };
     }
     case "waiting": return { word: "Waiting for you", shape: "diamond", clock: clock(t.expiresAt - now), act: { label: "Needs you", run: onNeedsYou } };
-    case "paused": return { word: `Paused until ${hhmm(t.until)}`, shape: "bars", act: { label: "Resume now", run: () => actions.say("Resume now") } };
+    case "paused": return { word: `Paused until ${hhmm(t.until)}`, shape: "bars", act: { label: "Resume now" } };
     case "idle":
       if (t.stop.kind === "stopped") return { word: `Stopped at the ${t.stop.limit}`, shape: "ring" };
-      if (t.stop.kind === "failed") return { word: `Failed: ${t.stop.error}`, shape: "triangle", act: { label: "Try again", run: () => actions.say("Try again") } };
+      if (t.stop.kind === "failed") return { word: `Failed: ${t.stop.error}`, shape: "triangle", act: { label: "Try again" } };
       return { word: "Idle", shape: "ring" };
-    case "unknown": return { word: "Not running: watane restarted", shape: "dashed-ring", act: { label: "Continue", run: () => actions.say("Continue") } };
-    case "resume-lost": return { word: "Claude no longer has this session", shape: "dashed-ring", act: { label: "Continue from a summary", run: () => actions.say("Continue from a summary") } };
+    case "unknown": return { word: "Not running: watane restarted", shape: "dashed-ring", act: { label: "Continue" } };
+    case "resume-lost": return { word: "Claude no longer has this session", shape: "dashed-ring", act: { label: "Continue from a summary" } };
   }
 }
 
 export function StatusLine(props: { view: SessionView; now: number; stopping: boolean; actions: Actions; onNeedsYou: () => void }) {
   const { view, now, stopping } = props;
+  const noKernel = useId();
   const s: Spec = stopping && view.turn?.state !== "idle"
     ? { word: "Stopping…", shape: "dot" }
     : spec(view, now, props.actions, props.onNeedsYou);
@@ -57,7 +60,12 @@ export function StatusLine(props: { view: SessionView; now: number; stopping: bo
       <span className="wa-shape" data-shape={s.shape} role="img" aria-label={NAMES[s.shape]} />
       <span role="status" className="wa-status-word">{s.word}</span>
       {s.clock ? <span className="wa-status-clock" aria-hidden="true">{s.clock}</span> : null}
-      {s.act ? <button type="button" onClick={s.act.run}>{s.act.label}{s.act.key ? <> <kbd>{s.act.key}</kbd></> : null}</button> : null}
+      {s.act ? (
+        <button type="button" onClick={s.act.run} disabled={!s.act.run} aria-describedby={s.act.run ? undefined : noKernel}>
+          {s.act.label}{s.act.key ? <> <kbd>{s.act.key}</kbd></> : null}
+        </button>
+      ) : null}
+      {s.act && !s.act.run ? <span id={noKernel} className="wa-sr">This console cannot do this yet.</span> : null}
     </div>
   );
 }
