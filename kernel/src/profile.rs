@@ -130,11 +130,22 @@ pub(crate) const TOOLS: [&str; 12] = [
     "WebFetch", "WebSearch",
 ];
 const PER_SESSION: [&str; 4] = ["workspace", "extra-workspaces", "agent-handle", "session"];
-const RUNNERS: [&str; 22] = [
-    "bash", "sh", "zsh", "fish", "dash", "env", "node", "deno", "bun", "bunx", "npx", "uvx",
-    "perl", "ruby", "php", "eval", "exec", "xargs", "sudo", "python", "npm exec", "pnpm dlx",
+/// Commands that run any code given to them, or run the next word as a command (4.1). Names
+/// starting with `python` are runners too.
+const RUNNERS: [&str; 39] = [
+    "bash", "sh", "zsh", "fish", "dash", "ksh", "mksh", "csh", "tcsh", "ash", "pwsh", "env",
+    "node", "deno", "bun", "bunx", "npx", "uvx", "perl", "ruby", "php", "lua", "awk", "osascript",
+    "eval", "exec", "source", ".", "command", "builtin", "xargs", "sudo", "doas", "su", "nohup",
+    "nice", "timeout", "time", "stdbuf",
 ];
-const RUNNERS2: [&str; 2] = ["uv run", "devbox run"];
+/// Commands whose subcommands below are runners; a rule must pin a plain other subcommand.
+const SUB_RUNNERS: [(&str, &[&str]); 5] = [
+    ("npm", &["exec", "x"]),
+    ("pnpm", &["dlx", "exec"]),
+    ("yarn", &["dlx", "exec"]),
+    ("uv", &["run", "tool"]),
+    ("devbox", &["run"]),
+];
 
 pub(crate) fn model_ok(s: &str) -> bool {
     (1..=64).contains(&s.len())
@@ -395,31 +406,43 @@ pub fn parse_profile(json: &str) -> (Profile, Vec<Problem>) {
 
 // ---- grammar ----
 
-fn first_word(arg: &str) -> &str {
-    let t = arg.trim_start();
-    let end = t.find(|c: char| c.is_whitespace() || c == ':' || c == '*').unwrap_or(t.len());
-    &t[..end]
+/// A word the shell runs as it is: no quote, escape, expansion, glob, redirection or assignment.
+/// Lowercased first: macOS file names ignore case.
+fn plain(w: &str) -> bool {
+    !w.is_empty() && w.bytes().all(|b| b.is_ascii_alphanumeric() || b"._+/~-".contains(&b))
 }
 
-/// Whether the argument of an allow `Bash(...)` rule starts with an interpreter or runner.
-fn runner_prefix(arg: &str) -> bool {
-    let w = first_word(arg);
-    let base = w.rsplit('/').next().unwrap_or(w);
-    let t = arg.trim_start();
-    let two: Vec<&str> = t.split_whitespace().take(2).collect();
-    let pair = two.join(" ");
-    base.starts_with("python")
-        || RUNNERS.contains(&base)
-        || RUNNERS2.contains(&pair.as_str())
-        || ["npm exec", "pnpm dlx"].contains(&pair.as_str())
+/// Why an allow `Bash(<arg>)` rule may run any code, if it may (4.1).
+fn runner_problem(arg: &str) -> Option<&'static str> {
+    let low = arg.to_lowercase();
+    let mut words = low.split(|c: char| c.is_whitespace() || c == ':').filter(|w| !w.is_empty());
+    let Some(first) = words.next() else { return Some("allows any command") };
+    if !plain(first) {
+        return Some("does not start with a plain command name");
+    }
+    let base = first.rsplit('/').next().unwrap_or(first);
+    if base.starts_with("python") || RUNNERS.contains(&base) {
+        return Some("allows an interpreter or runner prefix");
+    }
+    if let Some((_, subs)) = SUB_RUNNERS.iter().find(|(c, _)| *c == base) {
+        match words.next() {
+            Some(s) if plain(s) && !s.starts_with('-') && !subs.contains(&s) => {}
+            _ => return Some("allows an interpreter or runner prefix"),
+        }
+    }
+    None
 }
 
 fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
+    if rule.chars().any(char::is_control) {
+        return Some(format!("rule {rule:?} has a control character"));
+    }
+    // The parentheses are the rule's own, outermost and only: `Read(x),Bash(y)` is two rules.
     let (name, arg) = match rule.find('(') {
         None => (rule, None),
-        Some(i) => match rule.strip_suffix(')') {
-            Some(inner) => (&rule[..i], Some(&inner[i + 1..])),
-            None => return Some(format!("rule {rule:?} must be Name or Name(arg)")),
+        Some(i) => match rule[i + 1..].strip_suffix(')') {
+            Some(inner) if !inner.contains(['(', ')']) => (&rule[..i], Some(inner)),
+            _ => return Some(format!("rule {rule:?} must be Name or Name(arg), arg without parentheses")),
         },
     };
     if name.starts_with('-') || name.contains(',') || name.contains(' ') {
@@ -432,13 +455,8 @@ fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
         return Some(format!("rule {rule:?} names no tool of the allowlist or mcp__watane__<tool>"));
     }
     if is_allow && name == "Bash" {
-        if let Some(a) = arg {
-            if first_word(a).is_empty() {
-                return Some(format!("rule {rule:?} allows any command"));
-            }
-            if runner_prefix(a) {
-                return Some(format!("rule {rule:?} allows an interpreter or runner prefix"));
-            }
+        if let Some(why) = arg.and_then(runner_problem) {
+            return Some(format!("rule {rule:?} {why}"));
         }
     }
     None

@@ -98,6 +98,14 @@ fn ac5_each_rule_alone() {
     assert_eq!(one(json!({"skills": [{"name": "a", "files": {"x": "y".repeat(1024 * 1024)}}]})), ["skills"]);
     assert_eq!(one(json!({"subagents": [{"name": "a", "description": "d", "prompt": "p".repeat(65536)}]})), ["subagents"]);
     assert_eq!(one(json!({"tools": "Read"})), ["tools"]);
+    assert_eq!(one(json!({"fallback-models": ["a", "b", "c", "d"]})), Vec::<String>::new());
+    assert_eq!(one(json!({"effort": "xhigh"})), Vec::<String>::new());
+    assert_eq!(one(json!({"effort": "High"})), ["effort"]);
+    for path in ["/etc/x", "a/../b", "..", "C:x", "\\x"] {
+        assert_eq!(one(json!({"skills": [{"name": "a", "files": {path: "y"}}]})), ["skills[0].files"], "{path}");
+    }
+    assert_eq!(one(json!({"skills": [{"name": "a-1", "files": {"a..b/./c": "y"}}]})), Vec::<String>::new());
+    assert_eq!(one(json!({"subagents": [{"name": "a", "description": "d", "prompt": "p".repeat(65534)}]})), Vec::<String>::new());
     assert_eq!(
         one(json!({"tools": ["Read"], "subagents": [{"name": "a", "description": "d", "prompt": "p", "tools": ["Write"]}]})),
         ["subagents[0].tools"]
@@ -131,4 +139,32 @@ fn ac5_wrong_types_keep_the_valid_fields() {
     let (p, ps) = parse_profile(r#"{"model": 3, "effort": "low", "tools": [1]}"#);
     assert_eq!(fields(&ps), ["model", "tools"]);
     assert_eq!(p.effort.as_deref(), Some("low"));
+}
+
+#[test]
+fn ac5_rule_grammar_has_no_bypass() {
+    for r in [
+        // case, quotes, escapes, globs, expansions, assignments, redirections in the command name
+        "Bash(Python3 -c x)", "Bash(BASH -c x)", "Bash(\"python3\" -c x)", "Bash('sh' -c x)",
+        "Bash(\\python3 -c x)", "Bash(py\"\"thon3 -c x)", "Bash(FOO=1 python3:*)", "Bash(py*)",
+        "Bash(b*:*)", "Bash(sh<x)", "Bash(bash${IFS}-c:*)", "Bash($(echo python3):*)", "Bash(`x`:*)",
+        "Bash(*)", "Bash()", "Bash( :*)", "Bash(\tpython3 -c x)",
+        // runners behind flags or aliases, and wrappers that run the next word
+        "Bash(npm x foo)", "Bash(npm --yes exec foo)", "Bash(npm:*)", "Bash(npm e*)",
+        "Bash(uv --quiet run x)", "Bash(uv tool run x)", "Bash(pnpm exec x)", "Bash(yarn dlx x)",
+        "Bash(command python3:*)", "Bash(nohup python3:*)", "Bash(timeout 5 python3:*)",
+        "Bash(time python3:*)", "Bash(ksh -c x)", "Bash(source x:*)", "Bash(. ./x:*)",
+        // a second rule smuggled past the parentheses, control characters
+        "Bash(git status:*\npython3 -c x)", "Read(x),Bash(python3:*)", "Read(x) Bash(python3:*)",
+        "Read(\\(x),Bash(python3:*))", "Read(x)\u{0}",
+        // names: case, lookalikes, odd MCP tools
+        "bash(git status)", "Rеad", "mcp__watane__a.b", "mcp__watane__a b", "mcp__other__x",
+    ] {
+        assert_eq!(one(json!({"allow": [r]})), ["allow"], "{r:?}");
+    }
+    for r in ["Bash(git status:*)", "Bash(npm test:*)", "Bash(npm run build)", "Bash(uv pip install:*)",
+        "Bash(cargo test)", "Bash(./scripts/fmt.sh)", "mcp__watane__ls_x-1(a)"] {
+        assert_eq!(one(json!({"allow": [r]})), Vec::<String>::new(), "{r:?}");
+    }
+    assert_eq!(one(json!({"deny": ["Read(x),Bash(y)"]})), ["deny"]);
 }
