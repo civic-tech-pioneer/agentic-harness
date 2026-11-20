@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent session, revision 2</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.root{--bg:#F6F6F4;--panel:#FFFFFF;--ink:#18181B;--muted:#5D5E66;--line:#E3E3DF;--hover:#EFEFEC;--accent:#3355D6;--accent-ink:#FFFFFF;--accent-weak:#ECF0FD;--warn:#8A5300;--warn-bg:#FFF3DC;--bad:#B42318;--bad-bg:#FDECEA;--ok:#1B7346;--ok-bg:#E7F4EC;--off-bg:#ECECE9;--code:#F1F1EE;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);height:100vh;display:flex;flex-wrap:wrap;overflow:hidden;font-size:14px}
+.root.dark{--bg:#111113;--panel:#19191C;--ink:#EDEDEF;--muted:#A3A3AC;--line:#2B2B30;--hover:#222226;--accent:#8EA4FF;--accent-ink:#0D1330;--accent-weak:#1D2340;--warn:#F2B65A;--warn-bg:#2B2112;--bad:#FF8A80;--bad-bg:#2E1615;--ok:#6FD39E;--ok-bg:#132A1E;--off-bg:#26262A;--code:#202024}
+a{color:var(--accent)}
+button{font:inherit;color:inherit}
+.side{flex:0 0 260px;height:100vh;box-sizing:border-box;border-right:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;gap:6px;padding:14px 10px;overflow:auto;overscroll-behavior:contain}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 10px;font-weight:600;font-size:15px}
+.mark{display:flex;gap:3px;align-items:center}
+.mark i{display:block;width:8px;height:8px;border-radius:2px}
+.newbtn{height:40px;border-radius:9px;border:1px solid var(--line);background:var(--panel);display:flex;align-items:center;gap:8px;padding:0 12px;font-weight:500;cursor:pointer}
+.group{display:flex;flex-direction:column;gap:2px;margin-top:10px}
+.glabel{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:4px 8px}
+.srow{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 8px;border-radius:9px;border:1px solid transparent;background:transparent;text-align:left;cursor:pointer;width:100%}
+.srow.on{background:var(--panel);box-shadow:0 0 0 1px var(--line)}
+.mono{flex:0 0 26px;height:26px;border-radius:7px;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.stext{flex:1;min-width:0;display:flex;flex-direction:column}
+.stitle{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.smeta{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.glyph{flex:0 0 auto;width:9px;height:9px;box-sizing:border-box;border-radius:50%}
+.g-run{background:var(--accent)}
+.g-check{background:var(--ok);border-radius:2px}
+.g-ask{background:var(--warn);border-radius:1px;transform:rotate(45deg) scale(.9);box-shadow:0 0 0 3px var(--warn-bg)}
+.g-idle{border:1.5px solid var(--muted)}
+.g-pause{border-radius:0;width:8px;background:linear-gradient(90deg,var(--muted) 0 3px,transparent 3px 5px,var(--muted) 5px)}
+.g-unknown{border:1.5px dashed var(--muted)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.main{flex:999 1 560px;min-width:0;height:100vh;display:flex;flex-direction:column;background:var(--panel)}
+.head{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line)}
+.htitle{font-size:16px;font-weight:600;margin-right:6px}
+.chip{height:32px;border-radius:16px;border:1px solid var(--line);background:var(--panel);display:inline-flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px;color:var(--muted);cursor:pointer}
+.chip b{color:var(--ink);font-weight:500}
+.chip.checked{border-color:var(--ok);color:var(--ok)}
+.spacer{flex:1}
+.meter{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.bar{width:72px;height:6px;border-radius:3px;background:var(--off-bg);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.bar.hi i{background:var(--warn)}
+.grant{border-color:var(--warn);color:var(--warn);background:var(--warn-bg)}
+.iconbtn{width:36px;height:36px;border-radius:9px;border:1px solid transparent;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted)}
+.scroll{flex:1;min-height:0;overflow-y:auto;position:relative}
+.col{max-width:780px;margin:0 auto;padding:28px 24px 24px;display:flex;flex-direction:column;gap:14px}
+.user{align-self:flex-end;max-width:85%;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:10px 14px;line-height:1.55;white-space:pre-wrap}
+.text{line-height:1.65;font-size:15px;white-space:pre-wrap;text-wrap:pretty}
+.caret{display:inline-block;width:7px;height:16px;margin-left:2px;vertical-align:-3px;background:var(--accent);border-radius:1px}
+.fold{display:flex;flex-direction:column;gap:6px}
+.foldbtn{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;min-height:32px;border:0;background:transparent;color:var(--muted);padding:0 8px 0 4px;border-radius:8px;cursor:pointer;font-size:13.5px}
+.foldbtn.open .chev{transform:rotate(90deg)}
+.thought{border-left:2px solid var(--line);margin-left:10px;padding:2px 0 2px 14px;color:var(--muted);font-size:13.5px;line-height:1.6;white-space:pre-wrap}
+.tline{display:flex;align-items:center;gap:8px;margin-left:10px;padding:3px 0 3px 14px;border-left:2px solid var(--line);color:var(--muted);font-size:13px}
+.tline code,.card code,.user code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12.5px;color:var(--ink)}
+.card{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
+.card.ask{border-color:var(--warn);box-shadow:0 0 0 3px var(--warn-bg)}
+.chead{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13.5px}
+.chead .name{font-weight:600}
+.badge{margin-left:auto;height:22px;border-radius:11px;padding:0 9px;font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:5px}
+.b-wait{background:var(--warn-bg);color:var(--warn)}
+.b-ok{background:var(--ok-bg);color:var(--ok)}
+.b-bad{background:var(--bad-bg);color:var(--bad)}
+.b-off{background:var(--off-bg);color:var(--muted)}
+.diff{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12.5px;line-height:1.7;background:var(--code);padding:8px 0;overflow-x:auto}
+.dl{display:flex;white-space:pre;padding:0 14px 0 0}
+.dl .sg{flex:0 0 28px;text-align:center;color:var(--muted);user-select:none}
+.dl.add{background:rgba(27,115,70,.10)}
+.dl.add .sg{color:var(--ok)}
+.dl.del{background:rgba(180,35,24,.08)}
+.dl.del .sg{color:var(--bad)}
+.dl.gap{color:var(--muted);font-style:italic}
+.askbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 14px;background:var(--warn-bg)}
+.askq{font-weight:500;margin-right:auto;color:var(--ink)}
+.btn{height:36px;padding:0 14px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:500 14px Inter,system-ui,sans-serif;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--bad)}
+.btn.quiet{background:transparent;border-color:transparent}
+.btn[disabled]{opacity:.45;cursor:default}
+.denyrow{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px 12px;background:var(--warn-bg)}
+.denyrow input{flex:1 1 240px;height:36px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:0 12px;font:14px Inter,system-ui,sans-serif}
+.decision{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding-left:4px}
+.decision b{color:var(--ink);font-weight:500}
+.verdict{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ok);padding-left:4px}
+.footer{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);padding:6px 4px 10px}
+.footer::before,.footer::after{content:"";flex:1;height:1px;background:var(--line)}
+.dock{flex:0 0 auto;border-top:1px solid var(--line);background:var(--panel)}
+.dockin{max-width:780px;margin:0 auto;padding:10px 24px 16px;display:flex;flex-direction:column;gap:8px}
+.needs{align-self:center;display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:15px;border:1px solid var(--warn);background:var(--warn-bg);color:var(--warn);font-size:12.5px;font-weight:600;cursor:pointer}
+.plan{border:1px solid var(--line);border-radius:14px;padding:6px 8px 8px}
+.plan .foldbtn{font-size:12.5px}
+.pitem{display:flex;align-items:center;gap:10px;padding:3px 8px;font-size:13px}
+.pbox{flex:0 0 14px;height:14px;border-radius:4px;border:1.5px solid var(--line);box-sizing:border-box;display:flex;align-items:center;justify-content:center}
+.p-done .pbox{background:var(--ok);border-color:var(--ok);color:#fff}
+.p-done .ptext{color:var(--muted);text-decoration:line-through}
+.p-active .pbox{border-color:var(--accent)}
+.p-active .ptext{font-weight:500}
+.p-skip .ptext{color:var(--muted)}
+.queue{display:flex;flex-direction:column;gap:6px}
+.qlabel{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.qitem{display:flex;align-items:center;gap:8px;border:1px dashed var(--line);border-radius:10px;padding:4px 4px 4px 12px;font-size:13.5px}
+.qitem span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qitem .iconbtn{border-radius:6px}
+.qmore{font-size:12.5px;color:var(--muted);padding-left:12px}
+.qundo{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding-left:12px}
+.status{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);min-height:20px}
+.status b{color:var(--ink);font-weight:500}
+.kbd{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;color:var(--muted)}
+.input{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:10px 10px 8px 14px;display:flex;flex-direction:column;gap:8px}
+.input:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+.input textarea{border:0;outline:0;resize:none;background:transparent;color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;min-height:48px;max-height:160px}
+.irow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tag{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.send{margin-left:auto;width:36px;height:36px;border-radius:10px;border:0;background:var(--accent);color:var(--accent-ink);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.send[disabled]{opacity:.35;cursor:default}
+.stop{margin-left:auto;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--panel);display:inline-flex;align-items:center;gap:8px;padding:0 12px;cursor:pointer;font-weight:500}
+.newpill{position:sticky;bottom:12px;display:flex;justify-content:center;pointer-events:none}
+.newpill button{pointer-events:auto;height:32px;border-radius:16px;border:1px solid var(--line);background:var(--panel);box-shadow:0 2px 8px rgba(0,0,0,.08);padding:0 14px;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;cursor:pointer}
+@media (hover:hover){
+.newbtn:hover,.srow:hover,.chip:hover,.iconbtn:hover,.foldbtn:hover,.btn:hover,.btn.quiet:hover,.stop:hover,.newpill button:hover{background:var(--hover);color:var(--ink)}
+.btn.primary:hover{background:var(--accent);color:var(--accent-ink);filter:brightness(1.08)}
+.btn.danger:hover{color:var(--bad)}
+a:hover{color:var(--ink)}
+}
+@media (prefers-reduced-motion:no-preference){
+.g-run{animation:pulse 1.4s ease-in-out infinite}
+.caret{animation:pulse 1s steps(2) infinite}
+.foldbtn .chev{transition:transform .15s}
+.bar i{transition:width .4s}
+.btn,.send,.stop,.newbtn,.chip,.iconbtn,.needs{transition:scale .15s ease-out}
+.btn:not(:disabled):active,.send:not(:disabled):active,.stop:active,.newbtn:active,.chip:active,.iconbtn:active,.needs:active{scale:.96}
+}
+@media (max-width:760px){.side{display:none}.col,.dockin{padding-left:14px;padding-right:14px}.meter{display:none}}
+</style>
+</helmet>
+<div class="root {{themeCls}}">
+  <nav class="side" aria-label="Sessions" onMouseEnter="{{holdSide}}" onMouseLeave="{{releaseSide}}">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"><i style="background:#3355D6"></i><i style="background:#D9534F;border-radius:50%"></i><i style="background:#7B5CD6;transform:rotate(45deg)"></i></span>
+      <span>Agents</span>
+    </div>
+    <button class="newbtn" type="button" aria-label="New session">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      New session
+    </button>
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+      <div class="group">
+        <div class="glabel">{{g.label}}</div>
+        <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="2">
+          <button class="srow {{r.onCls}}" type="button">
+            <span class="mono" style="background:{{r.color}}">{{r.letter}}</span>
+            <span class="stext"><span class="stitle">{{r.title}}</span><span class="smeta">{{r.meta}}</span></span>
+            <span class="glyph {{r.glyph}}" role="img" aria-label="{{r.state}}"></span>
+          </button>
+        </sc-for>
+      </div>
+    </sc-for>
+  </nav>
+
+  <main class="main">
+    <header class="head">
+      <span class="htitle">Tidy my reading notes</span>
+      <button class="chip" type="button" title="Profile">Profile <b>Tidy</b></button>
+      <button class="chip {{providerCls}}" type="button" title="{{providerTitle}}">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"></path></svg>
+        {{providerLabel}}
+      </button>
+      <button class="chip" type="button" title="Workspace consent">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+        <b>~/Notes</b>
+      </button>
+      <sc-if value="{{sessionGrant}}" hint-placeholder-val="{{ false }}">
+        <button class="chip grant" type="button" onClick="{{revokeGrant}}" aria-label="Edits in ~/Notes allowed for this session. Take it back">
+          Edits allowed this session
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </sc-if>
+      <span class="spacer"></span>
+      <span class="meter" title="Context window used. At 90% the agent makes room by summarising older turns.">Context <span class="bar {{ctxCls}}"><i style="width:{{ctxPct}}"></i></span> {{ctxPct}}</span>
+      <button class="iconbtn" type="button" aria-label="Session menu: fork, rewind, rename, delete">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>
+      </button>
+    </header>
+
+    <div class="scroll" ref="{{scrollRef}}" onScroll="{{onScroll}}">
+      <div class="col" role="log" aria-live="polite" aria-label="Transcript">
+        <sc-for list="{{items}}" as="it" hint-placeholder-count="4">
+          <sc-if value="{{it.isUser}}" hint-placeholder-val="{{ false }}">
+            <div class="user">{{it.text}}</div>
+          </sc-if>
+          <sc-if value="{{it.isThought}}" hint-placeholder-val="{{ false }}">
+            <div class="fold">
+              <button class="foldbtn {{it.openCls}}" type="button" onClick="{{it.toggle}}" aria-expanded="{{it.open}}">
+                <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                {{it.label}}
+              </button>
+              <sc-if value="{{it.open}}" hint-placeholder-val="{{ false }}">
+                <div class="thought">{{it.text}}</div>
+              </sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{it.isTools}}" hint-placeholder-val="{{ false }}">
+            <div class="fold">
+              <button class="foldbtn {{it.openCls}}" type="button" onClick="{{it.toggle}}" aria-expanded="{{it.open}}">
+                <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="M20 20l-4.5-4.5"></path></svg>
+                {{it.label}}
+              </button>
+              <sc-if value="{{it.open}}" hint-placeholder-val="{{ false }}">
+                <div class="fold">
+                  <sc-for list="{{it.lines}}" as="ln" hint-placeholder-count="3">
+                    <div class="tline"><span>{{ln.verb}}</span> <code>{{ln.arg}}</code> <span>{{ln.note}}</span></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{it.isText}}" hint-placeholder-val="{{ false }}">
+            <div class="text" aria-busy="{{it.streaming}}">{{it.text}}<sc-if value="{{it.streaming}}" hint-placeholder-val="{{ false }}"><span class="caret" aria-hidden="true"></span></sc-if></div>
+          </sc-if>
+          <sc-if value="{{it.isVerdict}}" hint-placeholder-val="{{ false }}">
+            <div class="verdict">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+              {{it.text}}
+            </div>
+          </sc-if>
+          <sc-if value="{{it.isEdit}}" hint-placeholder-val="{{ false }}">
+            <section class="card {{it.askCls}}" aria-label="Edit {{it.path}}">
+              <div class="chead">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg>
+                <span class="name">Edit</span> <code>{{it.path}}</code>
+                <span class="badge {{it.badgeCls}}">{{it.status}}</span>
+              </div>
+              <div class="diff">
+                <sc-for list="{{it.diff}}" as="d" hint-placeholder-count="6">
+                  <div class="dl {{d.cls}}"><span class="sg">{{d.sign}}</span><span>{{d.text}}</span></div>
+                </sc-for>
+              </div>
+              <sc-if value="{{it.ask}}" hint-placeholder-val="{{ false }}">
+                <div class="askbar">
+                  <span class="askq">Allow this edit?</span>
+                  <button class="btn quiet danger" type="button" onClick="{{openDeny}}">Deny…</button>
+                  <button class="btn" type="button" onClick="{{allowSession}}">Allow edits in ~/Notes this session</button>
+                  <button class="btn primary" type="button" onClick="{{allowOnce}}">Allow once</button>
+                </div>
+                <sc-if value="{{denyOpen}}" hint-placeholder-val="{{ false }}">
+                  <form class="denyrow" onSubmit="{{submitDeny}}">
+                    <label class="tag" for="deny-reason">Tell the agent why</label>
+                    <input id="deny-reason" type="text" value="{{denyReason}}" onChange="{{onDenyReason}}" onKeyDown="{{onDenyKey}}" placeholder="Keep books-2026.md as it is">
+                    <button class="btn quiet" type="button" onClick="{{closeDeny}}">Cancel</button>
+                    <button class="btn danger" type="submit">Deny</button>
+                  </form>
+                </sc-if>
+              </sc-if>
+            </section>
+          </sc-if>
+          <sc-if value="{{it.isDecision}}" hint-placeholder-val="{{ false }}">
+            <div class="decision">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
+              <span><b>{{it.who}}</b> {{it.text}}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{it.isFooter}}" hint-placeholder-val="{{ false }}">
+            <div class="footer">{{it.text}}</div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <sc-if value="{{newBelow}}" hint-placeholder-val="{{ false }}">
+        <div class="newpill"><button type="button" onClick="{{toBottom}}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg>
+          New activity below</button></div>
+      </sc-if>
+    </div>
+
+    <div class="dock">
+      <div class="dockin">
+        <sc-if value="{{needsYou}}" hint-placeholder-val="{{ false }}">
+          <button class="needs" type="button" onClick="{{jump}}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg>
+            Needs you (1)
+          </button>
+        </sc-if>
+        <sc-if value="{{hasPlan}}" hint-placeholder-val="{{ false }}">
+          <div class="plan">
+            <button class="foldbtn {{planOpenCls}}" type="button" onClick="{{togglePlan}}" aria-expanded="{{planOpen}}">
+              <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+              {{planLabel}}
+            </button>
+            <sc-if value="{{planOpen}}" hint-placeholder-val="{{ false }}">
+              <div>
+                <sc-for list="{{plan}}" as="p" hint-placeholder-count="3">
+                  <div class="pitem {{p.cls}}">
+                    <span class="pbox"><sc-if value="{{p.done}}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg></sc-if></span>
+                    <span class="ptext">{{p.text}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{hasQueue}}" hint-placeholder-val="{{ false }}">
+          <div class="queue">
+            <span class="qlabel">{{queueLabel}}</span>
+            <sc-for list="{{queue}}" as="q" hint-placeholder-count="1">
+              <div class="qitem">
+                <span>{{q.text}}</span>
+                <button class="btn quiet" type="button" onClick="{{q.edit}}">Edit</button>
+                <button class="btn quiet" type="button" onClick="{{q.sendNow}}">{{q.sendLabel}}</button>
+                <button class="iconbtn" type="button" onClick="{{q.remove}}" aria-label="Remove from queue">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+                </button>
+              </div>
+            </sc-for>
+            <sc-if value="{{queueMore}}" hint-placeholder-val="{{ false }}"><span class="qmore">{{queueMoreLabel}}</span></sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{hasRemoved}}" hint-placeholder-val="{{ false }}">
+          <div class="qundo">Removed “{{removedText}}” from the queue <button class="btn quiet" type="button" onClick="{{undoRemove}}">Undo</button></div>
+        </sc-if>
+        <div class="status">
+          <span class="glyph {{statusGlyph}}" aria-hidden="true"></span>
+          <span role="status"><b>{{statusWord}}</b> <span>{{statusMeta}}</span></span>
+          <span aria-hidden="true">{{statusClock}}</span>
+          <sc-if value="{{busy}}" hint-placeholder-val="{{ false }}">
+            <span class="spacer"></span><span><span class="kbd">Esc</span> to stop</span>
+          </sc-if>
+        </div>
+        <div class="input">
+          <label for="composer" class="tag" style="position:absolute;left:-9999px">Message</label>
+          <textarea id="composer" rows="2" value="{{draft}}" onChange="{{onDraft}}" onKeyDown="{{onKey}}" placeholder="{{placeholder}}"></textarea>
+          <div class="irow">
+            <span class="tag">Claude Sonnet</span>
+            <span class="tag">·</span>
+            <span class="tag">Ask before edits</span>
+            <sc-if value="{{busy}}" hint-placeholder-val="{{ false }}">
+              <button class="stop" type="button" onClick="{{stop}}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>
+                {{stopLabel}}
+              </button>
+            </sc-if>
+            <button class="send" type="button" onClick="{{send}}" disabled="{{sendDisabled}}" aria-label="{{sendAria}}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"></path></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Look"},"checked":{"editor":"boolean","default":false,"section":"Provider"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.timers = [];
+    this.seq = 100;
+    this.scroller = null;
+    this.mainDone = false;
+    this.afterStop = null;
+    this.stick = true;
+    this.lastH = 0;
+    this.state = Object.assign({}, this.state || {}, {
+      draft: 'Merge books-2026.md into reading-list.md, and keep my comments from to-read.md.',
+      phase: 'idle', word: 'Idle', meta: 'last turn completed', startedAt: 0, now: Date.now(),
+      open: {}, planOpen: null, denyOpen: false, denyReason: '', ctx: 18, queue: [], removed: null,
+      sessionGrant: false, askAt: 0, newBelow: false, heldGroup: null,
+      plan: [],
+      items: [
+        { id: 'u1', kind: 'user', text: 'Which notes in this folder overlap?' },
+        { id: 't1', kind: 'thought', secs: 3, text: 'The folder has 23 Markdown files. Book lists are the likely overlap: look at reading-list.md, books-2026.md and to-read.md, and check ideas.md in case it lists books too.' },
+        { id: 'x1', kind: 'tools', lines: [
+          { verb: 'Searched', arg: '**/*.md', note: '23 files' },
+          { verb: 'Read', arg: 'reading-list.md', note: '' },
+          { verb: 'Read', arg: 'books-2026.md', note: '' },
+          { verb: 'Read', arg: 'to-read.md', note: '' },
+          { verb: 'Read', arg: 'ideas.md', note: '' } ] },
+        { id: 'a1', kind: 'text', text: 'Three notes overlap:\n\n•  books-2026.md and reading-list.md list the same 11 books; books-2026.md has 2 more.\n•  to-read.md repeats 4 of them, with your comments.\n\nideas.md is about something else.' },
+        { id: 'f1', kind: 'footer', text: 'Completed in 18 s · 5 tools · 9.2k tokens' }
+      ]
+    });
+  }
+
+  componentWillUnmount() { this.clearTimers(); if (this.ticker) clearInterval(this.ticker); }
+  // Follow new output only while the reader is at the bottom; otherwise offer a pill.
+  componentDidUpdate() {
+    const el = this.scroller;
+    if (!el) return;
+    if (this.stick) { el.scrollTop = el.scrollHeight; return; }
+    if (!this.state.newBelow && el.scrollHeight !== this.lastH) { this.lastH = el.scrollHeight; this.setState({ newBelow: true }); }
+  }
+  toBottom() { this.stick = true; this.setState({ newBelow: false }); if (this.scroller) this.scroller.scrollTop = this.scroller.scrollHeight; }
+
+  later(ms, fn) { const t = setTimeout(fn, ms); this.timers.push(t); return t; }
+  clearTimers() { this.timers.forEach(clearTimeout); this.timers = []; }
+  nid(p) { this.seq += 1; return p + this.seq; }
+  add(item) { this.setState(s => ({ items: s.items.concat([item]) })); }
+  patch(id, obj) { this.setState(s => ({ items: s.items.map(i => (i.id === id ? Object.assign({}, i, obj) : i)) })); }
+  setWord(word, meta) { this.setState({ word: word, meta: meta || '' }); }
+
+  stream(id, full, done) {
+    const parts = full.split(/(\s+)/);
+    let n = 0;
+    const step = () => {
+      n = Math.min(parts.length, n + 4);
+      this.patch(id, { text: parts.slice(0, n).join('') });
+      if (n < parts.length) this.later(55, step); else done();
+    };
+    this.later(120, step);
+  }
+
+  begin(word) {
+    this.setState({ phase: 'running', word: word, meta: '', startedAt: Date.now(), now: Date.now(), denyOpen: false });
+    if (this.ticker) clearInterval(this.ticker);
+    this.ticker = setInterval(() => this.setState({ now: Date.now() }), 1000);
+  }
+
+  finish(kind) {
+    if (this.ticker) { clearInterval(this.ticker); this.ticker = null; }
+    const secs = Math.max(1, Math.round((Date.now() - this.state.startedAt) / 1000));
+    const text = kind === 'completed' ? 'Completed in ' + secs + ' s · 1 file changed · 4 tools · 14.8k tokens'
+      : kind === 'denied' ? 'Completed in ' + secs + ' s · 1 tool denied'
+      : kind === 'short' ? 'Completed in ' + secs + ' s'
+      : 'Interrupted after ' + secs + ' s';
+    this.add({ id: this.nid('f'), kind: 'footer', text: text });
+    this.setState({ phase: 'idle', word: 'Idle', meta: kind === 'interrupted' ? 'you stopped the turn' : 'last turn completed' });
+    if (this.afterStop) { const t = this.afterStop; this.afterStop = null; this.later(400, () => this.start(t)); return; }
+    if (kind !== 'interrupted' && this.state.queue.length) {
+      const next = this.state.queue[0];
+      this.setState(s => ({ queue: s.queue.slice(1) }));
+      this.later(500, () => this.start(next.text));
+    }
+  }
+
+  start(text) {
+    if (!this.mainDone) { this.mainDone = true; this.runMerge(text); } else { this.runShort(text); }
+  }
+
+  runShort(text) {
+    this.add({ id: this.nid('u'), kind: 'user', text: text });
+    this.begin('Writing');
+    const id = this.nid('a');
+    this.add({ id: id, kind: 'text', text: '', streaming: true });
+    this.stream(id, 'This prototype scripts only the first request. A real turn would answer here, with the same parts: thinking, folded reads, cards for edits, and asks.', () => {
+      this.patch(id, { streaming: false });
+      this.finish('short');
+    });
+  }
+
+  runMerge(text) {
+    this.add({ id: this.nid('u'), kind: 'user', text: text });
+    this.begin('Thinking');
+    const th = this.nid('t');
+    this.setState(s => ({ open: Object.assign({}, s.open, { [th]: true }) }));
+    this.add({ id: th, kind: 'thought', text: '', streaming: true });
+    this.stream(th, 'Merge the two book lists into reading-list.md, since that is the one linked from the index. Add the 2 books only books-2026.md has. Then carry over the 4 comments from to-read.md as indented notes under each book. Do not delete books-2026.md: deleting is not something I was asked to do.', () => {
+      this.patch(th, { streaming: false, secs: 3 });
+      this.setState(s => ({ open: Object.assign({}, s.open, { [th]: false }), ctx: 24,
+        plan: [{ text: 'Add the 2 missing books', st: 'active' }, { text: 'Carry over your 4 comments', st: 'todo' }, { text: 'Leave books-2026.md in place', st: 'todo' }] }));
+      this.readFiles();
+    });
+  }
+
+  readFiles() {
+    const tx = this.nid('x');
+    this.setState(s => ({ open: Object.assign({}, s.open, { [tx]: true }) }));
+    this.add({ id: tx, kind: 'tools', lines: [], streaming: true });
+    const files = ['books-2026.md', 'reading-list.md', 'to-read.md'];
+    let i = 0;
+    const next = () => {
+      if (i < files.length) {
+        const f = files[i]; i += 1;
+        this.setWord('Reading', f);
+        this.setState(s => ({ items: s.items.map(it => (it.id === tx ? Object.assign({}, it, { lines: it.lines.concat([{ verb: 'Read', arg: f, note: '' }]) }) : it)) }));
+        this.later(650, next);
+      } else {
+        this.patch(tx, { streaming: false });
+        this.setState(s => ({ open: Object.assign({}, s.open, { [tx]: false }), ctx: 31 }));
+        this.explain();
+      }
+    };
+    this.later(300, next);
+  }
+
+  explain() {
+    this.setWord('Writing');
+    const a = this.nid('a');
+    this.add({ id: a, kind: 'text', text: '', streaming: true });
+    this.stream(a, 'books-2026.md adds “The Dispossessed” and “Piranesi”. I will put both into reading-list.md, in the same order, and bring your four comments over from to-read.md.', () => {
+      this.patch(a, { streaming: false });
+      if (this.props.checked) {
+        this.setState({ phase: 'checking', word: 'Checking with your judge', meta: 'before the edit runs' });
+        this.later(1100, () => {
+          this.add({ id: this.nid('v'), kind: 'verdict', text: 'Judge: safe · the edit stays inside ~/Notes and matches your request' });
+          this.ask();
+        });
+      } else { this.ask(); }
+    });
+  }
+
+  ask() {
+    this.editId = this.nid('e');
+    this.add({ id: this.editId, kind: 'edit', path: 'reading-list.md', ask: true, status: 'Waiting for you', badge: 'wait', diff: [
+      { sign: '', text: '## Reading list', cls: '' },
+      { sign: '', text: '- Middlemarch, George Eliot', cls: '' },
+      { sign: '', text: '- The Left Hand of Darkness, Ursula K. Le Guin', cls: '' },
+      { sign: '+', text: '  > Reread the ice crossing slowly. (from to-read.md)', cls: 'add' },
+      { sign: '', text: '⋯ 9 unchanged lines', cls: 'gap' },
+      { sign: '+', text: '- The Dispossessed, Ursula K. Le Guin', cls: 'add' },
+      { sign: '+', text: '- Piranesi, Susanna Clarke', cls: 'add' },
+      { sign: '-', text: '- Pirenesi, S. Clarke (check spelling)', cls: 'del' }
+    ] });
+    this.setState({ phase: 'waiting', word: 'Waiting for you', meta: 'Edit reading-list.md', askAt: Date.now() });
+  }
+
+  answer(how) {
+    if (this.state.phase !== 'waiting') return;
+    const who = how === 'session' ? 'You allowed edits' : 'You allowed';
+    const what = how === 'session' ? 'for the rest of this session' : 'this edit once';
+    this.patch(this.editId, { ask: false, status: 'Applied · +4 −1', badge: 'ok' });
+    this.add({ id: this.nid('d'), kind: 'decision', who: who, text: what });
+    if (how === 'session') this.setState({ sessionGrant: true });
+    this.begin('Writing');
+    this.setState({ ctx: 38, plan: [{ text: 'Add the 2 missing books', st: 'done' }, { text: 'Carry over your 4 comments', st: 'done' }, { text: 'Leave books-2026.md in place', st: 'active' }] });
+    const a = this.nid('a');
+    this.later(500, () => {
+      this.add({ id: a, kind: 'text', text: '', streaming: true });
+      this.stream(a, 'Done. reading-list.md now holds all 13 books and your comments, and I fixed the misspelt “Pirenesi”. books-2026.md is unchanged: delete it yourself when you no longer need it.', () => {
+        this.patch(a, { streaming: false });
+        this.setState({ plan: [{ text: 'Add the 2 missing books', st: 'done' }, { text: 'Carry over your 4 comments', st: 'done' }, { text: 'Leave books-2026.md in place', st: 'done' }] });
+        this.finish('completed');
+      });
+    });
+  }
+
+  deny() {
+    if (this.state.phase !== 'waiting') return;
+    const reason = (this.state.denyReason || '').trim() || 'no reason given';
+    this.patch(this.editId, { ask: false, status: 'Denied', badge: 'bad' });
+    this.add({ id: this.nid('d'), kind: 'decision', who: 'You denied', text: '“' + reason + '”' });
+    this.begin('Writing');
+    this.setState({ denyReason: '', plan: [{ text: 'Add the 2 missing books', st: 'skip' }, { text: 'Carry over your 4 comments', st: 'skip' }, { text: 'Leave books-2026.md in place', st: 'done' }] });
+    const a = this.nid('a');
+    this.later(500, () => {
+      this.add({ id: a, kind: 'text', text: '', streaming: true });
+      this.stream(a, 'Understood. I left reading-list.md as it was. If you want, I can write the merged list to a new file instead, so you can compare.', () => {
+        this.patch(a, { streaming: false });
+        this.finish('denied');
+      });
+    });
+  }
+
+  stop() {
+    const ph = this.state.phase;
+    if (ph === 'idle' || ph === 'stopping') return;
+    this.clearTimers();
+    this.setState({ phase: 'stopping', word: 'Stopping…', meta: 'waiting for the agent to confirm', denyOpen: false });
+    this.later(800, () => {
+      const open = this.state.items.find(i => i.kind === 'edit' && i.ask);
+      this.setState(s => ({ items: s.items.map(i => (i.streaming ? Object.assign({}, i, { streaming: false }) : i)) }));
+      if (open) {
+        this.patch(open.id, { ask: false, status: 'Cancelled', badge: 'off' });
+        this.add({ id: this.nid('d'), kind: 'decision', who: 'Ask cancelled', text: 'when you stopped the turn' });
+      }
+      this.finish('interrupted');
+    });
+  }
+
+  send() {
+    const text = (this.state.draft || '').trim();
+    if (!text) return;
+    if (this.state.phase === 'idle') { this.setState({ draft: '' }); this.start(text); return; }
+    if (this.state.queue.length >= 32) return; // the button is disabled and the placeholder says why
+    this.setState(s => ({ draft: '', queue: s.queue.concat([{ id: this.nid('q'), text: text }]) }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const busy = s.phase !== 'idle';
+    const secs = busy && s.startedAt ? Math.max(0, Math.round((s.now - s.startedAt) / 1000)) : 0;
+    const toggle = (id, cur) => () => this.setState(st => ({ open: Object.assign({}, st.open, { [id]: !cur }) }));
+    const items = s.items.map(it => {
+      const open = s.open[it.id] !== undefined ? s.open[it.id] : false;
+      const v = Object.assign({}, it, {
+        isUser: it.kind === 'user', isThought: it.kind === 'thought', isTools: it.kind === 'tools', isText: it.kind === 'text',
+        isEdit: it.kind === 'edit', isDecision: it.kind === 'decision', isFooter: it.kind === 'footer', isVerdict: it.kind === 'verdict',
+        open: open, openCls: open ? 'open' : '', toggle: toggle(it.id, open), streaming: !!it.streaming
+      });
+      if (it.kind === 'thought') v.label = it.streaming ? 'Thinking…' : 'Thought for ' + (it.secs || 2) + ' s';
+      if (it.kind === 'tools') {
+        const reads = it.lines.filter(l => l.verb === 'Read').length;
+        const searches = it.lines.length - reads;
+        const parts = [];
+        if (searches) parts.push(searches + (searches === 1 ? ' search' : ' searches'));
+        if (reads) parts.push(reads + (reads === 1 ? ' read' : ' reads'));
+        v.label = (it.streaming ? 'Exploring · ' : 'Explored · ') + (parts.join(', ') || 'starting');
+      }
+      if (it.kind === 'edit') { v.askCls = it.ask ? 'ask' : ''; v.badgeCls = 'b-' + (it.badge || 'off'); v.ask = !!it.ask; }
+      return v;
+    });
+    const askOpen = s.phase === 'waiting';
+    const clock = n => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
+    const curState = s.phase === 'waiting' ? 'Needs you' : busy ? 'Running' : 'Idle';
+    const cur = { title: 'Tidy my reading notes', meta: 'Notes · Claude Code', letter: 'N', color: '#7B5CD6', glyph: askOpen ? 'g-ask' : busy ? 'g-run' : 'g-idle', state: curState, onCls: 'on' };
+    const needs = [{ title: 'Reply to Ivy about Sunday', meta: 'Mail · asks to send', letter: 'M', color: '#1B7346', glyph: 'g-ask', state: 'Needs you', onCls: '' }];
+    const running = [{ title: 'Weekly review', meta: 'Desk · ChatGPT · 4 min', letter: 'D', color: '#3F4452', glyph: 'g-run', state: 'Running', onCls: '' }];
+    const recent = [
+      { title: 'Sort the inbox', meta: 'Mail · paused until 14:00', letter: 'M', color: '#1B7346', glyph: 'g-pause', state: 'Paused', onCls: '' },
+      { title: 'Plan the Lisbon trip', meta: 'Desk · not running since restart', letter: 'D', color: '#3F4452', glyph: 'g-unknown', state: 'Unknown', onCls: '' },
+      { title: 'Release notes 0.4', meta: 'Desk · yesterday', letter: 'D', color: '#3F4452', glyph: 'g-idle', state: 'Idle', onCls: '' }
+    ];
+    // While the pointer is over the list the row keeps its place; its glyph still changes.
+    const liveGroup = askOpen ? 'needs' : busy ? 'running' : 'recent';
+    const group = s.heldGroup || liveGroup;
+    if (group === 'needs') needs.unshift(cur); else if (group === 'running') running.unshift(cur); else recent.unshift(cur);
+    const plan = s.plan.map(p => ({ text: p.text, done: p.st === 'done', cls: 'p-' + p.st }));
+    const doneCount = s.plan.filter(p => p.st === 'done').length;
+    const statusMeta = s.meta ? '· ' + s.meta : '';
+    const left = s.askAt ? Math.max(0, 600 - Math.round((s.now - s.askAt) / 1000)) : 600;
+    const statusClock = s.phase === 'waiting' ? '· denied in ' + clock(left) + ' if unanswered'
+      : s.phase === 'idle' || s.phase === 'stopping' ? '' : '· ' + secs + ' s';
+    const planOpen = s.planOpen !== null ? s.planOpen : !(askOpen || s.queue.length);
+    const full = busy && s.queue.length >= 32;
+    return {
+      themeCls: this.props.dark ? 'dark' : '',
+      providerLabel: this.props.checked ? 'Claude Code · your judge checks calls' : 'Claude Code · no judge',
+      providerTitle: this.props.checked ? 'Your judge reads each call before it runs and can deny it.' : 'No judge reads this provider\'s calls. Your rules and asks still apply.',
+      ctxCls: s.ctx >= 80 ? 'hi' : '',
+      sessionGrant: s.sessionGrant,
+      revokeGrant: () => { this.setState({ sessionGrant: false }); this.add({ id: this.nid('d'), kind: 'decision', who: 'You took back', text: 'the edit permission for this session; edits ask again' }); },
+      holdSide: () => this.setState({ heldGroup: liveGroup }),
+      releaseSide: () => this.setState({ heldGroup: null }),
+      onScroll: e => { const el = e.currentTarget; this.stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40; if (this.stick && s.newBelow) this.setState({ newBelow: false }); },
+      newBelow: s.newBelow,
+      toBottom: () => this.toBottom(),
+      providerCls: this.props.checked ? 'checked' : '',
+      ctxPct: s.ctx + '%',
+      groups: [{ label: 'Needs you', rows: needs }, { label: 'Running', rows: running }, { label: 'Recent', rows: recent }],
+      items: items,
+      scrollRef: el => { this.scroller = el; },
+      needsYou: askOpen,
+      jump: () => {
+        const card = this.scroller && this.scroller.querySelector('.card.ask');
+        if (!card) return;
+        card.scrollIntoView({ block: 'center' });
+        const b = card.querySelector('.btn.primary');
+        if (b) b.focus({ preventScroll: true });
+      },
+      hasPlan: s.plan.length > 0,
+      plan: plan,
+      planOpen: planOpen,
+      planOpenCls: planOpen ? 'open' : '',
+      planLabel: 'Plan · ' + doneCount + ' of ' + s.plan.length + ' done',
+      togglePlan: () => this.setState({ planOpen: !planOpen }),
+      hasQueue: s.queue.length > 0,
+      queueLabel: 'Queued · ' + s.queue.length + ' of 32 · sent when this turn ends',
+      queueMore: s.queue.length > 3,
+      queueMoreLabel: '+ ' + (s.queue.length - 3) + ' more',
+      hasRemoved: !!s.removed,
+      removedText: s.removed ? s.removed.item.text.slice(0, 40) : '',
+      undoRemove: () => this.setState(st => { if (!st.removed) return null; const q = st.queue.slice(); q.splice(st.removed.at, 0, st.removed.item); return { queue: q, removed: null }; }),
+      queue: s.queue.slice(0, 3).map((q, at) => ({
+        text: q.text,
+        sendLabel: busy ? 'Stop and send' : 'Send now',
+        sendNow: () => {
+          this.setState(st => ({ queue: st.queue.filter(x => x.id !== q.id) }));
+          if (this.state.phase === 'idle') this.start(q.text); else { this.afterStop = q.text; this.stop(); }
+        },
+        edit: () => this.setState(st => ({ queue: st.queue.filter(x => x.id !== q.id), draft: q.text + (st.draft ? '\n' + st.draft : '') })),
+        remove: () => {
+          this.setState(st => ({ queue: st.queue.filter(x => x.id !== q.id), removed: { item: q, at: at } }));
+          clearTimeout(this.undoT); this.undoT = setTimeout(() => this.setState({ removed: null }), 6000);
+        }
+      })),
+      statusGlyph: s.phase === 'waiting' ? 'g-ask' : s.phase === 'checking' ? 'g-check' : s.phase === 'idle' ? 'g-idle' : 'g-run',
+      statusWord: s.word,
+      statusMeta: statusMeta,
+      statusClock: statusClock,
+      busy: busy,
+      stopLabel: s.phase === 'stopping' ? 'Stopping…' : 'Stop',
+      stop: () => this.stop(),
+      denyOpen: s.denyOpen,
+      denyReason: s.denyReason,
+      openDeny: () => this.setState({ denyOpen: true }),
+      closeDeny: () => this.setState({ denyOpen: false }),
+      onDenyKey: e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.setState({ denyOpen: false }); } },
+      onDenyReason: e => this.setState({ denyReason: e.target.value }),
+      submitDeny: e => { e.preventDefault(); this.setState({ denyOpen: false }); this.deny(); },
+      allowOnce: () => this.answer('once'),
+      allowSession: () => this.answer('session'),
+      draft: s.draft,
+      onDraft: e => this.setState({ draft: e.target.value }),
+      onKey: e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); }
+        else if (e.key === 'Escape') { e.preventDefault(); this.stop(); }
+      },
+      placeholder: full ? 'The queue is full: 32 messages wait. Remove one, or stop the turn.'
+        : busy ? 'Add a message: it is queued and sent when this turn ends' : 'Message the agent  ·  Enter to send, Shift+Enter for a new line',
+      send: () => this.send(),
+      sendDisabled: full || !(s.draft || '').trim(),
+      sendAria: busy ? 'Queue message' : 'Send message'
+    };
+  }
+}
+</script>
+</body>
+</html>

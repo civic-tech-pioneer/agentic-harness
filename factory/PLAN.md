@@ -27,24 +27,33 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S4: the console on a scripted session (in flight (cloud), routine trig_014DLovebAdvPQZZ2vujFUcB)
+### S9: the console matches the frames (in flight (cloud), routine trig_01UYdesZN7bxNcAnFwfvsuMi)
 
-Story: Alice opens the console (`console/`, served by its dev server) on a scripted fake kernel
-and sees a session as the first target describes (TECHNICAL 18): her message, thinking folded,
-reads folded to "Explored · n reads", an edit as a card with its diff, an open ask with its bar
-and "Needs you (1)", the status line, and after a reload the same transcript with nothing doubled.
-Outcomes:
-1. `npm test` in `console/` passes and covers each row of 18.3 from a scripted ACP v1 feed with
-   `_meta.watane` items.
-2. Reload mid-session: the console attaches after its last index; replayed items before `synced`
-   double nothing (18.3).
-3. `npm run build` writes `ui/` with no inline script, no `eval`, no outside URL (18.2); a test
-   greps the output for these.
-4. The layout values of 18.4 hold at 1280 px and under 760 px (sidebar hidden).
-Touches: `console/` (incl. `console/kit/`), `ui/`. Not `kernel/`, not `factory/`, not `design/`.
-Fakes: the kernel: a scripted feed in `console/` behind the same shape as `attach`/`read`
-(TECHNICAL 2.3, 9.4). Leaves out: profiles and offer pages, the real host.
-Protects: *core*. The PO compares it with the frames before acceptance.
+Story: Alice opens the console on the scripted session and it looks and reads like the canvas row
+"Revision 2" (`design/frames/Main-2.dc.html`, `States-2.dc.html`, copies of the canvas in TECHNICAL 18), not only behaves like it. The PO
+compared S4 with `Main-2` at 1440 px after pressing Send; each gap below is from that comparison.
+Outcomes (each a view test, plus the PO's own comparison before acceptance):
+1. Ask card: header with a pencil icon, tool name, path and a "Waiting for you" tag (not
+   "Pending"); the body is a diff (removed and added lines tinted, unchanged runs folded to
+   "⋯ n unchanged lines"), not the raw tool input (`file_path ...`); the ask bar reads
+   "Allow this edit?" and lays out Deny… (left, quiet), Allow edits in `<reach>` this session,
+   Allow once (primary, right), as the frame does; focus still lands on Allow once (18.6).
+2. Status line (18.5) carries the subject and the time as words: "Waiting for you · Edit
+   `<file>` · denied in m:ss if unanswered", and "Esc to stop" at the right while a turn runs.
+   "Needs you (n)" is the centred pill with a down arrow above the dock, as in the frame.
+3. Composer: the frame's placeholders ("Add a message: it is queued and sent when this turn ends"
+   while running), a Stop button while a turn runs, the round send button, and the footer line of
+   model and permission mode when the session gives them (else left out, not invented).
+4. Header: "Profile `<name>`" chip, provider chip with its checked state ("Claude Code · no
+   judge"), folder chip with its icon, "Context" meter with a percentage, and the ⋯ menu button.
+5. Sidebar: the "Agents" title; rows grouped Needs you / Running / Recent, each with its avatar
+   letter, subtitle (`<place> · <provider or state>`) and its state shape at the right (18.5
+   shapes). "+ New session" is shown off (offers are out of this target, 18.8).
+6. Folded rows ("Thought for n s", "Explored · …", "Plan · n of m done") have the chevron and,
+   for Explored, the search icon.
+Touches: `console/`, `ui/`. Not `kernel/`, `design/`, `factory/`.
+Fakes: the same scripted kernel; extend the script where a frame shows a state it lacks.
+Protects: *polish* (*core* for 1 and 2: an ask must read as one).
 
 ### S6: the review's should-dos P07 to P12, and S3's spec debts (in flight (cloud), routine trig_014PPn8yaasuqjGjGycvXqCg)
 
@@ -86,7 +95,7 @@ Protects: *core*.
 
 ## Sketched
 
-### S7: the console stays fast on a long session (cloud, after S4 merges)
+### S7: the console stays fast on a long session (cloud, after S9 merges: same files)
 
 Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
 presses Stop without lag (P14).
@@ -94,6 +103,18 @@ Outcomes: the transcript is virtualized; at most one render per animation frame;
 highlighted once its block is complete and visible; a large-transcript fixture with limits for
 input, Stop and scroll latency runs in `npm test`.
 Touches: `console/`, `ui/`. Protects: *core*.
+
+### S10: the console's wire into the contract (cloud, after S6 merges: same files)
+
+Story: a kernel maker of stage B reads 2.3, 9.4 and 18 and finds what S4's console relies on.
+Outcomes: S4's wire assumptions (`console/kit/wire.ts`: entries as `_meta.watane {type:"entry"}`,
+`ask` with `toolCall` and `reach`, the push after `synced`, `synced {writing}`, a stored message's
+`thought`, the idle footer fields, `_meta.watane.at`) are adopted into 2.3 and 9.4 or replaced
+with a named console change; 9.4 says an `unreadable` entry keeps its `i`; 18.2 names
+assistant-ui's External-store runtime (its ACP adapter is not published); AGENTS.md gains the
+console's test row (`npm test`, `npm run test:slow` in `console/`); the decision JSON of 2.3 is
+spelled out as the console sends it.
+Touches: `design/TECHNICAL.md`, `AGENTS.md`. Protects: *core*.
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -135,6 +156,16 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   fixed with tests in `kernel/tests/it/adversary.rs`, HELD on pass 7. Implementer runs: 3 tasks,
   6 fix tasks. Suite: 57 tests, CI gate job 17 s.
 
+- **S4** the console on a scripted session (PR #8, merged 2026-11-20 23:26 UTC, ~1.7 h). Alice
+  runs `npm run dev` in `console/` and sees a session on a scripted fake kernel: her message,
+  folded thinking, "Explored · n reads", an edit card with its diff, an open ask with its bar,
+  "Needs you (1)", the status line counting down, the plan, the queue; a reload doubles nothing.
+  assistant-ui's External-store runtime over the console's own reducer (`console/kit/`).
+  User-sim ACCEPTED on run 2; adversary HELD after 5 fix rounds (one governor of 8 burst, 4/s
+  over attach and read). Merged before the PO's side-by-side check: the PO's comparison with
+  `Main-2` found the gaps that became S9. Implementer runs 2/1/1 + fixes 1/1/1/1/2/1. Suite:
+  `npm test` 167 tests 6.2 s, gate 24 s, `npm run test:slow` 7.5 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -164,6 +195,11 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   fail-closed, so `Bash(npm test:*)` is refused. Kept; the wider question is under Waiting.
 - 2026-11-20 Next kernel slice is S8, the adapters of 9.8: pure functions, disjoint from S4
   (console) and S6 (design), needed by stage B.
+
+- 2026-11-20 S4 is accepted as behaviour; its look goes back as S9 (the frames give layout and
+  words, TECHNICAL 18.4). S7 waits for S9 (same files). S4's wire assumptions and spec notes
+  become S10 after S6 (same files). Its decisions stand meanwhile: decision JSON
+  `{"allow":true[,"for":"session"]}` / `{"deny":true,"reason"}`; acts with no 2.3 call shown off.
 
 ## Human answers (2026-11-20, through the PO)
 
@@ -251,6 +287,14 @@ S2 writes each into the document that owns it.
 - 2026-11-20 S3 foreman: it could not fix the spec-path gap (TECHNICAL 1 and 14 name `src/` at the
   root) because `design/` was locked by S5; it put it in the report. Worked as intended.
 
+- 2026-11-20 po skill 5 vs auto-merge: a cloud foreman arms auto-merge as it delivers, so a UI
+  slice merges (S4: 38 s of CI) before the PO can compare it with the design; `--disable-auto`
+  came too late. A UI slice should open its PR with auto-merge off, and the PO arms it after
+  the comparison (or the foreman skill names UI slices as "PO arms").
+- 2026-11-20 watch-cloud.sh miss: fixed in the factory (watane-mods aaf89b6, synced by PR #7).
+
 ## Suite time
+
+- S4: console `npm test` 167 tests 6.2 s; `test:slow` 7.5 s; gate with kernel 24 s (2026-11-20).
 
 - S3: kernel `cargo test` 57 tests in 0.05 s; CI gate job 17 s (2026-11-20, macos-15).

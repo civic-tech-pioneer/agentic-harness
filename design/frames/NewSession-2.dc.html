@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New session</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.root{--bg:#F6F6F4;--panel:#FFFFFF;--ink:#18181B;--muted:#5D5E66;--line:#E3E3DF;--hover:#EFEFEC;--accent:#3355D6;--accent-ink:#FFFFFF;--accent-weak:#ECF0FD;--warn:#8A5300;--warn-bg:#FFF3DC;--bad:#B42318;--bad-bg:#FDECEA;--ok:#1B7346;--ok-bg:#E7F4EC;--off-bg:#ECECE9;font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);font-size:14px}
+.root.dark{--bg:#111113;--panel:#19191C;--ink:#EDEDEF;--muted:#A3A3AC;--line:#2B2B30;--hover:#222226;--accent:#8EA4FF;--accent-ink:#0D1330;--accent-weak:#1D2340;--warn:#F2B65A;--warn-bg:#2B2112;--bad:#FF8A80;--bad-bg:#2E1615;--ok:#6FD39E;--ok-bg:#132A1E;--off-bg:#26262A}
+a{color:var(--accent)}
+h2{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12.5px}
+.pcard{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px 14px;cursor:pointer;font:inherit;color:inherit;min-height:44px}
+@media (hover:hover){.pcard:hover{background:var(--hover)}.btn:not(:disabled):hover{background:var(--hover)}.btn.primary:not(:disabled):hover{background:var(--accent);filter:brightness(1.08)}a:hover{color:var(--ink)}}
+.pcard.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+.pcard b{font-weight:600}
+.pcard span{font-size:12.5px;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px;background:var(--bg)}
+.seg button{height:34px;padding:0 14px;border-radius:7px;border:1px solid transparent;background:transparent;font:500 13.5px Inter,system-ui,sans-serif;color:var(--muted);cursor:pointer}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.row{display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.row:last-child{border-bottom:0}
+.row .k{flex:0 0 120px;color:var(--muted)}
+.row .v{flex:1;min-width:0;line-height:1.5}
+.refusal{display:flex;flex-direction:column;gap:6px;border-radius:12px;background:var(--bad-bg);padding:12px 14px}
+.refusal b{color:var(--bad)}
+.ref{display:flex;gap:10px;font-size:13px;line-height:1.5}
+.ref code{flex:0 0 96px;color:var(--bad)}
+.reach{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13.5px;line-height:1.45}
+.reach:last-of-type{border-bottom:0}
+.reach .ic{flex:0 0 28px;height:28px;border-radius:8px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.reach .s{font-size:12px;color:var(--muted)}
+.okmark{color:var(--ok);font-weight:500}
+.askmark{color:var(--warn);font-weight:500}
+.btn{height:36px;padding:0 16px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:500 14px Inter,system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn[disabled]{opacity:.45;cursor:default}
+.narrow{display:flex;flex-wrap:wrap;gap:8px}
+.narrow label{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:16px;font-size:12.5px;cursor:pointer}
+.narrow input{accent-color:var(--accent)}
+textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);font:14px/1.5 Inter,system-ui,sans-serif;padding:10px 12px;resize:none}
+</style>
+</helmet>
+<div class="root {{themeCls}}" style="width:1280px;height:820px;box-sizing:border-box;padding:32px 40px;display:flex;flex-direction:column;gap:20px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <h1 style="margin:0;font-size:22px;font-weight:600">New session</h1>
+    <span style="color:var(--muted)">from Notes</span>
+  </div>
+  <div style="flex:1;min-height:0;display:grid;grid-template-columns:260px minmax(0, 1fr) 340px;gap:24px">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <h2>Profile</h2>
+      <sc-for list="{{profiles}}" as="p" hint-placeholder-count="3">
+        <button class="pcard {{p.onCls}}" type="button" onClick="{{p.pick}}" aria-pressed="{{p.on}}">
+          <b>{{p.name}}</b>
+          <span>{{p.summary}}</span>
+        </button>
+      </sc-for>
+      <p style="margin:4px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5">Profiles are made in the agent kernel's own page. Notes may use these three.</p>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <div style="display:flex;align-items:center;gap:14px">
+        <h2>Runs on</h2>
+        <div class="seg" role="group" aria-label="Backend">
+          <button type="button" class="{{claudeCls}}" onClick="{{pickClaude}}" aria-pressed="{{isClaude}}">Claude Code</button>
+          <button type="button" class="{{openaiCls}}" onClick="{{pickOpenai}}" aria-pressed="{{isOpenai}}">ChatGPT</button>
+        </div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px 18px">
+        <sc-for list="{{fields}}" as="f" hint-placeholder-count="5">
+          <div class="row"><span class="k">{{f.k}}</span><span class="v">{{f.v}}</span></div>
+        </sc-for>
+      </div>
+      <sc-if value="{{hasRefusals}}" hint-placeholder-val="{{ false }}">
+        <div class="refusal" role="alert">
+          <b>{{refusalTitle}}</b>
+          <sc-for list="{{refusals}}" as="r" hint-placeholder-count="2">
+            <div class="ref"><code>{{r.field}}</code><span>{{r.reason}}</span></div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <h2>For this session only</h2>
+        <div class="narrow">
+          <label><input type="checkbox" checked="{{noEdits}}" onChange="{{toggleEdits}}"> Read only: no edits</label>
+          <label><input type="checkbox" checked="{{shortRun}}" onChange="{{toggleShort}}"> At most 10 turns</label>
+        </div>
+        <span style="font-size:12px;color:var(--muted)">A session can only narrow its profile. Adding a tool or a folder is done in the profile.</span>
+      </div>
+      <label for="first" style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">First message</label>
+      <textarea id="first" rows="3">Merge books-2026.md into reading-list.md, and keep my comments from to-read.md.</textarea>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <h2>What this session can reach</h2>
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 16px">
+        <sc-for list="{{reach}}" as="x" hint-placeholder-count="4">
+          <div class="reach">
+            <span class="ic" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{x.icon}}"></path></svg></span>
+            <span style="display:flex;flex-direction:column;gap:2px"><span>{{x.what}}</span><span class="s"><span class="{{x.markCls}}">{{x.mark}}</span> · {{x.note}}</span></span>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size:12px;color:var(--muted);line-height:1.5">Anything new is asked in watane's consent view, not here. Only you can approve it.</span>
+      <span style="flex:1"></span>
+      <button class="btn primary" type="button" disabled="{{startDisabled}}">{{startLabel}}</button>
+      <button class="btn" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Look"},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = Object.assign({}, this.state || {}, { profile: 'tidy', backend: 'claude', noEdits: false, shortRun: false });
+  }
+  renderVals() {
+    const s = this.state;
+    const P = {
+      tidy: { name: 'Tidy', summary: 'Sonnet · file tools · ~/Notes', model: { claude: 'Claude Sonnet', openai: 'gpt-6.2-sol' },
+        tools: 'Read, Write, Edit, Glob, Grep', toolsets: 'none', mode: 'Ask before edits', limits: '40 turns · 200k tokens',
+        refuse: [{ field: 'tools', reason: 'ChatGPT runs no file tools: it has only the toolsets you give it.' },
+                 { field: 'workspace', reason: 'ChatGPT cannot work in a folder.' }] },
+      sort: { name: 'Sort', summary: 'any model · Notes toolset only', model: { claude: 'Claude Haiku', openai: 'gpt-6-luna' },
+        tools: 'none', toolsets: 'notes: list, tag, move', mode: 'Ask before each call', limits: '20 turns · 50k tokens', refuse: [] },
+      research: { name: 'Research', summary: 'Opus · shell and web · ~/Code', model: { claude: 'Claude Opus', openai: 'gpt-6.2-sol' },
+        tools: 'Read, Glob, Grep, Bash, WebFetch, WebSearch', toolsets: 'none', mode: 'Plan first', limits: '80 turns · 400k tokens',
+        refuse: [{ field: 'tools', reason: 'ChatGPT runs no shell or web tools here.' },
+                 { field: 'mode', reason: '“Plan first” needs Claude Code.' },
+                 { field: 'workspace', reason: 'ChatGPT cannot work in a folder.' }] }
+    };
+    const pr = P[s.profile];
+    const claude = s.backend === 'claude';
+    const refusals = claude ? [] : pr.refuse;
+    const profiles = ['tidy', 'sort', 'research'].map(k => ({
+      name: P[k].name, summary: P[k].summary, on: s.profile === k, onCls: s.profile === k ? 'on' : '',
+      pick: () => this.setState({ profile: k })
+    }));
+    const tools = s.noEdits && pr.tools !== 'none' ? pr.tools.replace(/Write, |Edit, /g, '') : pr.tools;
+    const fields = [
+      { k: 'Model', v: pr.model[s.backend] },
+      { k: 'Tools', v: tools },
+      { k: 'watane tools', v: pr.toolsets },
+      { k: 'Asks', v: pr.mode },
+      { k: 'Limits', v: s.shortRun ? '10 turns (narrowed) · ' + pr.limits.split(' · ')[1] : pr.limits }
+    ];
+    const D = { folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', plan: 'M4 7h16v12H4zM8 7V5h8v2', tool: 'M14 7l3 3-8 8H6v-3zM14 7l2-2 3 3-2 2', shield: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z' };
+    const reach = [];
+    if (claude) {
+      reach.push({ icon: D.shield, what: 'Claude Code, with your Claude account', mark: 'granted', markCls: 'okmark', note: 'no judge reads its calls' });
+      if (s.profile === 'research') reach.push({ icon: D.folder, what: 'Programs and the web, in ~/Code/reading-list', mark: 'will be asked', markCls: 'askmark', note: 'needs the shell and web grant' });
+      else if (s.profile === 'tidy') reach.push({ icon: D.folder, what: 'Files in ~/Notes', mark: 'allowed', markCls: 'okmark', note: 'since 12 Nov' });
+    } else {
+      reach.push({ icon: D.plan, what: 'Your ChatGPT plan', mark: 'will be asked', markCls: 'askmark', note: 'first use from Notes' });
+    }
+    if (s.profile === 'sort') reach.push({ icon: D.tool, what: 'Notes toolset: list, tag, move', mark: 'allowed', markCls: 'okmark', note: 'since 14 Nov' });
+    return {
+      themeCls: this.props.dark ? 'dark' : '',
+      profiles: profiles,
+      isClaude: claude, isOpenai: !claude,
+      claudeCls: claude ? 'on' : '', openaiCls: claude ? '' : 'on',
+      pickClaude: () => this.setState({ backend: 'claude' }),
+      pickOpenai: () => this.setState({ backend: 'openai' }),
+      fields: fields,
+      hasRefusals: refusals.length > 0,
+      refusalTitle: pr.name + ' cannot run on ChatGPT: ' + refusals.length + ' fields',
+      refusals: refusals,
+      noEdits: s.noEdits, shortRun: s.shortRun,
+      toggleEdits: () => this.setState(st => ({ noEdits: !st.noEdits })),
+      toggleShort: () => this.setState(st => ({ shortRun: !st.shortRun })),
+      reach: reach,
+      startDisabled: refusals.length > 0,
+      startLabel: refusals.length ? 'Pick another profile or Claude' : 'Start session'
+    };
+  }
+}
+</script>
+</body>
+</html>
