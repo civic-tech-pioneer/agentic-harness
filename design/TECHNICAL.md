@@ -301,7 +301,7 @@ and `.husky/**`. No launch can remove them.
   Deleted when the stream ends; all of `runs/` is deleted at open, after the
   recorded process groups are killed.
 - **Scratch workspace** `<home>/scratch/<random>/`, named by the host, owned
-  by a session; a mod sees its id.
+  by a session; a mod sees its id. It asks no consent (8): no participant folder is in it.
 - **Picked workspace:** canonical, symlinks resolved. Refused: `/`, the home
   folder, the watane home and its ancestors, `~/.claude`, `~/.codex`,
   `~/.ssh`, `~/.aws`, `~/Library/Keychains`, the run and scratch trees;
