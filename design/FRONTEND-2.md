@@ -4,10 +4,15 @@ A record, not a contract, and a separate proposal: `FRONTEND.md` stays as it
 was. This one reviews that brief and its canvas frames against three skills
 (Nielsen's 10 usability heuristics, the Laws of UX, and UI polish) and says
 what revision 2 changes. The revised frames are the second row of the design
-canvas "watane agent frontend" (`Main-2`, `States-2`, `NewSession-2`); the
+canvas ["watane agent frontend"](https://claude.ai/artifact/8jz2aHuaPo2REtKQyMt89e) (`Main-2`, `States-2`, `NewSession-2`); the
 first row is unchanged.
 
 Everything in `FRONTEND.md` holds unless a row below changes it.
+
+> Later note (2026-11-20): the rules this record led to are now in the
+> spec chain: `FUNCTIONAL.md` 3.11 and `TECHNICAL.md` 18. Its spec gaps
+> are settled there too: the ones the canvas target needs are in the backend
+> sections, and the others are under Later in `FUNCTIONAL.md` section 5.
 
 ## How it was reviewed
 

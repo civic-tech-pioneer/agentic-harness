@@ -1,12 +1,19 @@
-# The agent layer: vision (draft)
+# Agentic harness: vision
 
-Draft, not yet a contract. It becomes one when a design slice takes up
-`ARCHITECTURE-PROPOSAL.md` (revision 4) and the human settles its open points
-(section 15 there). The layer lives in this mod, `agentic-harness`; its small
-host part lands in watane, whose `spec/VISION.md`, `spec/FUNCTIONAL.md` and
-`spec/TECHNICAL.md` then gain the rows that `TECHNICAL.md` section 15 lists.
-Paths such as `spec/…`, `host/…` and `factory/…` in these files are watane's;
-`design/`, `proto/` and `research_notes/` are this mod's.
+Why this mod exists and what comes first. With `FUNCTIONAL.md` (what) and
+`TECHNICAL.md` (how) it is this mod's spec chain, in that order of truth
+(`factory/config.toml`, `spec`); code comes after. When two disagree, the
+lower one is fixed. Where an open point of `ARCHITECTURE-PROPOSAL.md`
+(section 15, `N<n>`) is undecided, the three state the proposal's current
+choice and say so; settling one is the human's, and a build slice that
+depends on an undecided point waits for that answer. `AGENTS.md` says which
+files are contracts and which are records.
+
+The layer lives in this mod, `agentic-harness`; its small host part lands in
+watane, whose `spec/VISION.md`, `spec/FUNCTIONAL.md` and `spec/TECHNICAL.md`
+then gain the rows that `TECHNICAL.md` section 15 lists. Paths such as
+`spec/…`, `host/…` and `factory/…` in these files are watane's; `design/`,
+`proto/` and `research_notes/` are this mod's.
 
 ## Why
 
@@ -28,13 +35,50 @@ subscriptions, Claude and ChatGPT, with no API key, no watane account and no
 operator. Almost all of it is mods: a small host part owns the boundaries,
 and the rest can be downloaded, replaced and built on like any other mod.
 
+**The console.** The layer is first a backend for other mods. It also gets
+its own frontend, the console: a chat in the kernel's page. It is there for
+three reasons:
+- the human sees each part working as it is built;
+- whoever debugs a session has a place to watch it;
+- building it teaches what a harness interface needs, and shows whether the
+  interface the kernel gives every client is enough.
+
+## What comes first
+
+1. **The backend and its quality.** The capabilities other mods rely on
+   (sessions, asks, consent, limits, resume, both backends) and their
+   quality come before anything else. That quality means:
+   - the boundaries hold;
+   - nothing is lost or doubled across a restart;
+   - every refusal names its cause;
+   - each behaviour is tested at the lowest level that shows it.
+
+   When the backend and the console compete for time or for a choice, the
+   backend wins.
+2. **The console, built alongside.** Each vertical slice brings a backend
+   capability and the console's view of it together, so each slice ends in
+   something the human can see working. The console's first target is the
+   design canvas
+   ["watane agent frontend"](https://claude.ai/artifact/8jz2aHuaPo2REtKQyMt89e),
+   row "Revision 2" (frames `Main-2`, `States-2` and `NewSession-2`). The row
+   above it is the earlier proposal, kept for reference. This target is the
+   whole ambition for now: a polished chat, not a rich product. Anything
+   past it waits until the backend under it is done.
+3. **The factory builds it.** The pipeline that builds watane builds this mod:
+   - a product owner sketches slices;
+   - a foreman per slice has each task implemented, validated and accepted;
+   - CI merges the slice.
+
+   This is the first mod built this way, so friction found here improves
+   the pipeline for every later mod.
+
 ## Goals served (`spec/VISION.md`)
 
 | Goal | How the agent layer serves it |
 |---|---|
 | V1 Own environment | The participant decides which agents a mod may run, in which folders, with which tools, and which profiles exist. A mod can make agents part of the person's own tool. |
 | V2 Stigmergy | The kernel, the providers, profiles and skills are mods and offers that others can find, run and derive from. |
-| V3 Cheap making | A mod gets agent sessions through one interface, for both vendors, without writing a client, a tool loop or a permission system. |
+| V3 Cheap making | A mod gets agent sessions through one interface, for both vendors, without writing a client, a tool loop or a permission system. The console shows a maker what a session does. |
 | V4 No center | Sessions run on the participant's own Claude and ChatGPT plans. No watane service, key or account sits between. |
 | V5 Safe by default | The host owns the process, the credentials, the folders, the stdin of `claude` and the consent. A session is private to the client that started it. Limits live in code. A failing check denies. |
 | V6 Chosen trust | The participant picks the provider: Claude Code unchecked, or a provider that asks a judge they chose before each step. |
@@ -62,6 +106,12 @@ and the rest can be downloaded, replaced and built on like any other mod.
   work is a stream, a job or a timer.
 - **Never one vendor's protocol as the client's.** Clients see one event
   format for every backend.
+- **Never a console with powers a client lacks.** The console reaches the
+  kernel only through the interface every client mod uses. What it needs, the
+  kernel adds to that interface, for every client.
+- **Never a console ahead of its backend.** The console shows what the kernel
+  reports and guesses nothing: no countdown without an expiry time, no plan
+  without a plan event. A view whose backend is missing waits for it.
 
 ## Success
 
@@ -77,3 +127,6 @@ and the rest can be downloaded, replaced and built on like any other mod.
   agents can reach, and withdraws each one.
 - The factory's roles (product owner, foreman, validator) run as sessions of
   mods in the host (N5 decides the implementer).
+- The console matches the canvas target, built on the client interface alone.
+  In it the human has watched every journey of `FUNCTIONAL.md` on the real
+  programs.

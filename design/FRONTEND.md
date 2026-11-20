@@ -4,7 +4,13 @@ A record, not a contract. A client page for the agent layer (`FUNCTIONAL.md`,
 `TECHNICAL.md`), built from two comparisons:
 `COMPARISON-harness-ux-2026-11-20.md` (what good harness UIs do) and
 `COMPARISON-agent-ui-libraries-2026-11-20.md` (what to build it with). The
-mock-ups are on the design canvas "watane agent frontend".
+mock-ups are on the design canvas
+["watane agent frontend"](https://claude.ai/artifact/8jz2aHuaPo2REtKQyMt89e), first row.
+
+> Later note (2026-11-20): the rules this record led to are now in the
+> spec chain: `FUNCTIONAL.md` 3.11 and `TECHNICAL.md` 18. Its spec gaps
+> are settled there too: the ones the canvas target needs are in the backend
+> sections, and the others are under Later in `FUNCTIONAL.md` section 5.
 
 ## Principles
 

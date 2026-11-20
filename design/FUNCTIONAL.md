@@ -1,13 +1,20 @@
-# The agent layer: functional specification (draft)
+# Agentic harness: functional specification
 
-What the agent layer does, free of implementation. `TECHNICAL.md` says how;
-`ARCHITECTURE-PROPOSAL.md` (revision 4) is the record of why. Draft, not yet
-a contract (see `VISION.md`).
+What the agent layer does, free of implementation. It sits between
+`VISION.md` (why), which outranks it, and `TECHNICAL.md` (how), which it
+outranks. `ARCHITECTURE-PROPOSAL.md` (revision 4) is the record of why.
 
-Ids in `Traces:` refer to `spec/FUNCTIONAL.md`, and to the rows this draft
-proposes for it (section 2). `N<n>` refers to the open points of the proposal
-(section 15); where one is open, this draft follows the proposal's current
-choice and says so.
+Sections 3.1 to 3.10 are the backend, which comes first (`VISION.md`, what
+comes first). Section 3.11 is the console, built alongside; each of its
+requirements names the backend requirements it rests on, and none asks for
+more than they give.
+
+Ids in `Traces:` refer to `spec/FUNCTIONAL.md`, to the rows this file
+proposes for it (section 2), and to this file's own `AGT-F` ids. `N<n>`
+refers to the open points of the proposal (section 15); where one is open,
+this file follows the proposal's current choice and says so. An `AGT-F` id
+never changes; a new requirement takes the next free number, in the section
+where it belongs.
 
 ## 1. Terms
 
@@ -32,6 +39,9 @@ choice and says so.
 | toolset | A named list of calls of installed mods that agents may use (spec 1). |
 | transcript | The stored entries of a session: finished messages, tool steps, asks, verdicts and turn states. |
 | key | A text that a client chooses for a call, so that a repeated call changes nothing. |
+| console | The kernel's own page: a chat in which the participant runs and watches sessions. It is a client of the kernel like any other. |
+| session allow | An answer to an ask that allows that kind of call for the rest of the session. |
+| queue | The inputs an owner sent during a turn, waiting for it to end. |
 
 ## 2. Proposed rows for `spec/FUNCTIONAL.md`
 
@@ -58,8 +68,9 @@ choice and says so.
 - **AGT-F-7** The kernel shall let only the owner of a session attach to it, read it, send input, answer its asks, interrupt, cancel, rename or delete it, and list the owner's own sessions. Traces: F-AGENT-6.
 - **AGT-F-8** When the owner attaches after an index, the kernel shall send every stored entry after that index, then a marker that the replay is complete, then live updates, with no entry missing or doubled. A second attach of the same owner shall end the first. Traces: F-AGENT-6.
 - **AGT-F-9** The kernel shall give the client one event format for both backends. If a backend sends output that the kernel does not know, then the kernel shall keep it as an unknown entry and the session shall go on. Traces: F-AGENT-5.
-- **AGT-F-10** The kernel shall show the state of each session's turn: running, waiting for an answer, paused until a time, or idle with its reason (completed, interrupted, stopped by a limit, failed). After a cancel or a restart it shall never show a turn as running. Traces: F-AGENT-6, F-QUAL-3.
+- **AGT-F-10** The kernel shall show the state of each session's turn as it changes: running (and, while it lasts, checking with the judge, making room in the context, or waiting for the participant's consent in the app), waiting for an answer, paused until a time, or idle with its reason (completed, interrupted, stopped by a limit, failed). After a cancel or a restart it shall never show a turn as running. Traces: F-AGENT-6, F-QUAL-3.
 - **AGT-F-11** When the owner sends input during a turn, the kernel shall queue it, in order, up to 32 inputs, and start the next turn with it. When the owner interrupts with a replacement input, the kernel shall end the turn and start the next with that input. Traces: F-AGENT-5.
+- **AGT-F-41** The kernel shall let the owner see the queued inputs of a session and take one out before a turn takes it. Traces: AGT-F-11, F-AGENT-6.
 - **AGT-F-12** When the owner cancels a session, the kernel shall end its turn, deny every open ask, and cancel its child sessions. Traces: F-AGENT-6.
 - **AGT-F-13** The kernel shall never delete a session on its own. If an owner exceeds its quota, then the kernel shall refuse new sessions of that owner and name the quota. Traces: F-RUN-8.
 
@@ -68,6 +79,8 @@ choice and says so.
 - **AGT-F-14** When an agent asks for permission, the kernel shall decide by the profile, or ask the owner. If nobody can answer, then the kernel shall deny. Traces: F-AGENT-1, F-AGENT-9.
 - **AGT-F-15** The first answer to an ask shall decide it. The kernel shall refuse a second answer and an answer after its turn ended, and tell the owner when an ask was decided by anyone else. Traces: F-AGENT-6.
 - **AGT-F-16** If nobody answers a Claude ask within 10 minutes, then the host shall deny it. Traces: F-AGENT-9.
+- **AGT-F-42** The kernel shall tell the owner, with each open ask, the tool call it is about, its full input, and when it will be denied unanswered. Traces: AGT-F-14, AGT-F-16.
+- **AGT-F-43** When the owner answers an ask with a session allow, the kernel shall name its reach (the tool and, where it applies, the folder), keep it only for that session, and let the owner take it back; after that, the same kind of call asks again. Traces: AGT-F-14, F-AGENT-8.
 
 ### 3.4 Claude Code
 
@@ -107,12 +120,28 @@ choice and says so.
 
 - **AGT-F-36** The kernel shall count the turns, the failed tool calls in a row and the tokens of each session, for both backends, and stop the turn at a limit of the profile, with the limit named. At the turn limit the agent gets one last turn without tools to sum up. Traces: F-AGENT-8, F-QUAL-3.
 - **AGT-F-37** An agent shall start a child session only with a profile that its own profile names. A child shall only narrow its parent. The kernel shall limit the depth and the number of live children. An OpenAI child shall not start children. Traces: F-AGENT-8.
+- **AGT-F-44** The kernel shall report, after each step, how much of the model's context a session uses, and, where the backend says so, at what point it makes room by summarising. Traces: AGT-F-36, F-QUAL-3.
 
 ### 3.10 Restart and quality
 
 - **AGT-F-38** After a restart of watane, the owner shall reattach to each session and continue it. If `claude` no longer has the session, then the kernel shall mark it as lost and continue in a new Claude session that starts from a summary. Traces: F-QUAL-3.
 - **AGT-F-39** Every call into a mod of the agent layer shall return within its budget. Long work shall be a stream, a job or a timer. Traces: F-RUN-3.
 - **AGT-F-40** Each failure shall carry a fixed machine-readable code and a message that names the cause. Traces: F-QUAL-3.
+
+### 3.11 The console
+
+The console's first target is the canvas row named in `VISION.md`. Each
+requirement here is met by what the backend requirements it traces give, and
+by nothing else.
+
+- **AGT-F-45** The kernel's page shall hold the console. The console shall reach the kernel only through the calls every client has, and shall show and change only the sessions it started. Traces: AGT-F-7, F-AGENT-6. (Showing the sessions of other clients is open: N11.)
+- **AGT-F-46** When the participant starts a session in the console, the console shall offer the profiles the console may use and both backends, and let them narrow the profile for that session. Before anything starts, it shall show every refusal of AGT-F-4 for that backend and keep Start off while one holds. It shall show what the session can reach: what is already allowed and what will be asked. Traces: AGT-F-3, AGT-F-4, AGT-F-5, AGT-F-28.
+- **AGT-F-47** The console shall show a session's transcript from its stored entries and live updates: inputs, thinking, tool calls, asks, verdicts, decisions with who made them, and the end of each turn with its time, tools and tokens. Reads and searches in a row shall fold into one line. Edits, program runs, asks and failures shall show in full, and a failed call shall show open. After a reload or a restart of watane, the same transcript shall show again, nothing missing or doubled. Traces: AGT-F-8, AGT-F-9, AGT-F-34, AGT-F-38.
+- **AGT-F-48** The console shall show one status line for the current turn: a word, a shape for each state that does not rely on colour, the time running or, for an ask, the time left, and the key that acts on it. It shall show no state, time or plan that the kernel did not report. Traces: AGT-F-10, AGT-F-42.
+- **AGT-F-49** When an ask waits, the console shall show it inside its tool call, with every argument and, for an edit, the change. It shall keep a "Needs you" pointer until the ask is answered, and offer: allow once; allow for the session, with its reach named; and deny with a reason the agent receives. A session allow shall stay shown until the session ends or the participant takes it back. Traces: AGT-F-14, AGT-F-15, AGT-F-42, AGT-F-43.
+- **AGT-F-50** The console shall accept input during a turn and show the queue: the participant shall take a queued input back to edit it, remove it with an undo, and interrupt the turn to send one now. When the queue is full, sending shall be off and the console shall say why. Stop shall show "Stopping…" until the kernel reports the turn ended. Traces: AGT-F-11, AGT-F-41.
+- **AGT-F-51** The console shall list its sessions grouped by need (needs you, running, then recent) and shall not move a row while the pointer is over the list. It shall show how full the context is and warn before the kernel makes room. Traces: AGT-F-10, AGT-F-44.
+- **AGT-F-52** The console shall work with the keyboard alone and with a screen reader, shall honour the participant's setting for reduced motion, and shall never carry a state by colour alone. It shall keep the reader's place: it follows new output only while the reader is at the end. Traces: F-QUAL-3.
 
 ## 4. Journeys
 
@@ -166,6 +195,19 @@ slice; the foreman starts a validator child. The kernel refuses a fourth
 level and a profile not named. Alice cancels the product owner's session,
 and both children stop.
 
+### AGT-J6: Watching a session in the console
+
+Alice opens the agent kernel's page. She starts a session with "Tidy" on
+ChatGPT; the console lists the fields ChatGPT cannot honour and keeps Start
+off, so she picks Claude Code instead. She asks it to merge two book lists.
+The thinking streams, then folds; three reads fold into one line; a plan
+appears above the input. The edit to `reading-list.md` asks, with its diff
+and the time left. While it waits she types a second message, which goes to
+the queue. She allows the edit for this session; the header shows that
+allow, and she takes it back. She scrolls up to reread; new output does not
+pull her down, and a pointer offers to jump back. She reloads the page: the
+same transcript shows, and the turn's state is the kernel's.
+
 ## 5. Later
 
 - Workspace instructions (`AGENTS.md`) for a profile that opts in (N7).
@@ -174,3 +216,12 @@ and both children stop.
 - Codex as a third backend (N5).
 - File undo.
 - The `auto` permission mode (N2).
+- In the console, past its first target: a board of many sessions and their
+  children; one review of all edits of a turn; fork and rewind; a message
+  delivered after the current tool call; notifications; suggested titles;
+  the profile and offer pages in the console's style; a chat part other mods
+  can embed.
+- **N11 (open, the human's):** whether the console may show, read only, the
+  sessions of other clients. It would help debugging most. The kernel already
+  holds every transcript, so no mod learns more. But it changes F-AGENT-6
+  ("private to the client that started it"), so it waits for the human.

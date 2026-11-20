@@ -1,10 +1,15 @@
-# The agent layer: technical specification (draft)
+# Agentic harness: technical specification
 
-How the agent layer does what `FUNCTIONAL.md` says. Draft, not yet a
-contract (see `VISION.md`). `ARCHITECTURE-PROPOSAL.md` (revision 4) is the
-record of why; this file states the rules. Where an open point of the proposal
-(section 15, `N<n>`) is undecided, this draft follows the proposal's current
-choice and marks it.
+How the agent layer does what `FUNCTIONAL.md` says. It is the last of the
+spec chain (`VISION.md`, `FUNCTIONAL.md`, then this); code follows it, and
+where this file disagrees with the two above, this file is fixed.
+`ARCHITECTURE-PROPOSAL.md` (revision 4) is the record of why; this file
+states the rules. Where an open point of the proposal (section 15, `N<n>`) is
+undecided, this file follows the proposal's current choice and marks it.
+
+Sections 1 to 17 are the backend, which comes first. Section 18 is the
+console. It uses only the kernel interface of 2.3, and a console slice that
+needs more adds it to the backend sections first (17).
 
 ## 1. Parts and layout
 
@@ -20,8 +25,9 @@ choice and marks it.
 | WIT | `host/wit/` in `watane:host@0.1.0` | the interfaces of section 2 |
 | pkg | pkg 4.5, 5.1, 7.2 | import and export rows, two grant kinds (15) |
 | dev | `dev/` | a fake `claude` and a scripted Responses server for previews and tests (12) |
-| M2 Kernel | mod `mods:agent`, its own repository | profiles, offers, sessions, transcripts, broker, OpenAI loop, delegation (9) |
+| M2 Kernel | mod `mods:agent`, this repository (R1, open: `factory/PLAN.md`) | profiles, offers, sessions, transcripts, broker, OpenAI loop, delegation (9) |
 | M1 Providers | two mods `mods:claude-code`, from two publishers | unchecked: start and hand off; checked: judge then forward (10) |
+| C1 Console | the kernel's page, `ui/`, built from `console/` in this repository | starting sessions, the transcript, the status line, asks, the queue, the session list (18) |
 
 A new source file starts with a `//!` line that cites its section here, as
 every watane file does.
@@ -108,10 +114,14 @@ interface sessions {                                 // the owner only, by calle
   list: func(after: option<string>, max: u32) -> result<list<session-info>, error>;
   rename: func(session: string, title: string) -> result<_, error>;
   delete: func(session: string) -> result<_, error>;
+  queued: func(session: string) -> result<list<queued-input>, error>;
+  unqueue: func(session: string, n: u64) -> result<_, error>;          // only before a turn takes it
+  take-back: func(session: string, allow: string) -> result<_, error>; // a session allow (9.6)
 }
 record session-info { id: string, title: string, profile: string, backend: string, turn: string, updated: u64 }
+record queued-input { n: u64, input: string }
 record refusal { field: string, backend: string, model: string, reason: string }
-variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string) }
+variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow }
 
 interface offers {                                   // a collect (W34)
   skills: func() -> list<offered-skill>;
@@ -120,8 +130,9 @@ interface offers {                                   // a collect (W34)
 ```
 
 `input`, `overlay`, `decision` and `caps` are JSON: ACP content blocks, an
-overlay document (9.2), `{allow | deny, reason?, input?}`, and ACP client
-capabilities.
+overlay document (9.2), `{allow | deny, for?: "session", reason?, input?}`,
+and ACP client capabilities. `allow` in `take-back` is the id of an `allow`
+entry (9.4).
 
 ## 3. Streams (H1)
 
@@ -376,12 +387,13 @@ once; `check` runs only this step.
 
 Session record: `id`, `owner`, `key`, `profile`, `backend`, `title`,
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
-`queue` (at most 32 inputs), `counters {turns, tool-errors-in-a-row,
-tokens}`, `next-index`, `created`, `updated`.
+`queue` (at most 32 inputs, each numbered from 1 per session), `allows`
+(session allows, 9.6), `counters {turns, tool-errors-in-a-row, tokens}`,
+`next-index`, `created`, `updated`.
 
 | Turn state | Meaning |
 |---|---|
-| `running` | a turn is under way |
+| `running {activity?}` | a turn is under way; `activity` while it lasts: `checking {on}` (the checked provider asks its judge, 10), `compacting`, `consent {what}` (a request waits for the participant in the app, 8) |
 | `waiting {asks}` | an ask is open |
 | `paused {until}` | a usage limit, or retries ran out; a timer resumes it |
 | `idle {stop}` | `completed`, `interrupted`, `stopped {limit}`, `failed {error}` |
@@ -389,7 +401,10 @@ tokens}`, `next-index`, `created`, `updated`.
 | `resume-lost` | `claude` refused a resume; the next `say` starts a new Claude session seeded with a summary |
 
 - `start` and `say` and `answer` check `key/<owner>/<key>` first.
-- `say` while `running` or `waiting` queues; `queue-full` past 32.
+- `say` while `running` or `waiting` queues; `queue-full` past 32. `queued`
+  lists the queue; `unqueue` removes one input not yet taken, and refuses
+  (`unknown-input`) one that is gone. Each change pushes `{"type":"queue",
+  "inputs":[…]}` under `_meta.watane`.
 - `interrupt` ends the turn (`idle {interrupted}`), then starts the
   replacement if given. `cancel` ends the session's stream and handle, denies
   open asks, cancels children. `delete` cancels, removes the entries and
@@ -408,7 +423,8 @@ An entry is JSON:
 |---|---|
 | `message` | a finished ACP message (user or agent, text and content blocks) |
 | `tool` | an ACP tool call with its final status and output (output cut to 64 KiB, marked) |
-| `ask` | the ask, and later its decision and who decided |
+| `ask` | the ask: its tool call id, the full tool input, `expires-at`; later its decision, the reason given, and who decided |
+| `allow` | a session allow given or taken back: its reach (9.6) and who |
 | `verdict` | a checked provider's verdict and reasons |
 | `turn` | a turn state of 9.3 |
 | `compaction` | that a compaction happened, and how many tokens before |
@@ -423,8 +439,14 @@ An entry is JSON:
   `i > after`, open the owner's stream and register it as the session's live
   stream; push those entries, then `{"type":"synced","through":<i>}`; then
   live updates. A previous live stream of the session ends `replaced`.
+- After `synced`, the message being written, if any, is pushed as one chunk
+  of what it holds so far; later chunks follow live.
 - Live updates are ACP `SessionUpdate`s (v1), each with `_meta.watane.i` when
   it finishes an entry. N6 (ACP v2) is open.
+- Besides the entries, these go out live under `_meta.watane` and are not
+  stored: `{"type":"turn"}` with every change of the turn state (9.3),
+  `{"type":"queue"}` (9.3), and `{"type":"usage","context-used",
+  "context-window","compact-at"?}` after each step (9.7).
 
 ### 9.5 The OpenAI loop
 
@@ -475,6 +497,14 @@ An entry is JSON:
   an `agent:` owner, it is denied. Kernel asks expire after `ask-expiry`
   (a timer); Claude asks after 10 minutes (the host).
 - For Claude, rules went in as flags; the broker sees only asks.
+- **Session allows.** An answer `{allow, for: session}` adds a rule to the
+  session's `allows`: the tool's name, and for a file tool the workspace it
+  is in (`Edit(<workspace>/**)`). The rule names that reach for the page. The
+  kernel keeps it; it never sends it to `claude` as a rule
+  (`updatedPermissions`), so it can be taken back. Later asks that match an
+  allow are answered `allow` by the kernel, with `by: session-allow`.
+  `take-back` removes the allow, writes an `allow` entry, and later matching
+  calls ask again. Allows end with the session.
 
 ### 9.7 Delegation and counters
 
@@ -490,12 +520,18 @@ An entry is JSON:
   ends the turn `stopped {limit}`; at `max-turns` the last turn runs without
   tools.
 - Cancelling a session cancels its children, depth first.
+- **Usage.** After each step the kernel pushes `usage` (9.4):
+  `context-used` from the step's input tokens, `context-window` from the
+  model, and `compact-at` for OpenAI (the request's `compact_threshold`). For
+  Claude, `compact-at` is absent: Claude decides when it compacts.
 
 ### 9.8 Adapters
 
 | From | To |
 |---|---|
 | `assistant` text, `stream_event` deltas | `AgentMessageChunk`; a finished message is a `message` entry |
+| `assistant` `thinking` blocks and deltas | `AgentThoughtChunk` |
+| `assistant` `tool_use` of `TodoWrite` | `Plan`, with its entries and their status; also a `tool` entry |
 | `assistant` `tool_use` | `ToolCall` (pending) |
 | `user` `tool_result` | `ToolCallUpdate` (completed or failed); a `tool` entry |
 | `ask`, `check`, `ask-resolved` items | `RequestPermission`-shaped updates under `_meta.watane`, and `ask` entries |
@@ -527,7 +563,10 @@ when `claude-codes` cannot parse it.
   `{safe | unsafe | unsure, reasons}`; anything else, a timeout or an error
   is unsafe.
 - **Breaker:** 3 denials in a row or 10 of the last 50: `interrupt`, and a
-  verdict item that says why.
+  verdict item that says why. Every verdict item carries `denials-in-a-row`.
+- **Checking:** before each judge call the provider pushes
+  `{"type":"checking","on":<ask or check id>}`; the kernel shows it as the
+  activity `checking` (9.3) until the verdict.
 - **Settings** (judge host, key, thresholds) only from its own page, in its
   state. N10 (the host keeps the key) is open.
 
@@ -569,6 +608,7 @@ when `claude-codes` cannot parse it.
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
 | `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend` | kernel | 9 |
+| `unknown-input`, `unknown-allow` | kernel | 9.3, 9.6 |
 
 Each error also carries a message that names the cause (F-QUAL-3).
 
@@ -605,6 +645,8 @@ refused. N8 (watane's licence) is open.
 | A session is private | one consumer; owner checks by identity (3, 9.3) |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) |
+| A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) |
+| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) |
 
 Not protected: `claude` itself within its limits; a prompt injection within
 what the profile allows; plan usage; another program of the same user
@@ -624,7 +666,9 @@ interfaces of 2.3; the providers' `mods:claude-code` of 2.2.
 - `spec/TECHNICAL.md`: W2 (consents stored with grants), W5 (previews refuse
   the grants and accounts), and a new W row for the agent layer's boundary.
 - `host/TECHNICAL.md`: H1 to H5 and H7; 9.3 (page connection ids and their
-  own queues); host state for timers; `caller.identity()`; tool annotations.
+  own queues); host state for timers; `caller.identity()`; tool annotations;
+  a request that waits on a consent tells its requester `consent-pending
+  {what}` once.
 - `pkg/TECHNICAL.md`: 4.5 rows for the imports and exports of 2.1; 5.1 and
   7.2 two grant kinds.
 - `app/TECHNICAL.md`: Sign in with ChatGPT and the account file; the consent
@@ -635,7 +679,7 @@ interfaces of 2.3; the providers' `mods:claude-code` of 2.2.
 
 Integration tests are modules of one binary per subsystem
 (`<sub>/tests/it/<file>.rs`). The kernel and providers are tested with
-`watane-dev test` in their own repositories.
+`watane-dev test` in this repository; the console as 18.7 says.
 
 | Kind | What |
 |---|---|
@@ -688,16 +732,155 @@ Integration tests are modules of one binary per subsystem
 25. A judge that is down, slow or unreadable denies; 3 denials in a row
     interrupt the turn.
 26. An overlay that widens anything is `refused`, naming each field.
+27. `unqueue` of an input a turn already took is `unknown-input`; the turn
+    is not changed.
+28. A session allow answers the next matching ask; after `take-back` the
+    same call asks again; `claude` never received the rule.
+29. An ask entry carries its tool call id, input and `expires-at`; the host
+    denies it at that time.
+30. An attach mid-message pushes the text so far after `synced`, then the
+    rest, with nothing doubled.
+31. Every turn-state change reaches an attached stream as a `turn` update,
+    in order, also `checking` and `consent`.
 
 ## 17. Build plan
 
-Each stage works before the next starts.
+Each stage is one or more vertical slices; each works before the next
+starts. The backend part of a slice is done first and carries the slice's
+weight. The console part shows that backend in the console, so the human can
+watch it work. A console part never waits on a backend part of a later
+stage: it shows only what is built.
 
-| Stage | Builds | Done when |
+| Stage | Backend | Console shows | Done when |
+|---|---|---|---|
+| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | cases 7, 20, 21 pass; V8 measured and recorded |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | J11 and AGT-J6 (Claude part) on the fake; cases 5, 6, 8–18, 27–31 |
+| C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | J11 on the real `claude`; AGT-J4 |
+| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | AGT-J2, AGT-J6; cases 1–4, 19, 22 |
+| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | AGT-J3; case 25 |
+| F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | AGT-J5; cases 23, 24; N5 decided |
+
+## 18. The console (C1)
+
+The kernel's own page. Its first target is the canvas row "Revision 2" of
+["watane agent frontend"](https://claude.ai/artifact/8jz2aHuaPo2REtKQyMt89e)
+(`VISION.md`). The records `FRONTEND.md` and `FRONTEND-2.md` say why it looks
+so; this section states the rules. Where a frame and this section disagree,
+this section holds, and the frame is the reference for anything it does not
+say (layout, spacing, words).
+
+### 18.1 A client like any other
+
+- The page calls its own mod, which serves it the kernel interface of 2.3;
+  `caller.identity()` is the kernel's `page`, and that identity owns the
+  console's sessions. The page has no other way in: no export, state key or
+  stream that a client mod lacks.
+- It lists and opens only its own sessions (`list`, AGT-F-7). The sessions
+  of other clients are out until N11 is decided (`FUNCTIONAL.md` section 5).
+- The profiles it offers are those `access/page` names (9.1).
+
+### 18.2 Stack
+
+- React and assistant-ui, bundled (decided with the human, 2026-11-20). The
+  source is in `console/`; the build writes `ui/`, which the host serves as
+  any mod's page (host 8.3): same-origin script files, no inline script, no
+  `eval`, no WebAssembly, no frames, no outside site.
+- State: assistant-ui's ACP runtime. Its adapter is extended for the
+  `_meta.watane` items of 9.4 (`ask`, `allow`, `verdict`, `turn`, `queue`,
+  `usage`, `synced`, entry indexes).
+- Rendering: Shiki with its JavaScript regex engine for code, anser
+  (escaped) for program output, and a diff view that needs no `eval`.
+- Every dependency is pinned in a lockfile, and the build records a hash of
+  each file it writes. `ui/` is committed and is the only thing the host
+  reads.
+- The console's parts stay in their own folder, `console/kit/`, so a second
+  mod can take them as one package (`@watane/agent-ui`) when it needs them.
+  It is not published before then.
+
+### 18.3 From the kernel to the screen
+
+On open and on every reconnect: `attach(session, after: <last index shown>,
+caps)`. The items before `synced` replace nothing that is already shown, and
+an index already shown is dropped. Then live updates follow.
+
+| Kernel gives | Console shows |
+|---|---|
+| `message` (user) | a quiet panel, right |
+| `AgentThoughtChunk` | "Thinking…", open while it streams; then folded to "Thought for n s" |
+| `ToolCall` of reads and searches in a row | one folded line, "Explored · n reads, m searches" |
+| `ToolCall` of an edit, a program run, or any failed call | a card: name, argument, diff or output, status; a failed one open |
+| `ask` (open) | the card of its tool call with the ask bar; "Needs you (n)" above the input |
+| `ask` (decided), `allow`, `verdict` | a decision line: who, what, the reason |
+| `Plan` | the plan above the input, "n of m done" |
+| `turn` | the status line (18.5); at a turn's end, a footer line of time, tools and tokens |
+| `queue` | the queue above the input |
+| `usage` | the context meter in the header |
+| `unknown`, `unreadable` | a muted line, "An event this console does not know", raw on demand |
+
+### 18.4 Layout and look
+
+The frames give layout, spacing and words; these values are fixed:
+- Sidebar 260 px (hidden under 760 px); header with title, profile, provider,
+  workspace and any session allow; transcript column at most 780 px; the
+  dock: Needs you, plan, queue, status line, input.
+- The manager's look: Inter, JetBrains Mono for code; light and dark token
+  sets of the frames (`--bg #F6F6F4`, `--panel #FFFFFF`, `--ink #18181B`,
+  `--muted #5D5E66`, `--line #E3E3DF`, `--accent #3355D6`, and their dark
+  values).
+- Buttons 36 px, chips 32 px, rows at least 44 px. Radii: 9 px for buttons,
+  12 to 14 px for cards, 18 px for the input. An outer radius is the inner
+  one plus the padding.
+
+### 18.5 The status line
+
+| Turn | Word | Shape | Time | Acts |
+|---|---|---|---|---|
+| `running` | the activity: Thinking, Reading `<file>`, Writing | dot | elapsed | Esc stops |
+| `running {checking}` | Checking with your judge | square | elapsed | |
+| `running {compacting}` | Making room | dot | elapsed | |
+| `running {consent}` | Waiting for your answer in watane | diamond | | open the question |
+| `waiting` | Waiting for you | diamond | time left to `expires-at` | Needs you |
+| `paused {until}` | Paused until hh:mm | two bars | | Resume now |
+| `idle {completed}` | Idle | ring | | |
+| `idle {stopped}` | Stopped at the `<limit>` | ring | | |
+| `idle {failed}` | Failed, with the cause | triangle | | Try again |
+| `unknown` | Not running: watane restarted | dashed ring | | Continue |
+| `resume-lost` | Claude no longer has this session | dashed ring | | Continue from a summary |
+
+Only the word and its subject are in the live region; the clock is not read
+out. Stop shows "Stopping…" until a `turn` update says idle.
+
+### 18.6 Behaviour
+
+- **Place.** The transcript follows new output only while the reader is
+  within 40 px of the end; otherwise a "New activity below" pill appears.
+  Session rows do not move while the pointer is over the list.
+- **Asks.** Allow once (primary), Allow `<reach>` this session, Deny… with a
+  reason field, Cancel, and Esc in that field closing it. "Needs you" scrolls
+  to the first open ask and puts focus on Allow once. A session allow shows
+  in the header until the session ends or `take-back`.
+- **Queue.** Up to 3 shown, then "+ n more". Edit takes an input back into
+  the composer (`unqueue`); remove has Undo for 6 s; Stop and send interrupts
+  with it. A full queue turns Send off and the placeholder says why.
+- **Plan.** It folds to one line while an ask waits or inputs are queued,
+  unless the participant opened it.
+- **Keys.** Enter sends, Shift+Enter is a new line, Esc in the composer
+  stops the turn.
+- **Motion.** Only under `prefers-reduced-motion: no-preference`; hover
+  styles only under `hover: hover`; a pressed button scales to 0.96 over
+  150 ms.
+- **Accessibility.** Every state has its own shape; a streaming message is
+  `aria-busy` until done; every control is reachable by keyboard and named.
+
+### 18.7 Tests
+
+| Level | What | How |
 |---|---|---|
-| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype | cases 7, 20, 21 pass; V8 measured and recorded |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8); dev's fake `claude` | J11 on the fake; cases 5, 6, 8–18 |
-| C | H6 consents and the app's words; the `claude` binary setting; the plan line | J11 on the real `claude`; AGT-J4 |
-| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | AGT-J2; cases 1–4, 19, 22 |
-| E | The checked provider (needs a judge account, V7) | AGT-J3; case 25 |
-| F | Delegation and counters (9.7); factory profiles | AGT-J5; cases 23, 24; N5 decided |
+| View | each row of 18.3 and 18.5 from recorded event streams: the fake `claude`'s and the scripted Responses server's output, stored as fixtures | a component test run, under the 2-minute budget |
+| Page | AGT-J6 against the kernel in `watane-dev serve` with the fake `claude` | a browser test, marked slow |
+| Seen | each slice's console part, by the user-sim against the frames | the acceptance step |
+
+### 18.8 Not in the first target
+
+The items of `FUNCTIONAL.md` section 5 under "In the console". Each needs its
+backend first, through this file's backend sections.
