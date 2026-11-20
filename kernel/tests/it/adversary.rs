@@ -134,9 +134,18 @@ fn adv_s3_allow_bash_runner_siblings_pass() {
 fn adv_s3_skill_frontmatter_cr_bom_tab_forms_pass() {
     let mut passed = Vec::new();
     for (form, md) in [
-        ("lone CR", "---\nname: s\ndescription: d\rallowed-tools: Bash(python3:*)\n---\nbody"),
-        ("U+FEFF after ---", "---\u{feff}\nname: s\ndescription: d\nallowed-tools: Bash(python3:*)\n---\nbody"),
-        ("tab-indented first key", "---\n\tname: s\n\tdescription: d\n  allowed-tools: Bash(python3:*)\n---\nbody"),
+        (
+            "lone CR",
+            "---\nname: s\ndescription: d\rallowed-tools: Bash(python3:*)\n---\nbody",
+        ),
+        (
+            "U+FEFF after ---",
+            "---\u{feff}\nname: s\ndescription: d\nallowed-tools: Bash(python3:*)\n---\nbody",
+        ),
+        (
+            "tab-indented first key",
+            "---\n\tname: s\n\tdescription: d\n  allowed-tools: Bash(python3:*)\n---\nbody",
+        ),
     ] {
         let p = json!({"tools": ["Read", "Skill", "Bash"], "sandbox": {"enabled": true}});
         let o = json!({"skills+": [{"name": "s", "files": {"SKILL.md": md}}]});
@@ -144,7 +153,10 @@ fn adv_s3_skill_frontmatter_cr_bom_tab_forms_pass() {
             passed.push(form);
         }
     }
-    assert!(passed.is_empty(), "accepted frontmatter with allowed-tools: {passed:?}");
+    assert!(
+        passed.is_empty(),
+        "accepted frontmatter with allowed-tools: {passed:?}"
+    );
 }
 
 /// The new `find` rule strips `'`, `"` and `\` and looks for a bare `-exec` word, but bash also
@@ -167,5 +179,8 @@ fn adv_s3_allow_find_exec_spelled_by_shell_expansion_passes() {
             passed.push(r);
         }
     }
-    assert!(passed.is_empty(), "accepted find rules that run sh: {passed:?}");
+    assert!(
+        passed.is_empty(),
+        "accepted find rules that run sh: {passed:?}"
+    );
 }
