@@ -52,8 +52,9 @@ in the same commit):
 - planned: `kernel/src/broker.rs` (9.6, session allows) and
   `kernel/src/delegation.rs` (9.7: delegates, limits, counters)
 - planned: `kernel/src/openai/` (9.5: loop, repair, errors) and
-  `kernel/src/adapters/` (9.8); the mod's `lib.rs` exports and owner checks by
-  `caller.identity()` (9.3) are part of the wrapper
+  `kernel/src/adapters/` (9.8); when the WASM mod wraps the crate, its
+  exports and owner checks by `caller.identity()` (9.3) go into
+  `kernel/src/lib.rs` (14)
 - `console/` (source) and `ui/` (built from it), 18
 
 A provider repository holds `mods:claude-code` with `src/lib.rs`; the checked
@@ -222,7 +223,7 @@ fields. Each value goes out as one `--flag=value` argument.
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max` | `--effort=` |
 | `system-prompt` | `{replace \| append: text}`, at most 64 KiB | `--system-prompt=` / `--append-system-prompt=` |
 | `tools` | names from the grant's allowlist (4.2); an absent `tools` and `[]` both mean no built-in tools | `--tools=` |
-| `allow`, `deny` | `Name` or `Name(arg)`; Name from the allowlist or `mcp__watane__<tool>`; no comma, space or leading `-` outside the parentheses; an allow `Bash(…)` follows the grammar below | `--allowedTools=`, `--disallowedTools=` each |
+| `allow`, `deny` | `Name` or `Name(arg)`, `arg` without parentheses, no control character anywhere; Name from the allowlist or `mcp__watane__<tool>`; no comma, space or leading `-` outside the parentheses; an allow `Bash(…)` follows the grammar below | `--allowedTools=`, `--disallowedTools=` each |
 | `mode` | `manual`, `accept-edits`, `plan`, `dont-ask` | `--permission-mode=` |
 | `ask` | bool | `--permission-prompts=host --permission-prompt-tool=stdio`, or `--permission-prompts=none` |
 | `pre-tool-check` | `{timeout-s: 5..120}` | the host's PreToolUse callback in `initialize` (4.5) |
@@ -241,7 +242,8 @@ fields. Each value goes out as one `--flag=value` argument.
 The allow grammar for `Bash` (deny rules are not held to it). An allow
 `Bash(<arg>)` is refused unless all of these hold:
 
-- Bare `Bash`, with no parentheses, is refused: it allows any command.
+- Bare `Bash`, with no parentheses, is refused: it allows any command; so is
+  an empty `<arg>` (`Bash()`, `Bash(:*)`).
 - `<arg>` has no non-ASCII character and none of `` ` ``, `$`, `{`, `}`, `;`,
   `|`, `&`, `<`, `>`, `'`, `"`, `\`: the shell would read more than a word.
 - A colon appears only as one trailing `:*`.
@@ -269,7 +271,8 @@ The allow grammar for `Bash` (deny rules are not held to it). An allow
 | `uv` | `pip`, `sync`, `lock`, `add`, `remove`, `tree`, `venv` |
 | `devbox` | `install`, `add` |
 
-The `skills` frontmatter rule. Frontmatter starts with `---` and a newline at
+The `skills` frontmatter rule, for each file of a skill named `SKILL.md` in
+any case and any folder. Frontmatter starts with `---` and a newline at
 byte 0 (leading white space or a byte order mark before `---` is refused). It
 ends at a line `---`. Its keys are `name` and `description`, each once; an
 indented line continues the key above it; any other line is refused. Every
@@ -527,7 +530,8 @@ A profile holds the launch fields of 4.1 that are not chosen per session
 
 Those four per-session fields are refused in a profile (`refused`, the field
 named). `ask-expiry` is in seconds, a whole number from 0 up; Claude accepts
-only 600 (11). `max-tool-errors` is 1..4294967295, `max-tokens` a whole number.
+only 600 (11). `max-tool-errors` is 1..4294967295, `max-tokens` a whole number
+from 1 up.
 
 An overlay holds exactly these keys:
 
@@ -1039,7 +1043,7 @@ stages B and E).
 | No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
-| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `kernel/src/lib.rs` |
+| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` |
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/src/sessions.rs`, `kernel/src/transcript.rs` |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `kernel/src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
