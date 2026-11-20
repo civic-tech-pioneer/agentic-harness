@@ -331,6 +331,13 @@ fn ac3d_frontmatter_keeps_name_and_description_only() {
     let ps = skill_md("---\nname: s\nhooks:\n  a: b\n---\nbody");
     assert_eq!(fields(&ps), ["skills[0].files"]);
     assert!(ps[0].reason.contains("hooks"), "{}", ps[0].reason);
+    let ps = skill_md("---\n  name: s\n  allowed-tools: x\n---\n");
+    assert_eq!(
+        fields(&ps),
+        ["skills[0].files"],
+        "an indented mapping is still top level"
+    );
+    assert!(skill_md("---\n  name: s\n  description: >\n    long\n---\n").is_empty());
     assert_eq!(
         fields(&skill_md("---\r\nallowed-tools: x\r\n---\r\n")),
         ["skills[0].files"]
@@ -370,6 +377,8 @@ fn ac3f_more_runners_and_find_exec() {
         "Bash(find . -execdir sh)",
         "Bash(find . -ok x)",
         "Bash(find . -okdir x)",
+        "Bash(find . '-exec' sh)",
+        "Bash(find . -ex\\ec sh)",
         "Bash(find:*)",
         "Bash(find *)",
     ] {
