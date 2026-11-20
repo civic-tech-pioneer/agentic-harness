@@ -355,9 +355,9 @@ fn ac7_after_inside_group_moves_to_group_start() {
     let mut t = Transcript::new(&mut st, "s", &mut meta);
     for after in [3, 4] {
         let p = t.read(after, None, 256);
-        assert_eq!(idx(&p.entries[0]), 3, "after {after}");
+        assert_eq!(idx(&p.entries[0]), after + 1, "after {after}");
         let p = t.read(after, Some(8), 256);
-        assert_eq!(idx(&p.entries[0]), 3, "before read, after {after}");
+        assert_eq!(idx(&p.entries[0]), after + 1, "before read, after {after}");
     }
     // after on the last part, or before the group: unchanged.
     assert_eq!(idx(&t.read(5, None, 256).entries[0]), 6);
@@ -365,11 +365,66 @@ fn ac7_after_inside_group_moves_to_group_start() {
     // A page may end inside a group.
     let p = t.read(0, None, 3);
     assert_eq!(idx(p.entries.last().unwrap()), 3);
-    // replay moves too.
+    // replay moves; read does not.
     let Replay::Entries(e) = t.replay(4) else {
         panic!()
     };
     assert_eq!(idx(&e[0]), 3);
+}
+
+fn ac2_check(max: u32) {
+    let mut st = MemState::new();
+    let mut meta = Meta::default();
+    fill(&mut st, &mut meta, 3, 5);
+    let big = entry(json!({ "text": "q".repeat(3 * 1024 * 1024) }));
+    let want = serde_json::to_string(&big.body).unwrap();
+    let bi = Transcript::new(&mut st, "s", &mut meta)
+        .append(&big, 1)
+        .unwrap();
+    fill(&mut st, &mut meta, 3, 5);
+    let mut t = Transcript::new(&mut st, "s", &mut meta);
+    let last = t.read(0, None, 1).last;
+    // forwards
+    let (mut after, mut seen, mut j, mut joined) = (0u64, Vec::new(), Joiner::new(), Vec::new());
+    loop {
+        let p = t.read(after, None, max);
+        let Some(l) = p.entries.last() else { break };
+        after = idx(l);
+        for l in &p.entries {
+            seen.push(idx(l));
+            joined.extend(j.push(l));
+        }
+    }
+    assert_eq!(seen, (1..=last).collect::<Vec<_>>(), "max {max}");
+    let b: Vec<&Value> = joined.iter().filter(|v| v["i"] == bi).collect();
+    assert_eq!(b.len(), 1);
+    assert_eq!(serde_json::to_string(&b[0]["body"]).unwrap(), want);
+    // backwards
+    let (mut before, mut seen, mut lines) = (last + 1, Vec::new(), Vec::new());
+    while before > 1 {
+        let p = t.read(0, Some(before), max);
+        assert!(!p.entries.is_empty(), "max {max}");
+        before = idx(&p.entries[0]);
+        for l in p.entries.iter().rev() {
+            seen.push(idx(l));
+            lines.push(l.clone());
+        }
+    }
+    seen.reverse();
+    lines.reverse();
+    assert_eq!(seen, (1..=last).collect::<Vec<_>>(), "back max {max}");
+    let mut j = Joiner::new();
+    let out: Vec<Value> = lines.iter().filter_map(|l| j.push(l)).collect();
+    let b: Vec<&Value> = out.iter().filter(|v| v["i"] == bi).collect();
+    assert_eq!(b.len(), 1);
+    assert_eq!(serde_json::to_string(&b[0]["body"]).unwrap(), want);
+}
+
+#[test]
+fn ac2_paging_through_a_big_entry_progresses() {
+    for max in [1, 2, 7, 256] {
+        ac2_check(max);
+    }
 }
 
 #[test]
@@ -437,6 +492,9 @@ fn ac10_joiner() {
     }
     let ids: Vec<u64> = out.iter().map(|v| v["i"].as_u64().unwrap()).collect();
     assert_eq!(ids, vec![1, 2, i, 6, 7]);
+    let second = t.read(3, None, 256);
+    let n = serde_json::from_str::<Value>(&second.entries[0]).unwrap()["body"]["n"].as_u64();
+    assert!(n > Some(1), "second page starts with part {n:?}");
     assert_eq!(out[2]["body"]["text"], "z".repeat(700_000));
 }
 

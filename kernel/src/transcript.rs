@@ -158,7 +158,6 @@ impl<'a, S: State> Transcript<'a, S> {
         let max = max.clamp(1, PAGE_ENTRIES) as usize;
         let last = self.meta.last;
         let mut cache: Cache = None;
-        let after = self.adjust(after, &mut cache);
         let hi = match before {
             Some(b) => b.saturating_sub(1).min(last),
             None => last,
