@@ -693,7 +693,7 @@ An entry is JSON:
 | `tool` | an ACP ToolCall with its final status: `{"toolCallId","title","kind"?,"status","content"?,"locations"?,"rawInput"?,"rawOutput"?}`; output cut to 64 KiB, marked |
 | `ask` | the ask, below; later a decision entry that repeats it |
 | `allow` | `{"id":"<allow id>","reach":"<rule>","given":true\|false,"by":"<who>"}`: a session allow given or taken back (9.6) |
-| `verdict` | `{"on":"<ask id>"\|"input","toolCallId":"<id>"?,"outcome":"safe"\|"unsafe","reasons":[…],"by":"<provider>"}`; `toolCallId` when `on` is an ask; `on` is `input` for the provider's `launch` and `input/<n>` (10) |
+| `verdict` | `{"on":"<ask id>"\|"input","toolCallId":"<id>"?,"outcome":"safe"\|"unsafe"\|"unsure","reasons":[…],"by":"<provider>"}`; `toolCallId` when `on` is an ask; `on` is `input` for the provider's `launch` and `input/<n>` (10) |
 | `turn` | the turn JSON of 9.3 without `activity` |
 | `compaction` | `{"tokens-before":<n>?}` |
 | `unknown` | `{"raw":<the JSON value, or the line as a string>}`: a vendor line or event the adapters do not know |
