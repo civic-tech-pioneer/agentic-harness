@@ -20,10 +20,12 @@ page. Its small host part lands in watane (`../../watane`), never here.
 
 - **The chain decides.** `design/VISION.md`, then `design/FUNCTIONAL.md`,
   then `design/TECHNICAL.md`, then code. When two disagree, fix the lower one
-  at once, and fix each file that cites it. An open point (`N<n>` of
-  `ARCHITECTURE-PROPOSAL.md` section 15, N11 of `FUNCTIONAL.md` section 5,
-  and those `factory/PLAN.md` lists under "Waiting on the human") is the
-  human's. A slice that depends on one waits for the answer.
+  at once, and fix each file that cites it. The open points are N5
+  (`factory/PLAN.md` "Waiting on the human", stage F), N11
+  (`FUNCTIONAL.md` section 5), and any later item the PLAN lists under
+  "Waiting on the human"; they are the human's, and a slice that depends on
+  one waits for the answer. The answered ones (N1–N4, N6–N10, R1) are rules
+  in the specs.
 - **Backend first.** Sections 1–17 of `TECHNICAL.md` (and 3.1–3.10 of
   `FUNCTIONAL.md`) are the backend. When a choice or the time left pits it
   against the console, the backend wins. The console uses only the kernel
