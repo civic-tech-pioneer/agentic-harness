@@ -71,7 +71,7 @@ Fakes: the kernel: a scripted feed in `console/` behind the same shape as `attac
 (TECHNICAL 2.3, 9.4). Leaves out: profiles and offer pages, the real host.
 Protects: *core*. The PO compares it with the frames before acceptance.
 
-### S5: the performance review's must-dos in the contract (in flight (cloud), routine R5)
+### S5: the performance review's must-dos in the contract (in flight (cloud), routine trig_01MbRcfQw5tH3HTvtgCMXr4s)
 
 Story: a foreman of stage A, B or D reads TECHNICAL and finds a bound for every size and wait the
 performance review (`research_notes/performance-review-2026-11-20.md`) found missing, each with
