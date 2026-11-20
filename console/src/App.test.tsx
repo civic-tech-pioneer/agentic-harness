@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.7: component tests of the shell on the scripted fake kernel.
 import { describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fakeKernel } from "../fake/kernel";
 import { story } from "../fake/story";
@@ -223,5 +223,70 @@ describe("reload", () => {
     await u.click(screen.getByRole("button", { name: "Deny…" }));
     await u.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Deny…" })));
+  });
+});
+
+describe("follow at end (18.6 Place)", () => {
+  const more = (i: number, t: string) => JSON.stringify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: t }, _meta: { watane: { i, at: 9000 + i } } });
+  // A 300 px viewport over a column of height h; setting scrollTop clamps like a browser.
+  const box = () => {
+    const b = { h: 900, top: 0 };
+    const d = (p: string, o: PropertyDescriptor) => Object.defineProperty(HTMLElement.prototype, p, { configurable: true, ...o });
+    d("scrollHeight", { get: () => b.h }); d("clientHeight", { get: () => 300 });
+    d("scrollTop", { get: () => b.top, set: (v: number) => { b.top = Math.min(v, b.h - 300); } });
+    return b;
+  };
+  const unbox = () => { for (const p of ["scrollHeight", "clientHeight", "scrollTop"]) delete (HTMLElement.prototype as any)[p]; };
+  const open = async (extra: string[][]) => {
+    const f = fakeKernel([...story, ...extra]);
+    for (let n = 0; n < story.length; n++) f.play(n);
+    const { container } = render(<App kernel={f} info={INFO} />);
+    await ready();
+    return { f, s: container.querySelector(".wa-scroll")! };
+  };
+
+  it("ac2_a_reader_who_scrolled_up_is_not_pulled_down_and_is_followed_again_at_the_end", async () => {
+    const b = box();
+    try {
+      const { f, s } = await open([[more(20, "one")], [more(21, "two")]]);
+      expect(b.top).toBe(600);
+      b.top = 100; fireEvent.scroll(s);
+      b.h = 1200;
+      await act(async () => { f.play(story.length); });
+      await screen.findByText("one");
+      expect(b.top).toBe(100);
+      b.top = 870; fireEvent.scroll(s); // 30 px above the end: within 40
+      b.h = 1500;
+      await act(async () => { f.play(story.length + 1); });
+      await screen.findByText("two");
+      expect(b.top).toBe(1200);
+    } finally { unbox(); }
+  });
+
+  it("ac2_back_at_the_very_spot_the_console_last_scrolled_to_follows_again", async () => {
+    const b = box();
+    try {
+      const { f, s } = await open([[more(20, "one")]]);
+      b.top = 100; fireEvent.scroll(s);
+      b.top = 600; fireEvent.scroll(s);
+      b.h = 1200;
+      await act(async () => { f.play(story.length); });
+      await screen.findByText("one");
+      expect(b.top).toBe(900);
+    } finally { unbox(); }
+  });
+
+  it("ac2_the_resize_observer_is_disconnected_on_unmount", async () => {
+    const observe = vi.fn(), disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class { observe = observe; disconnect = disconnect; unobserve() {} });
+    try {
+      const f = played();
+      const r = render(<App kernel={f} info={INFO} />);
+      await ready();
+      expect(observe).toHaveBeenCalledTimes(1);
+      expect(disconnect).not.toHaveBeenCalled();
+      r.unmount();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
   });
 });

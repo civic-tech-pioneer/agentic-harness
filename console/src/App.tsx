@@ -56,7 +56,12 @@ export function App({ kernel, info }: { kernel: Kernel; info: SessionInfo }) {
         <Header info={info} view={view} actions={actions} />
         <ThreadProvider view={view} actions={actions}>
           <div className="wa-scroll" ref={scroller}
-            onScroll={(e) => { const el = e.currentTarget; if (el.scrollTop === setAt.current) return; atEnd.current = el.scrollHeight - el.clientHeight - el.scrollTop <= 40; }}>
+            onScroll={(e) => {
+              // Our own scroll to the end may land after the column grew; that one does not stop the follow.
+              const el = e.currentTarget, gap = el.scrollHeight - el.clientHeight - el.scrollTop;
+              if (gap > 40 && el.scrollTop === setAt.current) return;
+              atEnd.current = gap <= 40;
+            }}>
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
           </div>
           <Dock view={view} actions={actions} onNeedsYou={needsYou}
