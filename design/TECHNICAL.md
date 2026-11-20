@@ -514,7 +514,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `entries/<id>/<n>` | chunk n of the transcript: at most 256 entries and at most 64 KiB, or exactly one entry when that entry is over 64 KiB (an entry is at most 256 KiB, 9.4); an append that would take the last chunk past 64 KiB starts a new chunk, so an append rewrites at most 64 KiB plus the entry and earlier chunks are never rewritten; the session record's `chunks` lists the first index of each, so a read starts at the right chunk without reading the ones before |
 | `wire/<id>/<n>` | chunk n of the OpenAI wire history; the loop state's `wire-chunks` (in `loop/<id>`) lists the first wire index of each, so a request finds the chunk holding `active` (9.5) and reads none before it |
 | `loop/<id>` | the OpenAI loop state (9.5), with `active` and `wire-chunks` |
-| `quota/<owner>` | the owner's bytes and session count, the bytes counting every key the owner causes (9.3); its live session timers (9.3) and its slot counts per kind (9.5) |
+| `quota/<owner>` | the owner's bytes and session count, the bytes counting every key the owner causes (9.3); its live session timers (9.3) and its slot counts per kind (9.5), the slot counts tagged with the boot number of `slots` (9.4): counts of an older boot read as zero, so the restart pass need not find every owner |
 | `quota` | the kernel-wide account: bytes and sessions of all owners (9.3) |
 | `stream/<id>` | `{session, kind}` (`kind`: `provider`, `request`, `job`, `owner`), written in the call that opens or receives the stream, deleted on its `ended` (9.4) |
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
@@ -721,7 +721,9 @@ An entry is JSON:
   commit. Until then they stay charged to the owner (9.3, Quota).
 - **Chunk reads.** A `read` page (at most 256 entries and 2 MiB) reads at
   most one chunk per entry it returns, plus the partial chunk at each end:
-  at most 258 chunks and about 2 MiB + 128 KiB, so it stays bounded. Appending an entry rewrites only the last
+  at most 258 chunks and at most 2 MiB + 320 KiB (a partial 64 KiB chunk at
+  the start, and at the end one chunk of up to 256 KiB read to learn that its
+  entry does not fit), so it stays bounded. Appending an entry rewrites only the last
   chunk (9.1).
 - **No partial replay.** A message still being written is not replayed: its
   text so far lives only in the deltas already sent, and keeping it would cost
