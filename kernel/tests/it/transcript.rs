@@ -135,7 +135,7 @@ fn ac3_chunk_rule() {
 
 #[test]
 fn ac4_append_cost() {
-    let mut cost = Vec::new();
+    let (mut cost, mut avg) = (Vec::new(), Vec::new());
     for n in [10usize, 10_000] {
         let mut st = MemState::new();
         let mut meta = Meta::default();
@@ -152,6 +152,12 @@ fn ac4_append_cost() {
         assert!(c.gets <= 1);
         assert!(c.bytes_written <= 64 * 1024 + 4300);
         cost.push((c.bytes_read + c.bytes_written) as f64);
+        // Over a whole chunk's worth of appends (15 fit), the cost does not hang on the fill.
+        st.reset_counts();
+        fill(&mut st, &mut meta, 15, 4096);
+        let c = st.counts();
+        assert!(c.bytes_read <= 15 * 64 * 1024);
+        avg.push((c.bytes_read + c.bytes_written) as f64);
         if n == 10_000 {
             fill(&mut st, &mut meta, 1000, 4096);
             for (c, v) in before.iter().enumerate() {
@@ -166,6 +172,8 @@ fn ac4_append_cost() {
     // 10 and 10 000 entries both leave 10 entries in the last chunk (15 fit per chunk).
     let ratio = cost[0] / cost[1];
     assert!((0.9..=1.1).contains(&ratio), "ratio {ratio}");
+    let ratio = avg[0] / avg[1];
+    assert!((0.9..=1.1).contains(&ratio), "average ratio {ratio}");
 }
 
 fn joined(lines: &[String]) -> String {
@@ -237,6 +245,27 @@ fn ac5_exact_limit_is_not_split() {
         .append(&text_entry(262_144 - base + 1), 1)
         .unwrap();
     assert_eq!(meta.last, 3);
+}
+
+#[test]
+fn ac5_part_count_crossing_a_digit_keeps_the_whole_index() {
+    // At index 93, 8 parts would end at 100 (one digit more), which needs a 9th part:
+    // the whole entry must carry the index of the part that really is last.
+    let overhead = r#"{"v":1,"i":18446744073709551615,"kind":"part","at":1,"body":{"n":18446744073709551615,"m":18446744073709551615,"text":""}}"#.len();
+    // Escaped length of the whole at i = 93 with an empty text: its 16 quotes double.
+    let whole = r#"{"v":1,"i":93,"kind":"message","at":1,"body":{"text":""}}"#.len() + 16;
+    let mut st = MemState::new();
+    let mut meta = Meta::default();
+    fill(&mut st, &mut meta, 92, 1);
+    let i = Transcript::new(&mut st, "s", &mut meta)
+        .append(&text_entry(8 * (262_144 - overhead) - whole), 1)
+        .unwrap();
+    assert_eq!(i, 101);
+    let p = Transcript::new(&mut st, "s", &mut meta).read(92, None, 256);
+    let mut j = Joiner::new();
+    let got: Vec<Value> = p.entries.iter().filter_map(|l| j.push(l)).collect();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0]["i"], i);
 }
 
 fn many(count: usize, size: usize) -> (MemState, Meta) {
