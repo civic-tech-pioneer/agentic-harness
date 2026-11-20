@@ -134,8 +134,23 @@ describe("S4-fix2 AC3 behind that cannot be paged", () => {
       expect(attaches).toBe(2);
       await vi.advanceTimersByTimeAsync(10_000);
       expect(attaches).toBe(3);
-      expect(last!.rows.filter((r) => r.kind === "unknown").length).toBeGreaterThan(0);
+      expect(last!.rows.filter((r) => r.kind === "unknown" && String(r.raw).includes("not past the last index"))).toHaveLength(3);
       s.close();
+    } finally { vi.useRealTimers(); }
+  });
+  it("ac3_non_integer_behind_is_named_not_an_index_and_never_paged", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const behind of [1.5, Number.NaN, 2 ** 60]) {
+        let reads = 0;
+        const k = { async attach() { return { behind }; }, read: async () => { reads++; return ["{}"]; }, say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
+        let last: SessionView | undefined;
+        const s = openSession(k, "s1", (v) => { last = v; });
+        await vi.advanceTimersByTimeAsync(10);
+        s.close();
+        expect(reads).toBe(0);
+        expect(last!.rows.some((r) => r.kind === "unknown" && String(r.raw).includes("not an index"))).toBe(true);
+      }
     } finally { vi.useRealTimers(); }
   });
 });
