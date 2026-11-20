@@ -25,7 +25,8 @@ function fold(all: { mark: Mark; text: string }[]): Line[] {
 
 export function DiffView({ path, oldText, newText }: { path: string; oldText: string | null; newText: string }) {
   const all: { mark: Mark; text: string }[] = [];
-  for (const p of diffLines(oldText ?? "", newText)) {
+  const nl = (t: string) => (t === "" || t.endsWith("\n") ? t : t + "\n"); // compare lines, not a missing final newline
+  for (const p of diffLines(nl(oldText ?? ""), nl(newText))) {
     const mark: Mark = p.added ? "add" : p.removed ? "del" : "same";
     const body = p.value.endsWith("\n") ? p.value.slice(0, -1) : p.value;
     for (const text of body.split("\n")) all.push({ mark, text });

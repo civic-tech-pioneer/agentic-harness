@@ -46,7 +46,19 @@ describe("the page", () => {
     render(<App kernel={played()} info={INFO} />);
     await userEvent.setup().click(await ready());
     expect(scroll).toHaveBeenCalled();
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Allow once" }));
+    expect(scroll.mock.contexts[0]).toBe(document.querySelector('[data-call="e2"]'));
+    expect(scroll.mock.calls[0][0]).toEqual({ block: "start" });
+    const allow = screen.getByRole("button", { name: "Allow once" });
+    expect(document.activeElement).toBe(allow);
+  });
+
+  it("ac2_needs_you_focuses_allow_once_without_scrolling", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    render(<App kernel={played()} info={INFO} />);
+    await userEvent.setup().click(await ready());
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    focus.mockRestore();
   });
 
   it("ac2_esc_in_the_input_stops_and_the_status_says_stopping_until_idle", async () => {
