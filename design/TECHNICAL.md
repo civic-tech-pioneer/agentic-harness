@@ -514,7 +514,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `entries/<id>/<n>` | chunk n of the transcript: at most 256 entries and at most 64 KiB, or exactly one entry when that entry is over 64 KiB (an entry is at most 256 KiB, 9.4); an append that would take the last chunk past 64 KiB starts a new chunk, so an append rewrites at most 64 KiB plus the entry and earlier chunks are never rewritten; the session record's `chunks` lists the first index of each, so a read starts at the right chunk without reading the ones before |
 | `wire/<id>/<n>` | chunk n of the OpenAI wire history; the loop state's `wire-chunks` (in `loop/<id>`) lists the first wire index of each, so a request finds the chunk holding `active` (9.5) and reads none before it |
 | `loop/<id>` | the OpenAI loop state (9.5), with `active` and `wire-chunks` |
-| `quota/<owner>` | the owner's bytes and session count; the bytes count every key the owner causes (9.3) |
+| `quota/<owner>` | the owner's bytes and session count, the bytes counting every key the owner causes (9.3); its live session timers (9.3) and its slot counts per kind (9.5) |
 | `quota` | the kernel-wide account: bytes and sessions of all owners (9.3) |
 | `stream/<id>` | `{session, kind}` (`kind`: `provider`, `request`, `job`, `owner`), written in the call that opens or receives the stream, deleted on its `ended` (9.4) |
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
@@ -585,7 +585,7 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
 | `children` | live children only, at most 20 (9.7); a finished child leaves the list, its id stays in the parent's transcript | – |
 | `allows` | at most 64 session allows and 64 KiB in all, each at most 1 KiB | an answer `for: session` is refused `too-large(65536)`; the ask stays open |
 | `chunks` | 16 384 chunk starts, 8 bytes each (u64), so 128 KiB of the 512 KiB record | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
-| `streams` | 10 ids | – (the slots of 9.5 allow no more) |
+| `streams` | 10 ids | – (the slots of 9.5 allow no more; an owner stream that `attach` replaces leaves `streams` in that `attach`, not at its `ended`) |
 | `deadlines` | 64 | – (an open ask past the 61st is denied `timers`, below) |
 
 | Turn state | Meaning |
@@ -616,7 +616,7 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
   whose deadlines are all gone frees its timer. Live session timers are at
   most 240 kernel-wide (the host allows 256 per mod, 7; 16 are kept for the
   kernel's own use); the count is in `slots` (9.1) beside the stream counts
-  and is set to the live count at restart (timers are kept across restarts, 7). One owner holds at most 120 of the 240 (half, as the slots of 9.5); a child session counts against its root's owner (as 9.5). At the owner's cap the same four outcomes follow as at the kernel's cap.
+  and, unlike the stream counts, is not reset at a restart: timers are kept across restarts (7), so the count stays true without a scan. One owner holds at most 120 of the 240 (half, as the slots of 9.5); a child session counts against its root's owner (as 9.5). At the owner's cap the same four outcomes follow as at the kernel's cap.
   A session that needs a timer at the cap (and at the host's `too-many`, if it
   ever comes) gets, by deadline: an ask, denied at once, reason `timers`; a
   retry, the turn ends `idle {failed {timers}}`; a usage limit, `paused` with
@@ -631,7 +631,7 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
   owners in `quota` (9.1): bytes and sessions. The kernel's state is at most
   256 MiB (host 7); 32 MiB of it is reserved for control records (session
   records, turn states, `slots`, `quota`, `stream/`, `live/` and the entries
-  that record a stop), so owners together hold at most 224 MiB of the rest.
+  that record a stop), so owners together hold at most 224 MiB of the rest. The reserve is headroom, not a second account: every write is still charged to the owner that causes it, and the 224 MiB account counts them all; the reserve only lets the writes named next go on past it.
   Past the kernel's 224 MiB account (or an owner's quota) only these writes go on, into the reserve: the entry and turn state that record a stop, ask decisions (including denials by expiry), `stream/` and `live/` keys of an `attach`, slot and timer counts, and every `delete`. `rename`, a session allow (`for: session`) and new input are refused `quota`; so is everything else past the account.
   Past an owner's 64 sessions or 64 MiB (kernel settings by default), or past
   the kernel's 224 MiB: new sessions and inputs are refused `quota`, and a
@@ -719,8 +719,9 @@ An entry is JSON:
   running one, else its next `attach`, `say`, `read` or `delete`) deletes the
   `stream/` keys of older boots and their `live/<session>`, in the same
   commit. Until then they stay charged to the owner (9.3, Quota).
-- **Chunk reads.** A `read` page (2 MiB) reads at most 33 chunks of 64 KiB
-  plus one, so it stays bounded. Appending an entry rewrites only the last
+- **Chunk reads.** A `read` page (at most 256 entries and 2 MiB) reads at
+  most one chunk per entry it returns, plus the partial chunk at each end:
+  at most 258 chunks and about 2 MiB + 128 KiB, so it stays bounded. Appending an entry rewrites only the last
   chunk (9.1).
 - **No partial replay.** A message still being written is not replayed: its
   text so far lives only in the deltas already sent, and keeping it would cost
@@ -1311,7 +1312,7 @@ of `spec/VISION.md`.
 59. (9.3, P12) Kept keys are charged to their owner and stay charged after
     `delete`; owners together stop at 224 MiB with `quota`; a turn running
     when the account fills ends `stopped {limit: quota}` and that entry is
-    written; the reserve is never used by entries of a turn.
+    written; the reserve is never used by a turn's other entries.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
