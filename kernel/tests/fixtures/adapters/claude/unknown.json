@@ -1,0 +1,202 @@
+{
+  "row": "anything else",
+  "input": [
+    {
+      "raw": "not json at all {",
+      "at": 1763600000000
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "brand_new",
+        "uuid": "b9000000-0000-4000-8000-000000000001",
+        "payload": {
+          "x": 1
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "role": "assistant",
+          "content": "oops"
+        },
+        "session_id": 5
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "system",
+        "subtype": "init",
+        "cwd": "/work",
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "tools": [
+          "Bash"
+        ],
+        "model": "claude-sonnet-4-5-20250929",
+        "uuid": "b9000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "system",
+        "subtype": "status",
+        "status": "compacting",
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "b9000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "rate_limit_event",
+        "rate_limit_info": {
+          "status": "allowed",
+          "resetsAt": 1763603600,
+          "rateLimitType": "five_hour"
+        },
+        "uuid": "b9000000-0000-4000-8000-000000000004",
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "input_json_delta",
+            "partial_json": "{\"a\""
+          }
+        },
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "parent_tool_use_id": null,
+        "uuid": "b9000000-0000-4000-8000-000000000005"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "stream_event",
+        "event": {
+          "type": "message_start",
+          "message": {
+            "id": "msg_1"
+          }
+        },
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "parent_tool_use_id": null,
+        "uuid": "b9000000-0000-4000-8000-000000000006"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "id": "msg_01Q8vKx2m4Zr9dTn5GsYhJ3a",
+          "type": "message",
+          "role": "assistant",
+          "model": "claude-sonnet-4-5-20250929",
+          "content": [
+            {
+              "type": "text",
+              "text": "still adapted"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 3,
+            "cache_creation_input_tokens": 120,
+            "cache_read_input_tokens": 14000,
+            "output_tokens": 41
+          }
+        },
+        "parent_tool_use_id": null,
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "b9000000-0000-4000-8000-000000000007"
+      }
+    }
+  ],
+  "expected": [
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": "not json at all {"
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "brand_new",
+              "uuid": "b9000000-0000-4000-8000-000000000001",
+              "payload": {
+                "x": 1
+              }
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "assistant",
+              "message": {
+                "role": "assistant",
+                "content": "oops"
+              },
+              "session_id": 5
+            }
+          }
+        }
+      }
+    ],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "still adapted"
+          }
+        },
+        "entry": {
+          "kind": "message",
+          "uuid": "b9000000-0000-4000-8000-000000000007",
+          "body": {
+            "role": "agent",
+            "content": [
+              {
+                "type": "text",
+                "text": "still adapted"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  ]
+}

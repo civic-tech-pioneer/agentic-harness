@@ -1,0 +1,210 @@
+{
+  "row": "`ask`, `check`, `ask-resolved` items",
+  "input": [
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "initialized"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "ask-1",
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "tool_use_id": "toolu_01BashFFFFFFFFFFFFFFFF"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "chk-1",
+        "tool": "Write",
+        "input": {
+          "file_path": "/work/x",
+          "content": "x"
+        },
+        "tool_use_id": "toolu_01WriteGGGGGGGGGGGGGG"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "ask-2",
+        "tool": "WebFetch",
+        "input": {
+          "url": "https://example.com"
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "ask-1",
+        "by": "user"
+      }
+    }
+  ],
+  "expected": [
+    [],
+    [
+      {
+        "watane": {
+          "type": "ask",
+          "id": "ask-1",
+          "kind": "ask",
+          "toolCall": {
+            "toolCallId": "toolu_01BashFFFFFFFFFFFFFFFF",
+            "title": "Bash",
+            "rawInput": {
+              "command": "rm -rf build"
+            }
+          },
+          "options": [
+            {
+              "optionId": "allow",
+              "name": "Allow",
+              "kind": "allow_once"
+            },
+            {
+              "optionId": "allow-session",
+              "name": "Allow for this session",
+              "kind": "allow_always"
+            },
+            {
+              "optionId": "deny",
+              "name": "Deny",
+              "kind": "reject_once"
+            }
+          ],
+          "expires-at": 1763600600000
+        },
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "ask-1",
+            "kind": "ask",
+            "tool-call-id": "toolu_01BashFFFFFFFFFFFFFFFF",
+            "tool": "Bash",
+            "input": {
+              "command": "rm -rf build"
+            },
+            "expires-at": 1763600600000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "watane": {
+          "type": "ask",
+          "id": "chk-1",
+          "kind": "check",
+          "toolCall": {
+            "toolCallId": "toolu_01WriteGGGGGGGGGGGGGG",
+            "title": "Write",
+            "rawInput": {
+              "file_path": "/work/x",
+              "content": "x"
+            }
+          },
+          "options": [
+            {
+              "optionId": "none",
+              "name": "No objection",
+              "kind": "allow_once"
+            },
+            {
+              "optionId": "deny",
+              "name": "Deny",
+              "kind": "reject_once"
+            }
+          ]
+        },
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "chk-1",
+            "kind": "check",
+            "tool-call-id": "toolu_01WriteGGGGGGGGGGGGGG",
+            "tool": "Write",
+            "input": {
+              "file_path": "/work/x",
+              "content": "x"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "watane": {
+          "type": "ask",
+          "id": "ask-2",
+          "kind": "ask",
+          "toolCall": {
+            "toolCallId": null,
+            "title": "WebFetch",
+            "rawInput": {
+              "url": "https://example.com"
+            }
+          },
+          "options": [
+            {
+              "optionId": "allow",
+              "name": "Allow",
+              "kind": "allow_once"
+            },
+            {
+              "optionId": "allow-session",
+              "name": "Allow for this session",
+              "kind": "allow_always"
+            },
+            {
+              "optionId": "deny",
+              "name": "Deny",
+              "kind": "reject_once"
+            }
+          ],
+          "expires-at": 1763600600000
+        },
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "ask-2",
+            "kind": "ask",
+            "tool-call-id": null,
+            "tool": "WebFetch",
+            "input": {
+              "url": "https://example.com"
+            },
+            "expires-at": 1763600600000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "watane": {
+          "type": "ask-resolved",
+          "id": "ask-1",
+          "by": "user"
+        },
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "ask-1",
+            "by": "user"
+          }
+        }
+      }
+    ]
+  ]
+}

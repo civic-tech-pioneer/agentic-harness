@@ -9,3 +9,5 @@ description = "The agent kernel's error type and profile check (TECHNICAL 9.2, 1
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+claude-codes = { version = "=2.1.330", default-features = false, features = ["types"] }
+agent-client-protocol-schema = "=1.20.0"
