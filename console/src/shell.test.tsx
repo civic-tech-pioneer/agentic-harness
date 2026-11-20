@@ -132,4 +132,13 @@ describe("app", () => {
     render(<App kernel={fakeKernel([])} info={storyInfo} />);
     expect(within(screen.getByRole("navigation", { name: "Sessions" })).getAllByRole("button").length).toBe(2);
   });
+  it("ac7_app_passes_model_mode_and_stopping_to_the_dock", async () => {
+    const f = fakeKernel(story);
+    for (let n = 0; n < story.length; n++) f.play(n);
+    render(<App kernel={f} info={storyInfo} />);
+    await screen.findByRole("button", { name: "Needs you (1)" });
+    expect(document.querySelector(".wa-irow")).toHaveTextContent("Claude Sonnet· Ask before edits");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Stop" }));
+    expect(screen.getByRole("button", { name: "Stopping…" })).toBeInTheDocument();
+  });
 });
