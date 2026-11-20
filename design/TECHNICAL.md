@@ -192,7 +192,7 @@ entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: 
 | Page queue | lossless, per connection, apart from the host 9.3 bus |
 | Ends | close, cancel, disable, removal or update of either side, lost grant or consent, closed page connection, `consumer-failed`, `idle-timeout`, app quit; each side gets `ended(outcome)` |
 | Forwarding | a forwarding mod defers when a `push` to its own downstream stream fails `full`, and resumes in its `stream-producer.ready` for that downstream stream. The checked provider (10) and the kernel (for its owner's live stream, 9.4) both do so. When that downstream stream ends (any outcome: closed, `replaced`, `lagging`, page gone), `stream-producer.ended` runs and the mod resumes its deferred upstream: it resumes every deferred upstream of that stream. The kernel acts on the `ended` of a stream only while it is still the session's registered live stream (a `replaced` one is not), then has no live stream and stores entries without pushing them; the checked provider cancels its `claude` stream |
-| Deferral ends | a stream that stays at its in-flight limit (above) for 10 s ends `lagging`, both sides get `ended`, so a consumer that stops taking items (a page that stays connected but stops reading) cannot hold its producer, nor the producer's deferred upstream, for longer; a stream deferred for 5 minutes without `resume` ends `consumer-failed` (host backstop). Neither needs a timer of the mod: a call that defers is rolled back (7) |
+| Deferral ends | a stream's lag clock starts when a `push` to it fails `full` and stops when the host calls `ready` for it (below half, above); after 10 s on the clock the stream ends `lagging` and both sides get `ended`. So a consumer that stops taking items, or takes a few and stops (a page that stays connected but stops reading), cannot hold its producer, nor the producer's deferred upstream, for longer. A stream whose consumer has deferred it has no lag clock (its producer's pushes fail `full` because the consumer chose to wait), only this backstop: a stream deferred for 5 minutes without `resume` ends `consumer-failed` (host backstop). Neither needs a timer of the mod: a call that defers is rolled back (7) |
 | Restart | streams are memory only; old ids are `unknown-stream` |
 | Limits | 32 open streams per consumer; 4 MiB per item (`too-large`); 4 `claude` processes per origin client, 8 in all |
 
@@ -453,7 +453,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `profile/<name>` | a profile (9.2) |
 | `access/<identity>` | the profile names this client may use |
 | `adopted/<offer id>` | `{content hash, content}` |
-| `key/<owner>/<key>` | the result of the first call with that key that changed something; kept after a delete. A refusal that changed nothing (`busy`, `queue-full`, `quota`, `too-large`, `refused`) is not kept, so a retry with the same key can succeed |
+| `key/<owner>/<key>` | the result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed |
 | `session/<id>` | the session record (9.3) |
 | `owner/<owner>/<n>` | page n of the owner's session ids, 256 per page |
 | `queue/<id>` | the session's queued inputs (9.3), apart from the record |
@@ -584,8 +584,9 @@ An entry is JSON:
   timer) it cannot defer: if a push to the owner's live stream fails `full`,
   it closes that stream with outcome `lagging`, and the client attaches again
   after its last index. A deferral of a session's upstream lasts at most 10 s:
-  the host ends an owner stream that stays full for 10 s `lagging` (3,
-  "Deferral ends"), so a page that stays connected but stops reading cannot
+  the host ends an owner stream whose lag clock (from the failed push to
+  `ready`) reaches 10 s `lagging` (3, "Deferral ends"); the deferred upstream
+  has no lag clock, so it is the owner stream that ends, never the session, so a page that stays connected but stops reading cannot
   freeze a session. When the owner's stream ends mid-deferral (3,
   `stream-producer.ended`), the kernel resumes every deferred upstream of the
   session and stores entries without pushing them.
@@ -636,7 +637,7 @@ An entry is JSON:
   reasoning left out, oldest first, then tool outputs cut to 8 KiB, marked)
   until the body is at most 768 KiB. The mark, and how far trimming went
   (the last item trimmed and the step reached: reasoning or tool outputs), are
-  kept in the loop state and
+  kept in the loop state; the mark
   does not move until a body is over 896 KiB again; every later request sends
   the items before it trimmed the same way, so it extends the trimmed request.
   Still over 1 MiB after trimming everything before the mark: the turn ends
@@ -942,7 +943,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` host state: timers per mod, kept across restarts (7).
 - [ ] `host/TECHNICAL.md` `caller.identity()` (9.3, 14).
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
-- [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended`; a stream that stays at its in-flight limit for 10 s ends `lagging` (2.1, 3; P03).
+- [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended`; a lag clock from a failed `full` push to `ready` that reaches 10 s ends the stream `lagging`, except a stream its consumer has deferred (2.1, 3; P03).
 - [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7).
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
 - [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
@@ -1071,8 +1072,8 @@ of `spec/VISION.md`.
     verdict.
 38. (10) A judge slower than the deadline: the timer denies; the late verdict
     changes nothing; no input reaches `claude` (fake) before its safe verdict,
-    and an unsafe one ends the turn `idle {failed {judge}}` while the `claude`
-    stream stays; the next input with a safe verdict reaches `claude`.
+    and an unsafe verdict on a later input (not the launch, step 4) ends the
+    turn `idle {failed {judge}}` while the `claude` stream stays; the next input with a safe verdict reaches `claude`.
 39. (9.5) A response with 33 parallel calls: at most 16 jobs, and at most 8 of
     one session, are open at once; every call gets exactly one output; a model
     request of another session still starts; after a restart the slot counts
@@ -1121,13 +1122,19 @@ of `spec/VISION.md`.
 51. (3, 9.4, 10) The owner stream ends mid-deferral: upstream resumes and
     nothing is lost from the transcript. A page that stops reading: `lagging`
     after 10 s, ended by the host, and a reattach misses and doubles nothing;
+    a page that takes a few items and then stops: the same, and the Claude
+    session and its deferred upstream stay alive;
     the `ended {replaced}` of an old owner stream leaves the new one live. A consumer that
     never resumes: `consumer-failed` after 5 minutes. A checked provider whose
     downstream ends cancels its `claude` stream.
 52. (9.5, 2.3) A `start` or `say` when the owner holds 4 provider streams, or
     all 8 are held, is `busy` and does not wait; a Claude session idle for 10
-    minutes releases its stream, and the next `say` resumes it with `session
-    {resume}`.
+    minutes releases its stream (timer `idle/<session>`, set when a turn ends
+    idle, cancelled by `say`), and the next `say` resumes it with `session
+    {resume}`; with `persist: false` that `say` continues as for
+    `resume-lost`. After `busy` (or `queue-full`), a retry with the same key
+    succeeds once a slot is free (9.1). A `task` child refused `busy` gets the
+    output `{err: {code: busy}}` (stage F).
 53. (9.3) A client key over 256 bytes and a `rename` over 256 bytes are
     `too-large(256)`; the 65th session allow is `too-large(65536)` and its ask
     stays open; a session at 16 384 chunks ends its turn `stopped {limit:
@@ -1161,7 +1168,7 @@ length. A long session cannot hold the slot.
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48; the budgets of stage D |
 | E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
-| F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24; the budgets of stage F; N5 decided |
+| F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24, 52 (`task` part); the budgets of stage F; N5 decided |
 
 Budgets (the "Load" kind of 16). All p95; measured by a slow load test on the
 stage's fakes, recorded with the date and the machine in 16, "Budget record";
