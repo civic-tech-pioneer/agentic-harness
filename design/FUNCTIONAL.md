@@ -74,7 +74,7 @@ where it belongs.
 - **AGT-F-41** The kernel shall let the owner see the queued inputs of a session and take one out before a turn takes it. Traces: AGT-F-11, F-AGENT-6.
 - **AGT-F-54** The kernel shall keep and return every entry whole, whatever its size, and every read and replay shall make progress. Traces: AGT-F-8, AGT-F-9.
 - **AGT-F-12** When the owner cancels a session, the kernel shall end its turn, deny every open ask, and cancel its child sessions. Traces: F-AGENT-6.
-- **AGT-F-13** The kernel shall never delete a session on its own. If an owner exceeds its quota, then the kernel shall refuse new sessions of that owner and name the quota. Traces: F-RUN-8.
+- **AGT-F-13** The kernel shall never delete a session on its own. If an owner exceeds its quota, then the kernel shall refuse new sessions of that owner and name the quota. If the Claude Code sessions the kernel may run at once are taken, then the kernel shall refuse to start or resume one, name the cap, and never wait. Traces: F-RUN-8, AGT-F-39.
 
 ### 3.3 Asks
 
