@@ -22,12 +22,15 @@ mkcopy kern
 mkdir -p "$tmp/kern/kernel/src"
 printf '[package]\nname = "t"\nversion = "0.0.0"\nedition = "2021"\n[workspace]\n' > "$tmp/kern/kernel/Cargo.toml"
 printf '#[test]\nfn t() { assert!(false); }\n' > "$tmp/kern/kernel/src/lib.rs"
-if (cd "$tmp/kern" && factory/gate.sh >/dev/null 2>&1); then fail "kernel: expected non-zero"; fi
+if out=$(cd "$tmp/kern" && factory/gate.sh 2>&1); then fail "kernel: expected non-zero"; fi
+echo "$out" | grep -q "test result: FAILED" || fail "kernel: did not fail in cargo test: $out"
+echo "$out" | grep -q "kernel cargo clippy" && fail "kernel: did not stop at the first failure"
 echo "ok kernel failing test"
 
 mkcopy cons
 mkdir -p "$tmp/cons/console"
 printf '{"name":"c","version":"0.0.0","scripts":{"test":"exit 1"}}\n' > "$tmp/cons/console/package.json"
 echo '{"name":"c","version":"0.0.0","lockfileVersion":3,"requires":true,"packages":{"":{"name":"c","version":"0.0.0"}}}' > "$tmp/cons/console/package-lock.json"
-if (cd "$tmp/cons" && factory/gate.sh >/dev/null 2>&1); then fail "console: expected non-zero"; fi
+if out=$(cd "$tmp/cons" && factory/gate.sh 2>&1); then fail "console: expected non-zero"; fi
+echo "$out" | grep -q "gate: console npm test" || fail "console: did not reach npm test: $out"
 echo "ok console failing test"
