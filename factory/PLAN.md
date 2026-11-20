@@ -222,5 +222,3 @@ S2 writes each into the document that owns it.
   where trust is inherited.
 
 ## Suite time
-
-## V8 record
