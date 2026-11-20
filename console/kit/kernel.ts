@@ -22,7 +22,19 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   let gen = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const show = (v: SessionView) => { view = v; if (!closed) onView(v); };
+  const fetching = new Set<number>();
+  const show = (v: SessionView) => {
+    view = v;
+    if (closed) return;
+    onView(v);
+    // a message the view saw only in part: fetch its entry, which replaces the row
+    for (const r of v.rows) {
+      const n = r.key.startsWith("~p") ? Number(r.key.slice(2)) : NaN;
+      if (Number.isNaN(n) || fetching.has(n)) continue;
+      fetching.add(n);
+      kernel.read(session, n - 1, 1).then((es) => { fetching.delete(n); for (const e of es) if (!closed) show(reduce(view, e)); }, () => fetching.delete(n));
+    }
+  };
 
   async function pageIn(through: number) {
     const base = view;

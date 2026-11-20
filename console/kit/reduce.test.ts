@@ -115,15 +115,16 @@ describe("AC3 replay", () => {
 });
 
 describe("AC4 mid-message attach", () => {
-  it("ac4_deltas_without_a_start_are_dropped_and_the_entry_shows_once_whole", () => {
+  it("ac4_a_message_seen_after_synced_streams_and_its_entry_replaces_it_once_whole", () => {
     let v = feed([synced(0), upd({ sessionUpdate: "agent_message_chunk", content: txt("tail ") }), upd({ sessionUpdate: "agent_message_chunk", content: txt("more") })]);
-    expect(v.rows).toEqual([{ kind: "agent", key: "~w", text: "", writing: true }]);
+    expect(v.rows).toHaveLength(1);
+    expect(v.rows[0]).toMatchObject({ kind: "agent", text: "tail more", writing: true });
     v = feed([upd({ sessionUpdate: "agent_message_chunk", content: txt("end") }, { i: 5 })], v);
     expect(v.rows).toHaveLength(1);
-    expect(v.rows[0]).toMatchObject({ writing: true, text: "" });
+    expect(v.rows[0]).toMatchObject({ writing: true, key: "~p5" });
+    // the entry replaces it even though lastIndex is already at 5, and moves nothing else
     v = feed([entry(5, "message", { role: "agent", content: [txt("whole message")] })], v);
     expect(v.rows).toEqual([{ kind: "agent", key: "e5", i: 5, text: "whole message", writing: false }]);
-    // the next message starts clean and streams
     v = feed([upd({ sessionUpdate: "agent_message_chunk", content: txt("next") })], v);
     expect(v.rows[1]).toMatchObject({ text: "next", writing: true });
   });

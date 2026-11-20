@@ -74,3 +74,46 @@ describe("AC6 behind", () => {
     expect(a.last().synced).toBe(true);
   });
 });
+
+const J = JSON.stringify;
+const chunk = (t: string, i?: number) => J({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: t }, ...(i ? { _meta: { watane: { i, at: 1 } } } : {}) });
+const running = J({ _meta: { watane: { type: "turn", state: { state: "running", since: 1 } } } });
+
+describe("lost message after attach", () => {
+  it("lost_a_message_whose_first_chunk_comes_after_synced_ends_whole", async () => {
+    const k = fakeKernel([[running, chunk("Hello "), chunk("world", 1), J({ sessionUpdate: "tool_call", toolCallId: "t", title: "t", kind: "edit", _meta: { watane: { i: 2 } } })]]);
+    const a = open(k);
+    await flush();
+    k.play(0);
+    await flush();
+    const rows = a.last().rows;
+    expect(rows.map((r) => r.kind)).toEqual(["agent", "tool"]);
+    expect(rows[0]).toMatchObject({ text: "Hello world", writing: false, key: "e1" });
+  });
+  it("lost_a_real_mid_message_attach_gets_the_whole_entry_on_the_finishing_update", async () => {
+    const k = fakeKernel([[running, chunk("Hello ")], [chunk("world", 1)]]);
+    k.play(0);
+    const a = open(k);
+    await flush();
+    k.play(1);
+    await flush();
+    expect(k.calls.some((c) => c.name === "read" && JSON.stringify(c.args) === J(["s1", 0, 1]))).toBe(true);
+    expect(a.last().rows).toEqual([{ kind: "agent", key: "e1", i: 1, text: "Hello world", writing: false }]);
+  });
+});
+
+describe("full story reload", () => {
+  it("story_a_fresh_open_after_all_four_steps_equals_the_live_view", async () => {
+    const k = fakeKernel(story);
+    const a = open(k);
+    await flush();
+    for (let n = 0; n < 4; n++) k.play();
+    const b = open(k);
+    await flush();
+    const { x: _a, ...live } = a.last();
+    const { x: _b, ...fresh } = b.last();
+    expect(fresh).toEqual(live);
+    expect(fresh.turn).toMatchObject({ state: "waiting" });
+    expect(fresh.plan).toHaveLength(3);
+  });
+});

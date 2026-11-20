@@ -12,12 +12,15 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[] }): F
   let stream: { onMessage: (j: string) => void; onEnd: (r: string) => void } | null = null;
   let next = 0;
   const acc = { agent: "", thought: "", thoughtAt: undefined as number | undefined, thoughtEnd: undefined as number | undefined, user: "", tools: new Map<string, Rec>() };
+  const items: Record<string, string> = {};
   const last = () => store[store.length - 1]?.i ?? 0;
 
   // What the kernel would store for a live message: an entry, once a message or call is finished.
   function record(json: string) {
     const o = JSON.parse(json) as Rec;
     const w = o._meta?.watane as Rec | undefined;
+    if (w?.type === "turn" || w?.type === "queue" || w?.type === "usage") { items[w.type] = json; return; }
+    if (o.sessionUpdate === "plan") { items.plan = json; return; }
     if (w?.type === "entry") { if (w.entry.i > last()) store.push(w.entry); return; }
     if (!o.sessionUpdate) return;
     const { i, at = 0 } = w ?? {};
@@ -59,6 +62,7 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[] }): F
       stream = { onMessage, onEnd };
       for (const e of entries) onMessage(JSON.stringify(e));
       onMessage(JSON.stringify({ _meta: { watane: { type: "synced", through: Math.max(after, last()) } } }));
+      for (const k of ["turn", "queue", "usage", "plan"]) if (items[k]) onMessage(items[k]);
       return { ok: true };
     },
     async read(session, after, max) {

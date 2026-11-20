@@ -85,7 +85,6 @@ function toolCount(rows: Row[]): number {
 function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra) {
   const prev = v.turn;
   v.turn = state;
-  if (state.state === "running") x.lost = false;
   if (state.state !== "idle" || prev?.state === "idle") return;
   const key = `f:${v.rows[v.rows.length - 1]?.key ?? ""}`;
   if (v.rows.some((r) => r.key === key)) return;
@@ -112,10 +111,10 @@ function toolTitle(v: SessionView, id: string): string {
 export function reduce(view: SessionView, message: string): SessionView {
   const m = parse(message);
   const i = "i" in m ? m.i : undefined;
-  if (m.t !== "synced" && i !== undefined && i <= view.lastIndex) return view;
+  const refetch = m.t === "message" && view.rows.some((r) => r.key === `~p${m.i}`);
+  if (m.t !== "synced" && i !== undefined && i <= view.lastIndex && !refetch) return view;
   const x: Internal = { lost: false, ...view.x };
   const v: SessionView = { ...view, rows: view.rows.slice(), x };
-  let advance = true;
 
   if (m.t === "chunk" || m.t === "call" || m.t === "plan") {
     if (!(m.t === "chunk" && m.part === "thought")) fold(v, x, m.at);
@@ -143,8 +142,10 @@ export function reduce(view: SessionView, message: string): SessionView {
       const rows: Row[] = [];
       if (m.thought) rows.push({ kind: "thought", key: `e${m.i}-t`, i: m.i, text: m.thought.text, streaming: false, seconds: m.thought.seconds });
       rows.push({ kind: "agent", key: `e${m.i}`, i: m.i, text: m.text, writing: false });
-      const w = v.rows.findIndex((r) => r.kind === "agent" && r.writing);
-      if (w >= 0) v.rows.splice(w, 1, ...rows); else v.rows.push(...rows);
+      let w = v.rows.findIndex((r) => r.key === `~p${m.i}`);
+      if (w < 0) w = v.rows.findIndex((r) => r.kind === "agent" && r.writing);
+      if (w > 0 && v.rows[w - 1]!.kind === "thought" && v.rows[w - 1]!.key.startsWith("~")) { w--; v.rows.splice(w, 2, ...rows); }
+      else if (w >= 0) v.rows.splice(w, 1, ...rows); else v.rows.push(...rows);
       break;
     }
     case "tool": upsertCall(v, m.call, m.i); break;
@@ -157,11 +158,7 @@ export function reduce(view: SessionView, message: string): SessionView {
           ...(d.reason !== undefined ? { reason: d.reason } : {}) });
         break;
       }
-      if (!find(v, m.ask.toolCallId)) {
-        const inp = (m.ask.input ?? {}) as Record<string, unknown>;
-        const title = [inp.title, inp.command, inp.file_path, inp.path].find((s) => typeof s === "string") as string | undefined;
-        v.rows.push({ kind: "tool", key: `c${m.ask.toolCallId}`, call: normalize({ id: m.ask.toolCallId, ...(title ? { title } : {}) }) });
-      }
+      if (!find(v, m.ask.toolCallId)) upsertCall(v, m.call ?? { id: m.ask.toolCallId });
       const at = toToolRow(v, m.ask.toolCallId);
       const row = v.rows[at] as ToolRow;
       const ask: Ask = m.ask;
@@ -182,38 +179,34 @@ export function reduce(view: SessionView, message: string): SessionView {
     case "chunk": {
       const last = v.rows[v.rows.length - 1];
       if (m.part === "thought") {
-        if (x.lost) break;
         if (last?.kind === "thought" && last.streaming) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-        else { v.rows.push({ kind: "thought", key: `~t${v.rows.length}`, text: m.text, streaming: true }); x.thoughtAt = m.at; }
+        else { v.rows.push({ kind: "thought", key: `~t${v.rows.length}`, text: m.text, streaming: true }); x.thoughtAt = m.at; if (x.lost) x.partial = true; }
         break;
       }
       if (m.part === "user") {
         x.lost = false;
         if (last?.kind === "user" && last.key.startsWith("~")) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
         else v.rows.push({ kind: "user", key: `~u${v.rows.length}`, text: m.text });
-        if (m.i !== undefined) finish(v, m.i);
-        break;
-      }
-      if (x.lost) {
-        if (!v.rows.some((r) => r.key === "~w")) v.rows.push({ kind: "agent", key: "~w", text: "", writing: true });
-        if (m.i !== undefined) { x.lost = false; advance = false; }
+        if (m.i !== undefined) finish(v, m.i, false);
         break;
       }
       if (last?.kind === "agent" && last.writing && last.key !== "~w") v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-      else v.rows.push({ kind: "agent", key: `~a${v.rows.length}`, text: m.text, writing: true });
-      if (m.i !== undefined) finish(v, m.i);
+      else { v.rows.push({ kind: "agent", key: `~a${v.rows.length}`, text: m.text, writing: true }); if (x.lost) x.partial = true; }
+      if (m.i !== undefined) { finish(v, m.i, x.partial === true); x.partial = false; x.lost = false; }
       break;
     }
   }
-  if (advance && i !== undefined) v.lastIndex = Math.max(v.lastIndex, i);
+  if (i !== undefined) v.lastIndex = Math.max(v.lastIndex, i);
   return v;
 }
 
 /** The streaming row at the end of the rows becomes the entry `i`; a folded thought before it too. */
-function finish(v: SessionView, i: number) {
+function finish(v: SessionView, i: number, partial: boolean) {
   const k = v.rows.length - 1;
   const r = v.rows[k]!;
-  if (r.kind === "agent") {
+  if (r.kind === "agent" && partial) {
+    v.rows[k] = { ...r, key: `~p${i}` };
+  } else if (r.kind === "agent") {
     v.rows[k] = { ...r, key: `e${i}`, i, writing: false };
     const t = v.rows[k - 1];
     if (t?.kind === "thought" && t.key.startsWith("~")) v.rows[k - 1] = { ...t, key: `e${i}-t`, i };

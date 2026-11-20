@@ -38,7 +38,8 @@ export const story: string[][] = [
   ],
   [
     call("e2", "Edit src/sync.ts", "edit", { locations: [{ path: "src/sync.ts" }], content: diff("src/sync.ts", "retry(0)", "retry(base)") }),
-    w({ type: "entry", entry: { v: 1, i: 8, kind: "ask", at: 7000, body: { toolCallId: "e2", input: { file_path: "src/sync.ts" }, expiresAt: 1763600900000 } } }),
+    w({ type: "entry", entry: { v: 1, i: 8, kind: "ask", at: 7000, body: { toolCallId: "e2", input: { file_path: "src/sync.ts" }, expiresAt: 1763600900000,
+      toolCall: { toolCallId: "e2", title: "Edit src/sync.ts", kind: "edit", status: "pending", locations: [{ path: "src/sync.ts" }], content: diff("src/sync.ts", "retry(0)", "retry(base)") } } } }),
     w({ type: "turn", state: { state: "waiting", asks: ["e2"], expiresAt: 1763600900000 } }),
     w({ type: "queue", inputs: [{ n: 1, input: "also add a test" }] }),
     w({ type: "usage", "context-used": 42000, "context-window": 200000, "compact-at": 160000 }),
