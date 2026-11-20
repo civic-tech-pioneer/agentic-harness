@@ -1,0 +1,80 @@
+// TECHNICAL 2.3, 9.4: a scripted fake kernel with the shape of `attach` and `read`, for the console's tests.
+import type { Kernel } from "../kit/kernel";
+
+export interface FakeKernel extends Kernel { drop(): void; play(step?: number): void; calls: { name: string; args: unknown[] }[] }
+
+type Rec = Record<string, any>;
+
+/** `script` is steps of stream messages; `opts.preload` are entries (JSON) already stored. */
+export function fakeKernel(script: string[][], opts?: { preload?: string[] }): FakeKernel {
+  const store: Rec[] = (opts?.preload ?? []).map((s) => JSON.parse(s));
+  const calls: FakeKernel["calls"] = [];
+  let stream: { onMessage: (j: string) => void; onEnd: (r: string) => void } | null = null;
+  let next = 0;
+  const acc = { agent: "", thought: "", thoughtAt: undefined as number | undefined, thoughtEnd: undefined as number | undefined, user: "", tools: new Map<string, Rec>() };
+  const last = () => store[store.length - 1]?.i ?? 0;
+
+  // What the kernel would store for a live message: an entry, once a message or call is finished.
+  function record(json: string) {
+    const o = JSON.parse(json) as Rec;
+    const w = o._meta?.watane as Rec | undefined;
+    if (w?.type === "entry") { if (w.entry.i > last()) store.push(w.entry); return; }
+    if (!o.sessionUpdate) return;
+    const { i, at = 0 } = w ?? {};
+    const text = o.content?.type === "text" ? (o.content.text as string) : "";
+    if (o.sessionUpdate !== "agent_thought_chunk" && acc.thoughtAt !== undefined && acc.thoughtEnd === undefined) acc.thoughtEnd = at;
+    const put = (kind: string, body: Rec) => { if (i !== undefined && i > last()) store.push({ v: 1, i, kind, at, body }); };
+    switch (o.sessionUpdate) {
+      case "agent_thought_chunk": acc.thought += text; acc.thoughtAt ??= at; break;
+      case "user_message_chunk":
+        acc.user += text;
+        if (i !== undefined) { put("message", { role: "user", content: [{ type: "text", text: acc.user }] }); acc.user = ""; }
+        break;
+      case "agent_message_chunk":
+        acc.agent += text;
+        if (i !== undefined) {
+          put("message", { role: "agent", content: [{ type: "text", text: acc.agent }],
+            ...(acc.thoughtAt !== undefined ? { thought: { text: acc.thought, seconds: Math.round((acc.thoughtEnd! - acc.thoughtAt) / 1000) } } : {}) });
+          acc.agent = ""; acc.thought = ""; acc.thoughtAt = acc.thoughtEnd = undefined;
+        }
+        break;
+      case "tool_call":
+      case "tool_call_update": {
+        const { sessionUpdate: _s, _meta: _m, ...fields } = o;
+        const merged = { ...acc.tools.get(o.toolCallId), ...fields };
+        acc.tools.set(o.toolCallId, merged);
+        put("tool", merged);
+        break;
+      }
+    }
+  }
+
+  return {
+    calls,
+    async attach(session, after, onMessage, onEnd) {
+      calls.push({ name: "attach", args: [session, after] });
+      const entries = store.filter((e) => e.i > after);
+      if (entries.length > 128) return { behind: last() };
+      stream?.onEnd("replaced");
+      stream = { onMessage, onEnd };
+      for (const e of entries) onMessage(JSON.stringify(e));
+      onMessage(JSON.stringify({ _meta: { watane: { type: "synced", through: Math.max(after, last()) } } }));
+      return { ok: true };
+    },
+    async read(session, after, max) {
+      calls.push({ name: "read", args: [session, after, max] });
+      return store.filter((e) => e.i > after).slice(0, Math.min(max, 256)).map((e) => JSON.stringify(e));
+    },
+    async say(session, key, input) { calls.push({ name: "say", args: [session, key, input] }); return 0; },
+    async answer(session, key, ask, decision) { calls.push({ name: "answer", args: [session, key, ask, decision] }); },
+    async interrupt(session, replacement) { calls.push({ name: "interrupt", args: [session, replacement] }); },
+    async takeBack(session, allow) { calls.push({ name: "takeBack", args: [session, allow] }); },
+    drop() { const s = stream; stream = null; s?.onEnd("dropped"); },
+    play(step) {
+      const n = step ?? next++;
+      const msgs = script[n];
+      if (!msgs) throw new Error(`no step ${n} in the script`);
+      for (const j of msgs) { record(j); stream?.onMessage(j); }
+    },
+  };
+}
