@@ -287,14 +287,18 @@ fn ac5_rule_grammar_has_no_bypass() {
     }
     for r in [
         "Bash(git status:*)",
-        "Bash(npm test:*)",
-        "Bash(uv pip install:*)",
         "Bash(cargo test)",
         "Bash(npm test)",
         "Bash(cargo build --release)",
         "mcp__watane__ls_x-1(a)",
     ] {
         assert_eq!(one(json!({"allow": [r]})), Vec::<String>::new(), "{r:?}");
+    }
+    // S3-fix6 round 2: a package runner rule may not end in `:*`.
+    for r in ["Bash(npm test:*)", "Bash(uv pip install:*)"] {
+        let ps = parse(&json!({"allow": [r]}).to_string()).1;
+        assert_eq!(fields(&ps), ["allow"], "{r:?}");
+        assert!(ps[0].reason.contains("runner"), "{r}: {}", ps[0].reason);
     }
     assert_eq!(one(json!({"deny": ["Read(x),Bash(y)"]})), ["deny"]);
     for r in ["Bash(git a}b)", "Bash(git status < x)"] {
@@ -560,8 +564,8 @@ fn ac2_package_runner_second_word_is_an_allow_list() {
 }
 
 /// The AC2 table of S3-fix5, spelled out here as the oracle: each listed word passes (in any
-/// case, with `:*`), every word of the union that a runner does not list is refused with the
-/// runner reason, and so are the new first-word runners.
+/// case; with `:*` or any `*` refused since S3-fix6), every word of the union that a runner
+/// does not list is refused with the runner reason, and so are the new first-word runners.
 #[test]
 fn ac2_package_runner_table_is_exact() {
     let pm = ["install", "add", "test", "list", "ls", "audit", "outdated"];
@@ -591,11 +595,15 @@ fn ac2_package_runner_table_is_exact() {
         for w in words {
             for r in [
                 format!("Bash({runner} {w})"),
-                format!("Bash({} {w}:*)", runner.to_uppercase()),
+                format!("Bash({} {w})", runner.to_uppercase()),
             ] {
                 let (_, ps) = parse(&json!({"allow": [r]}).to_string());
                 assert!(ps.is_empty(), "{r}");
             }
+            // S3-fix6 round 2: no `*` after a package runner (`:*` would admit an option).
+            refused(&format!("Bash({runner} {w}:*)"));
+            refused(&format!("Bash({} {w}:*)", runner.to_uppercase()));
+            refused(&format!("Bash({runner} {w} x*)"));
             // S3-fix6 AC3: no later word may be an option, for every runner.
             for o in ["--x=y", "-x", "--", "-"] {
                 refused(&format!("Bash({runner} {w} {o})"));

@@ -582,8 +582,12 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
         }
     }
     if let Some((_, subs)) = PACKAGE_RUNNERS.iter().find(|(c, _)| *c == base) {
-        // Options after the subcommand name a program to run (`--script-shell`, `--python`).
-        if !words.next().is_some_and(|s| subs.contains(&s)) || words.any(|w| w.starts_with('-')) {
+        // Options after the subcommand name a program to run (`--script-shell`, `--python`),
+        // and a `*` lets the agent add them.
+        if low.contains('*')
+            || !words.next().is_some_and(|s| subs.contains(&s))
+            || words.any(|w| w.starts_with('-'))
+        {
             return Some("allows an interpreter or runner prefix");
         }
     }
