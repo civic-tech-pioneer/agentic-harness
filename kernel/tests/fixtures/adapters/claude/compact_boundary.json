@@ -1,0 +1,31 @@
+{
+  "row": "`system/compact_boundary`",
+  "input": [
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "system",
+        "subtype": "compact_boundary",
+        "compact_metadata": {
+          "trigger": "auto",
+          "pre_tokens": 167234
+        },
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "c7000000-0000-4000-8000-000000000001"
+      }
+    }
+  ],
+  "expected": [
+    [
+      {
+        "entry": {
+          "kind": "compaction",
+          "body": {
+            "trigger": "auto",
+            "pre-tokens": 167234
+          }
+        }
+      }
+    ]
+  ]
+}

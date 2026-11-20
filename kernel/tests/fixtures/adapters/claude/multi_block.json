@@ -1,0 +1,105 @@
+{
+  "row": "`assistant` text, `stream_event` deltas",
+  "input": [
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "id": "msg_01Q8vKx2m4Zr9dTn5GsYhJ3a",
+          "type": "message",
+          "role": "assistant",
+          "model": "claude-sonnet-4-5-20250929",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will read the file."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_01A9xQ3vLm2KpRt7Wc4HnZyB",
+              "name": "Read",
+              "input": {
+                "file_path": "/work/a.txt"
+              }
+            },
+            {
+              "type": "text",
+              "text": "Then summarize it."
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 3,
+            "cache_creation_input_tokens": 120,
+            "cache_read_input_tokens": 14000,
+            "output_tokens": 41
+          }
+        },
+        "parent_tool_use_id": null,
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "a2000000-0000-4000-8000-000000000001"
+      }
+    }
+  ],
+  "expected": [
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "I will read the file."
+          }
+        },
+        "entry": {
+          "kind": "message",
+          "uuid": "a2000000-0000-4000-8000-000000000001",
+          "body": {
+            "role": "agent",
+            "content": [
+              {
+                "type": "text",
+                "text": "I will read the file."
+              }
+            ]
+          }
+        }
+      },
+      {
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "toolu_01A9xQ3vLm2KpRt7Wc4HnZyB",
+          "title": "Read",
+          "rawInput": {
+            "file_path": "/work/a.txt"
+          },
+          "status": "pending"
+        }
+      },
+      {
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "Then summarize it."
+          }
+        },
+        "entry": {
+          "kind": "message",
+          "uuid": "a2000000-0000-4000-8000-000000000001",
+          "body": {
+            "role": "agent",
+            "content": [
+              {
+                "type": "text",
+                "text": "Then summarize it."
+              }
+            ]
+          }
+        }
+      }
+    ]
+  ]
+}

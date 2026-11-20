@@ -1,0 +1,282 @@
+{
+  "row": "`user` `tool_result`",
+  "input": [
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "id": "msg_01Q8vKx2m4Zr9dTn5GsYhJ3a",
+          "type": "message",
+          "role": "assistant",
+          "model": "claude-sonnet-4-5-20250929",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "toolu_01BashCCCCCCCCCCCCCCCC",
+              "name": "Bash",
+              "input": {
+                "command": "ls"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 3,
+            "cache_creation_input_tokens": 120,
+            "cache_read_input_tokens": 14000,
+            "output_tokens": 41
+          }
+        },
+        "parent_tool_use_id": null,
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "a6000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "toolu_01BashCCCCCCCCCCCCCCCC",
+              "type": "tool_result",
+              "content": "a.txt\nb.txt",
+              "is_error": false
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "u6000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "id": "msg_01Q8vKx2m4Zr9dTn5GsYhJ3a",
+          "type": "message",
+          "role": "assistant",
+          "model": "claude-sonnet-4-5-20250929",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "toolu_01BashDDDDDDDDDDDDDDDD",
+              "name": "Bash",
+              "input": {
+                "command": "false"
+              }
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 3,
+            "cache_creation_input_tokens": 120,
+            "cache_read_input_tokens": 14000,
+            "output_tokens": 41
+          }
+        },
+        "parent_tool_use_id": null,
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "a6000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "toolu_01BashDDDDDDDDDDDDDDDD",
+              "type": "tool_result",
+              "content": "Exit code 1",
+              "is_error": true
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "u6000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "user",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "tool_use_id": "toolu_01NeverSeenEEEEEEEEEE",
+              "type": "tool_result",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "from "
+                },
+                {
+                  "type": "text",
+                  "text": "blocks"
+                }
+              ]
+            }
+          ]
+        },
+        "parent_tool_use_id": null,
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "u6000000-0000-4000-8000-000000000003"
+      }
+    }
+  ],
+  "expected": [
+    [
+      {
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "toolu_01BashCCCCCCCCCCCCCCCC",
+          "title": "Bash",
+          "rawInput": {
+            "command": "ls"
+          },
+          "status": "pending"
+        }
+      }
+    ],
+    [
+      {
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "toolu_01BashCCCCCCCCCCCCCCCC",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "a.txt\nb.txt"
+              }
+            }
+          ]
+        },
+        "entry": {
+          "kind": "tool",
+          "uuid": "u6000000-0000-4000-8000-000000000001",
+          "body": {
+            "toolCallId": "toolu_01BashCCCCCCCCCCCCCCCC",
+            "title": "Bash",
+            "rawInput": {
+              "command": "ls"
+            },
+            "status": "completed",
+            "content": [
+              {
+                "type": "content",
+                "content": {
+                  "type": "text",
+                  "text": "a.txt\nb.txt"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    [
+      {
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "toolu_01BashDDDDDDDDDDDDDDDD",
+          "title": "Bash",
+          "rawInput": {
+            "command": "false"
+          },
+          "status": "pending"
+        }
+      }
+    ],
+    [
+      {
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "toolu_01BashDDDDDDDDDDDDDDDD",
+          "status": "failed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "Exit code 1"
+              }
+            }
+          ]
+        },
+        "entry": {
+          "kind": "tool",
+          "uuid": "u6000000-0000-4000-8000-000000000002",
+          "body": {
+            "toolCallId": "toolu_01BashDDDDDDDDDDDDDDDD",
+            "title": "Bash",
+            "rawInput": {
+              "command": "false"
+            },
+            "status": "failed",
+            "content": [
+              {
+                "type": "content",
+                "content": {
+                  "type": "text",
+                  "text": "Exit code 1"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    [
+      {
+        "update": {
+          "sessionUpdate": "tool_call_update",
+          "toolCallId": "toolu_01NeverSeenEEEEEEEEEE",
+          "status": "completed",
+          "content": [
+            {
+              "type": "content",
+              "content": {
+                "type": "text",
+                "text": "from \nblocks"
+              }
+            }
+          ]
+        },
+        "entry": {
+          "kind": "tool",
+          "uuid": "u6000000-0000-4000-8000-000000000003",
+          "body": {
+            "toolCallId": "toolu_01NeverSeenEEEEEEEEEE",
+            "title": null,
+            "rawInput": null,
+            "status": "completed",
+            "content": [
+              {
+                "type": "content",
+                "content": {
+                  "type": "text",
+                  "text": "from \nblocks"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  ]
+}

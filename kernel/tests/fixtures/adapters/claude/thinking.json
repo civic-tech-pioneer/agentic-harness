@@ -1,0 +1,152 @@
+{
+  "row": "`assistant` `thinking` blocks and deltas",
+  "input": [
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "thinking_delta",
+            "thinking": "Let me "
+          }
+        },
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "parent_tool_use_id": null,
+        "uuid": "d3000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "thinking_delta",
+            "thinking": "think."
+          }
+        },
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "parent_tool_use_id": null,
+        "uuid": "d3000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "stream_event",
+        "event": {
+          "type": "content_block_delta",
+          "index": 0,
+          "delta": {
+            "type": "signature_delta",
+            "signature": "EqoBCkgIAxABGAIiQ"
+          }
+        },
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "parent_tool_use_id": null,
+        "uuid": "d3000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "id": "msg_01Q8vKx2m4Zr9dTn5GsYhJ3a",
+          "type": "message",
+          "role": "assistant",
+          "model": "claude-sonnet-4-5-20250929",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "Let me think.",
+              "signature": "EqoBCkgIAxABGAIiQ"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 3,
+            "cache_creation_input_tokens": 120,
+            "cache_read_input_tokens": 14000,
+            "output_tokens": 41
+          }
+        },
+        "parent_tool_use_id": null,
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "a3000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "id": "msg_01Q8vKx2m4Zr9dTn5GsYhJ3a",
+          "type": "message",
+          "role": "assistant",
+          "model": "claude-sonnet-4-5-20250929",
+          "content": [
+            {
+              "type": "redacted_thinking",
+              "data": "EmwKAhgBEgy3va3pzix"
+            }
+          ],
+          "stop_reason": null,
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 3,
+            "cache_creation_input_tokens": 120,
+            "cache_read_input_tokens": 14000,
+            "output_tokens": 41
+          }
+        },
+        "parent_tool_use_id": null,
+        "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
+        "uuid": "a3000000-0000-4000-8000-000000000002"
+      }
+    }
+  ],
+  "expected": [
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_thought_chunk",
+          "content": {
+            "type": "text",
+            "text": "Let me "
+          }
+        }
+      }
+    ],
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_thought_chunk",
+          "content": {
+            "type": "text",
+            "text": "think."
+          }
+        }
+      }
+    ],
+    [],
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_thought_chunk",
+          "content": {
+            "type": "text",
+            "text": "Let me think."
+          }
+        }
+      }
+    ],
+    []
+  ]
+}
