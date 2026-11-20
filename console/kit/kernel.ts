@@ -1,6 +1,6 @@
 // TECHNICAL 2.3, 9.4, 18.3: the kernel as a page sees it, and the attach / behind / read / reattach loop.
 import { emptyView, type SessionView } from "./model";
-import { reduce } from "./reduce";
+import { safeReduce, settle, withUnknown } from "./reduce";
 
 export interface Kernel {
   attach(session: string, after: number, onMessage: (json: string) => void, onEnd: (reason: string) => void):
@@ -28,6 +28,16 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const fetching = new Set<number>();
+  /** Reads entry n back for its `~p<n>` row: once if it is read, at most 3 times (1 s apart) if the read fails. */
+  async function fetchEntry(n: number) {
+    let e: string | null = null;
+    for (let tries = 0; tries < 3 && e === null && !closed; tries++) {
+      if (tries) await new Promise((r) => setTimeout(r, RETRY_MS));
+      if (closed) return;
+      try { e = (await kernel.read(session, n - 1, 1))[0] ?? null; } catch { e = null; }
+    }
+    if (!closed) show(settle(view, n, e));
+  }
   const show = (v: SessionView) => {
     view = v;
     if (closed) return;
@@ -37,23 +47,27 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
       const n = r.key.startsWith("~p") ? Number(r.key.slice(2)) : NaN;
       if (Number.isNaN(n) || fetching.has(n)) continue;
       fetching.add(n);
-      kernel.read(session, n - 1, 1).then((es) => { fetching.delete(n); for (const e of es) if (!closed) show(reduce(view, e)); }, () => fetching.delete(n));
+      void fetchEntry(n).finally(() => fetching.delete(n));
     }
   };
 
-  async function pageIn(through: number) {
+  /** Pages in the entries before `through`; returns the cause when a page makes no progress. */
+  async function pageIn(through: number): Promise<string | undefined> {
     const base = view;
     const pages: string[][] = [];
     let hi = through;
+    if (!(through <= Number.MAX_SAFE_INTEGER)) return "the kernel's `behind` is not an index";
     while (hi > base.lastIndex && !closed) {
       const lo = Math.max(base.lastIndex, hi - PAGE);
+      if (lo === hi) return "the kernel's `behind` is too large to page";
       const page = await kernel.read(session, lo, hi - lo);
-      if (!page.length) break;
+      if (!page.length) return "the kernel returned no entries for a page it is behind on";
       pages.unshift(page);
       hi = lo;
-      show(pages.flat().reduce(reduce, base));
+      show(pages.flat().reduce(safeReduce, base));
     }
     if (view.lastIndex < through) throw new Error("the kernel's pages stop short of its own `behind`");
+    return undefined;
   }
 
   async function connect() {
@@ -64,10 +78,11 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
         if (closed) return;
         view = { ...view, synced: false };
         const r = await kernel.attach(session, view.lastIndex,
-          (json) => { if (g === gen && !closed) show(reduce(view, json)); },
+          (json) => { if (g === gen && !closed) show(safeReduce(view, json)); },
           (reason) => { if (g === gen && !closed && reason !== "replaced") void connect(); });
         if (!("behind" in r)) return;
-        await pageIn(r.behind);
+        const cause = await pageIn(r.behind);
+        if (cause) { show(withUnknown(view, cause)); return; }
       }
     } catch {
       if (!closed && g === gen) timer = setTimeout(() => void connect(), RETRY_MS);

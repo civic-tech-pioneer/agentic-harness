@@ -74,4 +74,8 @@ describe("layout", () => {
     const outside = all.replace(block(theme, "@media (prefers-reduced-motion: no-preference)"), "").replace(block(theme, "@media (hover: hover)"), "");
     expect(outside).not.toMatch(/:hover|:active|transition:|animation:/);
   });
+
+  it("ac7_ask_arguments_output_and_diff_keep_their_line_breaks", () => {
+    for (const sel of [/\.wa-args dd\s*\{[^}]*white-space:\s*pre-wrap/, /\.wa-diff, \.wa-output\s*\{[^}]*white-space:\s*pre-wrap/]) expect(kit).toMatch(sel);
+  });
 });

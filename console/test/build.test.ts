@@ -32,6 +32,10 @@ type Kind = "html" | "css" | "js";
 const COMMON: [string, RegExp][] = [
   ["eval(", /(?<![\w$])eval\s*\(/],
   ["new Function(", /new\s+Function\s*\(/],
+  ["Function(", /(?<![\w$.])Function\s*\(/],
+  ["string timer", /\bset(?:Timeout|Interval)\s*\(\s*["'`]/],
+  ["sendBeacon(", /\bsendBeacon\s*\(\s*["'`]\s*(?:https?:)?\/\//],
+  ["Image().src", /\.src\s*=\s*["'`]\s*(?:https?:)?\/\//],
   ["WebAssembly", /WebAssembly/],
   ["<iframe", /<iframe/i], ["<frame", /<frame/i], ["<object", /<object/i], ["<embed", /<embed/i],
 ];
@@ -41,13 +45,16 @@ const BY_KIND: Record<Kind, [string, RegExp][]> = {
     ["script with content", /<script[^>]*\bsrc=[^>]*>\s*[^<\s]/i],
     ["inline event handler", /<[a-z][^>]*\son[a-z]+\s*=/i],
     ["absolute src/href", /\b(?:src|href)\s*=\s*["']?\s*(?:https?:)?\/\//i],
+    ["meta refresh", /<meta[^>]*http-equiv\s*=\s*["']?refresh/i],
   ],
   css: [
     ["absolute url(", /url\(\s*["']?\s*(?:https?:)?\/\//i],
     ["absolute @import", /@import\s+(?:url\(\s*)?["']?\s*(?:https?:)?\/\//i],
+    ["absolute image-set(", /image-set\(\s*["']\s*(?:https?:)?\/\//i],
   ],
   js: [
     ["import(", new RegExp(String.raw`\bimport\s*\(\s*${ABS}`)],
+    ["bare import", new RegExp(String.raw`\bimport\s*${ABS}`)],
     ["from", new RegExp(String.raw`\bfrom\s*${ABS}`)],
     ["fetch(", new RegExp(String.raw`\bfetch\s*\(\s*${ABS}`)],
     ["new URL(", new RegExp(String.raw`new\s+URL\s*\(\s*${ABS}`)],

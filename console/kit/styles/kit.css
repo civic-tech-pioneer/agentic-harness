@@ -18,8 +18,8 @@
 .wa-args { margin: 0; font-size: 13px; }
 .wa-args div { display: flex; gap: 8px; }
 .wa-args dt { color: var(--muted); }
-.wa-args dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
-.wa-diff, .wa-output { margin: 0; padding: 8px; border-radius: 9px; background: var(--bg); font-family: var(--font-mono); font-size: 12.5px; overflow-x: auto; white-space: pre; }
+.wa-args dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+.wa-diff, .wa-output { margin: 0; padding: 8px; border-radius: 9px; background: var(--bg); font-family: var(--font-mono); font-size: 12.5px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .wa-diff-line { display: block; }
 .wa-diff-mark { display: inline-block; width: 1.5em; color: var(--muted); user-select: none; }
 .wa-askbar, .wa-deny { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

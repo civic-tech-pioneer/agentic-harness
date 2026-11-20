@@ -108,6 +108,44 @@ function toolTitle(v: SessionView, id: string): string {
   return find(v, id)?.call.title ?? id;
 }
 
+/** A key no other row has: a counter kept in the view's internal `x`, not the row count. */
+function nextKey(x: Internal, prefix: string): string {
+  const n = x.seq ?? 0;
+  x.seq = n + 1;
+  return `${prefix}${n}`;
+}
+
+/** The view with one more `unknown` row showing `raw`. */
+export function withUnknown(view: SessionView, raw: unknown): SessionView {
+  const x: Internal = { ...view.x };
+  return { ...view, rows: [...view.rows, { kind: "unknown", key: nextKey(x, "u"), raw }], x };
+}
+
+/** `reduce` that cannot throw: a message it chokes on becomes an `unknown` row. */
+export function safeReduce(view: SessionView, message: string): SessionView {
+  try { return reduce(view, message); } catch { return withUnknown(view, message); }
+}
+
+/** 9.4: the entry `n` read back for a `~p<n>` row replaces the row with what the entry is (a message, an `unknown` row, or the "could not be read" row for `null`); no `~p` row is left. */
+export function settle(view: SessionView, n: number, entry: string | null): SessionView {
+  const key = `~p${n}`;
+  if (!view.rows.some((r) => r.key === key)) return view;
+  const base = entry === null ? view : safeReduce(view, entry);
+  const k = base.rows.findIndex((r) => r.key === key);
+  if (k < 0) return base;
+  const appended = base.rows.slice(view.rows.length);
+  if (appended.length) {
+    const rows = base.rows.slice(0, view.rows.length);
+    rows.splice(k, 1, ...appended);
+    return { ...base, rows };
+  }
+  let raw: unknown = "could not be read";
+  if (entry !== null) { try { raw = JSON.parse(entry); } catch { raw = entry; } }
+  const rows = view.rows.slice();
+  rows.splice(view.rows.findIndex((r) => r.key === key), 1, { kind: "unknown", key: `e${n}`, i: n, raw });
+  return { ...view, rows };
+}
+
 export function reduce(view: SessionView, message: string): SessionView {
   const m = parse(message);
   const i = "i" in m ? m.i : undefined;
@@ -136,7 +174,7 @@ export function reduce(view: SessionView, message: string): SessionView {
     case "turn": setTurn(v, x, m.state, m.extra); break;
     case "compaction": break;
     case "unreadable":
-      v.rows.push({ kind: "unknown", key: i !== undefined ? `e${i}` : `u${v.rows.length}`, ...(i !== undefined ? { i } : {}), raw: m.raw });
+      v.rows.push({ kind: "unknown", key: i !== undefined ? `e${i}` : nextKey(x, "u"), ...(i !== undefined ? { i } : {}), raw: m.raw });
       break;
     case "message": {
       if (m.role === "user") {
@@ -195,17 +233,17 @@ export function reduce(view: SessionView, message: string): SessionView {
       }
       if (m.part === "thought") {
         if (last?.kind === "thought" && last.streaming) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-        else { v.rows.push({ kind: "thought", key: `~t${v.rows.length}`, text: m.text, streaming: true }); x.thoughtAt = m.at; }
+        else { v.rows.push({ kind: "thought", key: nextKey(x, "~t"), text: m.text, streaming: true }); x.thoughtAt = m.at; }
         break;
       }
       if (m.part === "user") {
         if (last?.kind === "user" && last.key.startsWith("~")) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-        else v.rows.push({ kind: "user", key: `~u${v.rows.length}`, text: m.text });
+        else v.rows.push({ kind: "user", key: nextKey(x, "~u"), text: m.text });
         if (m.i !== undefined) finish(v, m.i);
         break;
       }
       if (last?.kind === "agent" && last.writing) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-      else v.rows.push({ kind: "agent", key: `~a${v.rows.length}`, text: m.text, writing: true });
+      else v.rows.push({ kind: "agent", key: nextKey(x, "~a"), text: m.text, writing: true });
       if (m.i !== undefined) finish(v, m.i);
       break;
     }

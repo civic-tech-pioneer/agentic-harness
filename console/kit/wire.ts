@@ -102,14 +102,15 @@ function parseEntry(e: Rec): Msg {
       const id = str(b.toolCallId);
       const expiresAt = num(b.expiresAt);
       if (id === undefined || expiresAt === undefined) return bad;
-      const ask: Ask = { toolCallId: id, input: b.input, expiresAt };
+      const ask: Ask = { toolCallId: id, input: b.input, expiresAt, ...(str(b.reach) !== undefined ? { reach: b.reach as string } : {}) };
       const d = b.decision;
       if (isRec(d)) {
         if ((d.outcome !== "allow" && d.outcome !== "deny") || str(d.by) === undefined) return bad;
         ask.decision = { outcome: d.outcome, by: d.by as string, ...(d.for === "session" ? { for: "session" as const } : {}), ...(str(d.reason) !== undefined ? { reason: d.reason as string } : {}) };
       }
-      const call = isRec(b.toolCall) ? parseCall(b.toolCall) : undefined;
-      return { t: "ask", i, ask, ...(call ? { call } : {}) };
+      // the tool call's own id is ignored: the ask's `toolCallId` names the row
+      const parsed = isRec(b.toolCall) ? parseCall({ ...b.toolCall, toolCallId: id }) : undefined;
+      return { t: "ask", i, ask, ...(parsed ? { call: parsed } : {}) };
     }
     case "allow": {
       const id = str(b.id), reach = str(b.reach), by = str(b.by);

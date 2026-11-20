@@ -8,7 +8,7 @@ export type ToolContent =
 export interface ToolCall { id: string; title: string; kind: ToolKind; status: ToolStatus;
   content: ToolContent[]; locations: { path: string; line?: number }[]; rawInput?: unknown; rawOutput?: unknown }
 export interface Decision { outcome: "allow"|"deny"; for?: "session"; reason?: string; by: string }
-export interface Ask { toolCallId: string; input: unknown; expiresAt: number; decision?: Decision }
+export interface Ask { toolCallId: string; input: unknown; expiresAt: number; reach?: string; decision?: Decision }
 export type Activity = { kind: "checking"; on?: string } | { kind: "compacting" } | { kind: "consent"; what: string };
 export type TurnState =
   | { state: "running"; activity?: Activity; since: number }
@@ -27,7 +27,7 @@ export type Row =
   | { kind: "unknown"; key: string; i?: number; raw: unknown };
 export interface PlanItem { content: string; status: "pending"|"in_progress"|"completed" }
 /** The reducer's own bookkeeping; a reader of the view ignores it. */
-export interface Internal { skip?: boolean; thoughtAt?: number }
+export interface Internal { skip?: boolean; thoughtAt?: number; seq?: number }
 export interface SessionView {
   rows: Row[]; openAsks: string[]; turn: TurnState | null;
   queue: { n: number; input: string }[]; plan: PlanItem[] | null;

@@ -102,7 +102,7 @@ describe("rows", () => {
 
 const asking = () => feed(
   call("e2", "Edit src/sync.ts", "edit", { locations: [{ path: "src/sync.ts" }], content: diff("src/sync.ts", "a", "b") }),
-  entry(8, "ask", { toolCallId: "e2", input: { file_path: "src/sync.ts", note: "hi" }, expiresAt: 9,
+  entry(8, "ask", { toolCallId: "e2", reach: "edits in src", input: { file_path: "src/sync.ts", note: "hi" }, expiresAt: 9,
     toolCall: { toolCallId: "e2", title: "Edit src/sync.ts", kind: "edit", status: "pending", locations: [{ path: "src/sync.ts" }], content: diff("src/sync.ts", "a", "b") } }));
 
 describe("ask", () => {
@@ -123,9 +123,10 @@ describe("ask", () => {
     expect(actions.answer).toHaveBeenLastCalledWith("e2", { outcome: "deny", reason: "no thanks" });
   });
 
-  it("ac5_reach_falls_back_to_the_call_title", () => {
+  it("ac5_no_reach_no_session_allow_button", () => {
     show(feed(call("e3", "Edit notes", "edit"), entry(9, "ask", { toolCallId: "e3", input: {}, expiresAt: 9 })));
-    expect(screen.getByRole("button", { name: "Allow Edit notes this session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Allow once" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /this session/ })).toBeNull();
   });
 
   it("ac5_esc_and_cancel_close_the_reason_field_without_a_call", async () => {
