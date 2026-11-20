@@ -24,6 +24,8 @@ and no way to message the product owner. Everything below holds, with these chan
   context). Count its runs per task yourself. After each run, run `.claude/factory/check.sh
   <task> <commit before its first run>` in its worktree, and treat the result as section 2, step 2.
 - Rebase on `origin/main` (`git fetch` first).
+- `gh` is missing: open the PR and arm its auto-merge with the GitHub tools this session has
+  (the GitHub MCP server), else write `no PR: <why>` in the report.
 - Reports go through git. Push your work to `slice/<id>`, or to the branch this session was
   given if that push is refused, and open the PR as section 5 says. Then add an empty commit
   `git commit --allow-empty -m "DELIVERED <id>" -m "<the section 5 report>"`, or
@@ -99,6 +101,12 @@ it for time.
 
 A file that holds a boundary and is missing from that section: add it in the same commit.
 
+**A documents-only slice** (no code in its diff): the adversary is `not run (no code)`, unless the
+slice changes the boundaries section itself; then it reads the change for a weakened boundary and
+reports in its format, with checks instead of tests. The user-sim checks each outcome by reading
+and by shell checks (`grep`, `.claude/factory/check-docs.sh`); a failure is a quoted check that
+fails, committed nowhere, and becomes a fix task like a red test.
+
 Then run the acceptance agent (user-sim) with the slice id and its outcomes.
 - `ACCEPTED`: go to section 5.
 - `REJECTED`: each red test becomes a fix task, as above. Then run it again. After two rejections
@@ -116,6 +124,9 @@ boundary, an interface with another project, or anything outside the sketch, tha
 can build keeps open. Give one question, its options, your recommendation and the cost to undo
 each. Every other such question you settle yourself: build the option that keeps the others
 open, and list it under decisions. If no product owner session exists, ask the human.
+
+**Time.** You do not feel time pass: run `date` when you start and write the start time in your
+first brief's commit message; every time you report is `date` minus that, never an estimate.
 
 Send no progress updates. While a background run works, end your turn with no message.
 
