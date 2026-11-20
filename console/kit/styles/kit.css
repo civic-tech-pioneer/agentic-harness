@@ -27,6 +27,10 @@
 .b-off { background: var(--wa-off-bg); color: var(--muted); }
 .wa-tool-body { padding: 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 0; }
 .wa-tool-body > .wa-args, .wa-tool-body > .wa-output { margin: 8px 14px; }
+.wa-diff-path { margin: 8px 14px 0; font-family: var(--font-mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.wa-input { margin: 8px 14px; }
+.wa-input-label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.wa-input .wa-args { background: var(--wa-code); padding: 8px; border-radius: 9px; }
 .wa-args { margin: 0; font-size: 13px; }
 .wa-args div { display: flex; gap: 8px; }
 .wa-args dt { color: var(--muted); }

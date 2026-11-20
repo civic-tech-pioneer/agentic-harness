@@ -1,5 +1,5 @@
 // TECHNICAL 18.3 (the table), 18.6: one component per row kind.
-import { useState } from "react";
+import React, { useState } from "react";
 import type { Actions, Row, ToolCall } from "../model";
 import { AskBar } from "./askbar";
 import { DiffView } from "./diff";
@@ -59,16 +59,20 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const asking = !!ask && !ask.decision;
   const path = call.locations[0]?.path;
   const name = path ? `${KIND(call.kind)} ${path}` : call.title;
-  const hasDiff = call.content.some((c) => c.type === "diff");
+  const diffs = call.content.filter((c) => c.type === "diff").length;
   const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : STATUS[call.status];
   const body = (
     <>
-      {asking && !hasDiff ? <InputList input={ask.input} /> : null}
       {call.content.map((c, n) =>
-        c.type === "diff" ? <DiffView key={n} path={c.path} oldText={c.oldText} newText={c.newText} />
+        c.type === "diff" ? (
+          <React.Fragment key={n}>
+            {diffs > 1 || c.path !== path ? <div className="wa-diff-path">{c.path}</div> : null}
+            <DiffView path={c.path} oldText={c.oldText} newText={c.newText} />
+          </React.Fragment>)
         : c.type === "content" ? <ProgramOutput key={n} text={c.content.text} />
         : null)}
       {typeof call.rawOutput === "string" && !call.content.some((c) => c.type === "content") ? <ProgramOutput text={call.rawOutput} /> : null}
+      {asking ? <div className="wa-input"><div className="wa-input-label">Input</div><InputList input={ask.input} /></div> : null}
       {asking ? <AskBar call={call} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} /> : null}
     </>
   );

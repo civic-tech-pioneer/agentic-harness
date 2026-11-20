@@ -204,7 +204,8 @@ export function reduce(view: SessionView, message: string): SessionView {
           ...(d.reason !== undefined ? { reason: d.reason } : {}) });
         break;
       }
-      if (!find(v, m.ask.toolCallId)) upsertCall(v, m.call ?? { id: m.ask.toolCallId });
+      // the ask's own call is the one that will run: it wins over what the stream left in the row
+      if (!find(v, m.ask.toolCallId) || m.call) upsertCall(v, m.call ?? { id: m.ask.toolCallId });
       const at = toToolRow(v, m.ask.toolCallId);
       const row = v.rows[at] as ToolRow;
       const ask: Ask = m.ask;

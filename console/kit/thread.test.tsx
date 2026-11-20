@@ -109,7 +109,8 @@ describe("ask", () => {
   it("ac5_open_ask_shows_input_diff_and_bar_and_answers", async () => {
     const actions = mk();
     show(asking(), actions);
-    expect(screen.getByRole("region").textContent).not.toContain("file_path");
+    expect(screen.getByRole("region").textContent).toContain("file_path");
+    expect(screen.getByRole("region").textContent).toContain("note");
     expect(screen.getByText("b").parentElement).toHaveAttribute("data-diff", "add");
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Allow once" }));
