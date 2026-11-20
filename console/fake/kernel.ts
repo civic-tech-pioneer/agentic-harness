@@ -61,7 +61,8 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[] }): F
       stream?.onEnd("replaced");
       stream = { onMessage, onEnd };
       for (const e of entries) onMessage(JSON.stringify(e));
-      onMessage(JSON.stringify({ _meta: { watane: { type: "synced", through: Math.max(after, last()) } } }));
+      const writing = acc.agent !== "" || acc.thought !== "";
+      onMessage(JSON.stringify({ _meta: { watane: { type: "synced", through: Math.max(after, last()), ...(writing ? { writing } : {}) } } }));
       for (const k of ["turn", "queue", "usage", "plan"]) if (items[k]) onMessage(items[k]);
       return { ok: true };
     },

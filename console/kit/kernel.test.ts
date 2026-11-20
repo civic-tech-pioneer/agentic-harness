@@ -95,7 +95,9 @@ describe("lost message after attach", () => {
     k.play(0);
     const a = open(k);
     await flush();
+    expect(a.last().rows).toEqual([{ kind: "agent", key: "~w", text: "", writing: true }]);
     k.play(1);
+    expect(a.views.every((v) => v.rows.every((r) => r.kind !== "agent" || r.text === "" || r.text === "Hello world"))).toBe(true);
     await flush();
     expect(k.calls.some((c) => c.name === "read" && JSON.stringify(c.args) === J(["s1", 0, 1]))).toBe(true);
     expect(a.last().rows).toEqual([{ kind: "agent", key: "e1", i: 1, text: "Hello world", writing: false }]);
