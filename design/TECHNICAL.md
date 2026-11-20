@@ -387,8 +387,8 @@ and `.husky/**`. No launch can remove them.
   durability before the host applies it, whatever the durability of other
   calls (N4, the human, 2026-11-20: every commit keeps the host's full
   durability, one fsync per write; the proposal's per-batch option is not
-  built). V8 (stage A) measures the cost; whether to change this is the
-  human's then.
+  built). V8 (stage A, 16 "Probes named here") measures the cost; whether to
+  change this is the human's then.
 - **Timers.** Per mod: ids of at most 128 bytes, at most 256 live, delays up
   to 30 days, stored in host state (`timers/<mod>/<id>` → due time). A due
   timer fires as a top-level call of the mod's `timer-sink.fired(id)`; one
@@ -414,6 +414,9 @@ and `.husky/**`. No launch can remove them.
   the web, inside Claude's sandbox. Not checked by watane." The plan of every
   mod whose call links reach either grant adds "Uses Claude Code through
   {provider}."
+- **While a consent waits,** a request's requester gets `consent-pending
+  {what}` once (`what` as in `consent-refused {what}`, 12); the kernel shows
+  it as the activity `consent {what}` (9.3).
 - **Previews** refuse both grants and accounts.
 
 ## 9. The kernel (M2)
@@ -698,6 +701,7 @@ when `claude-codes` cannot parse it.
 | `mismatch {field}` | claude-code outcome | 4.5 |
 | `slash-command`, `unknown-ask`, `not-allowed-here` | claude-session | 4.5 |
 | `consent-refused {what}` | any request outcome | 8 |
+| `consent-pending {what}` | what a request's requester gets once while a consent waits | 8 |
 | `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
@@ -755,14 +759,15 @@ stages B and E).
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8) | `src/adapters/`, `src/broker.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `src/broker.rs` |
-| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `src/lib.rs`, `console/` |
+| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `src/profiles.rs`, `src/refuse.rs` |
 
 Not protected: the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; plan usage; another program of the same user
 (spec 6); whether a subagent prompt that starts with `/` runs a skill (not
-probed; probe V26, slice S1).
+probed; probe V26, slice S1); whether the shell grant's sandbox blocks
+loopback (probe V27, slice S1; table in 16).
 
 ## 15. Provides and needs
 
@@ -810,6 +815,16 @@ Integration tests are modules of one binary per subsystem
 | Fakes | dev's fake `claude` (scripted lines, asks, checks, a hook that errors or times out, a crash) and scripted Responses server (checks every request body, answers errors and usage limits); the same server also serves a judge origin: it counts every request it receives and plays a judge that answers safe, unsafe or unsure, is down, slow or unreadable, or answers a redirect (the "scripted judge server" of cases 25, 32, 33) |
 | Hostile | one test per boundary of 14, as the attacker it names (the adversary step of a slice) |
 | Crash windows | kill the host at named points (after commit, before effect; mid-batch; mid-step) and restart for real; count effects, not return values |
+
+**Probes named here.** These V ids are probe ids, not watane's `V<n>` goals
+of `spec/VISION.md`.
+
+| Id | What it checks | Run by | Result recorded in |
+|---|---|---|---|
+| V7 | latency of one judge check (`pre-tool-check`) on a real judge account | stage E, before the checked provider is built | `ARCHITECTURE-PROPOSAL.md` section 18 |
+| V8 | the stage A prototype through three layers (host stream, a mod consumer, a page consumer): order, delay and the cost of one fsync per commit (7, N4) | stage A | the "V8 record" section of `factory/PLAN.md` (numbers; whether to change 7 is the human's) |
+| V26 | whether a subagent prompt that starts with `/` runs a skill (14) | slice S1 | `ARCHITECTURE-PROPOSAL.md` section 18 |
+| V27 | whether the shell grant's sandbox blocks loopback (14) | slice S1 | `ARCHITECTURE-PROPOSAL.md` section 18 |
 
 **Cases** (the research's recurring ones first):
 1. An orphaned tool call is repaired before the next request; a result
@@ -866,7 +881,8 @@ Integration tests are modules of one binary per subsystem
     doubles nothing. Streaming a turn writes state once per finished entry,
     never per delta (count the commits).
 31. Every turn-state change reaches an attached stream as a `turn` update,
-    in order, also `checking` and `consent`.
+    in order, also `checking` and `consent` (stage B has neither: C adds
+    `consent`, E adds `checking`, 17).
 32. A mod that is not the kernel calls a provider's `sessions.start` or `say`:
     `not-owner`; no request with `account: "judge"` leaves (counted at the
     scripted judge server), and no verdict reaches the caller; the same for a
@@ -886,11 +902,11 @@ stage: it shows only what is built.
 
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
-| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; V8 measured and recorded |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 and AGT-J6 (Claude part) on the fake; cases 5, 6, 8–18, 27–31 |
-| C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`; AGT-J4 |
+| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; V8 measured and recorded |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake up to the consent (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`) |
+| C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent` |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22 |
-| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33 |
+| E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking` |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24; N5 decided |
 
 ## 18. The console (C1)
