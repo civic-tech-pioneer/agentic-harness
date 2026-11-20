@@ -16,6 +16,7 @@ describe("S4-fix4 AC3 paging work", () => {
     const s = openSession(k, "s1", () => {});
     await new Promise((r) => setTimeout(r, 50));
     s.close();
+    expect(counter.n).toBeGreaterThanOrEqual(2560); // the pages were read in
     expect(counter.n).toBeLessThanOrEqual(2560 + 256 + 10);
   });
 });
