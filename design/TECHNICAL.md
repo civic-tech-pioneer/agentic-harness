@@ -107,8 +107,11 @@ identity: func() -> string;   // <publisher>/<slug>, local/<slug>, page, or agen
 
 Every function with an outside effect is a request (7): `claude-code.start`,
 `claude-code-shell.start`, `https-stream.start`, `agent-tools.open`,
-`agent-tools.call`, `streams.open`, `timers.after`, `timers.cancel`. `streams.resume` is not: it
-only lets a deferred batch go on (3).
+`agent-tools.call`, `streams.open`, `timers.after`, `timers.cancel`, and
+`claude-session.say`, `answer`, `interrupt` and `compact` (applied after the
+call commits, so a rolled-back call, deferred or failed, sends nothing to
+`claude`). `streams.resume` is not a request: it only lets a deferred batch go
+on (3); one made in the call that returns `defer` is dropped with it.
 
 ### 2.2 Providers (`mods:claude-code@0.1.0`)
 
@@ -409,6 +412,10 @@ and `.husky/**`. No launch can remove them.
   timer fires as a top-level call of the mod's `timer-sink.fired(id)`; one
   due during downtime fires soon after start. `after` with a live id
   replaces it.
+- **Rolled back.** `claude-session.say`, `answer`, `interrupt` and `compact`
+  are requests too: a call that is rolled back (deferred or failed, 3) sends
+  nothing to `claude`, and its `timers.after` and `timers.cancel` are dropped
+  with it and made again on redelivery.
 
 ## 8. Consent (H6)
 
@@ -544,8 +551,9 @@ An entry is JSON:
   `text` is a slice of the whole entry's serialization, cut at UTF-8
   character boundaries; the whole entry carries the index of its last part.
   A reader joins the `text` of parts 1..m in order and parses the result as
-  one entry. `attach` and `read` with an `after` that falls inside a group
-  start at the group's first part. Live, a finished entry over 256 KiB goes
+  one entry. A page (`read` either way, a replay) may end inside a group, and
+  the client joins the parts across pages. `attach` and `read` with an
+  `after` that falls inside a group start at the group's first part. Live, a finished entry over 256 KiB goes
   out as its parts, as replay pushes entries, never as one update. So every
   chunk (1 MiB), `read` page (2 MiB) and replay (2 MiB) holds at least one
   whole entry or part, and paging always makes progress. No content is cut by
@@ -637,7 +645,8 @@ An entry is JSON:
 - **Slots.** The kernel consumes at most 32 streams (3). It splits them: 8
   provider streams (Claude sessions; the host's limit of 8 `claude`), 8 model
   requests (`https-stream.start` of this loop), 16 tool jobs; one session
-  holds at most 8 job slots. State: `slots` and `slots/wait/<n>` (9.1). The
+  holds at most 8 job slots, and one owner at most half of each kind (4
+  provider, 4 request, 8 job slots), on top of the per-session cap. State: `slots` and `slots/wait/<n>` (9.1). The
   loop state keeps a step's calls not yet started (`pending`); they start in
   waves as job slots free. A request that finds no request slot waits in
   `ready` in the FIFO. Every `ended` of a kernel-consumed stream frees its
@@ -720,31 +729,52 @@ when `claude-codes` cannot parse it.
   call of it waits for the judge, so no call nears its budget. Its sequence:
   1. `start` checks the caller (2.2), checks the launch's form, opens its own
      stream to the kernel, calls `claude-code.start` with `pre-tool-check` and
-     **no input**, stores `pending/<own stream> {launch, input}` in its state,
-     and returns `{stream: <its own>, direct: false}` in the same call. It
-     forwards `consent-pending` and every other item.
-  2. On the host's `initialized` item (4.5; an item call), it starts the judge
-     call for the launch and the input. Nothing of the session goes to the
-     judge before that item: the host starts the process only once the
-     workspace consent is held (8), so `initialized` cannot come before it
-     (outcome 5; deputy decision of 2026-11-20 on S2's RISK 3).
+     **no input**, stores `pending/<own stream> {launch, inputs}` in its state
+     (`inputs`: the launch input, in order), and returns `{stream: <its own>,
+     direct: false}` in the same call. It forwards `consent-pending` and every
+     other item.
+  2. Every input (the launch input, every `say`, an `interrupt` replacement)
+     waits for the host's `initialized` item (4.5; an item call) before its
+     judge call. Inputs that arrive before it are kept in `pending/<own
+     stream>` in order (at most the kernel's queue, 9.3) and judged after it,
+     in order. The provider acts only on the first `initialized` of a stream.
+     Once the `claude` stream has ended (consent refused or withdrawn, or any
+     end), no input is judged: the provider closes its own stream and drops
+     them. Nothing of the session goes to the judge before `initialized`: the
+     host starts the process only once the workspace consent is held (8), so
+     `initialized` cannot come before it (outcome 5; deputy decision of
+     2026-11-20 on S2's RISK 3). On `initialized` it starts the judge call for
+     the launch.
   3. Every judge call spans calls: `https-stream.start` (a request, 7), a
-     timer `judge/<on>` at the deadline (`timeout-s` minus 2 s), the verdict
-     read from the judge stream's items. At most 3 attempts, each started from
-     the `ended` of the one before, only while the deadline is ahead. The
-     timer firing first is `unsafe`; a later verdict is ignored.
-  4. Safe on the launch and input: `claude-session.say(input)`. Unsafe: a
+     timer `judge/<own stream>/<on>` at the deadline (`timeout-s` minus 2 s),
+     the verdict read from the judge stream's items. `on` is the host's ask or
+     check id, or `launch`, or `input/<n>` (the kernel's input number, 9.3);
+     the provider's judge state is keyed by (own stream, `on`). The first
+     readable verdict is final, and so is the timer: it firing first is
+     `unsafe`, and a later verdict is ignored. A new attempt starts only after
+     an error or an ending with no readable verdict, from the `ended` of the
+     one before, only while the deadline is ahead; at most 3 attempts.
+  4. Safe on the launch and its input: `claude-session.say(input)`. Unsafe: a
      verdict item, then it cancels the `claude` stream and closes its own; the
      kernel ends the turn `idle {failed {judge}}` with the verdict's reasons.
-  5. `say` from the kernel is judged the same way (steps 3 and 4), one input
+  5. `say` from the kernel is judged the same way (steps 2 to 4), one input
      at a time in order; it returns at once, and the input reaches `claude`
      only after its safe verdict.
-  6. `ask` and `check` items are judged the same way and answered by
-     `claude-session.answer` after the verdict or at the deadline (`deny`).
-     Claude's own hook timeout (`timeout-s`, `onFailure: block`) still stops
-     the tool if the provider never answers.
+  6. A `check` is judged the same way and answered by `claude-session.answer`:
+     `none` when safe, `deny` after an unsafe verdict, an unreadable one, an
+     error or the deadline. An `ask` is answered only with `deny` (unsafe,
+     unsure, error, deadline); a safe verdict lets the ask go on to the kernel
+     unanswered, and the kernel's broker and the owner decide (9.6). So "safe"
+     never widens the mode. An owner's `allow` to an ask whose verdict is
+     pending is forwarded only after a safe verdict; after an unsafe one the
+     ask is already denied and the answer is `unknown-ask`. Claude's own hook
+     timeout (`timeout-s`, `onFailure: block`) still stops the tool if the
+     provider never answers.
   7. When its own stream to the kernel is full, it defers the item call and
-     resumes on `ready` (3).
+     resumes on `ready` (3). Its `resume` is made in a later call, never in the
+     call that returns `defer`.
+  8. `interrupt` drops every input of the session still waiting for its
+     verdict or for `initialized`; a later verdict for one sends nothing.
 - **Callers:** every function of `sessions` first checks that
   `caller.identity()` is the kernel `mods:agent`'s and otherwise returns
   `not-owner` before it judges, opens a stream or makes any call; so no other
@@ -888,7 +918,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` `caller.identity()` (9.3, 14).
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
 - [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure (3; P03).
-- [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04).
+- [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7).
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
 - [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
 - [ ] `host/TECHNICAL.md` account kind `judge` and its binding (provider identity compared exactly, `account` exactly `openai` or `judge`, `POST`, origin after one parse with `[http]`, no redirects, `no-account`, ending live judge streams when the key is removed) (5, 10, 12; N10).
@@ -1026,6 +1056,36 @@ of `spec/VISION.md`.
 41. (9.4) `read` with `before` gives the newest page first; paging back to
     index 0, then attaching after the newest index shown, shows every entry
     once; `last` is the high-water index.
+42. (10, 14 "Safe" cannot widen the mode) A checked session in `manual` mode;
+    the fake `claude` raises an ask and the scripted judge answers safe. The
+    provider sends `claude-session.answer` only for `deny`; the safe ask
+    reaches the owner unanswered, and the tool runs only after the owner's
+    `allow`. Unsafe, or the deadline, gives `deny`.
+43. (10, outcome 5) With the workspace consent pending, (a) `interrupt` with a
+    replacement and (b) `interrupt` then `say` each leave the scripted judge
+    server's count at zero until `initialized`; with the consent refused or
+    withdrawn, a later `say` never reaches it; every input a `say` gives
+    before `initialized` is judged after it, in order.
+44. (10) The scripted judge answers `unsafe` (and, in a second test,
+    `unsure`), then ends its stream normally: it counts exactly one request,
+    and the check is answered `deny`. A new attempt starts only after an error
+    or an ending with no readable verdict; the first readable verdict, or the
+    timer, is final.
+45. (2.1, 7, 3) An idle line with one queued input arrives while the owner
+    stream is full; after `resume`, the fake `claude` received that input
+    exactly once; a `timers.cancel` in a deferred call is dropped with it and
+    made again on redelivery.
+46. (10) Two checked sessions with the same `on`: each keeps its own deadline
+    timer `judge/<own stream>/<on>` and its own verdict.
+47. (10) `interrupt` drops every input still waiting for its verdict or for
+    `initialized`, and a later verdict for one sends nothing; a second
+    `initialized` on a stream changes nothing.
+48. (9.5, AGT-F-55) One owner that asks for more than half of each slot kind
+    gets 4 provider, 4 request and 8 job slots at most, and another owner's
+    work still starts; a consumer that defers cannot spin: its `resume` in the
+    deferring call is dropped.
+49. (9.4) Paging backwards with `read` through a 3 MiB entry, with pages that
+    end inside its part group, joins it whole, byte for byte.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
@@ -1051,10 +1111,10 @@ length. A long session cannot hold the slot.
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
 | A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; case 36 for the host part (3); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 41; the budgets of stage B |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 41, 45, 49; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
-| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40; the budgets of stage D |
-| E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 37, 38; the budgets of stage E |
+| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48; the budgets of stage D |
+| E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 37, 38, 42–44, 46, 47; the budgets of stage E |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24; the budgets of stage F; N5 decided |
 
 Budgets (the "Load" kind of 16). All p95; measured by a slow load test on the
