@@ -73,7 +73,11 @@ fn ac2_golden_fixtures_match() {
         for (name, fx) in fixtures(dir) {
             let inputs = fx["input"].as_array().unwrap();
             let expected = fx["expected"].as_array().unwrap();
-            assert_eq!(inputs.len(), expected.len(), "{dir}/{name}: input and expected lengths");
+            assert_eq!(
+                inputs.len(),
+                expected.len(),
+                "{dir}/{name}: input and expected lengths"
+            );
             let mut adapter = Adapter::new(dir);
             for (i, input) in inputs.iter().enumerate() {
                 let got = serde_json::to_value(adapter.feed(input)).unwrap();
@@ -95,7 +99,14 @@ fn ac2_every_row_of_9_8_has_a_fixture() {
         .lines()
         .filter(|l| l.starts_with('|'))
         .skip(2)
-        .map(|l| l.trim_matches('|').split('|').next().unwrap().trim().to_string())
+        .map(|l| {
+            l.trim_matches('|')
+                .split('|')
+                .next()
+                .unwrap()
+                .trim()
+                .to_string()
+        })
         .collect();
     assert!(rows.len() >= 12, "rows read: {rows:?}");
     let have: Vec<String> = dirs()
@@ -158,7 +169,13 @@ fn ac6_long_tool_result_is_cut_and_marked() {
     );
     let body = &outs[0].entry.as_ref().unwrap().body;
     assert_eq!(body["_meta"], json!({"watane": {"cut": 70_000}}));
-    assert_eq!(body["content"][0]["content"]["text"].as_str().unwrap().len(), 65_536);
+    assert_eq!(
+        body["content"][0]["content"]["text"]
+            .as_str()
+            .unwrap()
+            .len(),
+        65_536
+    );
 }
 
 #[test]
@@ -168,6 +185,7 @@ fn ac10_unknown_then_normal() {
     assert_eq!(outs.len(), 1);
     assert_eq!(outs[0].entry.as_ref().unwrap().kind, Kind::Unknown);
     assert_eq!(unknown(json!(1)).entry.unwrap().body, json!({"raw": 1}));
+    assert!(a.line(b"  \n", 1).is_empty(), "a blank line is no item");
     let ok = line(
         &mut a,
         json!({"type":"assistant","message":{"id":"m","role":"assistant","model":"x","content":[{"type":"text","text":"hi"}]},"session_id":"s","uuid":"u"}),
@@ -243,7 +261,19 @@ fn ac10_never_panics_on_random_input() {
 
 #[test]
 fn ac12_adapters_are_pure() {
-    let banned = ["std::fs", "std::time", "std::env", "std::net", "std::process", "static mut", "thread_local", "lazy_static", "OnceLock", "reqwest", "tokio"];
+    let banned = [
+        "std::fs",
+        "std::time",
+        "std::env",
+        "std::net",
+        "std::process",
+        "static mut",
+        "thread_local",
+        "lazy_static",
+        "OnceLock",
+        "reqwest",
+        "tokio",
+    ];
     for entry in fs::read_dir(root().join("src/adapters")).unwrap() {
         let p = entry.unwrap().path();
         let src = fs::read_to_string(&p).unwrap();
