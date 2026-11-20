@@ -24,7 +24,8 @@ local_only = ""
 # The spec chain, why > what > how: the priority of truth, highest first. Code comes after.
 spec = ["spec/VISION.md", "spec/FUNCTIONAL.md", "spec/TECHNICAL.md"]
 
-# The section that lists the project's security boundaries, each with the files that hold it.
+# The section that lists the project's security boundaries, each with the FILES that hold it (paths
+# or path prefixes, present or planned): the foreman matches a slice's diff against them.
 # A slice whose diff touches one of those files gets the adversary. Empty: no boundaries yet.
 boundaries = "spec/TECHNICAL.md section 6"
 
