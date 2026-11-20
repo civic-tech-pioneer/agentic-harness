@@ -596,6 +596,11 @@ fn ac2_package_runner_table_is_exact() {
                 let (_, ps) = parse(&json!({"allow": [r]}).to_string());
                 assert!(ps.is_empty(), "{r}");
             }
+            // S3-fix6 AC3: no later word may be an option, for every runner.
+            for o in ["--x=y", "-x", "--", "-"] {
+                refused(&format!("Bash({runner} {w} {o})"));
+                refused(&format!("Bash({runner} {w} a {o} b:*)"));
+            }
         }
         for w in all.iter().filter(|w| !words.contains(w)) {
             refused(&format!("Bash({runner} {w})"));
