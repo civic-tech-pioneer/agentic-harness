@@ -1,7 +1,10 @@
 //! Integration tests of the kernel crate (TECHNICAL 16): one binary, one module per area.
 
+mod check;
 mod errors;
+mod example;
 mod grammar;
+mod overlay;
 mod refuse;
 
 use agent_kernel::{parse_profile, Problem, Profile};

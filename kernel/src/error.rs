@@ -22,7 +22,10 @@ pub struct Problem {
 
 impl Problem {
     pub fn new(field: impl Into<String>, reason: impl Into<String>) -> Self {
-        Problem { field: field.into(), reason: reason.into() }
+        Problem {
+            field: field.into(),
+            reason: reason.into(),
+        }
     }
 
     pub fn refusal(&self, backend: Backend, model: &str) -> Refusal {
@@ -75,7 +78,11 @@ impl fmt::Display for KernelError {
                 write!(f, "refused: {} field(s) refused", rs.len())?;
                 for (i, r) in rs.iter().enumerate() {
                     let sep = if i == 0 { ": " } else { "; " };
-                    write!(f, "{sep}{} ({}, {}): {}", r.field, r.backend, r.model, r.reason)?;
+                    write!(
+                        f,
+                        "{sep}{} ({}, {}): {}",
+                        r.field, r.backend, r.model, r.reason
+                    )?;
                 }
                 Ok(())
             }

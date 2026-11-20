@@ -15,7 +15,9 @@ fn ac3_not_json_and_not_object_are_one_problem() {
 
 #[test]
 fn ac4_unknown_and_per_session_keys() {
-    let (_, ps) = parse(r#"{"bogus":1,"workspace":"w","extra-workspaces":[],"agent-handle":"h","session":{}}"#);
+    let (_, ps) = parse(
+        r#"{"bogus":1,"workspace":"w","extra-workspaces":[],"agent-handle":"h","session":{}}"#,
+    );
     assert_eq!(ps.len(), 5);
     let b = ps.iter().find(|p| p.field == "bogus").unwrap();
     assert_eq!(b.reason, "not a profile field");
@@ -54,10 +56,27 @@ fn ac5_all_grammar_problems_reported_together() {
     let (_, ps) = parse(&bad_doc().to_string());
     let f = fields(&ps);
     for want in [
-        "model", "fallback-models", "effort", "mode", "system-prompt", "tools", "allow", "deny",
-        "pre-tool-check.timeout-s", "subagents[0].permissionMode", "subagents[0].name",
-        "subagents[0].tools", "subagent-depth", "skills[0].name", "skills[0].files", "max-turns",
-        "max-budget-usd", "max-tool-errors", "max-tokens", "backend", "ask",
+        "model",
+        "fallback-models",
+        "effort",
+        "mode",
+        "system-prompt",
+        "tools",
+        "allow",
+        "deny",
+        "pre-tool-check.timeout-s",
+        "subagents[0].permissionMode",
+        "subagents[0].name",
+        "subagents[0].tools",
+        "subagent-depth",
+        "skills[0].name",
+        "skills[0].files",
+        "max-turns",
+        "max-budget-usd",
+        "max-tool-errors",
+        "max-tokens",
+        "backend",
+        "ask",
     ] {
         assert!(f.contains(&want), "missing {want} in {f:?}");
     }
@@ -65,7 +84,11 @@ fn ac5_all_grammar_problems_reported_together() {
 }
 
 fn one(doc: Value) -> Vec<String> {
-    parse(&doc.to_string()).1.into_iter().map(|p| p.field).collect()
+    parse(&doc.to_string())
+        .1
+        .into_iter()
+        .map(|p| p.field)
+        .collect()
 }
 
 #[test]
@@ -73,41 +96,93 @@ fn ac5_each_rule_alone() {
     assert_eq!(one(json!({"mode": "bypassPermissions"})), ["mode"]);
     assert_eq!(one(json!({"mode": "plan"})), Vec::<String>::new());
     assert_eq!(one(json!({"system-prompt": {}})), ["system-prompt"]);
-    assert_eq!(one(json!({"system-prompt": {"append": "x".repeat(65537)}})), ["system-prompt"]);
-    assert_eq!(one(json!({"system-prompt": {"append": "x".repeat(65536)}})), Vec::<String>::new());
+    assert_eq!(
+        one(json!({"system-prompt": {"append": "x".repeat(65537)}})),
+        ["system-prompt"]
+    );
+    assert_eq!(
+        one(json!({"system-prompt": {"append": "x".repeat(65536)}})),
+        Vec::<String>::new()
+    );
     assert_eq!(one(json!({"allow": ["Bash(npm exec foo)"]})), ["allow"]);
     assert_eq!(one(json!({"allow": ["Bash(uv run x)"]})), ["allow"]);
-    assert_eq!(one(json!({"allow": ["Bash(/usr/bin/python3.12:*)"]})), ["allow"]);
-    assert_eq!(one(json!({"allow": ["Bash(git status:*)", "Read(./src/**)", "mcp__watane__ls", "Edit"]})), Vec::<String>::new());
+    assert_eq!(
+        one(json!({"allow": ["Bash(/usr/bin/python3.12:*)"]})),
+        ["allow"]
+    );
+    assert_eq!(
+        one(json!({"allow": ["Bash(git status:*)", "Read(./src/**)", "mcp__watane__ls", "Edit"]})),
+        Vec::<String>::new()
+    );
     assert_eq!(one(json!({"deny": ["Bash(bash:*)"]})), Vec::<String>::new());
-    for r in ["bash", "sh", "zsh", "fish", "dash", "env", "python", "python3", "node", "deno", "bun",
-        "bunx", "npx", "uvx", "perl", "ruby", "php", "eval", "exec", "xargs", "sudo"] {
-        assert_eq!(one(json!({"allow": [format!("Bash({r} -c x)")]})), ["allow"], "{r}");
+    for r in [
+        "bash", "sh", "zsh", "fish", "dash", "env", "python", "python3", "node", "deno", "bun",
+        "bunx", "npx", "uvx", "perl", "ruby", "php", "eval", "exec", "xargs", "sudo",
+    ] {
+        assert_eq!(
+            one(json!({"allow": [format!("Bash({r} -c x)")]})),
+            ["allow"],
+            "{r}"
+        );
     }
     for r in ["pnpm dlx x", "devbox run x"] {
-        assert_eq!(one(json!({"allow": [format!("Bash({r})")]})), ["allow"], "{r}");
+        assert_eq!(
+            one(json!({"allow": [format!("Bash({r})")]})),
+            ["allow"],
+            "{r}"
+        );
     }
-    assert_eq!(one(json!({"pre-tool-check": {"timeout-s": 121}})), ["pre-tool-check.timeout-s"]);
-    assert_eq!(one(json!({"pre-tool-check": {"timeout-s": 5}})), Vec::<String>::new());
+    assert_eq!(
+        one(json!({"pre-tool-check": {"timeout-s": 121}})),
+        ["pre-tool-check.timeout-s"]
+    );
+    assert_eq!(
+        one(json!({"pre-tool-check": {"timeout-s": 5}})),
+        Vec::<String>::new()
+    );
     assert_eq!(one(json!({"subagent-depth": 3})), Vec::<String>::new());
     assert_eq!(one(json!({"subagent-depth": 1000})), ["subagent-depth"]);
     assert_eq!(one(json!({"max-turns": 1001})), ["max-turns"]);
     assert_eq!(one(json!({"max-turns": -3})), ["max-turns"]);
     assert_eq!(one(json!({"max-budget-usd": 0})), ["max-budget-usd"]);
-    assert_eq!(one(json!({"json-schema": {"x": "y".repeat(70000)}})), ["json-schema"]);
-    assert_eq!(one(json!({"skills": [{"name": "a", "files": {"x": "y".repeat(1024 * 1024)}}]})), ["skills"]);
-    assert_eq!(one(json!({"subagents": [{"name": "a", "description": "d", "prompt": "p".repeat(65536)}]})), ["subagents"]);
+    assert_eq!(
+        one(json!({"json-schema": {"x": "y".repeat(70000)}})),
+        ["json-schema"]
+    );
+    assert_eq!(
+        one(json!({"skills": [{"name": "a", "files": {"x": "y".repeat(1024 * 1024)}}]})),
+        ["skills"]
+    );
+    assert_eq!(
+        one(json!({"subagents": [{"name": "a", "description": "d", "prompt": "p".repeat(65536)}]})),
+        ["subagents"]
+    );
     assert_eq!(one(json!({"tools": "Read"})), ["tools"]);
-    assert_eq!(one(json!({"fallback-models": ["a", "b", "c", "d"]})), Vec::<String>::new());
+    assert_eq!(
+        one(json!({"fallback-models": ["a", "b", "c", "d"]})),
+        Vec::<String>::new()
+    );
     assert_eq!(one(json!({"effort": "xhigh"})), Vec::<String>::new());
     assert_eq!(one(json!({"effort": "High"})), ["effort"]);
     for path in ["/etc/x", "a/../b", "..", "C:x", "\\x"] {
-        assert_eq!(one(json!({"skills": [{"name": "a", "files": {path: "y"}}]})), ["skills[0].files"], "{path}");
+        assert_eq!(
+            one(json!({"skills": [{"name": "a", "files": {path: "y"}}]})),
+            ["skills[0].files"],
+            "{path}"
+        );
     }
-    assert_eq!(one(json!({"skills": [{"name": "a-1", "files": {"a..b/./c": "y"}}]})), Vec::<String>::new());
-    assert_eq!(one(json!({"subagents": [{"name": "a", "description": "d", "prompt": "p".repeat(65534)}]})), Vec::<String>::new());
     assert_eq!(
-        one(json!({"tools": ["Read"], "subagents": [{"name": "a", "description": "d", "prompt": "p", "tools": ["Write"]}]})),
+        one(json!({"skills": [{"name": "a-1", "files": {"a..b/./c": "y"}}]})),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        one(json!({"subagents": [{"name": "a", "description": "d", "prompt": "p".repeat(65534)}]})),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        one(
+            json!({"tools": ["Read"], "subagents": [{"name": "a", "description": "d", "prompt": "p", "tools": ["Write"]}]})
+        ),
         ["subagents[0].tools"]
     );
 }
@@ -130,7 +205,10 @@ fn ac6_good_profile_round_trips_and_passes() {
     assert!(ps.is_empty(), "{ps:?}");
     assert!(refuse(&p, Backend::Claude, "claude-opus-5-5", None).is_empty());
     assert_eq!(serde_json::to_value(&p).unwrap(), doc);
-    assert_eq!(p.system_prompt, Some(SystemPrompt::Append("be brief".into())));
+    assert_eq!(
+        p.system_prompt,
+        Some(SystemPrompt::Append("be brief".into()))
+    );
     assert!(grammar_problems(&p).is_empty());
 }
 
@@ -145,25 +223,63 @@ fn ac5_wrong_types_keep_the_valid_fields() {
 fn ac5_rule_grammar_has_no_bypass() {
     for r in [
         // case, quotes, escapes, globs, expansions, assignments, redirections in the command name
-        "Bash(Python3 -c x)", "Bash(BASH -c x)", "Bash(\"python3\" -c x)", "Bash('sh' -c x)",
-        "Bash(\\python3 -c x)", "Bash(py\"\"thon3 -c x)", "Bash(FOO=1 python3:*)", "Bash(py*)",
-        "Bash(b*:*)", "Bash(sh<x)", "Bash(bash${IFS}-c:*)", "Bash($(echo python3):*)", "Bash(`x`:*)",
-        "Bash(*)", "Bash()", "Bash( :*)", "Bash(\tpython3 -c x)",
+        "Bash(Python3 -c x)",
+        "Bash(BASH -c x)",
+        "Bash(\"python3\" -c x)",
+        "Bash('sh' -c x)",
+        "Bash(\\python3 -c x)",
+        "Bash(py\"\"thon3 -c x)",
+        "Bash(FOO=1 python3:*)",
+        "Bash(py*)",
+        "Bash(b*:*)",
+        "Bash(sh<x)",
+        "Bash(bash${IFS}-c:*)",
+        "Bash($(echo python3):*)",
+        "Bash(`x`:*)",
+        "Bash(*)",
+        "Bash()",
+        "Bash( :*)",
+        "Bash(\tpython3 -c x)",
         // runners behind flags or aliases, and wrappers that run the next word
-        "Bash(npm x foo)", "Bash(npm --yes exec foo)", "Bash(npm:*)", "Bash(npm e*)",
-        "Bash(uv --quiet run x)", "Bash(uv tool run x)", "Bash(pnpm exec x)", "Bash(yarn dlx x)",
-        "Bash(command python3:*)", "Bash(nohup python3:*)", "Bash(timeout 5 python3:*)",
-        "Bash(time python3:*)", "Bash(ksh -c x)", "Bash(source x:*)", "Bash(. ./x:*)",
+        "Bash(npm x foo)",
+        "Bash(npm --yes exec foo)",
+        "Bash(npm:*)",
+        "Bash(npm e*)",
+        "Bash(uv --quiet run x)",
+        "Bash(uv tool run x)",
+        "Bash(pnpm exec x)",
+        "Bash(yarn dlx x)",
+        "Bash(command python3:*)",
+        "Bash(nohup python3:*)",
+        "Bash(timeout 5 python3:*)",
+        "Bash(time python3:*)",
+        "Bash(ksh -c x)",
+        "Bash(source x:*)",
+        "Bash(. ./x:*)",
         // a second rule smuggled past the parentheses, control characters
-        "Bash(git status:*\npython3 -c x)", "Read(x),Bash(python3:*)", "Read(x) Bash(python3:*)",
-        "Read(\\(x),Bash(python3:*))", "Read(x)\u{0}",
+        "Bash(git status:*\npython3 -c x)",
+        "Read(x),Bash(python3:*)",
+        "Read(x) Bash(python3:*)",
+        "Read(\\(x),Bash(python3:*))",
+        "Read(x)\u{0}",
         // names: case, lookalikes, odd MCP tools
-        "bash(git status)", "Rеad", "mcp__watane__a.b", "mcp__watane__a b", "mcp__other__x",
+        "bash(git status)",
+        "Rеad",
+        "mcp__watane__a.b",
+        "mcp__watane__a b",
+        "mcp__other__x",
     ] {
         assert_eq!(one(json!({"allow": [r]})), ["allow"], "{r:?}");
     }
-    for r in ["Bash(git status:*)", "Bash(npm test:*)", "Bash(npm run build)", "Bash(uv pip install:*)",
-        "Bash(cargo test)", "Bash(./scripts/fmt.sh)", "mcp__watane__ls_x-1(a)"] {
+    for r in [
+        "Bash(git status:*)",
+        "Bash(npm test:*)",
+        "Bash(npm run build)",
+        "Bash(uv pip install:*)",
+        "Bash(cargo test)",
+        "Bash(./scripts/fmt.sh)",
+        "mcp__watane__ls_x-1(a)",
+    ] {
         assert_eq!(one(json!({"allow": [r]})), Vec::<String>::new(), "{r:?}");
     }
     assert_eq!(one(json!({"deny": ["Read(x),Bash(y)"]})), ["deny"]);

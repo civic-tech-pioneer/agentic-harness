@@ -19,11 +19,17 @@ pub struct CatalogModel {
 const PATH_TOOLS: [&str; 6] = ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit"];
 
 fn is_path_rule(rule: &str) -> bool {
-    rule.split_once('(').is_some_and(|(name, _)| PATH_TOOLS.contains(&name))
+    rule.split_once('(')
+        .is_some_and(|(name, _)| PATH_TOOLS.contains(&name))
 }
 
 /// Applies the refuse table; every refusal is returned at once.
-pub fn refuse(p: &Profile, backend: Backend, model: &str, catalog: Option<&Catalog>) -> Vec<Refusal> {
+pub fn refuse(
+    p: &Profile,
+    backend: Backend,
+    model: &str,
+    catalog: Option<&Catalog>,
+) -> Vec<Refusal> {
     let mut o: Vec<Problem> = Vec::new();
     let mut add = |f: &str, r: &str| o.push(Problem::new(f, r));
     let model_valid = model_ok(model);
@@ -33,11 +39,20 @@ pub fn refuse(p: &Profile, backend: Backend, model: &str, catalog: Option<&Catal
     match backend {
         Backend::Claude => {
             if p.ask_expiry.is_some_and(|s| s != 600) {
-                add("ask-expiry", "Claude Code asks expire after 10 minutes (600 seconds) only");
+                add(
+                    "ask-expiry",
+                    "Claude Code asks expire after 10 minutes (600 seconds) only",
+                );
             }
-            let shell = p.tools.iter().any(|t| ["Bash", "WebFetch", "WebSearch"].contains(&t.as_str()));
+            let shell = p
+                .tools
+                .iter()
+                .any(|t| ["Bash", "WebFetch", "WebSearch"].contains(&t.as_str()));
             if shell && p.sandbox.is_none() {
-                add("sandbox", "tools with Bash, WebFetch or WebSearch need a sandbox (4.2)");
+                add(
+                    "sandbox",
+                    "tools with Bash, WebFetch or WebSearch need a sandbox (4.2)",
+                );
             }
         }
         Backend::Openai => {
@@ -53,17 +68,26 @@ pub fn refuse(p: &Profile, backend: Backend, model: &str, catalog: Option<&Catal
             if p.deny.iter().any(|r| is_path_rule(r)) {
                 add("deny", "a path rule is refused on openai");
             }
-            if p.mode.as_deref().is_some_and(|m| m != "manual" && m != "dont-ask") {
+            if p.mode
+                .as_deref()
+                .is_some_and(|m| m != "manual" && m != "dont-ask")
+            {
                 add("mode", "openai takes manual or dont-ask only");
             }
             for (i, s) in p.subagents.iter().enumerate() {
                 if !s.tools.is_empty() {
-                    add(&format!("subagents[{i}].tools"), "a subagent with tools is refused on openai");
+                    add(
+                        &format!("subagents[{i}].tools"),
+                        "a subagent with tools is refused on openai",
+                    );
                 }
             }
             for (i, s) in p.skills.iter().enumerate() {
                 if s.files.keys().any(|k| k != "SKILL.md") {
-                    add(&format!("skills[{i}].files"), "a skill with files besides SKILL.md is refused on openai");
+                    add(
+                        &format!("skills[{i}].files"),
+                        "a skill with files besides SKILL.md is refused on openai",
+                    );
                 }
             }
             if p.sandbox.is_some() {
