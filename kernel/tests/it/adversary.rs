@@ -209,3 +209,27 @@ fn adv_s3_allow_path_executable_hidden_behind_colon_passes() {
         "accepted rules whose command word is a path: {passed:?}"
     );
 }
+
+/// The sub-runner check pins the second word against `npm`'s `exec`/`x`, but npm resolves a
+/// unique abbreviation of a command name: `npm exe` is `npm exec` (checked with npm 10.9:
+/// `npm exe --offline -c 'echo PWNED'` prints `PWNED`). Now that `bash_words` reads the second
+/// word as Claude Code does, `Bash(npm exe:*)` (prefix `npm exe`) and `Bash(npm exe *)`
+/// (wildcard `^npm exe( .*)?$`) pass, and pre-approve `npm exe -c '<any shell>'`.
+#[test]
+fn adv_s3_allow_npm_exec_abbreviation_passes() {
+    let mut passed = Vec::new();
+    for r in ["Bash(npm exe:*)", "Bash(npm exe *)", "Bash(npm exe -c:*)"] {
+        if refusals(
+            json!({"tools": ["Bash"], "sandbox": {"enabled": true}, "allow": [r]}),
+            json!({}),
+        )
+        .is_empty()
+        {
+            passed.push(r);
+        }
+    }
+    assert!(
+        passed.is_empty(),
+        "accepted rules that run npm exec: {passed:?}"
+    );
+}
