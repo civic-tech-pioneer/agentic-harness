@@ -28,7 +28,7 @@ A has no consumer here at all: it is pure watane.
 
 ## In flight
 
-### S2: the agent layer's contract (in flight (cloud), routine ROUTINE)
+### S2: the agent layer's contract (in flight (cloud), routine trig_01D59fStFZruNVCJ2QeRNPpi)
 
 Story: a foreman of stage A or B (a coding agent) opens this repo and reads the agent layer's
 `VISION.md`, `FUNCTIONAL.md` and `TECHNICAL.md` as contracts: no draft marks, every open point
