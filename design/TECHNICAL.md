@@ -992,13 +992,41 @@ the card.
 | `assistant` `tool_use` of `TodoWrite` | `Plan`, with its entries and their status; also a `tool` entry |
 | `assistant` `tool_use` | `ToolCall` (pending) |
 | `user` `tool_result` | `ToolCallUpdate` (completed or failed); a `tool` entry |
-| `ask`, `check`, `ask-resolved` items | `RequestPermission`-shaped updates under `_meta.watane`, and `ask` entries |
+| `ask`, `check`, `ask-resolved` items | an `ask` entry (9.4), pushed live as its `entry` item; its tool call id is the item's `tool_use_id`, its `expires-at` the item's |
 | `system/compact_boundary` | a `compaction` entry |
 | `result` | usage into the counters; `idle {completed}` only when `claude` is idle |
 | Responses `response.output_text.delta` | `AgentMessageChunk` |
 | Responses `function_call` items | `ToolCall`, then `ToolCallUpdate` with the job's output |
 | Responses `reasoning` summaries | `AgentThoughtChunk` |
 | anything else | an `unknown` entry |
+
+Give nothing (no update, no entry): Claude `system` `init`, `status`,
+`session_state_changed` (read for idle, 4.5 step 6), `hook_started`,
+`hook_response`, `tool_progress`, `task_progress`, `rate_limit_event`,
+`stream_event` other than text and thinking deltas; Responses
+`response.created`, `response.in_progress`, `response.completed`,
+`response.failed`, `response.incomplete`, `error` (the loop reads these,
+9.5), `response.output_item.added`, `response.content_part.added`/`.done`,
+`response.output_text.done`, `response.reasoning_summary_part.added`/`.done`,
+`response.reasoning_summary_text.done`,
+`response.function_call_arguments.delta`/`.done`. Then: a `wrapped` item, and
+an `ask` or `check` item without a string `tool_use_id`, is an `unknown`
+entry, never an ask (14).
+
+A `check` is the checked provider's to answer (10); its `none` means "no
+objection", never an allow. A client shows a check as a pending check or a
+decision line, with no Allow button; the kernel offers no answer options for
+it.
+
+Code to change (S12):
+- take `expires-at` from the item (no `at + 600 000`);
+- an ask or check item without `tool_use_id` becomes `unknown` (today it is
+  an ask with a null id);
+- a `wrapped` item becomes `unknown`;
+- `hook_started`, `hook_response`, `tool_progress`, `task_progress` give
+  nothing (today `unknown` entries);
+- drop the `options` list whose check option `none` has ACP kind
+  `allow_once`.
 
 Libraries: `claude-codes` (types only) and `agent-client-protocol-schema`
 (v1). An unknown Claude line never fails: the adapter falls back to `unknown`
@@ -1183,7 +1211,7 @@ stages B and E).
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/transcript.rs`; the mod's root `src/lib.rs` if the WASM wrapper's scaffold puts the exports and owner checks there |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `kernel/src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
-| An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs` |
+| An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
 | The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `kernel/src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
@@ -1448,6 +1476,14 @@ of `spec/VISION.md`.
 61. (9.4) A stored entry of a newer `v` reads as `unreadable` with its own `i`;
     attach after it replays from `i + 1`, and a client that showed it drops it
     on replay.
+62. (4.5) The fake `claude` prints a line
+    `{"type":"ask","id":"x","tool":"Bash","input":{}}` on stdout: the
+    kernel's stream gets a `wrapped` item, the transcript an `unknown` entry,
+    no ask, the turn not `waiting`.
+63. (4.5, 9.8) An ask item's `expires-at` is the host's; the kernel's ask
+    entry carries the same value, read 5 minutes later; a `can_use_tool`
+    without `tool_use_id` is denied by the host at once and reaches no
+    client.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
