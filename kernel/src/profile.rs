@@ -199,9 +199,9 @@ const RUNNERS: [&str; 51] = [
 ];
 /// Commands whose subcommands below are runners; a rule must pin a plain other subcommand.
 const SUB_RUNNERS: [(&str, &[&str]); 5] = [
-    ("npm", &["exec", "x", "explore"]),
-    ("pnpm", &["dlx", "exec"]),
-    ("yarn", &["dlx", "exec"]),
+    ("npm", &["exec", "x", "explore", "init", "create", "innit"]),
+    ("pnpm", &["dlx", "exec", "create"]),
+    ("yarn", &["dlx", "exec", "create"]),
     ("uv", &["run", "tool"]),
     ("devbox", &["run"]),
 ];
