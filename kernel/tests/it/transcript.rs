@@ -381,6 +381,7 @@ fn ac2_check(max: u32) {
     let bi = Transcript::new(&mut st, "s", &mut meta)
         .append(&big, 1)
         .unwrap();
+    assert!(bi - 3 >= 12, "{} parts", bi - 3);
     fill(&mut st, &mut meta, 3, 5);
     let mut t = Transcript::new(&mut st, "s", &mut meta);
     let last = t.read(0, None, 1).last;
@@ -389,6 +390,7 @@ fn ac2_check(max: u32) {
     loop {
         let p = t.read(after, None, max);
         let Some(l) = p.entries.last() else { break };
+        assert!(idx(l) > after, "max {max}: stalled at after {after}");
         after = idx(l);
         for l in &p.entries {
             seen.push(idx(l));
@@ -404,6 +406,10 @@ fn ac2_check(max: u32) {
     while before > 1 {
         let p = t.read(0, Some(before), max);
         assert!(!p.entries.is_empty(), "max {max}");
+        assert!(
+            idx(&p.entries[0]) < before,
+            "max {max}: stalled at before {before}"
+        );
         before = idx(&p.entries[0]);
         for l in p.entries.iter().rev() {
             seen.push(idx(l));

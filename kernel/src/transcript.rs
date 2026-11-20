@@ -252,7 +252,8 @@ impl<'a, S: State> Transcript<'a, S> {
         }
     }
 
-    /// Moves `after` back to before the first part of the group it falls in.
+    /// For `replay` only: moves `after` back to before the first part of the group it falls in.
+    /// `read` takes `after` as given, so forward paging always makes progress (9.4).
     fn adjust(&mut self, after: u64, cache: &mut Cache) -> u64 {
         if after == 0 || after >= self.meta.last || self.meta.chunks.is_empty() {
             return after;
