@@ -48,9 +48,9 @@ describe("S9-1", () => {
     }
   });
 
-  it("ac2_diff_ask_hides_input_and_command_ask_keeps_it", () => {
+  it("ac2_diff_ask_shows_diff_and_input_and_command_ask_keeps_it", () => {
     const a = show(askOf("e", "edit", diff("a.ts", "x", "y"), { file_path: "a.ts" }));
-    expect(screen.getByRole("region").textContent).not.toContain("file_path");
+    expect(screen.getByRole("region").textContent).toContain("file_path");
     expect(screen.getByText("y").closest(".dl")).toHaveClass("add");
     a.unmount();
     show(askOf("b", "execute", [], { command: "git status" }));

@@ -56,6 +56,12 @@ describe("AC2 rows", () => {
     expect(v.rows[1]).toMatchObject({ kind: "decision", who: "alice", reason: "no" });
     expect((v.rows[1] as { what: string }).what).toContain("Denied");
   });
+  it("ac3_ask_toolcall_replaces_the_streamed_call_in_its_row", () => {
+    let v = feed([call("e", "edit"), entry(5, "ask", { toolCallId: "e", input: {}, expiresAt: 9,
+      toolCall: { toolCallId: "e", title: "Edit /real", kind: "edit", status: "pending", locations: [{ path: "/real" }],
+        content: [{ type: "diff", path: "/real", oldText: "", newText: "x" }] } })]);
+    expect(v.rows[0]).toMatchObject({ kind: "tool", call: { title: "Edit /real", locations: [{ path: "/real" }], content: [{ path: "/real" }] } });
+  });
   it("ac2_allow_and_verdict_are_decision_rows_and_allow_updates_allows", () => {
     let v = feed([entry(1, "allow", { id: "a1", reach: "edit src/**", given: true, by: "alice" })]);
     expect(v.allows).toEqual([{ id: "a1", reach: "edit src/**" }]);
