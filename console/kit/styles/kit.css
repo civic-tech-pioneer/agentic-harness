@@ -1,0 +1,38 @@
+/* TECHNICAL 18.2, 18.4: the kit's own styles for transcript rows and the status line; tokens come from the page. */
+.wa-transcript { display: flex; flex-direction: column; gap: 8px; }
+.wa-row { min-height: 44px; display: flex; flex-direction: column; justify-content: center; min-width: 0; overflow-wrap: anywhere; }
+.wa-user { align-self: flex-end; max-width: 85%; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); }
+.wa-agent { white-space: pre-wrap; }
+.wa-thought, .wa-explored { color: var(--muted); }
+.wa-fold { min-height: 36px; border-color: transparent; background: transparent; color: var(--muted); text-align: left; padding: 0 8px; }
+.wa-fold-label { margin: 0; font-weight: 600; }
+.wa-fold-body { white-space: pre-wrap; padding: 4px 8px; }
+.wa-tool { border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); overflow: hidden; }
+.wa-tool[data-status="failed"] { border-color: var(--danger); }
+.wa-tool[data-asking="true"] { border-color: var(--amber); }
+.wa-tool-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; border: 0; border-radius: 0; background: transparent; text-align: left; }
+.wa-tool-name { font-weight: 600; }
+.wa-tool-arg { font-family: var(--font-mono); font-size: 13px; overflow-wrap: anywhere; }
+.wa-tool-status { margin-left: auto; font-size: 12px; color: var(--muted); }
+.wa-tool-body { padding: 8px 12px 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.wa-args { margin: 0; font-size: 13px; }
+.wa-args div { display: flex; gap: 8px; }
+.wa-args dt { color: var(--muted); }
+.wa-args dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.wa-diff, .wa-output { margin: 0; padding: 8px; border-radius: 9px; background: var(--bg); font-family: var(--font-mono); font-size: 12.5px; overflow-x: auto; white-space: pre; }
+.wa-diff-line { display: block; }
+.wa-diff-mark { display: inline-block; width: 1.5em; color: var(--muted); user-select: none; }
+.wa-askbar, .wa-deny { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wa-decision, .wa-footer { margin: 0; font-size: 13px; color: var(--muted); }
+.wa-unknown { font-size: 13px; color: var(--muted); }
+
+.wa-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; padding: 0 4px; font-size: 14px; }
+.wa-status-word { font-weight: 600; }
+.wa-status-clock { color: var(--muted); font-variant-numeric: tabular-nums; }
+.wa-shape { display: inline-block; width: 12px; height: 12px; background: var(--accent); border-radius: 50%; }
+.wa-shape[data-shape="square"] { border-radius: 2px; }
+.wa-shape[data-shape="diamond"] { border-radius: 2px; transform: rotate(45deg) scale(0.85); background: var(--amber); }
+.wa-shape[data-shape="bars"] { background: linear-gradient(90deg, var(--ink) 0 35%, transparent 35% 65%, var(--ink) 65%); border-radius: 0; }
+.wa-shape[data-shape="ring"] { background: transparent; border: 2px solid var(--muted); }
+.wa-shape[data-shape="dashed-ring"] { background: transparent; border: 2px dashed var(--muted); }
+.wa-shape[data-shape="triangle"] { background: var(--danger); border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }

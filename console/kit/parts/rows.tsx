@@ -76,7 +76,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
     </>
   );
   return (
-    <section className="wa-tool" data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
+    <section className="wa-tool" data-call={call.id} data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
       <ToolCard head={head} open={call.status === "failed" || asking}>{body}</ToolCard>
     </section>
   );
