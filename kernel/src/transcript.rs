@@ -366,8 +366,9 @@ fn build_lines(e: &NewEntry, at: u64, first: u64) -> (Vec<String>, u64) {
     };
     let overhead = part(u64::MAX, usize::MAX, usize::MAX, "").len();
     let budget = ENTRY_BYTES - overhead;
+    // The part count grows with the digits of the last index; it only grows, so this ends.
     let mut m = 1usize;
-    for _ in 0..8 {
+    loop {
         let last = first + m as u64 - 1;
         let whole = entry_line(last, e, at);
         let mut slices: Vec<&str> = Vec::new();
@@ -382,7 +383,7 @@ fn build_lines(e: &NewEntry, at: u64, first: u64) -> (Vec<String>, u64) {
             used += w;
         }
         slices.push(&whole[start..]);
-        if slices.len() == m || m == 8 {
+        if slices.len() == m {
             let count = slices.len();
             let lines = slices
                 .iter()
@@ -393,7 +394,6 @@ fn build_lines(e: &NewEntry, at: u64, first: u64) -> (Vec<String>, u64) {
         }
         m = slices.len();
     }
-    unreachable!("the loop returns at m == 8 or earlier")
 }
 
 /// Joins the parts of 9.4 back into whole entries.
