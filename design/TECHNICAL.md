@@ -791,7 +791,7 @@ the change, and the section here it comes from.
 - [ ] `app/TECHNICAL.md` new section: the consent words and their storage (8).
 - [ ] `app/TECHNICAL.md` new section: the `claude` binary setting (4.4).
 - [ ] `app/TECHNICAL.md` new section: entering, showing (never the value) and removing the judge key and origin on the checked provider's manager page, with the origin shown next to the key and never prefilled, stored in `<home>/app/accounts/judge/<provider mod id>.json` and deleted when the provider is uninstalled (5, 10; N10).
-- [ ] `dev/TECHNICAL.md` new section: the fake `claude` and the scripted Responses server, which also serves a judge origin: it counts the requests that carry the judge account and plays a judge that answers safe, unsafe or unsure, is down, slow or unreadable (12, 16, 17).
+- [ ] `dev/TECHNICAL.md` new section: the fake `claude` and the scripted Responses server, which also serves a judge origin: it counts every request it receives and plays a judge that answers safe, unsafe or unsure, is down, slow or unreadable, or answers a redirect (12, 16, 17).
 - [ ] watane licence files: MIT OR Apache-2.0 for all of watane (13; N8).
 
 ## 16. Test plan
@@ -804,7 +804,7 @@ Integration tests are modules of one binary per subsystem
 |---|---|
 | Probes | `proto/claude-probes/probes.py` and `proto/agent-spike/chatgpt-probes.py` against the real programs, rerun after each `claude` update and before raising the minimum version |
 | Golden fixtures | recorded stream-json per `claude` version; recorded Responses streams; each mapped to entries and updates, compared to a stored result |
-| Fakes | dev's fake `claude` (scripted lines, asks, checks, a hook that errors or times out, a crash) and scripted Responses server (checks every request body, answers errors and usage limits); the same server also serves a judge origin: it counts the requests that carry the judge account and plays a judge that answers safe, unsafe or unsure, is down, slow or unreadable (the "scripted judge server" of cases 25, 32) |
+| Fakes | dev's fake `claude` (scripted lines, asks, checks, a hook that errors or times out, a crash) and scripted Responses server (checks every request body, answers errors and usage limits); the same server also serves a judge origin: it counts every request it receives and plays a judge that answers safe, unsafe or unsure, is down, slow or unreadable, or answers a redirect (the "scripted judge server" of cases 25, 32, 33) |
 | Hostile | one test per boundary of 14, as the attacker it names (the adversary step of a slice) |
 | Crash windows | kill the host at named points (after commit, before effect; mid-batch; mid-step) and restart for real; count effects, not return values |
 
@@ -886,7 +886,7 @@ stage: it shows only what is built.
 | B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 and AGT-J6 (Claude part) on the fake; cases 5, 6, 8–18, 27–31 |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`; AGT-J4 |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22 |
-| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page; the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33 |
+| E | The checked provider (needs a judge account, V7) | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33 |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24; N5 decided |
 
 ## 18. The console (C1)
