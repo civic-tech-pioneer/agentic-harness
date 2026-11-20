@@ -65,7 +65,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
         : c.type === "content" ? <ProgramOutput key={n} text={c.content.text} />
         : null)}
       {typeof call.rawOutput === "string" && !call.content.some((c) => c.type === "content") ? <ProgramOutput text={call.rawOutput} /> : null}
-      {asking ? <AskBar call={call} input={ask.input} actions={actions} /> : null}
+      {asking ? <AskBar call={call} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} /> : null}
     </>
   );
   const head = (
