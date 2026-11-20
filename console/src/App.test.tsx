@@ -4,8 +4,9 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fakeKernel } from "../fake/kernel";
 import { story } from "../fake/story";
-import { emptyView, type Actions, type SessionView } from "../kit";
-import { App, INFO } from "./App";
+import { decisionJson, emptyView, type Actions, type SessionView } from "../kit";
+import { App } from "./App";
+import { storyInfo as INFO } from "../fake/page";
 import { Header } from "./Header";
 import { Dock } from "./Dock";
 
@@ -21,7 +22,7 @@ const ready = () => screen.findByRole("button", { name: "Needs you (1)" });
 
 describe("the page", () => {
   it("ac1_app_shows_sidebar_header_rows_dock_on_the_played_story", async () => {
-    const { container } = render(<App kernel={played()} />);
+    const { container } = render(<App kernel={played()} info={INFO} />);
     await ready();
     const side = screen.getByRole("navigation", { name: "Sessions" });
     expect(within(side).getByText(INFO.title)).toBeInTheDocument();
@@ -41,7 +42,7 @@ describe("the page", () => {
   it("ac2_needs_you_scrolls_to_the_first_ask_and_focuses_allow_once", async () => {
     const scroll = vi.fn();
     Element.prototype.scrollIntoView = scroll;
-    render(<App kernel={played()} />);
+    render(<App kernel={played()} info={INFO} />);
     await userEvent.setup().click(await ready());
     expect(scroll).toHaveBeenCalled();
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Allow once" }));
@@ -49,7 +50,7 @@ describe("the page", () => {
 
   it("ac2_esc_in_the_input_stops_and_the_status_says_stopping_until_idle", async () => {
     const fake = played();
-    render(<App kernel={fake} />);
+    render(<App kernel={fake} info={INFO} />);
     await ready();
     await userEvent.setup().type(screen.getByRole("textbox", { name: "Message" }), "{Escape}");
     expect(fake.calls.some((c) => c.name === "interrupt")).toBe(true);
@@ -58,9 +59,19 @@ describe("the page", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Idle"));
   });
 
+  it("answers_reach_the_kernel_as_the_decision_json_of_technical_2_3", async () => {
+    const fake = played();
+    render(<App kernel={fake} info={INFO} />);
+    await ready();
+    await userEvent.setup().click(screen.getByRole("button", { name: /^Allow .+ this session$/ }));
+    expect(fake.calls.find((c) => c.name === "answer")?.args.slice(2)).toEqual(["e2", '{"allow":true,"for":"session"}']);
+    expect(decisionJson({ outcome: "allow" })).toBe('{"allow":true}');
+    expect(decisionJson({ outcome: "deny", reason: "not now" })).toBe('{"deny":true,"reason":"not now"}');
+  });
+
   it("ac2_enter_sends_through_the_kernel", async () => {
     const fake = played();
-    render(<App kernel={fake} />);
+    render(<App kernel={fake} info={INFO} />);
     await ready();
     await userEvent.setup().type(screen.getByRole("textbox", { name: "Message" }), "go on{Enter}");
     expect(fake.calls.find((c) => c.name === "say")?.args[2]).toBe("go on");
@@ -142,19 +153,19 @@ describe("header", () => {
 describe("reload", () => {
   it("ac4_a_fresh_app_on_the_same_fake_shows_the_same_rows_none_doubled", async () => {
     const fake = played();
-    const a = render(<App kernel={fake} />);
+    const a = render(<App kernel={fake} info={INFO} />);
     await ready();
     const before = rowsOf(a.container);
     expect(before.length).toBeGreaterThan(4);
     a.unmount();
-    const b = render(<App kernel={fake} />);
+    const b = render(<App kernel={fake} info={INFO} />);
     await ready();
     expect(rowsOf(b.container)).toEqual(before);
   });
 
   it("ac4_a_dropped_stream_reattaches_after_the_last_index_and_shows_the_same", async () => {
     const fake = played();
-    const a = render(<App kernel={fake} />);
+    const a = render(<App kernel={fake} info={INFO} />);
     await ready();
     const before = rowsOf(a.container);
     act(() => fake.drop());

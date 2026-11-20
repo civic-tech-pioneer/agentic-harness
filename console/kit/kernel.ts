@@ -12,6 +12,11 @@ export interface Kernel {
   takeBack(session: string, allow: string): Promise<void>;
 }
 
+/** TECHNICAL 2.3: the `decision` JSON of `answer`, `{allow | deny, for?: "session", reason?, input?}`: the outcome is a key of its own. */
+export function decisionJson(d: { outcome: "allow" | "deny"; for?: "session"; reason?: string }): string {
+  return JSON.stringify({ [d.outcome]: true, ...(d.for ? { for: d.for } : {}), ...(d.reason ? { reason: d.reason } : {}) });
+}
+
 const PAGE = 256;
 const RETRY_MS = 1000;
 

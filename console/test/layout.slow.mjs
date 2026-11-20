@@ -11,8 +11,8 @@ import assert from "node:assert/strict";
 const require = createRequire(import.meta.url);
 let playwright;
 try { playwright = require("playwright"); } catch {
-  console.log("SKIPPED test:slow: `playwright` cannot be required here (install it globally, or set NODE_PATH to it); the layout check in a real browser did not run.");
-  process.exit(0);
+  console.error("NOT RUN test:slow: `playwright` cannot be required here (install it globally, or set NODE_PATH to it); the layout check in a real browser did not run.");
+  process.exit(2);
 }
 
 const root = fileURLToPath(new URL("..", import.meta.url));
