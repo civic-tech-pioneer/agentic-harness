@@ -512,8 +512,8 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
   "inputs":[…]}` under `_meta.watane`.
 - `interrupt` ends the turn (`idle {interrupted}`), then starts the
   replacement if given. `cancel` ends the session's stream and handle, denies
-  open asks, cancels children. `delete` cancels, removes the entries and
-  wire history, keeps the keys.
+  open asks, cancels children. `delete` cancels, removes the entries,
+  the queue (`queue/<id>`) and wire history, keeps the keys.
 - Quota per owner: 64 sessions and 64 MiB by default (kernel settings).
 
 ### 9.4 Entries, transcripts, attach
@@ -1021,7 +1021,8 @@ of `spec/VISION.md`.
     one session, are open at once; every call gets exactly one output; a model
     request of another session still starts; after a restart the slot counts
     start from zero.
-40. (9.5) The three tests of case 2's new prefixes (cite case 2).
+40. (9.5, case 2) The three tests of case 2: trimming by the body budget, a
+    compaction and a summary restart each start one new prefix.
 41. (9.4) `read` with `before` gives the newest page first; paging back to
     index 0, then attaching after the newest index shown, shows every entry
     once; `last` is the high-water index.
