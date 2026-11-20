@@ -172,7 +172,7 @@ fn ac5_each_rule_alone() {
         );
     }
     assert_eq!(
-        one(json!({"skills": [{"name": "a-1", "files": {"a..b/./c": "y"}}]})),
+        one(json!({"skills": [{"name": "a-1", "files": {"a..b/c": "y"}}]})),
         Vec::<String>::new()
     );
     assert_eq!(
@@ -283,4 +283,99 @@ fn ac5_rule_grammar_has_no_bypass() {
         assert_eq!(one(json!({"allow": [r]})), Vec::<String>::new(), "{r:?}");
     }
     assert_eq!(one(json!({"deny": ["Read(x),Bash(y)"]})), ["deny"]);
+}
+
+#[test]
+fn ac3a_no_tools_serialize_as_an_empty_list() {
+    let (p, ps) = parse_profile(
+        &json!({"subagents": [{"name": "a", "description": "d", "prompt": "p"}]}).to_string(),
+    );
+    assert!(ps.is_empty(), "{ps:?}");
+    let v = serde_json::to_value(&p).unwrap();
+    assert_eq!(v["tools"], json!([]));
+    assert_eq!(v["subagents"][0]["tools"], json!([]));
+}
+
+#[test]
+fn ac3b_typed_structs_refuse_unknown_fields() {
+    use agent_kernel::{PreToolCheck, Skill, Subagent};
+    assert!(serde_json::from_str::<SystemPrompt>(r#"{"append":"x","extra":1}"#).is_err());
+    assert!(serde_json::from_str::<PreToolCheck>(r#"{"timeout-s":5,"x":1}"#).is_err());
+    assert!(serde_json::from_str::<Skill>(r#"{"name":"a","x":1}"#).is_err());
+    assert!(serde_json::from_str::<Subagent>(
+        r#"{"name":"a","description":"d","prompt":"p","x":1}"#
+    )
+    .is_err());
+}
+
+#[test]
+fn ac3c_duplicate_names_name_the_later_one() {
+    let sub = |n: &str| json!({"name": n, "description": "d", "prompt": "p"});
+    let (_, ps) = parse_profile(&json!({"subagents": [sub("a"), sub("b"), sub("a")]}).to_string());
+    assert_eq!(fields(&ps), ["subagents[2].name"]);
+    let (_, ps) = parse_profile(
+        &json!({"skills": [{"name": "s"}, {"name": "t"}, {"name": "s"}]}).to_string(),
+    );
+    assert_eq!(fields(&ps), ["skills[2].name"]);
+}
+
+fn skill_md(text: &str) -> Vec<agent_kernel::Problem> {
+    parse_profile(&json!({"skills": [{"name": "s", "files": {"SKILL.md": text}}]}).to_string()).1
+}
+
+#[test]
+fn ac3d_frontmatter_keeps_name_and_description_only() {
+    assert!(skill_md("no frontmatter\nallowed-tools: Bash").is_empty());
+    assert!(skill_md("---\nname: s\ndescription: d\n---\nbody").is_empty());
+    assert!(skill_md("---\nname: s\ndescription: >\n  long\n  text\n---\nbody").is_empty());
+    let ps = skill_md("---\nname: s\nhooks:\n  a: b\n---\nbody");
+    assert_eq!(fields(&ps), ["skills[0].files"]);
+    assert!(ps[0].reason.contains("hooks"), "{}", ps[0].reason);
+    assert_eq!(
+        fields(&skill_md("---\r\nallowed-tools: x\r\n---\r\n")),
+        ["skills[0].files"]
+    );
+}
+
+#[test]
+fn ac3e_skill_paths_are_plain_and_distinct() {
+    for path in ["./a", "a/./b", "a//b", "a/", "é", "a b", "a:b", "a*"] {
+        let (_, ps) =
+            parse_profile(&json!({"skills": [{"name": "s", "files": {path: "y"}}]}).to_string());
+        assert_eq!(fields(&ps), ["skills[0].files"], "{path}");
+    }
+    let (_, ps) = parse_profile(
+        &json!({"skills": [{"name": "s", "files": {"a/B.md": "1", "a/b.md": "2", "c_d-1.x": "3"}}]})
+            .to_string(),
+    );
+    assert_eq!(fields(&ps), ["skills[0].files"]);
+}
+
+#[test]
+fn ac3f_more_runners_and_find_exec() {
+    for r in [
+        "Bash(gawk:*)",
+        "Bash(mawk:*)",
+        "Bash(nawk:*)",
+        "Bash(busybox sh:*)",
+        "Bash(toybox sh)",
+        "Bash(setsid x)",
+        "Bash(ionice x)",
+        "Bash(chrt 1 x)",
+        "Bash(taskset 1 x)",
+        "Bash(unshare x)",
+        "Bash(flock f x)",
+        "Bash(watch x)",
+        "Bash(find . -exec:*)",
+        "Bash(find . -execdir sh)",
+        "Bash(find . -ok x)",
+        "Bash(find . -okdir x)",
+        "Bash(find:*)",
+        "Bash(find *)",
+    ] {
+        let (_, ps) = parse_profile(&json!({"allow": [r]}).to_string());
+        assert_eq!(fields(&ps), ["allow"], "{r}");
+    }
+    let (_, ps) = parse_profile(&json!({"allow": ["Bash(find . -name x)"]}).to_string());
+    assert!(ps.is_empty(), "{ps:?}");
 }

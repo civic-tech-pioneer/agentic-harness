@@ -217,3 +217,13 @@ fn ac1_a_typed_overlay_refuses_unknown_keys_too() {
     assert!(serde_json::from_str::<agent_kernel::Overlay>(r#"{"allow+":["Bash"]}"#).is_err());
     assert!(serde_json::from_str::<agent_kernel::Overlay>(r#"{"max-turns":3}"#).is_ok());
 }
+
+#[test]
+fn ac3a_overlay_may_empty_a_subagents_tools_and_it_stays_written() {
+    let (o, ps) = ov(json!({"tools-": ["Read", "Edit"]}));
+    assert!(ps.is_empty());
+    let (c, ps) = apply_overlay(&base(), &o);
+    assert!(ps.is_empty(), "{ps:?}");
+    let v = serde_json::to_value(&c).unwrap();
+    assert_eq!(v["subagents"][0]["tools"], json!([]));
+}
