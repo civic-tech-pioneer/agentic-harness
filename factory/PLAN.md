@@ -96,6 +96,37 @@ Protects: *core*. The PO compares it with the frames before acceptance.
 
 ## Sketched
 
+### S5: the performance review's must-dos in the contract (cloud, after S2 merges)
+
+Story: a foreman of stage A, B or D reads TECHNICAL and finds a bound for every size and wait the
+performance review (`research_notes/performance-review-2026-11-20.md`) found missing, each with
+the test case that proves it.
+Outcomes:
+1. P01 to P06 are rules in the documents that own them (TECHNICAL 3, 9.1, 9.3, 9.4, 9.5, 10, 16;
+   FUNCTIONAL where a requirement changes), each with its fix as the record states or a better one
+   named in the delivery.
+2. P15: TECHNICAL 17 gives each stage pass/fail budgets (p95 item delay, p95 Stop latency,
+   writer busy share, bytes per step), so "V8 measured" has a passing number.
+3. P13: `read` pages backwards (`before` cursor), so the console's "newest first" holds.
+4. Each new rule has a numbered case in TECHNICAL 16.
+Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Not the record.
+Leaves out: P07 to P12 (S6), P14 (S7). Protects: *core* (*guard* for P01, P02: a cap that holds).
+
+### S6: the review's should-dos P07 to P12 (cloud, after S5)
+
+Story and outcomes as S5, for P07 (active history after compaction), P08 (chunk rewrite cost),
+P09 (stream-to-session key), P10 (timer budget), P11 (host queue memory), P12 (kernel quota).
+Touches: `design/TECHNICAL.md`. Protects: *core*.
+
+### S7: the console stays fast on a long session (cloud, after S4 merges)
+
+Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
+presses Stop without lag (P14).
+Outcomes: the transcript is virtualized; at most one render per animation frame; code is
+highlighted once its block is complete and visible; a large-transcript fixture with limits for
+input, Stop and scroll latency runs in `npm test`.
+Touches: `console/`, `ui/`. Protects: *core*.
+
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
 Story: a maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on the Mac and sees, for the
@@ -113,6 +144,10 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 ## Done
 
 ## Deputy decisions
+
+- 2026-11-20 The performance review (68a27f3, another session, on the human's ask) becomes
+  slices S5 (must-dos P01-P06, P13, P15), S6 (P07-P12), S7 (P14, console). Its record and the
+  AGT-F-8 edit reach main with the PO's next push.
 
 - 2026-11-20 The human is away overnight (standing orders from the session that started this
   PO): no questions to the human until morning; the PO decides and records here.
