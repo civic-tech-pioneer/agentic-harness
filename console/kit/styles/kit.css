@@ -1,8 +1,8 @@
 /* TECHNICAL 18.2, 18.4: the kit's own styles for transcript rows and the status line; tokens come from the page. */
-.wa-transcript { --wa-ok: #1B7346; --wa-ok-bg: #E3F3EA; --wa-bad-bg: #FBE7E4; --wa-off-bg: #EEEEEA; --wa-code: #F2F2EF; --wa-add: rgba(27, 115, 70, .10); --wa-del: rgba(180, 35, 24, .08);
+.wa-transcript { --wa-ok: #1B7346; --wa-ok-bg: #E7F4EC; --wa-bad-bg: #FDECEA; --wa-off-bg: #ECECE9; --wa-code: #F1F1EE; --wa-add: rgba(27, 115, 70, .10); --wa-del: rgba(180, 35, 24, .08);
   display: flex; flex-direction: column; gap: 8px; }
 @media (prefers-color-scheme: dark) {
-  .wa-transcript { --wa-ok: #7FD1A0; --wa-ok-bg: #16301F; --wa-bad-bg: #3B1A18; --wa-off-bg: #2A2A2E; --wa-code: #19191C; --wa-add: rgba(127, 209, 160, .12); --wa-del: rgba(242, 146, 140, .12); }
+  .wa-transcript { --wa-ok: #6FD39E; --wa-ok-bg: #132A1E; --wa-bad-bg: #2E1615; --wa-off-bg: #26262A; --wa-code: #202024; --wa-add: rgba(127, 209, 160, .12); --wa-del: rgba(242, 146, 140, .12); }
 }
 .wa-row { min-height: 44px; display: flex; flex-direction: column; justify-content: center; min-width: 0; overflow-wrap: anywhere; }
 .wa-user { align-self: flex-end; max-width: 85%; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); }
@@ -33,7 +33,7 @@
 .wa-args dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; white-space: pre-wrap; }
 .wa-diff, .wa-output { margin: 0; padding: 8px; border-radius: 9px; background: var(--bg); font-family: var(--font-mono); font-size: 12.5px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .wa-diff.diff { border-radius: 0; background: var(--wa-code); line-height: 1.7; padding: 8px 0; }
-.dl { display: flex; white-space: pre; padding: 0 14px 0 0; }
+.dl { display: flex; white-space: pre-wrap; padding: 0 14px 0 0; }
 .dl .sg { flex: 0 0 28px; text-align: center; color: var(--muted); user-select: none; }
 .dl.add { background: var(--wa-add); }
 .dl.add .sg { color: var(--wa-ok); }
