@@ -26,7 +26,7 @@ afterAll(() => { if (ui) rmSync(ui, { recursive: true, force: true }); });
 /** Strings that load nothing, by explicit list. */
 const ALLOWED = ["http://www.w3.org/2000/svg", "http://www.w3.org/1999/xhtml", "http://www.w3.org/1998/Math/MathML", "http://www.w3.org/1999/xlink",
   "http://www.w3.org/XML/1998/namespace", "http://www.w3.org/2000/xmlns/", "https://react.dev/errors/", "https://react.dev/link/"];
-const ABS = String.raw`["'\`]\s*(?:https?:)?\/\/`;
+const ABS = String.raw`["'\`]\s*(?:https?:|wss?:)?\/\/`;
 
 type Kind = "html" | "css" | "js";
 const COMMON: [string, RegExp][] = [
@@ -37,6 +37,12 @@ const COMMON: [string, RegExp][] = [
   ["sendBeacon(", /\bsendBeacon\s*\(\s*["'`]\s*(?:https?:)?\/\//],
   ["Image().src", /\.src\s*=\s*["'`]\s*(?:https?:)?\/\//],
   ["WebAssembly", /WebAssembly/],
+  ["XMLHttpRequest", /XMLHttpRequest/],
+  ["global Function", /\b(?:globalThis|window|self|top|parent)\s*(?:\.\s*Function\b|\[\s*["'`]Function)/],
+  [".constructor(string)", /\.constructor\s*\.\s*constructor\b|\.constructor\s*\(\s*["'`]/],
+  ["navigation to an outside site", new RegExp(String.raw`\blocation(?:\.(?:href|assign|replace))?\s*(?:=(?!=)|\()\s*${ABS}`)],
+  ["window.open(", new RegExp(String.raw`\bopen\s*\(\s*${ABS}`)],
+  ["setAttribute src", new RegExp(String.raw`setAttribute\s*\(\s*["'](?:src|href|srcset|action|formaction|poster|data)["']\s*,\s*${ABS}`, "i")],
   ["<iframe", /<iframe/i], ["<frame", /<frame/i], ["<object", /<object/i], ["<embed", /<embed/i],
 ];
 const BY_KIND: Record<Kind, [string, RegExp][]> = {
@@ -44,7 +50,7 @@ const BY_KIND: Record<Kind, [string, RegExp][]> = {
     ["inline script", /<script(?![^>]*\bsrc=)[^>]*>/i],
     ["script with content", /<script[^>]*\bsrc=[^>]*>\s*[^<\s]/i],
     ["inline event handler", /<[a-z][^>]*\son[a-z]+\s*=/i],
-    ["absolute src/href", /\b(?:src|href)\s*=\s*["']?\s*(?:https?:)?\/\//i],
+    ["absolute src/href", /\b(?:src|href|srcset|action|formaction|poster)\s*=\s*["']?\s*(?:https?:|wss?:)?\/\//i],
     ["meta refresh", /<meta[^>]*http-equiv\s*=\s*["']?refresh/i],
   ],
   css: [

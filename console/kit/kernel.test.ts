@@ -1,5 +1,5 @@
 // TECHNICAL 9.4, 18.3: openSession against the fake kernel: reattach, reload, behind.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fakeKernel } from "../fake/kernel";
 import { story } from "../fake/story";
 import { openSession } from "./kernel";
@@ -117,5 +117,25 @@ describe("full story reload", () => {
     expect(fresh).toEqual(live);
     expect(fresh.turn).toMatchObject({ state: "waiting" });
     expect(fresh.plan).toHaveLength(3);
+  });
+});
+
+describe("S4-fix2 AC3 behind that cannot be paged", () => {
+  it("ac3_stuck_behind_waits_1s_between_attaches_and_stops_after_3_with_an_unknown_row", async () => {
+    vi.useFakeTimers();
+    try {
+      let attaches = 0;
+      const k = { async attach() { attaches++; return { behind: 0 }; }, read: async () => [], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
+      let last: SessionView | undefined;
+      const s = openSession(k, "s1", (v) => { last = v; });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(attaches).toBe(1);
+      await vi.advanceTimersByTimeAsync(600);
+      expect(attaches).toBe(2);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(attaches).toBe(3);
+      expect(last!.rows.filter((r) => r.kind === "unknown").length).toBeGreaterThan(0);
+      s.close();
+    } finally { vi.useRealTimers(); }
   });
 });
