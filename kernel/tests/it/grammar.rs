@@ -446,3 +446,25 @@ fn ac3f_more_runners_and_find_exec() {
     let (_, ps) = parse_profile(&json!({"allow": ["Bash(find . -name x)"]}).to_string());
     assert!(ps.is_empty(), "{ps:?}");
 }
+
+#[test]
+fn ac2_a_colon_is_only_the_trailing_wildcard_and_tilde_leads_nowhere() {
+    for r in [
+        "Bash(x:/run)",
+        "Bash(x:/run:*)",
+        "Bash(git:/tmp/x)",
+        "Bash(git:status)",
+        "Bash(~/bin/x)",
+        "Bash(~root/x:*)",
+    ] {
+        assert_eq!(one(json!({"allow": [r]})), ["allow"], "{r}");
+    }
+    for r in [
+        "Bash(git status:*)",
+        "Bash(git:*)",
+        "Bash(npm test)",
+        "Bash(ls ~)",
+    ] {
+        assert_eq!(one(json!({"allow": [r]})), Vec::<String>::new(), "{r}");
+    }
+}

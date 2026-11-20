@@ -528,15 +528,22 @@ fn plain(w: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"._+/~-".contains(&b))
 }
 
+/// The part of an allow `Bash(<arg>)` rule that names the command: one trailing `:*` removed,
+/// then split on whitespace only, as Claude Code reads it. Both checks below use it.
+fn bash_words(arg: &str) -> impl Iterator<Item = &str> + Clone {
+    arg.strip_suffix(":*").unwrap_or(arg).split_whitespace()
+}
+
 /// Why an allow `Bash(<arg>)` rule may run any code, if it may (4.1).
 fn runner_problem(arg: &str) -> Option<&'static str> {
     let low = arg.to_lowercase();
-    let mut words = low
-        .split(|c: char| c.is_whitespace() || c == ':')
-        .filter(|w| !w.is_empty());
+    let mut words = bash_words(&low);
     let Some(first) = words.next() else {
         return Some("allows any command");
     };
+    if first.contains('~') {
+        return Some("starts with a word that the shell expands to a path");
+    }
     if !plain(first) {
         return Some("does not start with a plain command name");
     }
@@ -608,11 +615,12 @@ fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
                 "rule {rule:?} has the character {c:?}, which the shell reads as more than a word"
             ));
         }
-        if arg.is_some_and(|a| {
-            a.split(|c: char| c.is_whitespace() || c == ':')
-                .find(|w| !w.is_empty())
-                .is_some_and(|w| w.contains('/'))
-        }) {
+        if arg.is_some_and(|a| a.strip_suffix(":*").unwrap_or(a).contains(':')) {
+            return Some(format!(
+                "rule {rule:?} in allow: a colon is only allowed as the trailing :*"
+            ));
+        }
+        if arg.is_some_and(|a| bash_words(a).next().is_some_and(|w| w.contains('/'))) {
             return Some(format!(
                 "rule {rule:?} starts with a path executable the agent may rewrite"
             ));
