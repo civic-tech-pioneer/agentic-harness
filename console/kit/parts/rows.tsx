@@ -69,7 +69,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
             {diffs > 1 || c.path !== path ? <div className="wa-diff-path">{c.path}</div> : null}
             <DiffView path={c.path} oldText={c.oldText} newText={c.newText} />
           </React.Fragment>)
-        : c.type === "content" ? <ProgramOutput key={n} text={c.content.text} />
+        : c.type === "content" && !asking ? <ProgramOutput key={n} text={c.content.text} />
         : null)}
       {!asking && typeof call.rawOutput === "string" && !call.content.some((c) => c.type === "content") ? <ProgramOutput text={call.rawOutput} /> : null}
       {asking ? <div className="wa-input"><div className="wa-input-label">Input</div><InputList input={ask.input} /></div> : null}
