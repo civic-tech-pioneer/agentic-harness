@@ -79,9 +79,23 @@ describe("Dock", () => {
     expect(document.querySelectorAll(".wa-tag").length).toBe(0);
   });
 
-  it("ac8_plan_fold_has_a_chevron", () => {
+  it("ac8_plan_fold_has_a_chevron_and_toggles", async () => {
     dock(V({ openAsks: ["a"], plan: [{ content: "x", status: "completed" }, { content: "y", status: "pending" }] }));
-    const b = screen.getByRole("button", { name: /Plan · 1 of 2 done/ });
+    const b = screen.getByRole("button", { name: "Plan · 1 of 2 done" });
     expect(b.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(b).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("y")).toBeNull();
+    const u = userEvent.setup();
+    await u.click(b);
+    expect(b).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("y")).toBeInTheDocument();
+    await u.click(b);
+    expect(b).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("ac8_open_plan_keeps_its_line", () => {
+    dock(V({ plan: [{ content: "x", status: "completed" }] }));
+    expect(screen.getByRole("button", { name: "Plan · 1 of 1 done" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("x")).toBeInTheDocument();
   });
 });
