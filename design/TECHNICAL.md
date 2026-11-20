@@ -387,8 +387,8 @@ and `.husky/**`. No launch can remove them.
   durability before the host applies it, whatever the durability of other
   calls (N4, the human, 2026-11-20: every commit keeps the host's full
   durability, one fsync per write; the proposal's per-batch option is not
-  built). V8 (stage A, 16 "Probes named here") measures the cost; whether to
-  change this is the human's then.
+  built). V8 (stage A, 16 "Probes named here") measures the cost and 16 "V8
+  record" keeps it; whether to change this is the human's then.
 - **Timers.** Per mod: ids of at most 128 bytes, at most 256 live, delays up
   to 30 days, stored in host state (`timers/<mod>/<id>` → due time). A due
   timer fires as a top-level call of the mod's `timer-sink.fired(id)`; one
@@ -701,7 +701,7 @@ when `claude-codes` cannot parse it.
 | `mismatch {field}` | claude-code outcome | 4.5 |
 | `slash-command`, `unknown-ask`, `not-allowed-here` | claude-session | 4.5 |
 | `consent-refused {what}` | any request outcome | 8 |
-| `consent-pending {what}` | what a request's requester gets once while a consent waits | 8 |
+| `consent-pending {what}` | any request, once, while a consent waits | 8 |
 | `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
@@ -822,7 +822,7 @@ of `spec/VISION.md`.
 | Id | What it checks | Run by | Result recorded in |
 |---|---|---|---|
 | V7 | latency of one judge check (`pre-tool-check`) on a real judge account | stage E, before the checked provider is built | `ARCHITECTURE-PROPOSAL.md` section 18 |
-| V8 | the stage A prototype through three layers (host stream, a mod consumer, a page consumer): order, delay and the cost of one fsync per commit (7, N4) | stage A | the "V8 record" section of `factory/PLAN.md` (numbers; whether to change 7 is the human's) |
+| V8 | the stage A prototype through three layers (host stream, a mod consumer, a page consumer): order, delay and the cost of one fsync per commit (7, N4) | stage A | "V8 record", at the end of this section (numbers; whether to change 7 is the human's) |
 | V26 | whether a subagent prompt that starts with `/` runs a skill (14) | slice S1 | `ARCHITECTURE-PROPOSAL.md` section 18 |
 | V27 | whether the shell grant's sandbox blocks loopback (14) | slice S1 | `ARCHITECTURE-PROPOSAL.md` section 18 |
 
@@ -892,6 +892,10 @@ of `spec/VISION.md`.
     `openai` or `judge`, and a redirect are each refused before a byte leaves;
     a removed key gives `no-account`.
 
+**V8 record.** Empty until stage A fills it: the numbers of V8 (order and
+delay through the three layers, the cost of one fsync per commit), the date
+and the machine. Whether to change 7 is the human's.
+
 ## 17. Build plan
 
 Each stage is one or more vertical slices; each works before the next
@@ -902,8 +906,8 @@ stage: it shows only what is built.
 
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
-| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; V8 measured and recorded |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake up to the consent (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`) |
+| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; V8 measured and recorded in 16, "V8 record" |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`) |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent` |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22 |
 | E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking` |
