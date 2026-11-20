@@ -121,7 +121,7 @@ describe("full story reload", () => {
 });
 
 describe("S4-fix2 AC3 behind that cannot be paged", () => {
-  it("ac3_stuck_behind_waits_1s_between_attaches_and_stops_after_3_with_an_unknown_row", async () => {
+  it("ac3_stuck_behind_backs_off_1s_2s_4s_and_stops_after_5_with_an_unknown_row", async () => {
     vi.useFakeTimers();
     try {
       let attaches = 0;
@@ -132,9 +132,17 @@ describe("S4-fix2 AC3 behind that cannot be paged", () => {
       expect(attaches).toBe(1);
       await vi.advanceTimersByTimeAsync(600);
       expect(attaches).toBe(2);
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(1_000); // t=2.1 s: 2nd wait is 2 s, ends at 3 s
+      expect(attaches).toBe(2);
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(attaches).toBe(3);
-      expect(last!.rows.filter((r) => r.kind === "unknown" && String(r.raw).includes("not past the last index"))).toHaveLength(3);
+      await vi.advanceTimersByTimeAsync(3_000); // 4 s wait ends at 7 s
+      expect(attaches).toBe(3);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(attaches).toBe(4);
+      await vi.advanceTimersByTimeAsync(100_000);
+      expect(attaches).toBe(5);
+      expect(last!.rows.filter((r) => r.kind === "unknown" && String(r.raw).includes("not past the last index"))).toHaveLength(5);
       s.close();
     } finally { vi.useRealTimers(); }
   });
@@ -151,6 +159,113 @@ describe("S4-fix2 AC3 behind that cannot be paged", () => {
         expect(reads).toBe(0);
         expect(last!.rows.some((r) => r.kind === "unknown" && String(r.raw).includes("not an index"))).toBe(true);
       }
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("S4-fix3 AC2 reattach policy", () => {
+  const mk = (onAttach: (n: number, on: (j: string) => void, end: (r: string) => void) => Promise<{ ok: true } | { behind: number }>) => {
+    const c = { attaches: 0 };
+    const k = { async attach(_s: string, _a: number, on: (j: string) => void, end: (r: string) => void) { c.attaches++; return onAttach(c.attaches, on, end); },
+      read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
+    return { c, k };
+  };
+  it("ac2_end_right_after_ok_waits_1s_then_2s", async () => {
+    vi.useFakeTimers();
+    try {
+      const { c, k } = mk(async (_n, _on, end) => { queueMicrotask(() => end("consumer-failed")); return { ok: true }; });
+      const s = openSession(k, "s1", () => {});
+      await vi.advanceTimersByTimeAsync(900);
+      expect(c.attaches).toBe(1);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(c.attaches).toBe(2);
+      await vi.advanceTimersByTimeAsync(1_800);
+      expect(c.attaches).toBe(2);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(c.attaches).toBe(3);
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
+  it("ac2_end_after_synced_reattaches_at_once_and_only_once_then_waits_and_resets", async () => {
+    vi.useFakeTimers();
+    try {
+      const synced = JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } });
+      const { c, k } = mk(async (n, on, end) => {
+        if (n === 1) queueMicrotask(() => { on(synced); end("idle-timeout"); });
+        else queueMicrotask(() => end("idle-timeout"));
+        return { ok: true };
+      });
+      const s = openSession(k, "s1", () => {});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(c.attaches).toBe(2); // at once, once
+      await vi.advanceTimersByTimeAsync(900);
+      expect(c.attaches).toBe(2);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(c.attaches).toBe(3);
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
+  it("ac2_stream_that_ends_five_times_without_sync_stops_with_an_unknown_row", async () => {
+    vi.useFakeTimers();
+    try {
+      const { c, k } = mk(async (_n, _on, end) => { queueMicrotask(() => end("lost-grant")); return { ok: true }; });
+      let last: SessionView | undefined;
+      const s = openSession(k, "s1", (v) => { last = v; });
+      await vi.advanceTimersByTimeAsync(200_000);
+      expect(c.attaches).toBe(5);
+      expect(last!.rows.some((r) => r.kind === "unknown" && String(r.raw).includes("lost-grant"))).toBe(true);
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
+  it("ac2_failed_attach_backs_off_and_a_sync_resets_the_count", async () => {
+    vi.useFakeTimers();
+    try {
+      const synced = JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } });
+      const { c, k } = mk(async (n, on) => {
+        if (n <= 3) throw new Error("down");
+        if (n === 4) { on(synced); return { ok: true }; }
+        throw new Error("down");
+      });
+      const s = openSession(k, "s1", () => {});
+      await vi.advanceTimersByTimeAsync(1_000 + 2_000 + 4_000 + 10);
+      expect(c.attaches).toBe(4);
+      // reset by the sync of attach 4: the next failure waits 1 s again (no further end here, so force one)
+      s.close();
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("S4-fix3 AC3 old connection", () => {
+  it("ac3_late_end_timer_and_page_of_an_old_connection_leave_the_new_view_alone", async () => {
+    vi.useFakeTimers();
+    try {
+      const ends: Array<(r: string) => void> = [];
+      let release!: (p: string[]) => void;
+      let n = 0;
+      const k = {
+        async attach(_s: string, _a: number, _on: (j: string) => void, end: (r: string) => void) {
+          n++; ends.push(end);
+          if (n === 1) return { behind: 1 };
+          return { ok: true } as const;
+        },
+        read: () => new Promise<string[]>((r) => { release = r; }),
+        say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+      };
+      const views: SessionView[] = [];
+      const s = openSession(k, "s1", (v) => views.push(v));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(n).toBe(1); // old connection waits on its page
+      ends[0]("consumer-failed"); // its end fires: schedules a retry (1 s)
+      await vi.advanceTimersByTimeAsync(1_100);
+      expect(n).toBe(2); // new connection
+      const shown = views.length;
+      release([JSON.stringify({ i: 0, type: "x" })]); // old page lands late
+      await vi.advanceTimersByTimeAsync(10);
+      ends[0]("again");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(views.length).toBe(shown);
+      expect(n).toBe(2);
+      s.close();
     } finally { vi.useRealTimers(); }
   });
 });
