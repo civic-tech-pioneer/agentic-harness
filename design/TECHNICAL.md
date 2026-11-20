@@ -650,7 +650,9 @@ An entry is JSON:
   loop state keeps a step's calls not yet started (`pending`); they start in
   waves as job slots free. A request that finds no request slot waits in
   `ready` in the FIFO. Every `ended` of a kernel-consumed stream frees its
-  slot and starts the oldest waiting work in the same call. The restart pass
+  slot and starts the oldest waiting work whose session and owner are under
+  their caps in the same call; work at a cap stays in the FIFO and never
+  blocks another owner's. The restart pass
   that writes `unknown` (9.3) sets the counts to zero (streams are memory
   only, 3).
 - **Parallel:** the jobs of a step start together, up to the free job slots,
@@ -725,7 +727,7 @@ when `claude-codes` cannot parse it.
 - **Checked:** it forwards every item unchanged, answers every `check`
   (`none` when safe, `deny` otherwise), judges every `ask` and input, and
   pushes each verdict as an item
-  `{"type":"verdict","on":<ask or check id>,"verdict":…,"reasons":[…]}`. No
+  `{"type":"verdict","on":<on>,"verdict":…,"reasons":[…]}` (`on`: step 3). No
   call of it waits for the judge, so no call nears its budget. Its sequence:
   1. `start` checks the caller (2.2), checks the launch's form, opens its own
      stream to the kernel, calls `claude-code.start` with `pre-tool-check` and
@@ -761,9 +763,9 @@ when `claude-codes` cannot parse it.
      at a time in order; it returns at once, and the input reaches `claude`
      only after its safe verdict.
   6. A `check` is judged the same way and answered by `claude-session.answer`:
-     `none` when safe, `deny` after an unsafe verdict, an unreadable one, an
-     error or the deadline. An `ask` is answered only with `deny` (unsafe,
-     unsure, error, deadline); a safe verdict lets the ask go on to the kernel
+     `none` when safe, `deny` after an unsafe or unsure verdict, an unreadable
+     one, an error or the deadline. An `ask` is answered only with `deny` (unsafe,
+     unsure, unreadable, error, deadline); a safe verdict lets the ask go on to the kernel
      unanswered, and the kernel's broker and the owner decide (9.6). So "safe"
      never widens the mode. An owner's `allow` to an ask whose verdict is
      pending is forwarded only after a safe verdict; after an unsafe one the
@@ -788,7 +790,7 @@ when `claude-codes` cannot parse it.
 - **Breaker:** 3 denials in a row or 10 of the last 50: `interrupt`, and a
   verdict item that says why. Every verdict item carries `denials-in-a-row`.
 - **Checking:** before each judge call the provider pushes
-  `{"type":"checking","on":<ask or check id>}`; the kernel shows it as the
+  `{"type":"checking","on":<on>}`; the kernel shows it as the
   activity `checking` (9.3) until the verdict.
 - **Settings** (judge URL, thresholds) only from its own page, in its state.
   The provider holds no key: the host keeps it as the account `judge`, entered
@@ -875,7 +877,7 @@ stages B and E).
 | A mod cannot widen `claude` past its launch | 4.1 grammar and one argument per value; `--restricted`; fixed flags; closed subagent keys; the host owns stdin (4.5); `initialize` and `init` checks | watane `host/src/agent/claude/launch.rs`, `init.rs`, `control.rs`, `run.rs` |
 | A mod cannot run a denied skill by name | `slash-command` (4.5) | watane `host/src/agent/claude/control.rs` |
 | A failing check cannot let a tool run | `onFailure: block` confirmed in `initialize` (4.5) | watane `host/src/agent/claude/init.rs`, `control.rs`; checked provider's `mod.toml`, `src/judge.rs` |
-| "Safe" cannot widen the mode | checks answer `none` or `deny`, never `allow` (4.5) | watane `host/src/agent/claude/control.rs`; checked provider's `src/judge.rs` |
+| "Safe" cannot widen the mode | checks answer `none` or `deny`, never `allow` (4.5); the checked provider answers an ask only `deny`, a safe ask goes to the owner (10) | watane `host/src/agent/claude/control.rs`; checked provider's `src/judge.rs` |
 | Writes cannot plant code that runs later | protected paths (4.3) | watane `host/src/agent/claude/run.rs` (the host's `--settings=`) |
 | No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
