@@ -1,6 +1,6 @@
 // S4-fix5: one rate governor for attach and read, and short pages read on.
 import { describe, expect, it, vi } from "vitest";
-import { openSession, type Kernel } from "./kernel";
+import { governor, openSession, type Kernel } from "./kernel";
 import type { SessionView } from "./model";
 
 const entry = (i: number) => JSON.stringify({ v: 1, i, kind: "message", at: i, body: { role: "user", content: [{ type: "text", text: `m${i}` }] } });
@@ -31,9 +31,27 @@ describe("S4-fix5", () => {
       let last: SessionView | undefined;
       const s = openSession(k, "s", (v) => { last = v; });
       await vi.advanceTimersByTimeAsync(2000);
-      expect(last!.rows.map((r) => r.key)).toHaveLength(300);
+      expect(last!.rows.map((r) => JSON.stringify(r).match(/m\d+/)![0])).toEqual(Array.from({ length: 300 }, (_, n) => `m${n + 1}`));
       expect(last!.lastIndex).toBe(300);
       s.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("ac2_a_thousand_reads_at_once_are_paced_and_all_complete", async () => {
+    vi.useFakeTimers();
+    try {
+      const g = governor();
+      let made = 0;
+      for (let n = 0; n < 1000; n++) void g.take().then(() => { made++; });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(made).toBeLessThanOrEqual(8);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(made).toBeLessThanOrEqual(12);
+      await vi.advanceTimersByTimeAsync(9000);
+      expect(made).toBeLessThanOrEqual(8 + 4 * 10);
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(made).toBe(1000);
+      g.stop();
     } finally { vi.useRealTimers(); }
   });
 });

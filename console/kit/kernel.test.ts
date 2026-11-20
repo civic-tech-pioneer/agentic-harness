@@ -425,13 +425,12 @@ describe("S4-fix4 AC2 page budget", () => {
       };
       let last: SessionView | undefined;
       const s = openSession(k, "s1", (v) => { last = v; });
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(750); // the governor (S4-fix5) lets 8 calls through at once, then 4 per second
       expect(attaches).toBe(1);
-      expect(reads).toBe(1); // S4-fix5: a one-entry page that stops short of its range ends the episode at once
-      await vi.advanceTimersByTimeAsync(200_000);
-      expect(attaches).toBe(5); // through fail(): 1, 2, 4, 8 s, then the stop
-      expect(reads).toBe(5); // one read per episode
-      expect(last!.rows.some((r) => r.kind === "unknown")).toBe(true);
+      expect(reads).toBe(10); // each page adds one index in range, read one after the other at the governor's pace
+      await vi.advanceTimersByTimeAsync(100_000);
+      expect(reads).toBeLessThanOrEqual(8 + 4 * 100.75); // S4-fix5: short pages are read on, the governor is the pace
+      expect(last!.rows.length).toBeGreaterThan(10);
       s.close();
     } finally { vi.useRealTimers(); }
   });

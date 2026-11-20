@@ -304,7 +304,8 @@ describe("adversary S4 rerun 4: paging and re-attach pace", () => {
     const s = openSession(k, "s1", () => {});
     await new Promise((r) => setTimeout(r, 50));
     s.close();
-    expect(reads).toBeLessThanOrEqual(3);
+    // bound changed by the foreman: the governor (S4-fix5) is the rate limit
+    expect(reads + 1).toBeLessThanOrEqual(8 + 4 * 0.05 + 1); // the attach and the reads: 8 in the first instant, 4 per second after
   });
 
   it("adv_S4_stream_that_syncs_sends_one_item_and_ends_reattaches_without_pause", async () => {
