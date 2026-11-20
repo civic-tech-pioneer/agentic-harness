@@ -549,10 +549,10 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
         if low.contains('*') {
             return Some("allows any further arguments, such as -exec");
         }
-        if rest
-            .iter()
-            .any(|w| ["-exec", "-execdir", "-ok", "-okdir"].contains(w))
-        {
+        if rest.iter().any(|w| {
+            let w = w.replace(['\'', '"', '\\'], "");
+            ["-exec", "-execdir", "-ok", "-okdir"].contains(&w.as_str())
+        }) {
             return Some("runs commands with -exec or -ok");
         }
     }
@@ -623,13 +623,22 @@ fn extra_frontmatter_key(text: &str) -> Option<String> {
     if lines.next()?.trim_end() != "---" {
         return None;
     }
+    // The first key's indent is the top level (YAML lets the whole mapping be indented); a
+    // line indented deeper continues the key above it.
+    let mut top = None;
     for line in lines {
         if line.trim_end() == "---" {
             return None;
         }
-        if line.is_empty() || line.starts_with([' ', '\t', '#', '-']) {
+        let body = line.trim_start_matches([' ', '\t']);
+        if body.is_empty() || body.starts_with(['#', '-']) {
             continue;
         }
+        let indent = line.len() - body.len();
+        if indent > *top.get_or_insert(indent) {
+            continue;
+        }
+        let line = body;
         let key = line.split(':').next().unwrap_or(line);
         let key = key.trim().trim_matches(['"', '\'']);
         if !["name", "description"].contains(&key) || !line.contains(':') {
