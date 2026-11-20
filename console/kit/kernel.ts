@@ -1,5 +1,6 @@
 // TECHNICAL 2.3, 9.4, 18.3: the kernel as a page sees it, and the attach / behind / read / reattach loop.
 import { emptyView, type SessionView } from "./model";
+import { parse } from "./wire";
 import { safeReduce, settle, withUnknown } from "./reduce";
 
 export interface Kernel {
@@ -21,6 +22,7 @@ const PAGE = 256;
 const RETRY_MS = 1000;
 const MAX_DELAY_MS = 30_000;
 const MAX_TRIES = 5;
+const STABLE_MS = 10_000;
 
 /** Opens a session: attaches after the last index shown, pages when behind, reattaches when the stream drops. */
 export function openSession(kernel: Kernel, session: string, onView: (v: SessionView) => void): { close(): void } {
@@ -31,6 +33,9 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   let tries = 0;
   /** The last attach was the immediate reattach after a synced stream: the next one waits. */
   let quick = false;
+  /** Fires when a synced stream has stayed open 10 s: only then does the try count reset. */
+  let stable: ReturnType<typeof setTimeout> | undefined;
+  const healthy = () => { tries = 0; quick = false; };
 
   const fetching = new Set<number>();
   /** Reads entry n back for its `~p<n>` row: once if it is read, at most 3 times (1 s apart) if the read fails. */
@@ -56,7 +61,7 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
     }
   };
 
-  /** Pages in the entries before `through`; returns the cause when a page makes no progress. */
+  /** Pages in the entries before `through`, newest page first; a page that adds no index inside its range fails. */
   async function pageIn(g: number, through: number): Promise<string | undefined> {
     const base = view;
     const pages: string[][] = [];
@@ -69,11 +74,14 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
       const page = await kernel.read(session, lo, hi - lo);
       if (closed || g !== gen) return undefined;
       if (!page.length) return "the kernel returned no entries for a page it is behind on";
+      if (!page.some((e) => { const m = parse(e); return "i" in m && typeof m.i === "number" && m.i > lo && m.i <= hi; }))
+        return "the kernel returned a page that adds no entry inside the range it asked for";
       pages.unshift(page);
       hi = lo;
-      show(pages.flat().reduce(safeReduce, base));
+      if (pages.length === 1) show(page.reduce(safeReduce, base)); // the newest page shows at once; the whole is reduced once below
     }
     if (closed || g !== gen) return undefined;
+    show(pages.flat().reduce(safeReduce, base));
     if (view.lastIndex < through) throw new Error("the kernel's pages stop short of its own `behind`");
     return undefined;
   }
@@ -98,10 +106,17 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
         const r = await kernel.attach(session, view.lastIndex,
           (json) => {
             if (g !== gen || closed) return;
+            const was = view.synced;
             show(safeReduce(view, json));
-            if (view.synced) { reached = true; tries = 0; }
+            if (was) healthy();
+            else if (view.synced) {
+              reached = true;
+              if (stable) clearTimeout(stable);
+              stable = setTimeout(() => { if (!closed && g === gen) healthy(); }, STABLE_MS);
+            }
           },
           (reason) => {
+            if (stable) clearTimeout(stable);
             if (g !== gen || closed || reason === "replaced") return;
             if (reached && !quick) { quick = true; void connect(); }
             else fail(g, `the stream ended (${reason}) ${reached ? "again right after it synced" : "before it synced"}`);
@@ -121,5 +136,5 @@ export function openSession(kernel: Kernel, session: string, onView: (v: Session
   }
 
   void connect();
-  return { close() { closed = true; gen++; if (timer) clearTimeout(timer); } };
+  return { close() { closed = true; gen++; if (timer) clearTimeout(timer); if (stable) clearTimeout(stable); } };
 }
