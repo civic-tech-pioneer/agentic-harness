@@ -206,20 +206,16 @@ const PACKAGE_RUNNERS: [(&str, &[&str]); 5] = [
     (
         "npm",
         &[
-            "install", "i", "ci", "test", "run", "ls", "list", "audit", "outdated",
+            "install", "i", "ci", "test", "ls", "list", "audit", "outdated",
         ],
     ),
     (
         "pnpm",
-        &[
-            "install", "add", "test", "run", "list", "ls", "audit", "outdated",
-        ],
+        &["install", "add", "test", "list", "ls", "audit", "outdated"],
     ),
     (
         "yarn",
-        &[
-            "install", "add", "test", "run", "list", "ls", "audit", "outdated",
-        ],
+        &["install", "add", "test", "list", "ls", "audit", "outdated"],
     ),
     (
         "uv",
@@ -586,7 +582,8 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
         }
     }
     if let Some((_, subs)) = PACKAGE_RUNNERS.iter().find(|(c, _)| *c == base) {
-        if !words.next().is_some_and(|s| subs.contains(&s)) {
+        // Options after the subcommand name a program to run (`--script-shell`, `--python`).
+        if !words.next().is_some_and(|s| subs.contains(&s)) || words.any(|w| w.starts_with('-')) {
             return Some("allows an interpreter or runner prefix");
         }
     }
