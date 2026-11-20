@@ -1,0 +1,17 @@
+[package]
+name = "stream-cost-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+watane-host = { path = "../../../../watane/host" }
+serde_json = "1"
+tokio = { version = "1.53", features = ["rt-multi-thread"] }
+tempfile = "3"
+redb = "4.5"
+
+[profile.release]
+debug = false

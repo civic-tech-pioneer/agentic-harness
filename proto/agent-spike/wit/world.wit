@@ -1,0 +1,26 @@
+package spike:agent@0.1.0;
+
+/// A stand-in for WIT calls into other mods: the host answers.
+interface tools {
+  call: func(name: string, arguments: string) -> result<string, string>;
+}
+
+/// One agent event as it happens: an ACP `SessionUpdate`, as JSON.
+interface events {
+  emit: func(update: string);
+}
+
+world agent {
+  import tools;
+  import events;
+
+  /// OpenAI on the ChatGPT plan: one prompt to the end, with the tool loop.
+  /// The host adds the bearer token; this component never sees it.
+  export openai: func(model: string, prompt: string) -> result<string, string>;
+
+  /// Claude Code: one stream-json line of `claude -p`, mapped to ACP updates.
+  export claude-line: func(line: string) -> result<list<string>, string>;
+
+  /// Hostile-guest test: any request this code chooses; the HTTP status or the error.
+  export probe: func(url: string, headers: list<tuple<string, string>>) -> result<u16, string>;
+}
