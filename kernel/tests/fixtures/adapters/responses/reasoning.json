@@ -1,0 +1,113 @@
+{
+  "row": "Responses `reasoning` summaries",
+  "input": [
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.reasoning_summary_part.added",
+        "sequence_number": 1,
+        "item_id": "rs_0a1b2c3d4e5f6071",
+        "output_index": 0,
+        "summary_index": 0,
+        "part": {
+          "type": "summary_text",
+          "text": ""
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.reasoning_summary_text.delta",
+        "sequence_number": 2,
+        "item_id": "rs_0a1b2c3d4e5f6071",
+        "output_index": 0,
+        "summary_index": 0,
+        "delta": "Checking "
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.reasoning_summary_text.delta",
+        "sequence_number": 3,
+        "item_id": "rs_0a1b2c3d4e5f6071",
+        "output_index": 0,
+        "summary_index": 0,
+        "delta": "the files."
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.reasoning_summary_text.done",
+        "sequence_number": 4,
+        "item_id": "rs_0a1b2c3d4e5f6071",
+        "output_index": 0,
+        "summary_index": 0,
+        "text": "Checking the files."
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.reasoning_summary_part.done",
+        "sequence_number": 5,
+        "item_id": "rs_0a1b2c3d4e5f6071",
+        "output_index": 0,
+        "summary_index": 0,
+        "part": {
+          "type": "summary_text",
+          "text": "Checking the files."
+        }
+      }
+    },
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_item.done",
+        "sequence_number": 6,
+        "output_index": 0,
+        "item": {
+          "id": "rs_0a1b2c3d4e5f6071",
+          "type": "reasoning",
+          "summary": [
+            {
+              "type": "summary_text",
+              "text": "Checking the files."
+            }
+          ],
+          "encrypted_content": "gAAAAABo_ZmVsb2NrZWQ="
+        }
+      }
+    }
+  ],
+  "expected": [
+    [],
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_thought_chunk",
+          "content": {
+            "type": "text",
+            "text": "Checking "
+          }
+        }
+      }
+    ],
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_thought_chunk",
+          "content": {
+            "type": "text",
+            "text": "the files."
+          }
+        }
+      }
+    ],
+    [],
+    [],
+    []
+  ]
+}
