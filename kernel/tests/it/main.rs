@@ -10,6 +10,7 @@ mod example;
 mod grammar;
 mod overlay;
 mod refuse;
+mod regress_s14;
 mod runners;
 mod transcript;
 
