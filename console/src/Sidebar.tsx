@@ -1,5 +1,5 @@
 // TECHNICAL 18.4-18.6: the sidebar, 260 px, hidden under 760 px: Agents, the off "+ New session", rows grouped by state.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TurnState } from "../kit";
 import type { SessionInfo } from "./Header";
 
@@ -42,15 +42,27 @@ function Row({ s, on }: { s: SidebarSession; on?: boolean }) {
 export function Sidebar({ info, turn, needs, sessions = [] }: { info: SessionInfo; turn?: TurnState["state"]; needs?: boolean; sessions?: SidebarSession[] }) {
   const [held, setHeld] = useState<Group | null>(null);
   const [over, setOver] = useState(false);
+  // React flushes mouseleave at continuous priority, so a leave can still be pending when a sync render runs: the hold effect
+  // reads this ref, which a native listener keeps current, and never starts a hold for a pointer that has left.
+  const navRef = useRef<HTMLElement>(null);
+  const overNow = useRef(false);
+  useEffect(() => {
+    const nav = navRef.current!;
+    const inside = (e: MouseEvent) => e.relatedTarget instanceof Node && nav.contains(e.relatedTarget);
+    const enter = (e: MouseEvent) => { if (!inside(e)) overNow.current = true; };
+    const leave = (e: MouseEvent) => { if (!inside(e)) overNow.current = false; };
+    nav.addEventListener("mouseover", enter); nav.addEventListener("mouseout", leave);
+    return () => { nav.removeEventListener("mouseover", enter); nav.removeEventListener("mouseout", leave); };
+  }, []);
   // an open ask puts the row under Needs you, except once the turn has ended (idle): then the ask can no longer be answered
   const live = turn === "waiting" && needs === false ? "running" : needs && turn !== "idle" ? "needs" : shapeOf(turn);
   // The hold begins once the state is known: a pointer already over the list before the first turn holds nothing.
-  useEffect(() => { if (over && turn !== undefined) setHeld((h) => h ?? groupOf(live)); }, [over, turn, needs]);
+  useEffect(() => { if (over && overNow.current && turn !== undefined) setHeld((h) => h ?? groupOf(live)); }, [over, turn, needs]);
   const group = held ?? groupOf(live);
   const cur: SidebarSession = { id: info.id, title: info.title, place: info.place ?? info.workspace, meta: `${info.place ?? info.workspace} · ${info.provider}`, state: live };
   const others = sessions.filter((s) => s.id !== info.id);
   return (
-    <nav className="wa-sidebar" aria-label="Sessions" onMouseEnter={() => setOver(true)} onMouseLeave={() => { setOver(false); setHeld(null); }}>
+    <nav ref={navRef} className="wa-sidebar" aria-label="Sessions" onMouseEnter={() => setOver(true)} onMouseLeave={() => { setOver(false); setHeld(null); }}>
       <div className="wa-brand">
         <span className="wa-markshape" aria-hidden="true">
           <i style={{ background: "#3355D6" }} /><i style={{ background: "#D9534F", borderRadius: "50%" }} /><i style={{ background: "#7B5CD6", transform: "rotate(45deg)" }} />
