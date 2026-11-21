@@ -806,3 +806,26 @@ fn ac4_joiner_part_whole_without_last_i_is_as_before() {
     assert!(j.push(&part_line(4, 1, a)).is_none());
     assert_eq!(j.push(&no_i).unwrap(), json!({"v":1,"kind":"part","at":1}));
 }
+
+#[test]
+fn ac5_read_joins_stored_part_whole_as_unreadable() {
+    let mut st = MemState::new();
+    let mut meta = Meta::default();
+    fill(&mut st, &mut meta, 5, 1);
+    let mut lines = chunk_lines(&mut st, 0);
+    let whole = r#"{"v":1,"i":1,"kind":"part","at":1,"body":{"n":1,"m":1,"text":"x"}}"#;
+    let (a, b) = whole.split_at(20);
+    lines[3] = part_line(4, 1, a);
+    lines[4] = part_line(5, 2, b);
+    st.put(&chunk_key("s", 0), lines.join("\n").into_bytes())
+        .unwrap();
+    let page = Transcript::new(&mut st, "s", &mut meta)
+        .read(0, None, 256)
+        .unwrap();
+    let mut j = Joiner::new();
+    let got: Vec<Value> = page.entries.iter().filter_map(|l| j.push(l)).collect();
+    let kinds: Vec<&str> = got.iter().map(|v| v["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["message", "message", "message", "unreadable"]);
+    assert_eq!(got[3]["i"], 5);
+    assert_eq!(got[3]["raw"], whole);
+}
