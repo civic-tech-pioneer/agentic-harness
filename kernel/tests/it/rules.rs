@@ -120,3 +120,24 @@ fn ac7_pathological_pattern_is_fast() {
     assert_eq!(r.decide("f", Some(&arg)), Ask);
     assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
 }
+
+#[test]
+fn names_take_underscore_dash_and_64_chars_and_dotdot_is_a_path() {
+    let n64 = "a".repeat(64);
+    let r = rules(&["web_fetch", "x-y", n64.as_str()], &[], &[]);
+    assert_eq!(r.decide("web_fetch", None), Allow);
+    assert_eq!(r.decide("x-y", None), Allow);
+    assert_eq!(r.decide(&n64, None), Allow);
+    let (_, p) = Rules::compile(&s(&["read(..)"]), &[], &[]);
+    assert_eq!(p.len(), 1);
+    assert!(p[0].reason.contains("path rule"), "{}", p[0].reason);
+}
+
+#[test]
+fn glob_star_in_the_middle_backtracks() {
+    let r = rules(&["f(a*c)", "g(*b?)"], &[], &[]);
+    assert_eq!(r.decide("f", Some("abcbc")), Allow);
+    assert_eq!(r.decide("f", Some("abcd")), Ask);
+    assert_eq!(r.decide("g", Some("abxbby")), Allow);
+    assert_eq!(r.decide("g", Some("abxy")), Ask);
+}
