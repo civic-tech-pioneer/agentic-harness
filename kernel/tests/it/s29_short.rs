@@ -325,8 +325,40 @@ fn ac7_past_a_decided_ask_entry_is_stored_short_when_open_and_not_otherwise() {
             ..Out::default()
         })
     };
+    let reqs = |k: &K| {
+        k.host
+            .calls
+            .iter()
+            .filter(|c| matches!(c, HostCall::Request(_)))
+            .count()
+    };
+    let r0 = reqs(&k);
     k.provider_item("t1", decided("zz")).unwrap();
-    assert_eq!(entries(&mut k, &id).len(), n);
+    // not stored; the active turn ends `stopped {limit: quota}` as for any item not stored, with
+    // an interrupt and no deny (the entry carries its decision)
+    let after = entries(&mut k, &id);
+    assert!(after[n..].iter().all(|e| e["kind"] == "turn"));
+    assert_eq!(after.len(), n + 1);
+    assert_eq!(
+        rec(&mut k, &id).turn,
+        Turn::Idle {
+            stop: Stop::Stopped {
+                limit: "quota".into()
+            },
+            seconds: None,
+            tools: None,
+            tokens: None
+        }
+    );
+    assert_eq!(reqs(&k), r0 + 1);
+    assert!(matches!(
+        k.host
+            .calls
+            .iter()
+            .rev()
+            .find(|c| matches!(c, HostCall::Request(_))),
+        Some(HostCall::Request(Request::Interrupt { .. }))
+    ));
     k.provider_item("t1", decided("a1")).unwrap();
     let ds = decisions_after(&mut k, &id, n);
     assert_eq!(ds.len(), 1);

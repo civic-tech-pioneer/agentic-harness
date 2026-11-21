@@ -989,6 +989,19 @@ impl<S: State, H: Host> Kernel<S, H> {
                 Err(e) => return Err(e),
             }
         }
+        self.stop_at_quota(rec, past, at, work)?;
+        Ok(None)
+    }
+
+    /// An item not stored past its quota ends an active turn `stopped {limit: quota}` and sends
+    /// `Request::Interrupt` (9.3 "Any call when past").
+    fn stop_at_quota(
+        &mut self,
+        rec: &mut Record,
+        past: Past,
+        at: u64,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
         if matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. }) {
             let stopped = Turn::Idle {
                 stop: Stop::Stopped {
@@ -1003,7 +1016,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 session: rec.id.clone(),
             });
         }
-        Ok(None)
+        Ok(())
     }
 
     /// Stores a turn change: the record's turn and a `turn` entry, and pushes the turn. `activity`
@@ -2501,7 +2514,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 .find(|(oid, _, _)| Some(oid.as_str()) == id)
                 .map(|(oid, k, i)| (oid.clone(), k.clone(), i));
             let Some((oid, k, ai)) = at else {
-                return Ok(());
+                // Not stored: an active turn ends as for any item not stored; no deny, as the
+                // adapter's entry already carries its decision.
+                return self.stop_at_quota(rec, past, now, work);
             };
             let d = body.get("decision").cloned().unwrap_or(Value::Null);
             let short = NewEntry {
