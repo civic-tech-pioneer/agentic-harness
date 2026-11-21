@@ -311,8 +311,11 @@ export function reduce(view: SessionView, message: string): SessionView {
         const title = m.call?.title ?? open.find((o) => o.ask.id === a.id)?.title ?? askArg(a.input) ?? a.toolCallId;
         // 9.4: the decision repeats the ask, so a page that starts at it (no ask of this call seen open) still draws the ask's card
         if (!open.some((o) => o.ask.toolCallId === a.toolCallId)) { upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true); toToolRow(v, a.toolCallId); }
-        const own = ownCall(m.call, a, open.find((o) => o.ask.id === a.id)?.call);
+        // the entry removed may be open on another call than the decision names: that card is synced too, and the decided card keeps its own call
+        const gone = open.find((o) => o.ask.id === a.id);
+        const own = ownCall(m.call, a, gone?.ask.toolCallId === a.toolCallId ? gone.call : undefined);
         x.open = open.filter((o) => o.ask.id !== a.id);
+        for (const o of open) if (o.ask.id === a.id && o.ask.toolCallId !== a.toolCallId) syncAsks(v, x, o.ask.toolCallId);
         syncAsks(v, x, a.toolCallId, { ask: a, call: own });
         const word = d.outcome === "allow" ? "Allowed" : d.outcome === "deny" ? "Denied" : "No objection";
         push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: d.by,
