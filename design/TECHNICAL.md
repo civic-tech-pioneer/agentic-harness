@@ -368,7 +368,7 @@ and `.husky/**`. No launch can remove them.
 | an `answer` the host accepted, whoever called it | `{"type":"ask-resolved","id":…,"by":"answered","outcome":"allow"\|"deny"\|"none"}`: `outcome` is the answer the host sent to `claude`, `none` only for a check (step 5) |
 | an ask the host denied at its `expires-at` | `{"type":"ask-resolved","id":…,"by":"expired"}` (step 5) |
 | a line whose top-level `type` is any watane item type that can share the stream: `ask`, `check`, `ask-resolved`, `initialized`, `wrapped`, `consent-pending`, and the checked provider's `verdict` and `checking` (10); a slice that adds an item type to any of these streams adds it here | never passed through: the host pushes `{"type":"wrapped","line":"<the line, as a JSON string>"}` instead |
-| a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item (a byte that is not UTF-8 becomes U+FFFD in `line`; that is the host's form, and the kernel's `raw` for such a line differs, 9.8): the host decides on the parsed value, so the kernel and the host never read one line two ways |
+| a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item (a byte that is not UTF-8 becomes U+FFFD in `line`; the kernel keeps this `line` as it is; the `\xNN` form of 9.8 is only for bytes that reach the kernel without the host, as in its fixtures): the host decides on the parsed value, so the kernel and the host never read one line two ways |
 | any other line, known or not | the line unchanged |
 
    `expires-at` is on the host's clock: for an ask, the time the host pushed
