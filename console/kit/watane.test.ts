@@ -134,7 +134,8 @@ describe("S32-3 AC3", () => {
       expect(f.calls.map((c) => c.args.after)).toEqual([0, 3]);
       f.push({ ...items([1, entry(4, "four")], [2, entry(5, "five")]), stream: "st2" });
       await vi.advanceTimersByTimeAsync(50);
-      expect(view.rows.map((r) => r.key)).toHaveLength(5);
+      const texts = view.rows.map((r) => JSON.stringify(r)).map((j) => ["one", "two", "three", "four", "five"].filter((w) => j.includes(`"${w}"`))[0]);
+      expect(texts).toEqual(["one", "two", "three", "four", "five"]);
       h.close();
     } finally { vi.useRealTimers(); }
   });
