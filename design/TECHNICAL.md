@@ -1830,8 +1830,8 @@ of `spec/VISION.md`.
     open or pending goes to `ready`; OpenAI `waiting` sessions and `paused`
     ones (either backend) are unchanged, their
     deadlines and timer kept; the turn stays `running` where it was.
-71. (9.3, R6) After a restart, each of `attach`, `read`, `say`, `answer` and
-    `delete` on a session of an older boot does its restart step first, in the
+71. (9.3, R6) After a restart, each of `attach`, `read`, `say` and `answer`
+    on a session of an older boot does its restart step first, in the
     same call, and acts on the new state (an `answer` to an ask the step denied
     is refused `{field: "ask"}`); the pass then skips that session.
     `list` over such sessions reads no extra record, reports `unknown` for a

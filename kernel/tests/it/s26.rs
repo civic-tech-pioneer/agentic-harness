@@ -111,16 +111,27 @@ fn ac1_delete_of_a_stale_session_runs_no_step_and_succeeds() {
     assert_eq!(Slots::load(&mut k.state).active[0], 0);
 }
 
-#[test]
-fn ac1_delete_writes_no_entry_decision_or_turn() {
+/// The puts a `delete` of a waiting session writes, its record of an older boot or not.
+fn delete_writes(stale: bool) -> u64 {
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
     k.provider(&id, ask("a1")).unwrap();
-    k.host.boot = 2;
+    if stale {
+        k.host.boot = 2;
+    }
+    // another session's call takes the new boot first, so the delete's own writes compare
+    start(&mut k, "bob", "k1");
+    k.state.reset_counts();
     k.delete("alice", &id).unwrap();
-    // no step: no entry, no decision, no turn (nothing of the session remains to hold one)
     assert!(Record::load(&mut k.state, &id).is_none());
     assert_eq!(keys_of(&k, &id), Vec::<String>::new());
+    k.state.counts().puts
+}
+
+#[test]
+fn ac1_delete_writes_no_entry_decision_or_turn() {
+    // no step: a stale session's delete writes what a current one's does (no decision, no turn)
+    assert_eq!(delete_writes(true), delete_writes(false));
 }
 
 #[test]
@@ -195,5 +206,35 @@ fn ac4_the_account_refusal_names_no_other_owner() {
         e.to_string(),
         "quota: this mod's agent sessions are at their limit"
     );
-    let _: Value = json!(null);
+}
+
+#[test]
+fn ac3_past_quota_an_active_change_writes_nothing_but_activity_still_pushes() {
+    let mut k = kernel();
+    let s = start(&mut k, "alice", "k1");
+    k.limits.owner_bytes = agent_kernel::Usage::load(&mut k.state, "quota/alice").bytes;
+    let turn = Record::load(&mut k.state, &s).unwrap().turn;
+    let n = turn_entries(&mut k, &s);
+    // active to active (running to waiting): no entry, the turn stays
+    let waiting = Turn::Waiting {
+        asks: vec!["a1".into()],
+        expires_at: None,
+    };
+    k.provider(&s, ProviderEvent::Turn(waiting)).unwrap();
+    assert_eq!(turn_entries(&mut k, &s), n);
+    assert_eq!(Record::load(&mut k.state, &s).unwrap().turn, turn);
+    // an activity change alone is live only (9.3): still pushed past quota, nothing written
+    let Turn::Running { since, .. } = turn else {
+        panic!("a started session runs: {turn:?}")
+    };
+    let t = Turn::Running {
+        since,
+        activity: Some(Activity::Compacting),
+    };
+    let c = k.provider(&s, ProviderEvent::Turn(t)).unwrap();
+    assert_eq!(
+        c.pushes[0].value["state"]["activity"],
+        json!({"kind": "compacting"})
+    );
+    assert_eq!(turn_entries(&mut k, &s), n);
 }

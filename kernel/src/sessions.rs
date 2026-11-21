@@ -702,8 +702,12 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<(), KernelError> {
         let before = rec.turn.is_active();
         // Past its quota only a change that ends an active turn is stored: one `turn` entry per
-        // turn (9.3 Quota).
-        if work.past && !(before && !t.is_active()) {
+        // turn (9.3 Quota). An `activity` change alone is no change: `turn_to` pushes it.
+        let mut bare = t.clone();
+        if let Turn::Running { activity, .. } = &mut bare {
+            *activity = None;
+        }
+        if work.past && bare != rec.turn && !(before && !t.is_active()) {
             return Ok(());
         }
         self.turn_to(rec, t, now, work)?;
