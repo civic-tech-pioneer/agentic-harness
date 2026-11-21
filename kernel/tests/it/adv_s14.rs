@@ -130,4 +130,3 @@ fn adv_s14_part_group_whole_without_i_has_no_index() {
     let ids: Vec<Value> = got.iter().map(|v| v["i"].clone()).collect();
     assert_eq!(ids, vec![json!(1), json!(2), json!(3), json!(5)]);
 }
-
