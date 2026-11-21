@@ -31,6 +31,12 @@ pub fn reach(
     {
         return None;
     }
+    if tool == "Glob" {
+        let pat = input.get("pattern")?.as_str()?;
+        if pat.starts_with(['/', '~']) || pat.contains('\\') || pat.split('/').any(|s| s == "..") {
+            return None;
+        }
+    }
     let path = input.get(path_key)?.as_str()?;
     let rest = path.strip_prefix(ws)?.strip_prefix('/')?;
     if rest
