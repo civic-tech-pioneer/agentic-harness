@@ -1188,6 +1188,44 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   allow are answered `allow` by the kernel, with `by: session-allow`.
   `take-back` removes the allow, writes an `allow` entry, and later matching
   calls ask again. Allows end with the session.
+- **As built (S31).** The OpenAI matcher is `Rules::compile(allow, ask,
+  deny)` and `Rules::decide(tool, arg)` in `kernel/src/rules.rs`, pure, not
+  yet called (the loop of 9.5, stage D, calls it; `ask-expiry` waits for it).
+  A rule is `Name` (1 to 64 of `A-Za-z0-9_-`) or `Name(arg)`, `arg`
+  non-empty and without parentheses or control characters; one with a
+  readable name that does not parse disables that tool (`Deny`); one with no
+  readable name, and a path rule (`arg` starting `/`, `~`, `./`, `../`, equal
+  to `.` or `..`, or containing `**`), is a problem at compilation. `*` is
+  any run, `?` one character, over the whole `arg`; a call without an `arg`
+  matches only bare rules. For Claude (`kernel/src/broker.rs`,
+  `kernel/src/sessions.rs`):
+  - The kernel sets an ask's `reach` when it stores the ask, replacing any
+    `reach` the item carries: none for a check, an `agent:` owner,
+    `AskUserQuestion` and `ExitPlanMode`; for `Read`, `Write`, `Edit`
+    (`file_path`), `NotebookEdit` (`notebook_path`), `Glob`, `Grep`
+    (`path`) `<Tool>(<ws>/**)` when the record's `workspace` is an absolute
+    path and the input's path lies under it with no empty, `.` or `..`
+    segment (no `workspace` is set before stage B, so none is offered yet);
+    for `Bash` `Bash(<command>)`, the exact command, only when that rule
+    passes the 4.1 allow grammar and the command has no `:` (the Waiting
+    item "session allow on `Bash`", option (a)); any other tool its name.
+  - An ask matches an allow when its `reach` equals the allow's, byte for
+    byte (so a `Bash` allow holds only that exact command; widening to a
+    `:*` prefix is one rule here).
+  - An allow is `{id, reach}`; its id is the index of its `given: true`
+    entry. An answer `for: session` whose reach is already held adds nothing
+    and writes no entry. The host gets the decision without `for`.
+  - `take-back` of an id not held is `unknown-allow`, writing nothing; it
+    reads no `access/` and is never refused `quota` (it only narrows; its
+    entry is charged like the calls of 9.3 "Past" that cannot fail).
+  - A new Claude ask (kind `ask`, stored, under the cap of 64): a matching
+    allow while `access/<owner>` still lists the profile (read again each
+    time, failing closed; PLAN S20) gives the pending answer `allow, by:
+    session-allow`; else an `agent:` owner or no live owner stream gives
+    `deny, by: kernel, reason: no-owner`; else it opens for the owner. A
+    kernel-answered ask never enters `open` and makes no `waiting` turn.
+    A check is never answered so. Past quota the ask is not stored and is
+    denied `quota`, as before.
 
 ### 9.7 Delegation and counters
 
