@@ -42,35 +42,6 @@ ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live b
 after the restart's `unknown` turn the console shows it as ended, not running.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-### S20: asks as the kernel records and shows them (in flight (cloud), routine trig_01UzA7nS6XUs2Xp5WpFokoCn)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and asks are recorded and shaped as the spec
-says, with the spec fixed alongside.
-Outcomes:
-1. `ask-resolved` as 9.8 rule 4 says (S18, PR #22): no entry for the kernel's own answer; another
-   caller's answer gives the decision from `outcome` (`by: checked` on a `direct: false` stream,
-   `host` otherwise); a bad `outcome`, `none` on an ask, `allow` on a check is `unknown`, the ask
-   open; plus S22's 9.4 "Code to change (S20)" list (PR #24): the pending answer and the decision
-   at close (D1), D2, `ended` closing every open or pending ask (D5), `cancel` and R4 in every
-   state, `pending-answers` capped at 64 with `busy`; case 73.
-2. S15 RISK (c): the kernel's ask `toolCall` carries ACP `kind` and, for edits, the diff content
-   derived from the input (9.8), so a real Edit ask's card shows its diff, not "Other <path>".
-3. S15 RISK (a): a second open ask or check on a `toolCallId` that already has an open one with a
-   different `tool` or `input` is `unknown` (9.8), or the spec says why the console's handling is
-   enough; decide in the slice, failing closed.
-4. Spec: 9.4 "Code to change" drops the ten console bullets S15 built; 9.8 gains 2 and 3.
-5. On S21's code (`kernel/src/sessions.rs`): S21 writes the owner's decision at `answer` and closes
-   open asks at restart only for `running` and `waiting`; S22's D1-D5 replace both. `.gitignore`
-   gains `kernel/target*` (a validator committed a 550 MB `kernel/target-base`).
-   Polish: the refusal text of a bad `append` kind (`kind (, ): ...`) gets its field and reason.
-7. S24's 9.4 "Code to change (S20)": reread `access/` in `say`, `interrupt` (replacement), R5,
-   `answer allow` and at a turn's end; refuse an OpenAI profile without `model`; case 74.
-6. S22 RISK 1 (PO decision): at most 64 open Claude asks and checks per session; one past that is
-   denied at once (`by: kernel`, reason `busy`), so `cancel`, R4 and `ended` write at most 64
-   decisions in one call; spec in 9.3/9.6 with a case. Also S22's wording: R4's Claude row and
-   9.8 rule 4 no longer name a kernel deadline or `ask-expiry` for Claude asks.
-Touches: `kernel/`, `design/TECHNICAL.md` (after S22 merges). Protects: *guard* (asks).
-
 ## Sketched
 
 ### S25: quotas (cloud, after S20: kernel/)
@@ -270,6 +241,16 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   no `access/` entry; revoking access does not stop a running turn (14); case 74. User-sim
   ACCEPTED (run 1); adversary HELD twice, 7 RISKs settled in the text.
 
+- **S20** asks as the kernel records and shows them (PR #27, 37 min). One decision entry per
+  Claude ask, written at close; pending answers in the record; `answered`, `expired`, `cancelled`
+  decided against the record; `ended`, `cancel` and R4 close every open or pending ask, at most 64
+  per session (a 65th denied `busy`); ask cards carry an ACP `kind` and, for edits, a diff from the
+  input (none with `replace_all`); a second ask on a `toolCallId` with another tool or input is
+  `unknown`; `interrupt` and `cancel`; `access/` reread by every call that gives a session more
+  work. User-sim ACCEPTED (run 1); adversary BREACHED 3 then 1 (a reused id from a second stream
+  or a reload; `MultiEdit` with `replace_all`), fixed, HELD. Implementer runs 2/1/1/1/1. Kernel 227
+  tests in 3.9 s; gate 18 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -348,6 +329,10 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 
 - 2026-11-21 S22 RISK 1: open Claude asks and checks are capped at 64 per session; one past it
   is denied at once (`busy`), so every closing call writes at most 64 decisions (S20).
+
+- 2026-11-21 S20: a `for: session` allow given before `access/` is revoked must not keep allowing
+  calls: the slice that builds session-allow matching (the broker, 9.6) reads `access/` before
+  answering from a session allow, failing closed. The host keeps checking `allow` + `input` (2.3).
 
 ## Human answers (2026-11-20, through the PO)
 
