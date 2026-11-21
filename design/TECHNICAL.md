@@ -969,8 +969,9 @@ the card.
   item calls and defers when a push fails `full` (3); it resumes in
   `stream-producer.ready`. Outside an item call (a `say`, an `answer`, a
   timer) it cannot defer: if a push to the owner's live stream fails `full`,
-  it closes that stream with outcome `lagging`, and the client attaches again
-  after its last index. A deferral of a session's upstream lasts at most 10 s:
+  it closes that stream with outcome `lagging` and resumes the session's
+  provider stream in the same call (so does `attach` when it closes the old
+  stream `replaced`), and the client attaches again after its last index. A deferral of a session's upstream lasts at most 10 s:
   the host ends an owner stream whose lag clock (from the failed push to
   `ready`) reaches 10 s `lagging` (3, "Deferral ends"); the deferred upstream
   has no lag clock, so it is the owner stream that ends, never the session, so a page that stays connected but stops reading cannot

@@ -1325,8 +1325,13 @@ impl<S: State, H: Host> Kernel<S, H> {
             Some(mut rec) => {
                 rec.streams.retain(|s| s != stream);
                 rec.live = None;
+                let provider = self.live_provider(&rec);
                 let mut acct = self.accounts(&rec.owner);
                 let _ = self.finish(Some(&mut rec), &mut acct);
+                // The host's `ended` for the closed stream finds no key: resume here (3).
+                if let Some(t) = provider {
+                    self.host.resume_stream(&t);
+                }
             }
             None => {
                 self.state.close();
@@ -2023,8 +2028,9 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// One item of a provider's stream, by its id: `stream/<id>` is read first and names the
-    /// session (9.4). An id with no key (never opened, ended, or of an older boot) changes
-    /// nothing and sends nothing. When the session's live owner stream is full, the call is
+    /// session (9.4). An id with no key (never opened or ended) changes nothing and sends
+    /// nothing; an id of an older boot is no different to the code, and reaches it only if the
+    /// host breaks R1 (items come on streams of this boot). When the session's live owner stream is full, the call is
     /// dropped whole and answers `Defer` (3, "Deferred batch").
     pub fn provider_item(
         &mut self,
@@ -2129,6 +2135,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         if let Some(p) = &previous {
             self.host.close_stream(p, "replaced");
+            // The key is gone, so the host's `ended` resumes nothing: resume here (3).
+            if let Some(t) = self.live_provider(&rec) {
+                self.host.resume_stream(&t);
+            }
         }
         let mut items: Vec<Value> = lines
             .iter()
