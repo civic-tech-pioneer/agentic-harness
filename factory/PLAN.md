@@ -61,6 +61,8 @@ Protects: *polish* (*core* for 1 and 2: an ask must read as one).
 
 ## Sketched
 
+## Sketched
+
 ### S12: the kernel catches up with the spec (in flight (cloud), routine trig_01Cphn1mCUbFd5BzkjqNq1fQ)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and the code does what S6 and S11 left as
@@ -106,18 +108,29 @@ highlighted once its block is complete and visible; a large-transcript fixture w
 input, Stop and scroll latency runs in `npm test`.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-### S14: the kernel speaks the wire S10 wrote (cloud, after S12 merges: same files)
+### S14: the kernel finishes the wire and closes S12's risks (cloud, after S12 merges: same files)
 
-Story: a kernel maker runs `cargo test` in `kernel/` and the adapters and store produce exactly the
-JSON of TECHNICAL 2.3, 9.3, 9.4 "The wire" and 9.8 as S10 wrote them.
-Outcomes: S10's "Code to change (S12)" list, item by item (PR #13): `expires-at` from the item;
-an item with a bad `tool_use_id` or `expires-at`, a `wrapped` item, and a `verdict`/`checking`
-item on a direct stream read as `unknown`; strict line reading (no lossy UTF-8); hook and progress
-lines give nothing; no `options` list; the ask entry with `toolCallId`, `toolCall`, `reach`; the
-ask pushed once as its entry; `ask-resolved` as a decision entry repeating the ask; `thought` on a
-message; `_meta.watane.at` on live updates; S13: `read` with `max` 0 is refused with the field
-`max`. Each with a fixture.
-Touches: `kernel/` only. Protects: *guard* (asks) and *core*.
+Story: a kernel maker runs `cargo test` in `kernel/` and every item of S10's kernel list (PR #13)
+holds in code, checked item by item; S12 (PR #15) already did most of it.
+Outcomes:
+1. What S12 left of S10's list, each with a fixture (the foreman checks each item against the
+   code and names the ones already done): an item with a bad `tool_use_id` or `expires-at`, a
+   `wrapped` item, `verdict`/`checking` on a direct stream read as `unknown`; strict line reading
+   (no lossy UTF-8); hook and progress lines give nothing.
+2. S12 RISK 1: every rendered line takes the `i` of its place, readable or not.
+3. S12 RISK 2 and 3 (with S16's text): an ask or check item without `input`, or reusing the id of
+   an open ask, reads as `unknown`.
+4. S12 polish: a finished thinking block that repeats streamed deltas is not pushed live again.
+Touches: `kernel/` only. Protects: *guard* (asks).
+
+### S16: spec debts from S12 (in flight (cloud), routine trig_01DTg3oQiUkjLrWLpdD8hL38)
+
+Outcomes: drop the done "Code to change" lists (9.2; 9.8 "Code to change (S12)"; 9.4 "Kernel,
+S12"), or mark what S14 still owns; 9.8 says an ask or check item without `input` is `unknown`;
+4.5 says host item ids are unique per stream, and a reused open ask id reads as `unknown`; 9.4
+`unreadable` `raw` is the stored line as a JSON string (as built); 9.4 says how a finished thinking
+block that repeats its deltas is treated (once, not twice); 9.4 every rendered line takes the `i`
+of its place. Touches: `design/TECHNICAL.md` only. Protects: *guard* (asks) and *core*.
 
 ### S15: the console reads the wire S10 wrote (cloud, after S9 merges: same files)
 
@@ -213,6 +226,15 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   group's first part, `read` takes it as given (case 34); 2.3: `max` 1 to 256, 0 refused, over 256
   read as 256; 7: "A call commits whole"; 9.4: `unreadable` keeps the `i` of its place, and "Who
   makes entries". User-sim ACCEPTED (run 1); no adversary (no code, 14 unchanged). Gate 16 s.
+
+- **S12** the kernel catches up with the spec (PR #15, 19 min). `RUNNERS` equals 4.1's 98 words
+  (a test reads 4.1) plus runtime prefixes; frontmatter `:` rule; `unreadable` at its own place;
+  `append` takes only whole-entry kinds; `read` refuses `max` 0 with field `max`; the Claude
+  adapter builds the 9.4 ask from the item (`expires-at` from the item, no `options`), writes
+  `ask-resolved` expiry as a decision entry, `thought` on a message, `_meta.watane.at` on every
+  update. User-sim ACCEPTED (run 1); adversary HELD (pass 1) on profile, transcript and ask
+  boundaries, with RISKs folded into S14 and S16. Implementer runs 1/1/1. Kernel 102 tests; gate
+  26 s.
 
 ## Deputy decisions
 
