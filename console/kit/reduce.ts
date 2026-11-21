@@ -80,14 +80,28 @@ function held(c: ToolCall, p: CallPatch, decided: boolean): ToolCall {
 }
 
 /** The tool row of `toolCallId` shows the first open ask, else the first open check, else `decided`; `openAsks` lists the open asks (not checks). */
-function syncAsks(v: SessionView, x: Internal, toolCallId: string, decided?: Ask) {
+function syncAsks(v: SessionView, x: Internal, toolCallId: string, decided?: { ask: Ask; call: ToolCall }) {
   const open = x.open ?? [];
   v.openAsks = open.filter((o) => o.ask.kind === "ask").map((o) => o.ask.id);
-  const mine = open.filter((o) => o.ask.toolCallId === toolCallId).map((o) => o.ask);
-  const pick = mine.find((a) => a.kind === "ask") ?? mine[0] ?? decided;
+  const mine = open.filter((o) => o.ask.toolCallId === toolCallId);
+  const pick = mine.find((o) => o.ask.kind === "ask") ?? mine[0] ?? decided;
   const f = find(v, toolCallId);
   const r = f && f.n === undefined ? v.rows[f.at] : undefined;
-  if (pick && r?.kind === "tool") v.rows[f!.at] = { ...r, ask: pick };
+  // 9.8: the card shows the call of the very entry it answers; the stream's status and program output stay
+  if (pick && r?.kind === "tool") {
+    const own = pick.call, cur = r.call;
+    const call: ToolCall = { ...own, status: cur.status,
+      content: [...own.content.filter((b) => b.type === "diff"), ...cur.content.filter((b) => b.type !== "diff")],
+      ...("rawOutput" in cur ? { rawOutput: cur.rawOutput } : {}) };
+    v.rows[f!.at] = { ...r, call, ask: pick.ask };
+  }
+}
+
+/** The entry's own call, as the card draws it (9.8). */
+function ownCall(p: CallPatch | undefined, a: Ask, kept?: ToolCall): ToolCall {
+  if (!p && kept) return kept;
+  const q = p ?? { id: a.toolCallId };
+  return { ...normalize(q), title: q.title ?? q.kind ?? "other" };
 }
 
 function toolCount(rows: Row[]): number {
@@ -220,8 +234,9 @@ export function reduce(view: SessionView, message: string): SessionView {
         const title = m.call?.title ?? open.find((o) => o.ask.id === a.id)?.title ?? askArg(a.input) ?? a.toolCallId;
         // 9.4: the decision repeats the ask, so a page that starts at it (no ask of this call seen open) still draws the ask's card
         if (!open.some((o) => o.ask.toolCallId === a.toolCallId)) { upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true); toToolRow(v, a.toolCallId); }
+        const own = ownCall(m.call, a, open.find((o) => o.ask.id === a.id)?.call);
         x.open = open.filter((o) => o.ask.id !== a.id);
-        syncAsks(v, x, a.toolCallId, a);
+        syncAsks(v, x, a.toolCallId, { ask: a, call: own });
         const word = d.outcome === "allow" ? "Allowed" : d.outcome === "deny" ? "Denied" : "No objection";
         v.rows.push({ kind: "decision", key: `e${m.i}`, i: m.i, who: d.by,
           what: `${word}${d.for ? " for this session" : ""}: ${title}`,
@@ -231,7 +246,7 @@ export function reduce(view: SessionView, message: string): SessionView {
       // 9.8: the card is the ask's own call, whatever the stream said of the id before
       upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true);
       toToolRow(v, a.toolCallId);
-      x.open = [...open.filter((o) => o.ask.id !== a.id), { ask: a, title: m.call?.title ?? askArg(a.input) ?? a.toolCallId }];
+      x.open = [...open.filter((o) => o.ask.id !== a.id), { ask: a, title: m.call?.title ?? askArg(a.input) ?? a.toolCallId, call: ownCall(m.call, a) }];
       syncAsks(v, x, a.toolCallId);
       break;
     }
