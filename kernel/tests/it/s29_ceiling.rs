@@ -1,7 +1,7 @@
 //! S29-2: at and past the ceiling every call that ends a turn or closes a session's work
 //! succeeds and frees what it holds (TECHNICAL 9.3 "Past", case 77).
 
-use agent_kernel::active::Slots;
+use agent_kernel::active::{self, Slots};
 use agent_kernel::adapters::{Entry, Kind, Out};
 use agent_kernel::*;
 use serde_json::{json, Value};
@@ -179,7 +179,13 @@ fn ac1_cancel_at_the_ceiling_succeeds_and_frees() {
         let s = Slots::load(&mut k.state);
         (s.provider, s.timers)
     };
+    assert!(active::read_page(&mut k.state, 0)
+        .iter()
+        .any(|e| e.id == id));
     k.cancel("alice", &id).unwrap();
+    assert!(!active::read_page(&mut k.state, 0)
+        .iter()
+        .any(|e| e.id == id));
     let r = rec(&mut k, &id);
     assert_eq!(r.turn, interrupted());
     assert!(r.open.is_empty() && r.pending_answers.is_empty());
@@ -189,11 +195,35 @@ fn ac1_cancel_at_the_ceiling_succeeds_and_frees() {
     assert!(k.state.get(&format!("live/{id}")).is_none());
     assert!(r.deadlines.is_empty() && r.active_page.is_none());
     let s = Slots::load(&mut k.state);
-    assert_eq!((s.provider, s.timers), (s_p0 - 1, s_t0.saturating_sub(1)));
+    // Only an idle turn holds a deadline (its timer goes in ac1_cancel_at_the_ceiling_frees_the_timer).
+    assert_eq!((s.provider, s.timers), (s_p0 - 1, s_t0));
     let u = Usage::load(&mut k.state, "quota/alice");
     assert_eq!(u.provider, p0 - 1);
-    assert_eq!(u.timers, tm0.saturating_sub(1));
+    assert_eq!(u.timers, tm0);
     assert_eq!(requests(&k, |r| matches!(r, Request::Cancel { .. })), 1);
+    charged(&mut k, "alice", &id, &b);
+}
+
+#[test]
+fn ac1_cancel_at_the_ceiling_frees_the_timer() {
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    let done = ProviderEvent::Out(Out {
+        idle: true,
+        ..Out::default()
+    });
+    k.provider_item("t1", done).unwrap();
+    assert_eq!(rec(&mut k, &id).deadlines.len(), 1);
+    assert_eq!(Slots::load(&mut k.state).timers, 1);
+    assert_eq!(Usage::load(&mut k.state, "quota/alice").timers, 1);
+    ceiling(&mut k);
+    let b = before(&mut k, "alice", &id);
+    k.cancel("alice", &id).unwrap();
+    assert!(rec(&mut k, &id).deadlines.is_empty());
+    let s = Slots::load(&mut k.state);
+    assert_eq!((s.provider, s.timers), (0, 0));
+    assert_eq!(Usage::load(&mut k.state, "quota/alice").timers, 0);
+    assert!(k.state.get("stream/t1").is_none());
     charged(&mut k, "alice", &id, &b);
 }
 
@@ -310,6 +340,38 @@ fn ac6_new_work_is_still_refused_at_the_ceiling() {
         ),
         Err(KernelError::Quota(_))
     ));
+    assert_eq!(held(&k, false), h0);
+    assert_eq!(Usage::load(&mut k.state, "quota").bytes, a0);
+}
+
+/// 9.3 "Past": an interrupt without a replacement on a record of an older boot runs the restart
+/// step (which ends the turn) and is charged for it, never refused.
+#[test]
+fn ac2_interrupt_without_replacement_after_a_restart_at_the_ceiling() {
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.provider_item("t1", ask("a1")).unwrap();
+    k.host.boot = 2;
+    ceiling(&mut k);
+    let b = before(&mut k, "alice", &id);
+    k.interrupt("alice", &id, None).unwrap();
+    assert!(matches!(rec(&mut k, &id).turn, Turn::Unknown));
+    charged(&mut k, "alice", &id, &b);
+}
+
+/// AC7: a provider item that starts below the ceiling keeps the ceiling check.
+#[test]
+fn ac7_an_item_below_the_ceiling_cannot_cross_it() {
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.limits.account_bytes = Usage::load(&mut k.state, "quota").bytes + 10;
+    k.limits.reserve_bytes = 0;
+    let (h0, a0) = (held(&k, false), Usage::load(&mut k.state, "quota").bytes);
+    assert!(matches!(
+        k.provider_item("t1", message(&"y".repeat(500))),
+        Err(KernelError::Quota(_))
+    ));
+    assert!(matches!(rec(&mut k, &id).turn, Turn::Running { .. }));
     assert_eq!(held(&k, false), h0);
     assert_eq!(Usage::load(&mut k.state, "quota").bytes, a0);
 }
