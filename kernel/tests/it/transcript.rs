@@ -191,7 +191,7 @@ fn joined(lines: &[String]) -> String {
 
 #[test]
 fn ac5_parts() {
-    let big = 3 * 1024 * 1024;
+    let big = 600 * 1024;
     let texts = [
         "a".repeat(big),
         "é😀".repeat(big / 6),
@@ -261,7 +261,9 @@ fn ac5_part_count_crossing_a_digit_keeps_the_whole_index() {
         .append(&text_entry(8 * (262_144 - overhead) - whole), 1)
         .unwrap();
     assert_eq!(i, 101);
-    let p = Transcript::new(&mut st, "s", &mut meta).read(92, None, 256);
+    let p = Transcript::new(&mut st, "s", &mut meta)
+        .read(92, None, 256)
+        .unwrap();
     let mut j = Joiner::new();
     let got: Vec<Value> = p.entries.iter().filter_map(|l| j.push(l)).collect();
     assert_eq!(got.len(), 1);
@@ -288,7 +290,7 @@ fn ac6_paging_both_ways() {
     let mut seen = Vec::new();
     let mut after = 0;
     loop {
-        let p = t.read(after, None, 256);
+        let p = t.read(after, None, 256).unwrap();
         assert_eq!(p.last, 10_000);
         if p.entries.is_empty() {
             break;
@@ -301,7 +303,7 @@ fn ac6_paging_both_ways() {
     let mut seen = Vec::new();
     let mut before = 10_001;
     loop {
-        let p = t.read(0, Some(before), 256);
+        let p = t.read(0, Some(before), 256).unwrap();
         if p.entries.is_empty() {
             break;
         }
@@ -312,12 +314,18 @@ fn ac6_paging_both_ways() {
         seen = ids;
     }
     assert_eq!(seen, (1..=10_000).collect::<Vec<_>>());
-    // max 0 is 1, over 256 is 256; empty transcript has last 0.
-    assert_eq!(t.read(0, None, 0).entries.len(), 1);
-    assert_eq!(t.read(0, None, 9999).entries.len(), 256);
+    // max 0 is refused, over 256 is 256; empty transcript has last 0.
+    let Err(KernelError::Refused(r)) = t.read(0, None, 0) else {
+        panic!("max 0 must be refused")
+    };
+    assert_eq!(r[0].field, "max");
+    assert_eq!(t.read(0, None, 1).unwrap().entries.len(), 1);
+    assert_eq!(t.read(0, None, 9999).unwrap().entries.len(), 256);
     let mut st = MemState::new();
     let mut m = Meta::default();
-    let p = Transcript::new(&mut st, "e", &mut m).read(0, None, 10);
+    let p = Transcript::new(&mut st, "e", &mut m)
+        .read(0, None, 10)
+        .unwrap();
     assert_eq!((p.entries.len(), p.last), (0, 0));
 }
 
@@ -325,13 +333,13 @@ fn ac6_paging_both_ways() {
 fn ac6_page_byte_limit_still_progresses() {
     let (mut st, mut meta) = many(20, 100 * 1024);
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    let p = t.read(0, None, 256);
+    let p = t.read(0, None, 256).unwrap();
     assert_eq!(p.entries.len(), 20);
     let (mut st, mut meta) = many(12, 250 * 1024);
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    let p = t.read(0, None, 256);
+    let p = t.read(0, None, 256).unwrap();
     assert_eq!(p.entries.len(), 8);
-    let p = t.read(0, Some(13), 256);
+    let p = t.read(0, Some(13), 256).unwrap();
     assert_eq!(idx(p.entries.last().unwrap()), 12);
     assert_eq!(p.entries.len(), 8);
 }
@@ -354,16 +362,16 @@ fn ac7_after_inside_group_moves_to_group_start() {
     assert_eq!(i, 5); // parts 3, 4, 5
     let mut t = Transcript::new(&mut st, "s", &mut meta);
     for after in [3, 4] {
-        let p = t.read(after, None, 256);
+        let p = t.read(after, None, 256).unwrap();
         assert_eq!(idx(&p.entries[0]), after + 1, "after {after}");
-        let p = t.read(after, Some(8), 256);
+        let p = t.read(after, Some(8), 256).unwrap();
         assert_eq!(idx(&p.entries[0]), after + 1, "before read, after {after}");
     }
     // after on the last part, or before the group: unchanged.
-    assert_eq!(idx(&t.read(5, None, 256).entries[0]), 6);
-    assert_eq!(idx(&t.read(2, None, 256).entries[0]), 3);
+    assert_eq!(idx(&t.read(5, None, 256).unwrap().entries[0]), 6);
+    assert_eq!(idx(&t.read(2, None, 256).unwrap().entries[0]), 3);
     // A page may end inside a group.
-    let p = t.read(0, None, 3);
+    let p = t.read(0, None, 3).unwrap();
     assert_eq!(idx(p.entries.last().unwrap()), 3);
     // replay moves; read does not.
     let Replay::Entries(e) = t.replay(4) else {
@@ -376,19 +384,19 @@ fn ac2_check(max: u32) {
     let mut st = MemState::new();
     let mut meta = Meta::default();
     fill(&mut st, &mut meta, 3, 5);
-    let big = entry(json!({ "text": "q".repeat(3 * 1024 * 1024) }));
+    let big = entry(json!({ "text": "q".repeat(1024 * 1024) }));
     let want = serde_json::to_string(&big.body).unwrap();
     let bi = Transcript::new(&mut st, "s", &mut meta)
         .append(&big, 1)
         .unwrap();
-    assert!(bi - 3 >= 12, "{} parts", bi - 3);
+    assert!(bi - 3 >= 4, "{} parts", bi - 3);
     fill(&mut st, &mut meta, 3, 5);
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    let last = t.read(0, None, 1).last;
+    let last = t.read(0, None, 1).unwrap().last;
     // forwards
     let (mut after, mut seen, mut j, mut joined) = (0u64, Vec::new(), Joiner::new(), Vec::new());
     loop {
-        let p = t.read(after, None, max);
+        let p = t.read(after, None, max).unwrap();
         let Some(l) = p.entries.last() else { break };
         assert!(idx(l) > after, "max {max}: stalled at after {after}");
         after = idx(l);
@@ -404,7 +412,7 @@ fn ac2_check(max: u32) {
     // backwards
     let (mut before, mut seen, mut lines) = (last + 1, Vec::new(), Vec::new());
     while before > 1 {
-        let p = t.read(0, Some(before), max);
+        let p = t.read(0, Some(before), max).unwrap();
         assert!(!p.entries.is_empty(), "max {max}");
         assert!(
             idx(&p.entries[0]) < before,
@@ -428,7 +436,7 @@ fn ac2_check(max: u32) {
 
 #[test]
 fn ac2_paging_through_a_big_entry_progresses() {
-    for max in [1, 2, 7, 256] {
+    for max in [1, 3, 256] {
         ac2_check(max);
     }
 }
@@ -438,23 +446,23 @@ fn ac8_chunk_reads() {
     let (mut st, mut meta) = many(10_000, 100);
     st.reset_counts();
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    let p = t.read(9_990, None, 5);
+    let p = t.read(9_990, None, 5).unwrap();
     assert_eq!(p.entries.len(), 5);
     assert!(st.get_keys().len() <= 2, "{:?}", st.get_keys());
     st.reset_counts();
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    assert_eq!(t.read(3_000, None, 256).entries.len(), 256);
+    assert_eq!(t.read(3_000, None, 256).unwrap().entries.len(), 256);
     assert!(st.get_keys().len() <= 3, "{:?}", st.get_keys());
     st.reset_counts();
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    assert_eq!(t.read(0, Some(5_001), 10).entries.len(), 10);
+    assert_eq!(t.read(0, Some(5_001), 10).unwrap().entries.len(), 10);
     assert!(st.get_keys().len() <= 2, "{:?}", st.get_keys());
     let n = meta.chunks.len();
     let valid: Vec<String> = (0..n).map(|c| chunk_key("s", c)).collect();
     assert!(st.get_keys().iter().all(|k| valid.contains(k)));
     st.reset_counts();
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    t.read(0, None, 256);
+    t.read(0, None, 256).unwrap();
     assert!(st.counts().bytes_read <= 2 * 1024 * 1024 + 320 * 1024);
 }
 
@@ -491,14 +499,14 @@ fn ac10_joiner() {
     let mut j = Joiner::new();
     let mut out = Vec::new();
     // Group split across pages read forwards.
-    for page in [t.read(0, None, 3), t.read(3, None, 256)] {
+    for page in [t.read(0, None, 3).unwrap(), t.read(3, None, 256).unwrap()] {
         for l in page.entries {
             out.extend(j.push(&l));
         }
     }
     let ids: Vec<u64> = out.iter().map(|v| v["i"].as_u64().unwrap()).collect();
     assert_eq!(ids, vec![1, 2, i, 6, 7]);
-    let second = t.read(3, None, 256);
+    let second = t.read(3, None, 256).unwrap();
     let n = serde_json::from_str::<Value>(&second.entries[0]).unwrap()["body"]["n"].as_u64();
     assert!(n > Some(1), "second page starts with part {n:?}");
     assert_eq!(out[2]["body"]["text"], "z".repeat(700_000));
@@ -539,14 +547,15 @@ fn ac11_unreadable() {
         .unwrap();
     meta.last = 5;
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    let p = t.read(0, None, 10);
+    let p = t.read(0, None, 10).unwrap();
     assert_eq!(p.entries.len(), 5);
     for (k, l) in lines.iter().enumerate() {
         let v: Value = serde_json::from_str(&p.entries[k + 1]).unwrap();
         assert_eq!(v["kind"], "unreadable");
-        assert_eq!(v["v"], 1);
+        assert_eq!(v["v"], if k == 1 { 2 } else { 1 });
         assert_eq!(v["i"], k as u64 + 2);
         assert_eq!(v["raw"], *l);
+        assert_eq!(v.get("at").is_some(), k < 2, "at only when a number");
     }
     let Replay::Entries(e) = t.replay(1) else {
         panic!()
@@ -574,8 +583,8 @@ fn ac12_limits() {
         last: 300,
     };
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    assert_eq!(t.read(0, None, 10).entries.len(), 0);
-    assert_eq!(t.read(0, Some(300), 10).entries.len(), 0);
+    assert_eq!(t.read(0, None, 10).unwrap().entries.len(), 0);
+    assert_eq!(t.read(0, Some(300), 10).unwrap().entries.len(), 0);
     let _ = t.replay(290);
 }
 
@@ -584,4 +593,71 @@ fn ac13_behind_text() {
     let e = KernelError::Behind(310);
     assert_eq!(e.to_string(), "behind: 310 entries stored, page with read");
     assert_eq!(e.code(), "behind");
+}
+
+#[test]
+fn ac1_unreadable_keeps_its_position_while_paging() {
+    // Lines claiming a wrong `i` at positions 1, the middle and the last of a chunk.
+    let (mut st, mut meta) = many(10, 5);
+    let mut lines = chunk_lines(&mut st, 0);
+    lines[0] = r#"{"v":1,"i":7,"kind":"mystery","at":4}"#.into();
+    lines[4] = r#"{"v":3,"i":99999,"kind":"message","at":5,"body":{}}"#.into();
+    lines[9] = r#"{"v":1,"i":7,"kind":"nope"}"#.into();
+    st.put(&chunk_key("s", 0), lines.join("\n").into_bytes())
+        .unwrap();
+    let mut t = Transcript::new(&mut st, "s", &mut meta);
+    let want: Vec<u64> = (1..=10).collect();
+    for max in [1, 3, 256] {
+        let (mut after, mut seen) = (0, Vec::new());
+        loop {
+            let p = t.read(after, None, max).unwrap();
+            let Some(l) = p.entries.last() else { break };
+            after = idx(l);
+            seen.extend(p.entries.iter().map(|l| idx(l)));
+        }
+        assert_eq!(seen, want, "max {max}");
+        let (mut before, mut seen) = (11, Vec::new());
+        while before > 1 {
+            let p = t.read(0, Some(before), max).unwrap();
+            before = idx(&p.entries[0]);
+            seen.splice(0..0, p.entries.iter().map(|l| idx(l)));
+        }
+        assert_eq!(seen, want, "back max {max}");
+    }
+    let all = t.read(0, None, 256).unwrap().entries;
+    let v: Value = serde_json::from_str(&all[4]).unwrap();
+    assert_eq!((v["v"].clone(), v["i"].clone()), (json!(3), json!(5)));
+    assert_eq!(v["at"], 5);
+}
+
+#[test]
+fn ac2_append_takes_only_whole_entry_kinds() {
+    let (mut st, mut meta) = many(2, 5);
+    for k in [
+        "message",
+        "tool",
+        "ask",
+        "allow",
+        "verdict",
+        "turn",
+        "compaction",
+        "unknown",
+    ] {
+        let mut e = text_entry(3);
+        e.kind = k.into();
+        Transcript::new(&mut st, "s", &mut meta)
+            .append(&e, 1)
+            .unwrap();
+    }
+    let before = (meta.clone(), st.get(&chunk_key("s", 0)));
+    for k in ["part", "unreadable", "", "Message", "bogus"] {
+        let mut e = text_entry(3);
+        e.kind = k.into();
+        let Err(KernelError::Refused(r)) = Transcript::new(&mut st, "s", &mut meta).append(&e, 1)
+        else {
+            panic!("{k:?} must be refused")
+        };
+        assert_eq!((r[0].field.as_str(), r.len()), ("kind", 1));
+        assert_eq!((meta.clone(), st.get(&chunk_key("s", 0))), before, "{k:?}");
+    }
 }

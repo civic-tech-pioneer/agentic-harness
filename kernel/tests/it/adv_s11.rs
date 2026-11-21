@@ -21,9 +21,9 @@ fn adv_s11_read_after_max_returns_nothing() {
         t.append(&msg(json!({"t": k})), 1).unwrap();
     }
     // No entry has i > u64::MAX: the page must be empty, and the call must not trap.
-    let page = t.read(u64::MAX, None, 256);
+    let page = t.read(u64::MAX, None, 256).unwrap();
     assert!(page.entries.is_empty(), "got {:?}", page.entries);
-    let page = t.read(u64::MAX, Some(u64::MAX), 256);
+    let page = t.read(u64::MAX, Some(u64::MAX), 256).unwrap();
     assert!(page.entries.is_empty(), "got {:?}", page.entries);
 }
 
@@ -47,7 +47,7 @@ fn adv_s11_read_empty_ranges_return_nothing() {
         (u64::MAX, None),
         (u64::MAX, Some(u64::MAX)),
     ] {
-        let p = t.read(a, b, 256);
+        let p = t.read(a, b, 256).unwrap();
         assert!(p.entries.is_empty(), "{a} {b:?}: {:?}", p.entries);
         assert_eq!(p.last, 8);
     }
@@ -68,7 +68,7 @@ fn adv_s11_read_max_u32_is_held_to_256() {
     let mut meta = Meta::default();
     filled(300, &mut st, &mut meta);
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    assert_eq!(t.read(0, None, u32::MAX).entries.len(), 256);
+    assert_eq!(t.read(0, None, u32::MAX).unwrap().entries.len(), 256);
 }
 
 #[test]
@@ -80,11 +80,11 @@ fn adv_s11_empty_transcript_extremes() {
         (0, None, 256),
         (u64::MAX, None, 256),
         (u64::MAX, Some(u64::MAX), u32::MAX),
-        (0, Some(0), 0),
+        (0, Some(0), 1),
         (5, Some(3), u32::MAX),
         (0, None, u32::MAX),
     ] {
-        let p = t.read(a, b, m);
+        let p = t.read(a, b, m).unwrap();
         assert!(p.entries.is_empty());
         assert_eq!(p.last, 0);
     }
