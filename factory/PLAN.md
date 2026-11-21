@@ -249,7 +249,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   ask; `pending-answers` capped at 64; a forging checked provider named in 14 (record only);
   case 73. User-sim ACCEPTED (run 1); adversary HELD twice (RISKs 1-5 fixed in S22-fix1).
 
-- **S21** sessions, turns, the active index and the restart pass (PR #25, 46 min). A kernel maker
+- **S21** sessions, turns, the active index and the restart pass (PR #25, merged 2026-11-21 02:12 UTC, 46 min). A kernel maker
   drives sessions through 9.3 on `MemState` with a `FakeHost` (`caller.boot()`, timers, provider
   requests as recorded calls): start, say, queue, unqueue, answer, rename, delete, list; the
   active index; the restart pass, each call bounded; cases 67, 68, 69 (Claude), 71. `start`
