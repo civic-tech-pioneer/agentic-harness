@@ -25,7 +25,7 @@ async function setup(outside: boolean) {
 const sends: [string, (u: ReturnType<typeof userEvent.setup>) => Promise<void>][] = [
   ["allow_once", async (u) => { await u.click(screen.getByRole("button", { name: "Allow once" })); }],
   ["session_allow", async (u) => { await u.click(screen.getByRole("button", { name: /this session$/ })); }],
-  ["deny", async (u) => { await u.click(screen.getByRole("button", { name: "Deny…" })); await u.click(screen.getByRole("button", { name: "Deny", exact: true })); }],
+  ["deny", async (u) => { await u.click(screen.getByRole("button", { name: "Deny…" })); await u.click(screen.getByRole("button", { name: /^Deny$/ })); }],
 ];
 
 describe("S23 fix10", () => {
