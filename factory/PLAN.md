@@ -54,6 +54,17 @@ participant saw (S31 RISKs, PO decisions):
 4. `factory/gate.sh` runs `cargo fmt --check` in `kernel/` (briefs required it; the gate did not).
 Touches: `kernel/`, `design/TECHNICAL.md` (4.1, 9.6, 15), `factory/gate.sh`. Protects: *guard*.
 
+### S30: the console draws a short decision (in flight (cloud), routine trig_01J1aiZUvnhsy3Bb1Qzt6ZKr)
+
+Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
+ask entry at `ask-i`, reading that one entry when the page lacks it; the S9, S15 and S7 held cases
+stay green. Also (PO, S23): after an answer the status line still says "denied in m:ss if
+unanswered"; it reads "Answered, waiting" (or names the next open ask). Both forms (S29: short also for an owner past its own 64 MiB). Also: the `long_S7`
+p95 timing checks fail the default gate under parallel load (S29 saw it twice at load ~4.9):
+move the timing limits to `test:slow` or measure them in a way load cannot fail, keeping a
+functional check in `npm test`. A UI slice: PO-armed. Touches: `console/`, `ui/`.
+Protects: *guard* (asks).
+
 ## Sketched
 
 ### S32: stage A's agentic-harness part: the kernel's stream reaches a page (cloud, after watane S96 merges)
@@ -87,17 +98,6 @@ Outcomes:
 4. From watane S95: the launch document (4.1) gains `profile` (used only for the consent words),
    and the kernel's `timer-error` gains `bad-delay`.
 Touches: `kernel/`, `design/TECHNICAL.md`, `design/FUNCTIONAL.md` if a requirement changes.
-Protects: *guard* (asks).
-
-### S30: the console draws a short decision (cloud, after S23 merges: console/)
-
-Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
-ask entry at `ask-i`, reading that one entry when the page lacks it; the S9, S15 and S7 held cases
-stay green. Also (PO, S23): after an answer the status line still says "denied in m:ss if
-unanswered"; it reads "Answered, waiting" (or names the next open ask). Both forms (S29: short also for an owner past its own 64 MiB). Also: the `long_S7`
-p95 timing checks fail the default gate under parallel load (S29 saw it twice at load ~4.9):
-move the timing limits to `test:slow` or measure them in a way load cannot fail, keeping a
-functional check in `npm test`. A UI slice: PO-armed. Touches: `console/`, `ui/`.
 Protects: *guard* (asks).
 
 ## Done
@@ -328,7 +328,7 @@ Protects: *guard* (asks).
   adversary BREACHED 1 (a Bash allow covered `dangerouslyDisableSandbox`), fixed, HELD.
   Implementer runs 1 each of 4. Kernel 400 tests in 3.2 s; gate 31 s.
 
-- **S23** the console after S7 (PR #35, compared and armed by the PO; ~3.3 h). An answered ask
+- **S23** the console after S7 (PR #35, compared and armed by the PO, merged 2026-11-21 08:23 UTC; ~3.3 h). An answered ask
   shows "Answered, waiting" (or "Checking with your judge") until its decision, with no second
   click; a scrollbar press or the card's text no longer carries the ask out of view; code
   highlighting cannot freeze the page; two open asks behave; status line, sidebar and pills agree;
