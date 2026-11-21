@@ -176,7 +176,7 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
   /** The one reattach policy: a failed try waits 1 s, 2 s, 4 s ... up to 30 s; the 5th in a row stops the console. */
   function fail(g: number, cause: string, shown = false) {
     if (closed || g !== gen) return;
-    if (++tries >= MAX_TRIES) { if (!shown) show(withUnknown(view, cause)); return; }
+    if (++tries >= MAX_TRIES) { if (!shown) show(withUnknown({ ...view, loading: false }, cause)); return; } // given up: nothing more is loading
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => { if (!closed && g === gen) { quick = false; void connect(); } }, Math.min(RETRY_MS * 2 ** (tries - 1), MAX_DELAY_MS));
   }

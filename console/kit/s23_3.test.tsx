@@ -67,4 +67,18 @@ describe("S23-3", () => {
     await vi.waitFor(() => expect(last!.loading).toBe(false));
     s.close();
   });
+
+  it("ac2_loading_ends_when_the_reattach_after_a_page_in_gives_up", async () => {
+    vi.useFakeTimers();
+    let attaches = 0;
+    const k: Kernel = { say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+      attach: async () => { if (attaches++ === 0) return { behind: 1 }; throw new Error("down"); },
+      read: async () => [JSON.stringify({ v: 1, i: 1, kind: "message", at: 0, body: { role: "user", content: [{ type: "text", text: "hi" }] } })] };
+    let last: SessionView | undefined;
+    const s = openSession(k, "s", (v) => { last = v; });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(attaches).toBe(6); // the first, then five failed tries: the console has stopped
+    expect(last!.loading).toBe(false);
+    s.close();
+  });
 });
