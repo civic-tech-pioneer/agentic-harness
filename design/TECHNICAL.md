@@ -47,11 +47,14 @@ in the same commit):
   refusal at once), `kernel/examples/check.rs` (the maker's command) and
   `kernel/tests/it/` (the tests)
 - built: `mod.toml` at the root
-- built (S32): `wit/world.wit` (2.3 and 9.9, the imports and exports of 2.1),
-  at the root, with `wit/deps/watane-host/host.wit` (host 19.1's text, 2.1
-  "Exact text"); `kernel/wasm/` (`agent-mod`, the WASM wrapper: its
+- built (S32): `kernel/wasm/wit/world.wit` (2.3 and 9.9, the imports and
+  exports of 2.1) with `kernel/wasm/wit/deps/watane-host/host.wit` (host
+  19.1's text, 2.1 "Exact text"); they move to `wit/` at the root, where
+  `check-mod.sh` checks them, once the watane-dev that CI installs links host
+  19 (watane S96 and a release: before it, watane-dev refuses
+  `watane:host/streams`); `kernel/wasm/` (`agent-mod`, the WASM wrapper: its
   `src/lib.rs` holds the exports, the owner checks by `caller.identity()`
-  and the host and state over the imports; 14); `logic.wasm` at the root,
+  and the host and state over the imports; 14); `kernel/wasm/logic.wasm`,
   built from it by `factory/gate.sh` and git-ignored. It is prebuilt logic
   (watane dev 7.1): dev's builder takes only `logic/src` and the crates of
   its allowlist (dev 6.2: `wit-bindgen`, `serde`, `serde_json`), and the
@@ -1780,13 +1783,13 @@ stages B and E).
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
 | A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` |
-| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` (the exports and owner checks by `caller.identity()`), `kernel/src/sessions.rs` (also the 9.1 stream routing, the probe of 9.9, `stream/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/transcript.rs`, `wit/world.wit` |
+| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` (the exports and owner checks by `caller.identity()`), `kernel/src/sessions.rs` (also the 9.1 stream routing, the probe of 9.9, `stream/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
 | A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
-| The console has no power a client lacks | it calls only 2.3 (and 9.9's `probe` in stage A), as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs`, `console/`, `ui/` |
+| The console has no power a client lacks | it calls only 2.3 (and 9.9's `probe` in stage A), as the kernel's page identity (18.1) | `wit/world.wit` (staged as `kernel/wasm/wit/world.wit`, 1), `mod.toml`, `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
 
 Not protected: a revoked `access/` entry does not stop a turn already running: no call of 2.3 writes `access/` today, so the kernel learns of the change only when a call reads the key (9.7, "Revoking"); the slice that adds the call writing `access/` ends the turns of the sessions whose profile it removes (as `cancel`); the judge account reaches any `POST` path of the origin the
