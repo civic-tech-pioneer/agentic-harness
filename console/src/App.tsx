@@ -44,8 +44,18 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => { if (view.turn?.state === "idle") setStopping(false); }, [view.turn]);
 
+  // 9.4 rule 4: an ask with an answer sent counts as decided: Needs you, its target and the status subject skip it
+  // it also ends when the row's ask gets its decision entry or is replaced by another ask under the same id (a later stream reuses ids);
+  // the set is filtered while rendering, so no frame shows "Answered, waiting" on an ask that left it
+  const live = useMemo<ReadonlySet<string>>(() => {
+    if (!answered.size) return answered;
+    const askOf = (id: string) => { for (const r of view.rows) if (r.kind === "tool" && r.ask?.id === id) return r.ask; return undefined; };
+    const keep = (id: string) => { const a = askOf(id), was = answeredAsk.current.get(id); return view.openAsks.includes(id) && !a?.decision && (was === undefined || a === was); };
+    return [...answered].every(keep) ? answered : new Set([...answered].filter(keep));
+  }, [answered, view]);
+  useEffect(() => { if (live !== answered) setAnswered((s) => (s === answered ? live : s)); }, [live, answered]);
   const actions: Actions = useMemo(() => ({
-    answered,
+    answered: live,
     say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: (id, d) => {
       answeredAsk.current.set(id, viewRef.current.rows.flatMap((r) => (r.kind === "tool" && r.ask?.id === id ? [r.ask] : []))[0]);
@@ -59,19 +69,9 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     },
     stop: () => { setStopping(true); void kernel.interrupt(info.id); },
     takeBack: (id) => void kernel.takeBack(info.id, id),
-  }), [kernel, info.id, answered]);
+  }), [kernel, info.id, live]);
 
-  // 9.4 rule 4: an ask with an answer sent counts as decided: Needs you, its target and the status subject skip it
-  // it also ends when the row's ask gets its decision entry or is replaced by another ask under the same id (a later stream reuses ids)
-  const askOf = (id: string) => { for (const r of view.rows) if (r.kind === "tool" && r.ask?.id === id) return r.ask; return undefined; };
-  useEffect(() => {
-    const live = (id: string) => {
-      const a = askOf(id), was = answeredAsk.current.get(id);
-      return view.openAsks.includes(id) && !a?.decision && (was === undefined || a === was);
-    };
-    if (answered.size && [...answered].some((id) => !live(id))) setAnswered((s) => new Set([...s].filter(live)));
-  }, [answered, view]);
-  const shown = useMemo(() => answered.size && view.openAsks.some((id) => answered.has(id)) ? { ...view, openAsks: view.openAsks.filter((id) => !answered.has(id)) } : view, [view, answered]);
+  const shown = useMemo(() => live.size && view.openAsks.some((id) => live.has(id)) ? { ...view, openAsks: view.openAsks.filter((id) => !live.has(id)) } : view, [view, live]);
 
   const toTheEnd = useCallback(() => {
     const el = scroller.current;
