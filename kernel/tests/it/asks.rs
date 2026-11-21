@@ -615,3 +615,28 @@ fn ac2_an_ask_on_a_call_whose_entry_is_unreadable_is_unknown() {
     feed(&mut k, &mut fresh, &id, edit_line("a2", "c1", "/w/x"));
     assert!(!rec(&mut k, &id).open.iter().any(|o| o.id == "a2"));
 }
+
+/// 9.3 `pending-answers`: an allow whose `input` would push the record past 512 KiB is refused
+/// `too-large(524288)`, writes nothing and sends no answer; a small allow then goes through.
+#[test]
+fn a_pending_allow_past_the_records_512_kib_is_too_large_and_writes_nothing() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    let mut a = ClaudeAdapter::new();
+    feed(&mut k, &mut a, &id, ask_line("ask", "a1"));
+    let before = k.state.get(&format!("session/{id}"));
+    let calls = k.host.calls.len();
+    let d = json!({"allow": true, "input": {"content": "x".repeat(530_000)}}).to_string();
+    assert_eq!(
+        k.answer("alice", &id, "k1", "a1", &d).unwrap_err(),
+        KernelError::TooLarge(524_288)
+    );
+    assert_eq!(k.state.get(&format!("session/{id}")), before);
+    assert!(k.state.get("key/alice/k1").is_none());
+    assert!(!k.host.calls[calls..]
+        .iter()
+        .any(|c| matches!(c, HostCall::Request(Request::Answer { .. }))));
+    let d = json!({"allow": true, "input": {"content": "x".repeat(400_000)}}).to_string();
+    k.answer("alice", &id, "k1", "a1", &d).unwrap();
+    assert!(rec(&mut k, &id).pending_answers.contains_key("a1"));
+}

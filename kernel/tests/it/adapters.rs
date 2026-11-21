@@ -648,4 +648,10 @@ fn ac2_multiedit_without_replace_all_keeps_diffs() {
         {"old_string": "c", "new_string": "d"}]});
     let b = body_of(&line(&mut a, ask_line("ask", "3", "c3", "MultiEdit", m)));
     assert_eq!(b["toolCall"]["content"].as_array().map(Vec::len), Some(2));
+    // any one edit with replace_all: true, not only the first, drops every diff
+    let m = json!({"file_path": "/w/c", "edits": [
+        {"old_string": "a", "new_string": "b"},
+        {"old_string": "c", "new_string": "d", "replace_all": true}]});
+    let b = body_of(&line(&mut a, ask_line("ask", "4", "c4", "MultiEdit", m)));
+    assert!(b["toolCall"].get("content").is_none());
 }
