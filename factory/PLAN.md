@@ -27,53 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S12: the kernel catches up with the spec (in flight (cloud), routine trig_01Cphn1mCUbFd5BzkjqNq1fQ)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and the code does what S6 and S11 left as
-"code to change".
-Outcomes:
-1. `RUNNERS` holds every refused first word and runtime prefix 4.1 names (S6); a test reads 4.1's
-   list from TECHNICAL and fails on a word the code lacks.
-2. Skill frontmatter continuation lines may not contain `:` (S6, 9.2).
-3. An `unreadable` line keeps the index of its place, never one it claims (S11 RISK).
-4. `append` takes only the adapters' entry kinds and refuses `part` and unknown kinds from callers
-   (S11 RISK); `read` with `max` 0 is refused `refused` until 2.3 says otherwise.
-Touches: `kernel/` only. Protects: *guard*.
-
-## Sketched
-
-### S12: the kernel catches up with the spec (in flight (cloud), routine trig_01Cphn1mCUbFd5BzkjqNq1fQ)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and the code does what S6 and S11 left as
-"code to change".
-Outcomes:
-1. `RUNNERS` holds every refused first word and runtime prefix 4.1 names (S6); a test reads 4.1's
-   list from TECHNICAL and fails on a word the code lacks.
-2. Skill frontmatter continuation lines may not contain `:` (S6, 9.2).
-3. An `unreadable` line keeps the index of its place, never one it claims (S11 RISK).
-4. `append` takes only the adapters' entry kinds and refuses `part` and unknown kinds from callers
-   (S11 RISK); `read` with `max` 0 is refused `refused` until 2.3 says otherwise.
-Touches: `kernel/` only. Protects: *guard*.
-
-### S13: spec debts from S11 (in flight (cloud), routine trig_01H5yP3RqsVZPNTjp2nzzTmX)
-
-Outcomes: 9.4 reads "`attach` with an `after` that falls inside a group starts at the group's
-first part; `read` takes `after` as given" (S11, deputy decision (a)); 2.3 says `max` is 1 to 256
-and 0 is refused; 7 or 9.1 says a host commit is atomic per call, so a failed `append` leaves no
-charged chunk; and whatever S10 names for a later design slice. Touches: `design/TECHNICAL.md`.
-Protects: *core*.
-
-### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
-
-Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
-presses Stop without lag (P14).
-Outcomes: first move tests down the pyramid (S9: `npm test` 230 tests 7.8 s, over the 20%
-budget; `test:slow` 23 s because each of 4 scripts runs its own `npm run build`: share one build);
-the transcript is virtualized; at most one render per animation frame; code is
-highlighted once its block is complete and visible; a large-transcript fixture with limits for
-input, Stop and scroll latency runs in `npm test`.
-Touches: `console/`, `ui/`. Protects: *core*.
-
 ### S14: the kernel finishes the wire and closes S12's risks (in flight (cloud), routine trig_01VXmBJKmd8rdeq3RMbrFi8n)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and every item of S10's kernel list (PR #13)
@@ -98,6 +51,8 @@ S12"), or mark what S14 still owns; 9.8 says an ask or check item without `input
 block that repeats its deltas is treated (once, not twice); 9.4 every rendered line takes the `i`
 of its place. Touches: `design/TECHNICAL.md` only. Protects: *guard* (asks) and *core*.
 
+## Sketched
+
 ### S15: the console reads the wire S10 wrote (cloud, after S9 merges: same files)
 
 Story: Alice's console works against the kernel JSON of S10 unchanged.
@@ -110,6 +65,17 @@ diff (adversary RISK a); the user-sim's "felt wrong" list: the Needs you pill ke
 the open row stays under Recent while the pointer is over the sidebar at load; at 760 px the ask
 bar wraps with Allow once mid-row; a story played only to a running step shows a huge clock.
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *core*. S7 follows S15.
+
+### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
+
+Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
+presses Stop without lag (P14).
+Outcomes: first move tests down the pyramid (S9: `npm test` 230 tests 7.8 s, over the 20%
+budget; `test:slow` 23 s because each of 4 scripts runs its own `npm run build`: share one build);
+the transcript is virtualized; at most one render per animation frame; code is
+highlighted once its block is complete and visible; a large-transcript fixture with limits for
+input, Stop and scroll latency runs in `npm test`.
+Touches: `console/`, `ui/`. Protects: *core*.
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
