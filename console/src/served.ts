@@ -13,6 +13,12 @@ async function ok(w: Watane, fn: string, args: object): Promise<any> {
   return r.ok;
 }
 
+/** A fresh client key per start: kept keys outlive a delete (9.1), so a fixed key would return a deleted probe's id. */
+const probeKey = (): string => `console-probe-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+/** Served by watane (host 8.1): a `<local>.localhost` origin. Vite's `localhost:<port>` and the slow tests' 127.0.0.1 are not; index.html asks for /watane.js everywhere, so that request does not tell. */
+export const isServed = (host: string): boolean => /^[^.]+\.localhost$/.test(host);
+
 export async function served(w: Watane): Promise<Served> {
   const kernel = wataneKernel(w);
   const listed = (): Promise<Listed[]> => ok(w, "sessions.list", { after: null, max: 256 });
@@ -20,7 +26,7 @@ export async function served(w: Watane): Promise<Served> {
   const probes = list.filter((s) => s.backend === "probe").sort((a, b) => b.updated - a.updated);
   let cur = probes[0] as Listed | undefined;
   if (!cur) {
-    const id: string = await ok(w, "probe.start", { key: "console-probe", count: 1000, "every-ms": 1000 });
+    const id: string = await ok(w, "probe.start", { key: probeKey(), count: 1000, "every-ms": 1000 });
     list = await listed(); // the new session's own title, and the sidebar shows it
     cur = list.find((s) => s.id === id) ?? { id, title: "Stage A probe", profile: "", backend: "probe", updated: 0 };
   }
@@ -33,3 +39,5 @@ export async function served(w: Watane): Promise<Served> {
 export function openFailed(root: HTMLElement, e: unknown) {
   root.textContent = `The console could not open a session: ${e instanceof Error ? e.message : String(e)}`;
 }
+
+export const NO_WATANE_JS = "watane.js did not load";

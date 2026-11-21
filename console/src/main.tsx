@@ -3,7 +3,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { openFailed, served } from "./served";
+import { isServed, NO_WATANE_JS, openFailed, served } from "./served";
 import type { Watane } from "../kit";
 import { longInfo, longKernel, scriptedKernel, storyInfo, storySessions } from "../fake/page";
 import "./theme.css";
@@ -18,6 +18,8 @@ if (w) {
   // served by watane: the real kernel; a failure shows as text, not as the fake
   served(w).then((x) => root.render(<StrictMode><App kernel={x.kernel} info={x.info} sessions={x.sessions} /></StrictMode>),
     (e) => openFailed(document.getElementById("root")!, e));
+} else if (isServed(location.hostname)) {
+  document.getElementById("root")!.textContent = NO_WATANE_JS; // served: never the fake (18.2)
 } else {
   root.render(
     <StrictMode>{n ? <App kernel={longKernel(n)} info={longInfo(n)} sessions={storySessions} /> : <App kernel={scriptedKernel()} info={storyInfo} sessions={storySessions} />}</StrictMode>);
