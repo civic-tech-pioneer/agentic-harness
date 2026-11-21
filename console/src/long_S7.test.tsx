@@ -60,11 +60,12 @@ beforeAll(async () => {
   opened = now() - t0;
   // the rest of the history is paged in (the governor lets 4 calls per second through) and shown: some 5 600 rows
   const paged = until(() => total() > 5000 * SLOT, 15_000); // its own guard timer is real
-  // the governor's pacing is not what the limits are about: its clock (setTimeout, Date) is advanced by hand while the history comes in
+  // the governor's pacing is not what the limits are about: its clock (setTimeout, Date) is advanced by hand while the history comes in,
+  // to the next timer only when one is pending, so the fake Date ends some seconds ahead (not hours, which a fixed step in a busy loop gave)
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   let done = false;
   paged.then(() => { done = true; }, () => { done = true; });
-  while (!done) { await vi.advanceTimersByTimeAsync(250); await new Promise<void>((r) => setImmediate(r)); }
+  while (!done) { if (vi.getTimerCount()) await vi.advanceTimersToNextTimerAsync(); await new Promise<void>((r) => setImmediate(r)); }
   vi.useRealTimers();
   await paged;
   // the console attaches again once the history is in (the governor may make it wait for a token); a delta played before that is the fake's "message being written", which the console shows as Writing... until an entry ends it
