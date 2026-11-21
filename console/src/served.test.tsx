@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { App } from "./App";
-import { openFailed, served } from "./served";
+import { isServed, openFailed, served } from "./served";
 import { entry, fakeWatane, items, synced } from "../kit/watane_fake";
 
 const LIST = [
@@ -23,7 +23,7 @@ describe("S32-3 AC4", () => {
   it("ac4_starts_a_probe_when_there_is_none", async () => {
     const f = fakeWatane({ "sessions.list": () => ({ ok: [] }), "probe.start": () => ({ ok: "new" }) });
     const x = await served(f.w);
-    expect(f.calls[1]).toEqual({ fn: "probe.start", args: { key: "console-probe", count: 1000, "every-ms": 1000 } });
+    expect(f.calls[1]).toEqual({ fn: "probe.start", args: { key: expect.stringMatching(/^console-probe-/), count: 1000, "every-ms": 1000 } });
     expect(x.info.id).toBe("new");
   });
   it("ac4_a_started_probe_takes_its_title_from_list_and_shows_in_the_sidebar", async () => {
@@ -70,5 +70,21 @@ describe("S32-3 AC5", () => {
     f.push({ ...items([1, log[0]], [2, log[1]], [3, log[2]], [4, synced(3)]), stream: "st2" });
     await screen.findByText("Item 3 of 3");
     expect(order(document.body)).toEqual(["Item 1 of 3", "Item 2 of 3", "Item 3 of 3"]);
+  });
+});
+
+describe("S32-fix2", () => {
+  it("ac1_a_fresh_key_each_start", async () => {
+    const keys: string[] = [];
+    const mk = () => fakeWatane({ "sessions.list": () => ({ ok: [] }), "probe.start": (a) => { keys.push(a.key as string); return { ok: "new" }; } });
+    await served(mk().w);
+    await served(mk().w);
+    expect(keys[0]).not.toBe(keys[1]);
+    for (const k of keys) { expect(k).toMatch(/^console-probe-\d+-[a-z0-9]+$/); expect(k.length).toBeLessThanOrEqual(64); }
+  });
+  it("ac2_served_is_chosen_by_origin", () => {
+    expect(isServed("probe.localhost")).toBe(true);
+    expect(isServed("localhost")).toBe(false);
+    expect(isServed("127.0.0.1")).toBe(false);
   });
 });
