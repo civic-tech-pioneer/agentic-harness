@@ -1,6 +1,6 @@
 // TECHNICAL 18.3 (the table), 18.6: one component per row kind.
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { askArg, cardName, type Actions, type Row, type ToolCall } from "../model";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { askArg, cardName, isAskRefusal, type Actions, type Row, type ToolCall } from "../model";
 import { AskBar } from "./askbar";
 import { DiffView } from "./diff";
 import { MessageText } from "./code";
@@ -56,16 +56,30 @@ function InputList({ input }: { input: unknown }) {
   );
 }
 
+/** 18.5: the turn is `running` with activity `checking`; an answered ask then reads "Checking with your judge". */
+export const JudgeContext = createContext(false);
+
 export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions }) {
   const { call, ask } = row;
+  const judge = useContext(JudgeContext);
   const pending = !!ask && !ask.decision;
-  const asking = pending && ask.kind === "ask";
+  const open = pending && ask.kind === "ask";
+  // 9.4 rule 4: an answer sent and not yet decided counts as decided; a refusal other than "already decided" gives the bar back
+  const [sent, setSent] = useState<{ id: string; refused: boolean } | null>(null);
+  const answered = open && sent?.id === ask.id && !sent.refused;
+  const asking = open && !answered;
+  const send = useMemo<Actions>(() => ({ ...actions, answer: (id, d) => {
+    setSent({ id, refused: false });
+    let p: void | Promise<void>;
+    try { p = actions.answer(id, d); } catch (e) { p = Promise.reject(e); }
+    return Promise.resolve(p).catch((e) => { if (!isAskRefusal(e)) setSent({ id, refused: true }); });
+  } }), [actions]);
   const checking = pending && ask.kind === "check";
   // 9.4: a card with an ask names the call by the ask's input, never by what the stream said
   const path = ask ? askArg(ask.input) : call.locations[0]?.path;
   const name = cardName(call, ask);
   const diffs = call.content.filter((c) => c.type === "diff").length;
-  const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : checking ? ["Checking", "b-off"]
+  const [tag, tagCls] = answered ? ["Answered", "b-off"] : asking ? ["Waiting for you", "b-wait"] : checking ? ["Checking", "b-off"]
     : ask?.decision && call.status === "pending" ? DECIDED[ask.decision.outcome]
     : row.ended ? ["Ended", "b-off"] : STATUS[call.status];
   const main = (
@@ -82,10 +96,11 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
       {!pending && typeof call.rawOutput === "string" && !call.content.some((c) => c.type === "content") ? <ProgramOutput text={call.rawOutput} /> : null}
     </>
   );
-  const body = asking ? (
+  const body = open ? (
     <>
       <AskScroll>{main}</AskScroll>
-      <AskBar key={ask.id} call={call} askId={ask.id} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} />
+      <AskBar key={ask.id} call={call} askId={ask.id} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={send}
+        sent={answered} judge={judge} refused={sent?.id === ask.id && sent.refused} />
     </>
   ) : main;
   const head = (

@@ -1,6 +1,6 @@
 // TECHNICAL 18.3, 18.5, 18.6: component tests of the transcript and status line from scripted wire messages.
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emptyView, type Actions, type SessionView } from "./model";
 import { reduce } from "./reduce";
@@ -115,8 +115,15 @@ describe("ask", () => {
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Allow once" }));
     expect(actions.answer).toHaveBeenLastCalledWith("a-e2", { outcome: "allow" });
+    // S23 AC1: the bar gives way to "Answered, waiting" until the decision arrives; each answer is its own card
+    expect(screen.getByRole("status")).toHaveTextContent("Answered, waiting");
+    expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
+    cleanup();
+    show(asking(), actions);
     await u.click(screen.getByRole("button", { name: "Allow edits in src this session" }));
     expect(actions.answer).toHaveBeenLastCalledWith("a-e2", { outcome: "allow", for: "session" });
+    cleanup();
+    show(asking(), actions);
     await u.click(screen.getByRole("button", { name: "Deny…" }));
     await u.type(screen.getByRole("textbox", { name: "Tell the agent why" }), "no thanks");
     await u.click(screen.getByRole("button", { name: "Deny" }));

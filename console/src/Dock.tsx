@@ -46,7 +46,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   );
 }
 
-export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; behind?: boolean; onBehind?: () => void; status: ReactNode;
+export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; needsHidden?: boolean; behind?: boolean; onBehind?: () => void; status: ReactNode;
   session?: { model?: string; mode?: string }; stopping?: boolean }) {
   const { view } = props;
   const [opened, setOpened] = useState<boolean | null>(null);
@@ -61,7 +61,8 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
         </button>
       ) : null}
       {view.openAsks.length ? (
-        <button type="button" className="wa-needs" onClick={props.onNeedsYou}>
+        // hidden, not removed, while its card is in view and holds focus: the dock keeps its height, so the transcript does not resize under the reader
+        <button type="button" className="wa-needs" style={props.needsHidden ? { visibility: "hidden" } : undefined} onClick={props.onNeedsYou}>
           <svg width="14" height="14" strokeWidth="2.2" {...svg}><path d="M12 5v14M6 13l6 6 6-6" /></svg>
           Needs you ({view.openAsks.length})
         </button>
