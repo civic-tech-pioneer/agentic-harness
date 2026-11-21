@@ -310,3 +310,73 @@ fn ac5_responses_never_panics_on_random_input() {
         assert!(responses::job_output(&call, "o", r.below(2) == 0, 1).len() < 100);
     }
 }
+
+#[test]
+fn ac6_s12_bad_utf8_line_is_unknown_with_replacement_text() {
+    let mut a = ClaudeAdapter::new();
+    let outs = a.line(b"{\"type\":\"initialized\"}\xff", 1);
+    assert_eq!(outs.len(), 1);
+    let e = outs[0].entry.as_ref().unwrap();
+    assert_eq!(e.kind, Kind::Unknown);
+    assert_eq!(e.body, json!({"raw": "{\"type\":\"initialized\"}\u{FFFD}"}));
+}
+
+#[test]
+fn ac7_hook_and_progress_lines_give_nothing() {
+    let mut a = ClaudeAdapter::new();
+    for v in [
+        json!({"type":"system","subtype":"hook_started","hook_id":"h"}),
+        json!({"type":"system","subtype":"hook_response","hook_id":"h","outcome":"success"}),
+        json!({"type":"system","subtype":"tool_progress"}),
+        json!({"type":"system","subtype":"task_progress"}),
+        json!({"type":"tool_progress","tool_use_id":"t","elapsed_time_seconds":2}),
+        json!({"type":"task_progress","task_id":"t"}),
+    ] {
+        assert!(line(&mut a, v.clone()).is_empty(), "{v}");
+    }
+}
+
+#[test]
+fn ac8_at_merges_with_the_cut_marker() {
+    let mut a = ClaudeAdapter::new();
+    let big = "x".repeat(70_000);
+    let outs = a.line(
+        json!({"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":big}]},"session_id":"5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11","uuid":"u1"})
+            .to_string()
+            .as_bytes(),
+        42,
+    );
+    assert_eq!(
+        outs[0].update.as_ref().unwrap()["_meta"],
+        json!({"watane": {"cut": 70_000, "at": 42}})
+    );
+}
+
+#[test]
+fn ac9_thought_seconds_round_and_clear_at_result() {
+    let mut a = ClaudeAdapter::new();
+    let delta = |t: &str| json!({"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":t}},"session_id":"s","uuid":"u"});
+    let msg = |t: &str| json!({"type":"assistant","message":{"id":"m","role":"assistant","model":"x","content":[{"type":"text","text":t}]},"session_id":"s","uuid":"u"});
+    a.line(delta("a").to_string().as_bytes(), 1000);
+    a.line(delta("b").to_string().as_bytes(), 2500);
+    let outs = a.line(msg("hi").to_string().as_bytes(), 3000);
+    assert_eq!(
+        outs[0].entry.as_ref().unwrap().body["thought"],
+        json!({"text": "ab", "seconds": 2})
+    );
+    a.line(delta("c").to_string().as_bytes(), 5000);
+    a.line(
+        json!({"type":"result","subtype":"success","is_error":false,"duration_ms":1,"duration_api_ms":1,"num_turns":1,"session_id":"s","total_cost_usd":0.0,"usage":{}})
+            .to_string()
+            .as_bytes(),
+        6000,
+    );
+    let outs = a.line(msg("again").to_string().as_bytes(), 7000);
+    assert!(outs[0]
+        .entry
+        .as_ref()
+        .unwrap()
+        .body
+        .get("thought")
+        .is_none());
+}

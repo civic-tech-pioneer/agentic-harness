@@ -12,6 +12,11 @@
           "model": "claude-sonnet-4-5-20250929",
           "content": [
             {
+              "type": "thinking",
+              "thinking": "Plan.",
+              "signature": "sig"
+            },
+            {
               "type": "text",
               "text": "I will read the file."
             },
@@ -47,10 +52,29 @@
     [
       {
         "update": {
+          "sessionUpdate": "agent_thought_chunk",
+          "content": {
+            "type": "text",
+            "text": "Plan."
+          },
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
+          }
+        }
+      },
+      {
+        "update": {
           "sessionUpdate": "agent_message_chunk",
           "content": {
             "type": "text",
             "text": "I will read the file."
+          },
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
           }
         },
         "entry": {
@@ -63,7 +87,11 @@
                 "type": "text",
                 "text": "I will read the file."
               }
-            ]
+            ],
+            "thought": {
+              "text": "Plan.",
+              "seconds": 0
+            }
           }
         }
       },
@@ -75,7 +103,12 @@
           "rawInput": {
             "file_path": "/work/a.txt"
           },
-          "status": "pending"
+          "status": "pending",
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
+          }
         }
       },
       {
@@ -84,6 +117,11 @@
           "content": {
             "type": "text",
             "text": "Then summarize it."
+          },
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
           }
         },
         "entry": {

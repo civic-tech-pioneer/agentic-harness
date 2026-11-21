@@ -146,7 +146,12 @@
           "rawInput": {
             "command": "ls"
           },
-          "status": "pending"
+          "status": "pending",
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
+          }
         }
       }
     ],
@@ -164,7 +169,12 @@
                 "text": "a.txt\nb.txt"
               }
             }
-          ]
+          ],
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
+          }
         },
         "entry": {
           "kind": "tool",
@@ -198,7 +208,12 @@
           "rawInput": {
             "command": "false"
           },
-          "status": "pending"
+          "status": "pending",
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
+          }
         }
       }
     ],
@@ -216,7 +231,12 @@
                 "text": "Exit code 1"
               }
             }
-          ]
+          ],
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
+          }
         },
         "entry": {
           "kind": "tool",
@@ -255,7 +275,12 @@
                 "text": "from \nblocks"
               }
             }
-          ]
+          ],
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
+          }
         },
         "entry": {
           "kind": "tool",
