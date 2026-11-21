@@ -280,3 +280,21 @@ fn ac10_list_rename_delete_work() {
         id: format!("s/{id}")
     }));
 }
+
+#[test]
+fn validator_a_probe_start_at_the_timer_cap_is_busy_and_writes_nothing() {
+    for owner_cap in [false, true] {
+        let mut k = kernel();
+        if owner_cap {
+            k.limits.owner_timers = 0;
+        } else {
+            k.limits.timers = 0;
+        }
+        let before = dump(&k);
+        assert!(matches!(
+            k.probe_start("alice", "k1", 3, 1000),
+            Err(KernelError::Busy(_))
+        ));
+        assert_eq!(dump(&k), before);
+    }
+}
