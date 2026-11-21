@@ -179,9 +179,7 @@ interface offers {                                   // a collect (W34)
 `input`, `overlay`, `decision` and `caps` are JSON: ACP content blocks, an
 overlay document (9.2), a decision (below), and ACP client capabilities.
 
-`decision` has exactly one of `allow`, `deny`, `none`, its value `true`; the
-`answer` of this interface takes four shapes (`none` is the checked provider's,
-below):
+`answer`'s `decision` has exactly one of `allow` or `deny`, its value `true`:
 
 | Decision | Meaning |
 |---|---|
@@ -193,7 +191,7 @@ below):
 Any other shape, `{"none":true}` among them, or `for`, `input` or `reason`
 with the wrong outcome, is `refused` with one refusal `{field: "decision", reason}`. A
 check's `none` exists only in the checked provider's `claude-session.answer`
-(2.2, 4.5), never in a client's `answer`. `answer`'s `ask` is
+(2.1, 4.5), never in a client's `answer`. `answer`'s `ask` is
 the `id` of the ask entry (9.4; the ask id of the deadlines in 9.3), never the
 tool call id. A check (`kind: "check"`, 9.4) is answered only by the checked
 provider (10); the owner's `answer` to it is refused, `{field: "ask"}`.
@@ -861,7 +859,12 @@ the card.
 - Console, a console slice after S9: when a tool row of the ask's id exists,
   `console/kit/reduce.ts` keeps that row's call (today it reads `m.call` only
   when no row exists); instead the ask's `toolCall` and `input` replace the
-  row's call, so the card shows what the ask says will run (9.8).
+  row's call, so the card shows what the ask says will run (9.8); while the
+  ask is open, a later call patch of that id does not change the call the
+  card shows.
+- Console, a console slice after S9: open asks are keyed by the ask entry's
+  `id` (2.3), not by `toolCallId`, so a check's decision never clears an ask
+  bar of the same call.
 - Kernel, S12: the ask entry body `tool-call-id` becomes `toolCallId`, and it
   gains `toolCall` and `reach`.
 - Kernel, S12: the `ask` `_meta.watane` item becomes the `entry` item (no
@@ -1025,8 +1028,8 @@ takes `verdict` and `checking` only from a checked provider's stream
 (`direct: false`, 10). It reads items strictly (no lossy UTF-8 decoding): an
 item it cannot parse is `unknown`, never an ask.
 
-When an ask's input differs from the input of the pending `ToolCall` of the
-same id, the ask's is the one that runs and the one shown: the ask entry's
+When an ask's input differs from the input of any `ToolCall` of the
+same id, earlier or later, the ask's is the one that runs and the one shown: the ask entry's
 `toolCall` and `input` are the truth, and a client draws the card from them
 (18.3).
 
@@ -1504,8 +1507,15 @@ of `spec/VISION.md`.
     no ask, the turn not `waiting`.
 63. (4.5, 9.8) An ask item's `expires-at` is the host's; the kernel's ask
     entry carries the same value, read 5 minutes later; a `can_use_tool`
-    without `tool_use_id` is denied by the host at once and reaches no
-    client.
+    whose `tool_use_id` is missing, empty or not a string is denied by the
+    host at once and reaches no client.
+64. (4.5, 9.8, 10) A stdout line that is not UTF-8, one with a duplicate
+    top-level `type`, and a `{"type":"verdict",…}` line each reach the kernel
+    as `wrapped` and become an `unknown` entry; a `verdict` or `checking` item
+    on a `direct: true` stream is `unknown`; an ask item with a non-number
+    `expires-at` is `unknown`, no ask.
+65. (18.3) With an ask open on call T for input A, a later `ToolCall` T with
+    input B leaves the card showing A, and Allow answers the ask's `id`.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
@@ -1608,7 +1618,7 @@ attach shows "Writing…" until its entry arrives.
 | `AgentThoughtChunk` | "Thinking…", open while it streams; then folded to "Thought for n s" |
 | `ToolCall` of reads and searches in a row | one folded line, "Explored · n reads, m searches" |
 | `ToolCall` of an edit, a program run, or any failed call | a card: name, argument, diff or output, status; a failed one open |
-| `ask` (unanswered) | the card of its tool call with the ask bar, drawn from the ask entry's `toolCall` and `input` only, never from an earlier `ToolCall` update or `tool` entry with the same `toolCallId` (a `check` has no Allow button); "Needs you (n)" above the input |
+| `ask` (unanswered) | the card of its tool call with the ask bar, drawn from the ask entry only, never from any `ToolCall`, `ToolCallUpdate` or `tool` entry of the same `toolCallId`, before or after the ask, while it is open; its argument line comes from the ask's `input` (not `toolCall.rawInput` or `title`); a decision line names the call by the ask's `toolCall.title` and shows its `input`'s argument (a `check` has no Allow button); "Needs you (n)" above the input |
 | `ask` (decided), `allow`, `verdict` | a decision line: who, what, the reason |
 | `Plan` | the plan above the input, "n of m done" |
 | `turn` | the status line (18.5); at a turn's end, a footer line of time, tools and tokens |
