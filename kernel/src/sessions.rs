@@ -1706,17 +1706,18 @@ impl<S: State, H: Host> Kernel<S, H> {
         let now = self.host.now();
         let mut allow_push = None;
         if d.for_session {
-            let Some(reach) = body.get("reach").and_then(Value::as_str) else {
+            let Some((tool, key)) = Self::ask_scope(&rec, &body) else {
                 return Err(refused("decision", "this ask offers no session allow"));
             };
-            if !rec.allows.iter().any(|a| a.reach == reach) {
+            if !rec.allows.iter().any(|a| a.tool == tool && a.key == key) {
                 // The allow's id is the index of its entry, written before the ask closes.
                 let id = rec.next_index.to_string();
                 rec.add_allow(Allow {
                     id: id.clone(),
-                    reach: reach.to_string(),
+                    tool: tool.clone(),
+                    key: key.clone(),
                 })?;
-                allow_push = Some(self.write_allow(&mut rec, &id, reach, true, now)?);
+                allow_push = Some(self.write_allow(&mut rec, &id, &tool, &key, true, now)?);
             }
         }
         self.close_ask(&mut rec, past, ask, now, &mut work)?;
@@ -1747,11 +1748,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         &mut self,
         rec: &mut Record,
         id: &str,
-        reach: &str,
+        tool: &str,
+        key: &str,
         given: bool,
         now: u64,
     ) -> Result<Push, KernelError> {
-        let body = json!({"id": id, "reach": reach, "given": given, "by": "owner"});
+        let reach = broker::render(tool, key);
+        let body = json!({"id": id, "tool": tool, "key": key, "reach": reach, "given": given, "by": "owner"});
         let entry = NewEntry {
             kind: "allow".into(),
             uuid: None,
@@ -1783,7 +1786,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.settle(&mut rec, past, &mut slots, &mut work)?;
         let taken = rec.allows.remove(at);
         let now = self.host.now();
-        let push = self.write_allow(&mut rec, &taken.id, &taken.reach, false, now)?;
+        let push = self.write_allow(&mut rec, &taken.id, &taken.tool, &taken.key, false, now)?;
         work.pushes.push(push);
         rec.updated = now;
         self.seal(&mut rec)?;
@@ -2554,6 +2557,19 @@ impl<S: State, H: Host> Kernel<S, H> {
             || other.get("input") != body.get("input")
     }
 
+    /// 9.6: the (tool, scope key) of an ask, computed afresh from its own tool and input; never
+    /// read from its `reach`.
+    fn ask_scope(rec: &Record, body: &Value) -> Option<(String, String)> {
+        let kind = body.get("kind").and_then(Value::as_str).unwrap_or("ask");
+        if kind != "ask" || rec.owner.starts_with("agent:") {
+            return None;
+        }
+        let tool = body.pointer("/toolCall/title").and_then(Value::as_str)?;
+        let input = body.get("input").unwrap_or(&Value::Null);
+        let key = broker::scope(tool, rec.workspace.as_deref(), input)?;
+        Some((tool.to_string(), key))
+    }
+
     /// 9.6: the kernel sets the reach of a new ask, replacing or removing the one it came with.
     fn set_reach(&self, rec: &Record, body: &mut Value) {
         let kind = body.get("kind").and_then(Value::as_str).unwrap_or("ask");
@@ -2720,10 +2736,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         rec: &Record,
         body: &Value,
     ) -> Option<((&'static str, &'static str, Option<&'static str>), Value)> {
-        let reach = body.get("reach").and_then(Value::as_str);
-        if reach.is_some_and(|r| rec.allows.iter().any(|a| a.reach == r))
-            && self.may_use(&rec.owner, &rec.profile)
-        {
+        let held = Self::ask_scope(rec, body)
+            .is_some_and(|(t, k)| rec.allows.iter().any(|a| a.tool == t && a.key == k));
+        if held && self.may_use(&rec.owner, &rec.profile) {
             return Some((("allow", "session-allow", None), json!({"allow": true})));
         }
         if rec.owner.starts_with("agent:") || rec.live.is_none() {

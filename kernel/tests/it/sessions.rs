@@ -603,13 +603,14 @@ fn ac6_answer_shapes_and_effects() {
     let i = at["i"].as_u64().unwrap().to_string();
     assert_eq!(
         at["body"],
-        json!({"id": i, "reach": "Edit(/w/**)", "given": true, "by": "owner"})
+        json!({"id": i, "tool": "Edit", "key": "/w/**", "reach": "Edit(/w/**)", "given": true, "by": "owner"})
     );
     assert_eq!(
         r.allows,
         [Allow {
             id: i,
-            reach: "Edit(/w/**)".into()
+            tool: "Edit".into(),
+            key: "/w/**".into()
         }]
     );
     assert_eq!(
@@ -676,7 +677,8 @@ fn ac6_allows_over_the_limit_refuse_and_keep_the_ask_open() {
     for i in 0..64 {
         r.add_allow(Allow {
             id: i.to_string(),
-            reach: format!("Edit(/w{i}/**)"),
+            tool: "Edit".into(),
+            key: format!("/w{i}/**"),
         })
         .unwrap();
     }

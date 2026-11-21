@@ -197,7 +197,7 @@ fn ac2_a_different_ask_goes_to_the_owner() {
         line("ask", "e1", "Edit", json!({"file_path": "/w/x"})),
     );
     k.answer("alice", &s, "k1", "e1", SESSION).unwrap();
-    assert_eq!(rec(&mut k, &s).allows[0].reach, "Edit(/w/**)");
+    assert_eq!(rec(&mut k, &s).allows[0].key, "/w/**");
     feed(
         &mut k,
         &mut a,

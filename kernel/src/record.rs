@@ -250,11 +250,12 @@ impl Default for Record {
     }
 }
 
-/// A session allow the kernel holds (9.6): its id (the index of its `allow` entry) and its reach.
+/// A session allow the kernel holds (9.6): its id (the index of its `allow` entry) and its (tool, scope key).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Allow {
     pub id: String,
-    pub reach: String,
+    pub tool: String,
+    pub key: String,
 }
 
 fn allow_len(a: &Allow) -> usize {
