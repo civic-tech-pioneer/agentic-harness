@@ -21,13 +21,15 @@ function normalize(p: CallPatch): ToolCall {
 /**
  * P14: where things are in a rows array, so one message costs the same at row 10 as at row 5 000. Kept per rows array (a WeakMap, so the
  * view stays plain data), patched as the reducer puts, pushes and splices rows, and rebuilt for a rows array it has not seen.
- * `keys` and `calls` hold the first position of a row key and of a call id (a call inside an explored row maps to that row).
+ * `keys` holds the first position of a row key; `calls` every position of a call id (a call inside an explored row maps to that row), since
+ * two rows may hold one id (an ask's own call put on another call's row) and `find` must still reach the first that is left.
  */
-interface Idx { keys: Map<string, number>; calls: Map<string, number>; writing: Set<number>; thinking: Set<number>; dup: boolean; changed: boolean }
+interface Idx { keys: Map<string, number>; calls: Map<string, Set<number>>; writing: Set<number>; thinking: Set<number>; dup: boolean; changed: boolean }
 const indexes = new WeakMap<Row[], Idx>();
 let I: Idx;
 
-function addCall(id: string, k: number) { const p = I.calls.get(id); if (p === undefined || p > k) I.calls.set(id, k); }
+function addCall(id: string, k: number) { const p = I.calls.get(id); if (p) p.add(k); else I.calls.set(id, new Set([k])); }
+function dropCall(id: string, k: number) { const p = I.calls.get(id); if (p) { p.delete(k); if (!p.size) I.calls.delete(id); } }
 function regRow(k: number, r: Row) {
   const have = I.keys.get(r.key);
   if (have === undefined) I.keys.set(r.key, k); else if (have !== k) I.dup = true;
@@ -39,8 +41,8 @@ function regRow(k: number, r: Row) {
 function unregRow(k: number, r: Row) {
   if (I.keys.get(r.key) === k) I.keys.delete(r.key);
   I.writing.delete(k); I.thinking.delete(k);
-  if (r.kind === "tool") { if (I.calls.get(r.call.id) === k) I.calls.delete(r.call.id); }
-  else if (r.kind === "explored") for (const c of r.calls) if (I.calls.get(c.id) === k) I.calls.delete(c.id);
+  if (r.kind === "tool") dropCall(r.call.id, k);
+  else if (r.kind === "explored") for (const c of r.calls) dropCall(c.id, k);
 }
 function build(rows: Row[]): Idx {
   const prev = I;
@@ -50,14 +52,16 @@ function build(rows: Row[]): Idx {
   return made;
 }
 
-function put(v: SessionView, k: number, row: Row) { unregRow(k, v.rows[k]!); v.rows[k] = row; regRow(k, row); I.changed = true; }
-function push(v: SessionView, ...rows: Row[]) { for (const r of rows) { v.rows.push(r); regRow(v.rows.length - 1, r); } I.changed = true; }
+/** AC3: the rows array is copied once, on the first change of a reduce; a message that changes no row keeps the parent's array. */
+function own(v: SessionView) { if (!I.changed) { v.rows = v.rows.slice(); I.changed = true; } }
+function put(v: SessionView, k: number, row: Row) { own(v); unregRow(k, v.rows[k]!); v.rows[k] = row; regRow(k, row); }
+function push(v: SessionView, ...rows: Row[]) { own(v); for (const r of rows) { v.rows.push(r); regRow(v.rows.length - 1, r); } }
 /** Replaces `del` rows at `at` with `ins`; the rows after it are registered again at their new positions. */
 function splice(v: SessionView, at: number, del: number, ...ins: Row[]) {
+  own(v);
   for (let k = at; k < v.rows.length; k++) unregRow(k, v.rows[k]!);
   v.rows.splice(at, del, ...ins);
   for (let k = at; k < v.rows.length; k++) regRow(k, v.rows[k]!);
-  I.changed = true;
 }
 const firstOf = (s: Set<number>) => { let m = -1; for (const k of s) if (m < 0 || k < m) m = k; return m; };
 const lastOf = (s: Set<number>) => { let m = -1; for (const k of s) if (k > m) m = k; return m; };
@@ -65,8 +69,9 @@ const hasKey = (key: string) => I.keys.has(key);
 const keyAt = (key: string) => I.keys.get(key) ?? -1;
 
 function find(v: SessionView, id: string): { at: number; n?: number; call: ToolCall } | undefined {
-  const at = I.calls.get(id);
-  if (at === undefined) return undefined;
+  const p = I.calls.get(id);
+  if (!p) return undefined;
+  const at = firstOf(p);
   const r = v.rows[at]!;
   if (r.kind === "tool" && r.call.id === id) return { at, call: r.call };
   if (r.kind === "explored") { const n = r.calls.findIndex((c) => c.id === id); if (n >= 0) return { at, n, call: r.calls[n]! }; }
@@ -166,13 +171,11 @@ function toolCount(rows: Row[]): number {
 /** 9.3 R4: the turn is over, so a streamed call nothing drives (no open ask or check) is marked ended; its own data stays. */
 function markEnded(v: SessionView, x: Internal) {
   const open = new Set((x.open ?? []).map((o) => o.ask.toolCallId));
-  let out: Row[] | undefined;
   for (let k = 0; k < v.rows.length; k++) {
     const r = v.rows[k]!;
     if (r.kind === "tool" && !r.ended && (r.call.status === "pending" || r.call.status === "in_progress") && !open.has(r.call.id) && !(r.ask && !r.ask.decision))
-      (out ??= v.rows.slice())[k] = { ...r, ended: true as const };
+      put(v, k, { ...r, ended: true as const });
   }
-  if (out) { v.rows = out; I.changed = true; }
 }
 
 function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra) {
@@ -249,7 +252,7 @@ export function reduce(view: SessionView, message: string): SessionView {
   indexes.delete(view.rows); // the index now follows the new rows; a reduce that throws leaves none, and the next one rebuilds
   I.changed = false; I.dup = false;
   const x: Internal = { ...view.x };
-  const v: SessionView = { ...view, rows: view.rows.slice(), x };
+  const v: SessionView = { ...view, x }; // rows: copied by `own` on the first change
 
   if (m.t === "chunk" || m.t === "call" || m.t === "plan") {
     if (!(m.t === "chunk" && m.part === "thought")) fold(v, x, m.at);
@@ -355,7 +358,6 @@ export function reduce(view: SessionView, message: string): SessionView {
   }
   if (i !== undefined) v.lastIndex = Math.max(v.lastIndex, i);
   if (I.dup) { v.rows = uniqueKeys(v.rows); I = build(v.rows); }
-  if (!I.changed) { v.rows = view.rows; }
   indexes.set(v.rows, I);
   return v;
 }

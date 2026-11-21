@@ -1,6 +1,6 @@
-// TECHNICAL 18.3: turns one kernel stream message into the session view (rows and dock fields).
-import { askArg, type Internal, type Row, type SessionView, type ToolCall, type TurnState, type Ask } from "./model";
-import { parse, type CallPatch, type TurnExtra } from "./wire";
+// Test fixture, frozen: console/kit/reduce.ts as it was at 5882c51 (before S7-fix1), the oracle of s7_fix1.test.ts. Never imported by the app; do not edit.
+import { askArg, type Internal, type Row, type SessionView, type ToolCall, type TurnState, type Ask } from "../model";
+import { parse, type CallPatch, type TurnExtra } from "../wire";
 
 type ExploredRow = Extract<Row, { kind: "explored" }>;
 const isExplored = (c: ToolCall) => (c.kind === "read" || c.kind === "search") && c.status !== "failed";
