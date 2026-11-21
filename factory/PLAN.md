@@ -90,6 +90,27 @@ cases 7, 20, 21 (kernel part) and 36 and 51 (kernel part) pass; the console atta
 stream in `watane-dev serve` instead of the scripted fake, with the fake kept for its unit tests.
 Touches: `kernel/`, `wit/`, `console/`, `ui/`, `mod.toml`. Protects: *core*. Waits for S96 (watane).
 
+### S34: scope keys for session allows, and `host-info.generation()` (cloud, after S33 merges: kernel/, TECHNICAL)
+
+Story: the human's answers of 2026-11-21 in the contract and the kernel.
+Outcomes:
+1. 9.6 and 2.3: every tool may have a pure scope function from a call's input to a scope key (Bash:
+   the exact command, with S33's pinned keys; Edit/Write/MultiEdit/NotebookEdit: the workspace;
+   WebFetch: the URL's host after one parse; Skill: the skill's name); a tool without one, or an
+   input that cannot be scoped safely, gets no key and always asks. The kernel computes the key from
+   the input that will run and shows it on the ask (`reach`); "allow for this session" stores
+   (tool, key); a later call is allowed only when its fresh key equals a stored pair exactly. This
+   replaces S33's "no allow for Task/Skill/WebFetch/WebSearch" table: Task and WebSearch get no key
+   unless a safe one is named; `mcp__watane__*` gets none unless its tool names one (14 row).
+2. 2.1 and 9.3: restart detection is the interface `host-info` with `generation()`, in place of
+   `caller.boot()`; R1 and every mention renamed; 15's watane row says so.
+3. 4.5: `answered` carries `outcome`, and the host closes checks with `expired`: accepted (mark the
+   15 rows accepted, no longer waiting).
+4. From watane S95: the launch document (4.1) gains `profile` (used only for the consent words),
+   and the kernel's `timer-error` gains `bad-delay`.
+Touches: `kernel/`, `design/TECHNICAL.md`, `design/FUNCTIONAL.md` if a requirement changes.
+Protects: *guard* (asks).
+
 ### S30: the console draws a short decision (cloud, after S23 and S29 merge: console/)
 
 Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
@@ -457,42 +478,23 @@ S2 writes each into the document that owns it.
 - **N11** The console shows only its own sessions; F-AGENT-6 stays as it is (asked after commit 3926a0d raised it).
 - **R1** This repository is the kernel `mods:agent`; each provider has its own repository.
 
+- **2026-11-21, the human:** (1) the three host-wire additions are accepted, with restart detection
+  as a new interface `host-info` with `generation()` (in place of `caller.boot()`); `outcome` on
+  `answered` and checks closed by the host with `expired` as written. (2) Session allows use a scope
+  key per tool: a pure scope function turns a call's input into the smallest part that decides
+  what it can reach and that a person can judge at a glance (Bash: the exact command; file edits:
+  the workspace; a web fetch: the host; a skill: its name). A tool without one, or an input that
+  cannot be scoped safely, gets no key and always asks. The kernel computes the key from the input
+  that will run and shows it on the ask; "allow for this session" stores (tool, key); a later call
+  is allowed only when its fresh key equals a stored pair exactly; take-back and session end remove
+  it. (3) Bash: the exact command. (4) The sandbox is the boundary for Bash allow rules.
+
 ## Waiting on the human
 
 - **N5 The factory's implementer needs a shell.** The human chose to decide at stage F. Options:
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
   backend in the host, a third native process kind (a new host boundary, costly to remove once
   mods use it). Rec: (a). Blocks only stage F.
-
-- **Bash boundary** (S3, S6): S6 wrote option (a): Claude's sandbox is the boundary for Bash, the
-  refused-word list best effort. Your call to keep it or ask for (b), an allow list of named
-  commands (stricter; makers write each command). Undo (a) to (b): profiles that rely on
-  prefixes break.
-- **Session allow on `Bash`** (S6 RISK, security boundary). An `{allow, for: "session"}` answer to
-  a Bash ask allows any command for the rest of the session. Options: (a) hold the session allow
-  to the 4.1 allow-rule grammar (it allows only that command's prefix, refused words refused);
-  (b) name it in 14 "Not protected". Rec: (a), stricter and cheap now. Not blocking: no host yet.
-- **4.5 host items (S8, wire format, decided as option 1, veto welcome).** Ask and check items
-  gain `tool_use_id` and `expires-at` (host clock), and the host never passes through a stdout line
-  typed like its own items. Alternatives: (2) leave it to stage B's host slice; (3) a source marker
-  on host items, a wire change in both repos. Undo of 1: a few spec lines, one adapter field.
-
-- **`caller.boot()`, a new watane host import** (S17, interface between projects, not in N3).
-  The kernel cannot tell a restart from its own state, so it reads the host's start number on its
-  first call. Options: (a) `caller.boot() -> u64`, a pure read (as written); (b) a host export
-  `started()` called once per start. Rec: (a), no new call into mods at start. Undo: one 2.1 line,
-  one 15 row, rule R1. Blocks only stage B's host part.
-
-- **`answered` carries `outcome`; the host closes checks with `expired` too** (S18, S22: two small
-  additions to watane's H2 wire, both on the H2 line in 15).
-  Without it the kernel cannot record what a checked provider decided. Alternative: leave the wire
-  as it is and design another way to learn the outcome at stage E. Undo: one field. Blocks only
-  stage B's host part.
-
-- **Session allows beyond Bash** (S31, security boundary; built fail-closed in S33). A session
-  allow on `Task`, `Skill`, `WebFetch` or `WebSearch` would cover every subagent, skill, URL or
-  query, so none is offered. Alternative: offer them as 9.6 first said (bare tool name). Rec: keep
-  them off. Undo: one rule in the reach table.
 
 ## Friction
 
