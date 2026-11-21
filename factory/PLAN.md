@@ -42,15 +42,6 @@ Outcomes:
 4. S12 polish: a finished thinking block that repeats streamed deltas is not pushed live again.
 Touches: `kernel/` only. Protects: *guard* (asks).
 
-### S16: spec debts from S12 (in flight (cloud), routine trig_01DTg3oQiUkjLrWLpdD8hL38)
-
-Outcomes: drop the done "Code to change" lists (9.2; 9.8 "Code to change (S12)"; 9.4 "Kernel,
-S12"), or mark what S14 still owns; 9.8 says an ask or check item without `input` is `unknown`;
-4.5 says host item ids are unique per stream, and a reused open ask id reads as `unknown`; 9.4
-`unreadable` `raw` is the stored line as a JSON string (as built); 9.4 says how a finished thinking
-block that repeats its deltas is treated (once, not twice); 9.4 every rendered line takes the `i`
-of its place. Touches: `design/TECHNICAL.md` only. Protects: *guard* (asks) and *core*.
-
 ### S15: the console reads the wire S10 wrote (in flight (cloud), routine trig_019YCYegVuKusDaBroYa4EoT)
 
 Story: Alice's console works against the kernel JSON of S10 unchanged.
@@ -183,6 +174,13 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   User-sim ACCEPTED on run 3; adversary BREACHED 4 (the ask card could hide what runs), fixed,
   HELD. Implementer runs 1/1/2 + 8 fixes of 1. Suite: `npm test` 230 tests 7.8 s (+26%),
   `test:slow` 23 s, gate 45 s.
+
+- **S16** S12's spec debts (PR #17, ~7 min). The done "Code to change" lists are gone; what S14
+  still owes is named once, in 9.4 "Code to change (S14)", with case 66; 4.5: a host ask or check
+  id is unique on its stream, never reused; 9.8: an item without `input` or with an open id is
+  `unknown`; 9.4: `raw` as a JSON string, every line takes the `i` of its place, a repeated
+  thinking block counts once. User-sim ACCEPTED (run 1); no adversary (no code, 14 unchanged).
+  Gate 15 s.
 
 ## Deputy decisions
 
