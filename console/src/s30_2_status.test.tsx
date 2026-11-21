@@ -47,6 +47,15 @@ describe("S30-2", () => {
     expect(statusLine().getAttribute("data-state")).toBe("running");
   });
 
+  it("ac2_checked_mode_the_line_reads_the_cards_judge_words", async () => {
+    const checking = w({ type: "turn", state: { state: "running", since: Date.now(), activity: { kind: "checking" } } });
+    const f = await open([...story, [checking]], S, 1);
+    await allow("e2");
+    act(() => f.play(S));
+    await waitFor(() => expect(within(card("e2")).getByRole("status")).toHaveTextContent("Checking with your judge"));
+    expect(word()).toBe(within(card("e2")).getByRole("status").textContent);
+  });
+
   it("ac3_two_asks_the_first_answered_names_the_next_with_its_own_clock", async () => {
     await open([...story, farAsk(Date.now() + 900_000)], S + 1, 2);
     await allow("e2");
