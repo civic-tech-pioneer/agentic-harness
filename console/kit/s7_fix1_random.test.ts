@@ -36,7 +36,8 @@ function messages(r: () => number) {
     if (x < 0.65) {
       const cid = id(), k = pick(["ask", "check"]);
       const decided = r() < 0.5 ? { decision: { outcome: pick(["allow", "deny", "none"]), by: "you", ...(r() < 0.3 ? { for: "session" } : {}) } } : {};
-      return entry(i(), "ask", { id: pick(["a0", "a1", "a2"]), kind: k, toolCallId: cid, input: {}, "expires-at": 9, ...(k === "ask" ? { reach: "r" } : {}), ...(r() < 0.8 ? { toolCall: callBody(pick([cid, "zz"])) } : {}), ...decided });
+      // an ask id stays on its call: S23-fix4 moves an id's open ask off its old call, which the frozen reducer does not
+      return entry(i(), "ask", { id: `${pick(["a0", "a1", "a2"])}${cid}`, kind: k, toolCallId: cid, input: {}, "expires-at": 9, ...(k === "ask" ? { reach: "r" } : {}), ...(r() < 0.8 ? { toolCall: callBody(pick([cid, "zz"])) } : {}), ...decided });
     }
     if (x < 0.69) return entry(i(), "verdict", { ...(r() < 0.7 ? { toolCallId: id() } : { on: "input" }), outcome: "deny", by: "rule", reasons: ["x"] });
     if (x < 0.71) return entry(i(), "allow", { id: pick(["p0", "p1"]), reach: "r", by: "you", given: r() < 0.5 });

@@ -148,6 +148,10 @@ function syncAsks(v: SessionView, x: Internal, toolCallId: string, decided?: { a
     const { checking: _c, ...rest } = r;
     const alsoChecking = pick.ask.kind === "ask" && mine.some((o) => o.ask.kind === "check");
     put(v, f!.at, { ...rest, call, ask: pick.ask, ...(alsoChecking ? { checking: true as const } : {}) });
+  } else if (!pick && r?.kind === "tool" && r.ask && !r.ask.decision) {
+    // an open ask moved off this call (the same id opened on another): the card keeps its call and shows no open ask
+    const { checking: _c, ask: _a, ...rest } = r;
+    put(v, f!.at, rest);
   }
 }
 
@@ -319,7 +323,9 @@ export function reduce(view: SessionView, message: string): SessionView {
       // 9.8: the card is the ask's own call, whatever the stream said of the id before (an entry already open on the call keeps its card)
       if (!open.some((o) => o.ask.toolCallId === a.toolCallId && o.ask.id !== a.id)) upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true);
       toToolRow(v, a.toolCallId);
+      const moved = open.find((o) => o.ask.id === a.id && o.ask.toolCallId !== a.toolCallId)?.ask.toolCallId;
       x.open = [...open.filter((o) => o.ask.id !== a.id), { ask: a, title: m.call?.title ?? askArg(a.input) ?? a.toolCallId, call: ownCall(m.call, a) }];
+      if (moved !== undefined) syncAsks(v, x, moved);
       syncAsks(v, x, a.toolCallId);
       break;
     }

@@ -61,6 +61,8 @@ export interface Actions {
   answeredAsks?: ReadonlyMap<string, Ask>;
   say(text: string): void;
   answer(ask: string, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void | Promise<void>;
+  /** The card's answer: for the ask object it drew. It goes out only while that object is the open ask of its id (else it is refused, nothing sent). */
+  answerDrawn?(drawn: Ask, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void | Promise<void>;
   stop(): void;
   takeBack(allowId: string): void;
 }

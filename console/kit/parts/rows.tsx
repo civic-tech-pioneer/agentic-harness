@@ -71,7 +71,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const send = useMemo<Actions>(() => ({ ...actions, answer: (id, d) => {
     setSent({ ask: ask!, refused: false });
     let p: void | Promise<void>;
-    try { p = actions.answer(id, d); } catch (e) { p = Promise.reject(e); }
+    try { p = actions.answerDrawn ? actions.answerDrawn(ask!, d) : actions.answer(id, d); } catch (e) { p = Promise.reject(e); }
     return Promise.resolve(p).catch((e) => { if (!isAskRefusal(e)) setSent({ ask: ask!, refused: true }); });
   } }), [actions, ask]);
   const checking = pending && ask.kind === "check";
