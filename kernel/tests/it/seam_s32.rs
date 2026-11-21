@@ -491,3 +491,36 @@ fn ac7_a_batch_on_an_unknown_stream_changes_nothing() {
     assert_eq!(c.value, SinkOutcome::Taken);
     assert_eq!(dump(&k), before);
 }
+
+#[test]
+fn validator_a_firing_that_arms_a_far_deadline_hops_then_arms_the_rest() {
+    // a firing whose next deadline is 50 days out arms 30 days and keeps the hop; the hop's
+    // firing finds 20 days left and arms them (the early-firing rule would arm nothing)
+    let mut k = kernel();
+    let id = k.probe_start("alice", "p1", 1, 1000).unwrap().value;
+    let day = 24 * 60 * 60 * 1000;
+    let at = 2000 + 50 * day;
+    let mut r = rec(&mut k, &id);
+    r.deadlines.push(Deadline {
+        what: "retry".into(),
+        at,
+    });
+    r.save(&mut k.state).unwrap();
+    k.host.now = 2000;
+    let from = k.host.calls.len();
+    k.timer(&format!("s/{id}"));
+    assert_eq!(delays(&k, from), [MAX_TIMER_MS]);
+    k.host.now = 2000 + MAX_TIMER_MS;
+    let from = k.host.calls.len();
+    k.timer(&format!("s/{id}"));
+    assert_eq!(delays(&k, from), [at - k.host.now]);
+}
+
+#[test]
+fn validator_a_seq_twice_in_one_batch_is_taken_once() {
+    let (mut k, id) = batch_kernel();
+    let batch = vec![(1, msg("a")), (1, msg("a")), (2, msg("b"))];
+    k.provider_batch("t1", batch).unwrap();
+    assert_eq!(texts(&mut k, &id), ["a", "b"]);
+    assert_eq!(seq_of(&mut k, "t1"), 2);
+}
