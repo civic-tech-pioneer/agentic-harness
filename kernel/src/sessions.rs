@@ -1013,12 +1013,16 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             return Ok(());
         }
-        let entry = NewEntry {
-            kind: "turn".into(),
-            uuid: None,
-            body: stored.entry_body(),
-        };
-        self.append(rec, entry, now)?;
+        // Past its quota only a change that ends an active turn is written: one `turn` entry per
+        // turn (9.3 Quota). The record and the push follow either way.
+        if !work.past || (rec.turn.is_active() && !stored.is_active()) {
+            let entry = NewEntry {
+                kind: "turn".into(),
+                uuid: None,
+                body: stored.entry_body(),
+            };
+            self.append(rec, entry, now)?;
+        }
         rec.turn = stored;
         work.pushes.push(Push::of(&rec.id, turn_push(&t)));
         Ok(())
@@ -1083,7 +1087,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         work: &mut Work,
     ) -> Result<(), KernelError> {
         let before = rec.turn.is_active();
-        // Past its quota only a change that ends an active turn is stored: one `turn` entry per
+        // Past its quota only a change that ends an active turn is taken: one `turn` entry per
         // turn (9.3 Quota). An `activity` change alone is no change: `turn_to` pushes it.
         let mut bare = t.clone();
         if let Turn::Running { activity, .. } = &mut bare {
@@ -2032,7 +2036,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             .state
             .get(&stream_key(stream))
             .and_then(|b| serde_json::from_slice::<StreamKey>(&b).ok());
-        let Some(key) = key else {
+        // An owner stream's id is no provider item (9.1 `stream/<id>`).
+        let Some(key) = key.filter(|k| k.kind == PROVIDER) else {
             return Ok(Called {
                 value: Item::Done,
                 pushes: Vec::new(),
