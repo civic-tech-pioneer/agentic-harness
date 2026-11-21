@@ -1,0 +1,85 @@
+// S15-3 (18.6): after "Needs you" the pill shows no focus ring and Allow once does; at 760 px the ask bar ends with Allow once.
+// Slow: jsdom computes no layout or :focus-visible, so this builds ui/, serves it, and measures it in Chromium.
+import { createRequire } from "node:module";
+import { execSync } from "node:child_process";
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
+import assert from "node:assert/strict";
+
+const require = createRequire(import.meta.url);
+let playwright;
+try { playwright = require("playwright"); } catch {
+  console.error("NOT RUN: `playwright` cannot be required here (install it globally, or set NODE_PATH to it).");
+  process.exit(2);
+}
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const ui = join(root, "..", "ui");
+execSync("npm run build", { cwd: root, stdio: "inherit" });
+
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2" };
+const server = createServer(async (req, res) => {
+  const p = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^(\.\.[/\\])+/, "");
+  try {
+    const f = p.endsWith("/") ? p + "index.html" : p;
+    const body = await readFile(join(ui, f));
+    res.writeHead(200, { "content-type": types[extname(f)] ?? "application/octet-stream" }).end(body);
+  } catch { res.writeHead(404).end(); }
+});
+await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const url = `http://127.0.0.1:${server.address().port}/`;
+
+const browser = await playwright.chromium.launch();
+try {
+  for (const [width, height] of [[1440, 900], [1280, 800], [760, 900]]) {
+    const page = await browser.newPage({ viewport: { width, height } });
+    await page.goto(url);
+    await page.mouse.move(width - 30, 300);
+    const pill = page.getByRole("button", { name: "Needs you (1)" });
+    await pill.click();
+    await page.waitForTimeout(800);
+    const m = await page.evaluate(() => {
+      const pill = document.querySelector(".wa-needs");
+      const f = document.activeElement;
+      const bar = document.querySelector(".wa-askbar");
+      const r = (e) => e.getBoundingClientRect();
+      const btns = [...bar.querySelectorAll("button")].map((b) => ({ t: b.textContent, ...r(b).toJSON() }));
+      const q = bar.querySelector(".askq");
+      const ps = pill ? getComputedStyle(pill) : null;
+      return {
+        pillFocusVisible: pill ? pill.matches(":focus-visible") : false,
+        pillOutline: ps ? ps.outlineStyle + " " + ps.outlineWidth + " " + ps.boxShadow : "",
+        focus: f.textContent,
+        ring: getComputedStyle(f).outlineStyle,
+        focusVisible: f.matches(":focus-visible"),
+        bar: r(bar).toJSON(), btns, q: r(q).toJSON(), sw: document.documentElement.scrollWidth, iw: innerWidth,
+      };
+    });
+    assert.equal(m.focus, "Allow once", `${width}: focus on Allow once`);
+    assert.equal(m.pillFocusVisible, false, `${width}: the pill has no focus-visible ring`);
+    assert.ok(/^none|^auto 0px/.test(m.pillOutline) || m.pillOutline.startsWith("none"), `${width}: pill draws no outline (${m.pillOutline})`);
+    assert.notEqual(m.ring, "none", `${width}: Allow once outline drawn`);
+    // Allow once is the right-most button of the last line, nothing cut or overlapping.
+    const last = m.btns[m.btns.length - 1];
+    assert.equal(last.t, "Allow once");
+    const lastLine = m.btns.filter((b) => Math.abs(b.top - last.top) < 4);
+    for (const b of lastLine) assert.ok(b.right <= last.right + 0.5, `${width}: ${b.t} is not right of Allow once`);
+    for (const b of m.btns) {
+      assert.ok(b.left >= m.bar.left - 0.5 && b.right <= m.bar.right + 0.5, `${width}: ${b.t} inside the bar`);
+    }
+    for (let i = 0; i < m.btns.length; i++) for (let j = i + 1; j < m.btns.length; j++) {
+      const a = m.btns[i], b = m.btns[j];
+      assert.ok(a.right <= b.left + 0.5 || b.right <= a.left + 0.5 || a.bottom <= b.top + 0.5 || b.bottom <= a.top + 0.5, `${width}: ${a.t} overlaps ${b.t}`);
+    }
+    assert.ok(last.right >= m.bar.right - 20, `${width}: Allow once at the bar's right end`);
+    if (width >= 1280) assert.ok(m.bar.height < 70 && m.btns.every((b) => Math.abs(b.top - last.top) < 4), `${width}: the bar is one row`);
+    assert.ok(m.sw <= m.iw, `${width}: no horizontal scroll`);
+    console.log(`ok ${width}x${height}`, JSON.stringify(m.btns.map((b) => [b.t, Math.round(b.left), Math.round(b.top)])));
+    await page.close();
+  }
+} finally {
+  await browser.close();
+  server.close();
+}

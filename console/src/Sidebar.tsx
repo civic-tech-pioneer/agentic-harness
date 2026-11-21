@@ -1,5 +1,5 @@
 // TECHNICAL 18.4-18.6: the sidebar, 260 px, hidden under 760 px: Agents, the off "+ New session", rows grouped by state.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TurnState } from "../kit";
 import type { SessionInfo } from "./Header";
 
@@ -41,12 +41,15 @@ function Row({ s, on }: { s: SidebarSession; on?: boolean }) {
 
 export function Sidebar({ info, turn, sessions = [] }: { info: SessionInfo; turn?: TurnState["state"]; sessions?: SidebarSession[] }) {
   const [held, setHeld] = useState<Group | null>(null);
+  const [over, setOver] = useState(false);
   const live = shapeOf(turn);
+  // The hold begins once the state is known: a pointer already over the list before the first turn holds nothing.
+  useEffect(() => { if (over && turn !== undefined) setHeld((h) => h ?? groupOf(live)); }, [over, turn]);
   const group = held ?? groupOf(live);
   const cur: SidebarSession = { id: info.id, title: info.title, place: info.place ?? info.workspace, meta: `${info.place ?? info.workspace} · ${info.provider}`, state: live };
   const others = sessions.filter((s) => s.id !== info.id);
   return (
-    <nav className="wa-sidebar" aria-label="Sessions" onMouseEnter={() => setHeld(groupOf(live))} onMouseLeave={() => setHeld(null)}>
+    <nav className="wa-sidebar" aria-label="Sessions" onMouseEnter={() => setOver(true)} onMouseLeave={() => { setOver(false); setHeld(null); }}>
       <div className="wa-brand">
         <span className="wa-markshape" aria-hidden="true">
           <i style={{ background: "#3355D6" }} /><i style={{ background: "#D9534F", borderRadius: "50%" }} /><i style={{ background: "#7B5CD6", transform: "rotate(45deg)" }} />
