@@ -2061,8 +2061,10 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
     the main thread or within a time budget per block, past which the block
     stays plain (the budget is S23; today only the size limit is built). A
     block over 64 KiB stays plain (`console/kit/parts/highlight.ts`).
-  - The reducer's cost per message does not grow with the transcript's length
-    (`console/kit/s7_fix1.test.ts`).
+  - The reducer does no work per message that walks the transcript: at 5 000
+    rows a message costs at most 8 times what it costs at 300 rows, and at
+    most 50 µs (`console/kit/s7_fix1.test.ts`; copying the rows array on a
+    change is what still grows).
   - The long fixture runs in `npm test` (`console/src/long_S7.test.tsx`): 5 000
     entries and the stream at 50 deltas a second; p95 over 20 samples: input
     at most 50 ms, Stop at most 100 ms, scroll at most 100 ms, stream at most
