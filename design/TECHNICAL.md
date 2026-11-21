@@ -838,8 +838,8 @@ written at its answer.
 (a kernel ask's expiry, `timers`, no owner stream, `cancel`, `restart`, and for
 an open Claude ask the provider stream's `ended`, 9.8 rule 4); or `host` (a
 Claude ask the host resolved: `reason` is the host's `by`, `expired` or
-`cancelled`; an answer the kernel did not make on a `direct: true` stream has
-no `reason`, 9.8). Repeating the ask lets a page that starts at the decision show
+`cancelled`; an `answered` on a `direct: true` stream that the kernel did not make, or whose
+`outcome` differs from its pending answer, has no `reason`, 9.8). Repeating the ask lets a page that starts at the decision show
 the card.
 
 - Indexes start at 1, increase by one, never change. Deltas are never
@@ -1409,7 +1409,7 @@ when `claude-codes` cannot parse it.
 | `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
-| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider slot, or 1 024 active sessions, 9.3 A3) |
+| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider slot, 64 pending answers on the session, or 1 024 active sessions, 9.3, A3) |
 | `not-owner`, `not-direct` | providers | 2.2, 10 (`not-owner`: the caller is not the kernel) |
 | `unknown-input`, `unknown-allow`, `behind {through}` (`through`: the high-water index) | kernel | 9.3, 9.6, 9.4 |
 | `too-large` | OpenAI loop outcome | 9.5, body budget |
