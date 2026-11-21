@@ -253,7 +253,7 @@ fn resolved(id: &str) -> ProviderEvent {
 }
 
 /// The turn pushes of a call, with the record's turn after it.
-fn turn_pushes(c: &Called<Item>) -> Vec<Value> {
+fn turn_pushes<T>(c: &Called<T>) -> Vec<Value> {
     c.pushes
         .iter()
         .filter(|p| p.value["type"] == "turn")
@@ -286,5 +286,28 @@ fn fix1_ac2_past_quota_closing_asks_move_the_turn_without_entries() {
     let c = k.provider_item("t1", ProviderEvent::Ended).unwrap();
     assert!(matches!(turn(&mut k), Turn::Running { .. }));
     assert_eq!(turn_pushes(&c), vec![turn(&mut k).to_json()]);
+    assert_eq!(turn_entries(&mut k, &s), n);
+}
+
+/// S26-fix2 AC3, 9.3 Quota: past quota an owner `answer` that closes one of two open asks adds no
+/// `turn` entry; the record's turn is `waiting` with one ask and the `turn` push matches it.
+#[test]
+fn fix2_ac3_past_quota_owner_answer_adds_no_turn_entry() {
+    let mut k = kernel();
+    let s = start(&mut k, "alice", "k1");
+    for a in ["a1", "a2"] {
+        k.provider_item("t1", ask(a)).unwrap();
+    }
+    k.limits.owner_bytes = agent_kernel::Usage::load(&mut k.state, "quota/alice").bytes;
+    let n = turn_entries(&mut k, &s);
+    let c = k
+        .answer("alice", &s, "ans1", "a1", r#"{"deny":true}"#)
+        .unwrap();
+    let turn = Record::load(&mut k.state, &s).unwrap().turn;
+    assert!(
+        matches!(turn, Turn::Waiting { ref asks, .. } if asks == &["a2"]),
+        "{turn:?}"
+    );
+    assert_eq!(turn_pushes(&c), vec![turn.to_json()]);
     assert_eq!(turn_entries(&mut k, &s), n);
 }

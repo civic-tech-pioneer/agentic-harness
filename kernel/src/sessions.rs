@@ -243,6 +243,9 @@ pub struct Kernel<S: State, H: Host> {
     pub limits: Limits,
     /// What of the call's change in session bytes the record in hand already holds (`seal`).
     sealed: i64,
+    /// The owner or the account was past its quota when the call read its accounts (9.3 Quota):
+    /// set by `accounts`, so every call that reads them has it before it writes.
+    past: bool,
     /// The provider stream the call in hand opened: a call that then fails cancels it (7).
     opened: Option<String>,
     /// While an item call may still be dropped whole (3, "Deferred batch"), the host calls it
@@ -266,8 +269,6 @@ struct Work {
     stored: Option<u64>,
     /// The live owner stream of the session an item call acted on, as its record ends the call.
     live: Option<String>,
-    /// The owner or the account was past its quota when the call began (9.3 Quota).
-    past: bool,
 }
 
 /// The owner's account and the kernel's, as read for a call and kept for its one write (9.3 Quota).
@@ -470,6 +471,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             host,
             limits: Limits::default(),
             sealed: 0,
+            past: false,
             opened: None,
             held: None,
         }
@@ -514,6 +516,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         let owner_key = Usage::owner_key(owner);
         let owner = Usage::load(&mut self.state, &owner_key);
         let account = Usage::load(&mut self.state, Usage::ACCOUNT);
+        self.past =
+            owner.bytes >= self.limits.owner_bytes || account.bytes >= self.limits.account_bytes;
         Acct {
             owner_key,
             owner0: owner.clone(),
@@ -961,7 +965,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         at: u64,
         work: &mut Work,
     ) -> Result<Option<u64>, KernelError> {
-        if !work.past {
+        if !self.past {
             let mut meta = rec.meta();
             let stored = Transcript::new(&mut self.state, &rec.id, &mut meta).append_within(
                 &e,
@@ -1015,7 +1019,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         // Past its quota only a change that ends an active turn is written: one `turn` entry per
         // turn (9.3 Quota). The record and the push follow either way.
-        if !work.past || (rec.turn.is_active() && !stored.is_active()) {
+        if !self.past || (rec.turn.is_active() && !stored.is_active()) {
             let entry = NewEntry {
                 kind: "turn".into(),
                 uuid: None,
@@ -1093,12 +1097,12 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Turn::Running { activity, .. } = &mut bare {
             *activity = None;
         }
-        if work.past && bare != rec.turn && !(before && !t.is_active()) {
+        if self.past && bare != rec.turn && !(before && !t.is_active()) {
             return Ok(());
         }
         self.turn_to(rec, t, now, work)?;
         // Past its quota, or at the chunk cap, a session starts no queued input (9.3 Quota).
-        if before && matches!(rec.turn, Turn::Idle { .. }) && !work.past && Self::room(rec).is_ok()
+        if before && matches!(rec.turn, Turn::Idle { .. }) && !self.past && Self::room(rec).is_ok()
         {
             self.next_queued(rec, now, work)?;
         }
@@ -2311,10 +2315,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             slots = Some(s);
         }
         let now = self.host.now();
-        let mut work = Work {
-            past: self.past(&acct),
-            ..Work::default()
-        };
+        let mut work = Work::default();
         match event {
             ProviderEvent::Turn(t) => self.change_turn(&mut rec, t, now, &mut work)?,
             ProviderEvent::Ended => self.close_all(&mut rec, "ended", now, &mut work)?,
