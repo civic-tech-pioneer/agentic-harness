@@ -22,6 +22,14 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+/// When the session timer is next due (9.3): at the earliest deadline still in the future. A
+/// firing handles every due deadline it can; one of a later stage (`ask`, `retry`, `resume`,
+/// stage D) that is already due waits for its stage, so it arms no timer (one at delay 0 would
+/// fire on every firing).
+fn next_due(deadlines: &[Deadline], now: u64) -> Option<u64> {
+    deadlines.iter().filter(|d| d.at > now).map(|d| d.at).min()
+}
+
 /// The kernel's own timer for the restart pass (R2).
 const RESTART: &str = "restart";
 /// The deadline of the 10-minute provider release (9.3, 9.5), and its delay.
@@ -524,7 +532,9 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// 9.3: the session's one timer `s/<id>` follows its deadlines. `before` is what they were when
     /// the call began; a change from none takes a timer slot, to none frees it (`fired`: the timer
-    /// that fired needs no cancel). Whether `slots` changed.
+    /// that fired needs no cancel, and is re-armed even when the deadlines did not change). The
+    /// count follows the deadlines (AC8), the host timer only those this build handles
+    /// (`next_due`). Whether `slots` changed.
     fn sync_timer(
         &mut self,
         rec: &Record,
@@ -534,32 +544,29 @@ impl<S: State, H: Host> Kernel<S, H> {
         now: u64,
         fired: bool,
     ) -> bool {
-        if rec.deadlines == before {
+        if rec.deadlines == before && !fired {
             return false;
         }
         let id = format!("s/{}", rec.id);
         let had = !before.is_empty();
-        match rec.deadlines.iter().map(|d| d.at).min() {
-            Some(at) => {
-                self.host.timer_after(&id, at.saturating_sub(now));
-                if had {
-                    return false;
-                }
+        match next_due(&rec.deadlines, now) {
+            Some(at) => self.host.timer_after(&id, at.saturating_sub(now)),
+            None if had && !fired => self.host.timer_cancel(&id),
+            None => {}
+        }
+        match (had, rec.deadlines.is_empty()) {
+            (false, false) => {
                 slots.timers += 1;
                 a.owner.timers += 1;
+                true
             }
-            None => {
-                if !had {
-                    return false;
-                }
-                if !fired {
-                    self.host.timer_cancel(&id);
-                }
+            (true, true) => {
                 slots.timers = slots.timers.saturating_sub(1);
                 a.owner.timers = a.owner.timers.saturating_sub(1);
+                true
             }
+            _ => false,
         }
-        true
     }
 
     /// 9.5: a Claude turn that moved into `idle` while it holds a provider stream sets the `idle`
@@ -2082,13 +2089,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             rec.deadlines.retain(|d| !(d.at <= now && d.what == IDLE));
         }
-        if rec.deadlines == before {
-            // Only deadlines of later stages are due: they stay, and the timer follows them.
-            if let Some(at) = rec.deadlines.iter().map(|d| d.at).min() {
-                self.host
-                    .timer_after(&format!("s/{id}"), at.saturating_sub(now));
-            }
-        }
+        // Due deadlines of later stages stay (and keep the count); the timer follows the rest.
         self.sync_timer(&rec, slots, &mut acct, &before, now, true);
         slots.save(&mut self.state)?;
         self.finish(Some(&mut rec), &mut acct)
