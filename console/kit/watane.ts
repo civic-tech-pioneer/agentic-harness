@@ -51,16 +51,11 @@ export function wataneKernel(w: Watane): Kernel {
     f(h);
   };
 
-  // watane.js dispatches `changed` on every open of /events. After the first, the connection dropped and came back: the host ended the old
-  // streams `gone` on a connection this page no longer reads, so each live stream ends here, once, and `openSession` reattaches after its last index.
-  // The first attach can go out before watane.js has its connection id; it then fails backend("not-yours..."), and `openSession` retries after 1 s.
-  let opened = false;
+  // A page cannot tell a reconnected /events connection from a commit's `{"type":"changed"}` (the host sends one after every committing call and on bus lag)
+  // until watane.js passes its `connection` message to handlers (a watane need, TECHNICAL 15). Until then, a dropped /events connection leaves the view
+  // frozen until a reload; `changed` is ignored here. The first attach can go out before watane.js has its connection id; it then fails
+  // backend("not-yours..."), and `openSession` retries after 1 s.
   w.on((m: any) => {
-    if (m?.type === "changed") {
-      if (opened) for (const [id, s] of [...live]) finish(id, s, "gone");
-      opened = true;
-      return;
-    }
     if (!m || (m.type !== "stream" && m.type !== "stream-end") || typeof m.stream !== "string") return;
     const id: string = m.stream;
     const s = live.get(id);
