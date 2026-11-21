@@ -197,7 +197,8 @@ fn ac2_a_different_ask_goes_to_the_owner() {
         line("ask", "e1", "Edit", json!({"file_path": "/w/x"})),
     );
     k.answer("alice", &s, "k1", "e1", SESSION).unwrap();
-    assert_eq!(rec(&mut k, &s).allows[0].key, "/w/**");
+    let held = &rec(&mut k, &s).allows[0];
+    assert_eq!((held.tool.as_str(), held.key.as_str()), ("Edit", "/w/**"));
     feed(
         &mut k,
         &mut a,
@@ -206,6 +207,17 @@ fn ac2_a_different_ask_goes_to_the_owner() {
     );
     assert_eq!(open_ids(&mut k, &s), ["w1"]);
     assert!(waiting(&mut k, &s));
+    // validator: the same key on another tool is a new pair, held beside the first.
+    k.answer("alice", &s, "k2", "w1", SESSION).unwrap();
+    let held: Vec<_> = rec(&mut k, &s)
+        .allows
+        .iter()
+        .map(|a| (a.tool.clone(), a.key.clone()))
+        .collect();
+    assert_eq!(
+        held,
+        [("Edit", "/w/**"), ("Write", "/w/**")].map(|(t, k)| (t.to_string(), k.to_string()))
+    );
 }
 
 #[test]

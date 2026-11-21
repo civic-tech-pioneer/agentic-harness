@@ -189,6 +189,18 @@ fn ac3_web_fetch_host() {
     ] {
         assert_eq!(w(bad), None, "{bad:?}");
     }
+    // validator: the bounds and the rules a looser check would pass.
+    let at = |n: usize| format!("https://example.com/{}", "a".repeat(n - 20));
+    assert_eq!(w(&at(2048)), dom("example.com"));
+    assert_eq!(w(&at(2049)), None);
+    for bad in [
+        "https://:p@example.com/",
+        "https://example.com/\u{7f}",
+        "https://a(b).com/",
+        "https://a)b.com/",
+    ] {
+        assert_eq!(w(bad), None, "{bad:?}");
+    }
     assert_eq!(
         r("WebFetch", json!({"url":"https://example.com","x":1})),
         None
@@ -221,6 +233,12 @@ fn ac4_skill_name() {
     ] {
         assert_eq!(s(json!(bad)), None, "{bad:?}");
     }
+    let max = "a".repeat(64);
+    assert_eq!(s(json!(max)), Some(format!("Skill({max})")));
+    assert_eq!(
+        s(json!(format!("{max}:{max}"))),
+        Some(format!("Skill({max}:{max})"))
+    );
     assert_eq!(s(json!(5)), None);
     assert_eq!(r("Skill", json!({"skill":"pdf","x":1})), None);
 }
