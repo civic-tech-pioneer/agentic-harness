@@ -486,6 +486,19 @@ S2 writes each into the document that owns it.
   backend in the host, a third native process kind (a new host boundary, costly to remove once
   mods use it). Rec: (a). Blocks only stage F.
 
+- **V27: the shell grant's network allowlist reaches loopback through Claude's sandbox proxy**
+  (S1, PR #37, security boundary). With `allowedDomains: ["localhost"]`, a command reaches a
+  loopback server through the sandbox's own proxy (direct connections stay blocked); the proxy also
+  reaches LAN and `169.254.169.254` addresses behind any allowlisted name. TECHNICAL 4.2's
+  "loopback denied" holds only if no allowlisted name names or resolves to such an address.
+  Options: (a) the kernel refuses allowlist entries that are `localhost`, `*.localhost`, IP
+  literals, or private, loopback or link-local ranges (cheap, at profile check; does not stop
+  DNS names that resolve there or rebinding); (b) the host puts its own egress proxy in front of
+  the sandbox that checks the resolved address at connect time and refuses loopback, private and
+  link-local (robust; a watane host part, stage C with the shell grant); (c) name it in 14 "Not
+  protected" (the participant chose the allowlist). Rec: (a) now plus (b) before the shell grant
+  ships. Undo: (a) one refuse-table row; (b) a host component.
+
 ## Friction
 
 - 2026-11-20 po skill 0: "the order of work is the vision's steps"; this vision has none, the
