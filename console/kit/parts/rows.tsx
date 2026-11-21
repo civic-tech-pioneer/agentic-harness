@@ -106,6 +106,12 @@ function AskScroll({ children }: { children: React.ReactNode }) {
   }, []);
   useEffect(measure);
   useEffect(() => {
+    const el = ref.current;
+    if (el && typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(measure);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, [measure]);

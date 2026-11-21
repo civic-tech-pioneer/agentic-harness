@@ -1,6 +1,6 @@
 // S9-1: the transcript rows look and read like the frame (Main-2): card header, diff with folds, ask bar, chevrons.
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emptyView, type Actions, type SessionView } from "./model";
 import { reduce } from "./reduce";
@@ -103,8 +103,37 @@ describe("S9-1", () => {
       dims = { sh: 100, ch: 100, st: 0 };
       fireEvent.scroll(box);
       expect(screen.queryByText("More below ↓")).toBeNull();
+      dims = { sh: 300, ch: 100, st: 0 };
+      act(() => { window.dispatchEvent(new Event("resize")); });
+      expect(screen.getByText("More below ↓")).toBeInTheDocument();
     } finally {
       for (const [k, d] of [["scrollHeight", ds], ["clientHeight", dc], ["scrollTop", dt]] as const) {
+        if (d) Object.defineProperty(Element.prototype, k, d); else delete (Element.prototype as any)[k];
+      }
+    }
+  });
+
+  it("ac3_more_below_cue_follows_a_resize_observer_on_the_box_and_disconnects", () => {
+    let dims = { sh: 100, ch: 100 };
+    const ds = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight");
+    const dc = Object.getOwnPropertyDescriptor(Element.prototype, "clientHeight");
+    Object.defineProperty(Element.prototype, "scrollHeight", { configurable: true, get: () => dims.sh });
+    Object.defineProperty(Element.prototype, "clientHeight", { configurable: true, get: () => dims.ch });
+    const seen: Element[] = [], fire: (() => void)[] = [], disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class { constructor(cb: () => void) { fire.push(cb); } observe(el: Element) { seen.push(el); } disconnect = disconnect; unobserve() {} });
+    try {
+      const r = show(askOf("e", "edit", diff("a.ts", "x", "y"), { file_path: "a.ts" }));
+      const box = screen.getByRole("group", { name: "Changes and input" });
+      expect(seen).toEqual([box]);
+      expect(screen.queryByText("More below ↓")).toBeNull();
+      dims = { sh: 300, ch: 100 };
+      act(() => fire[0]!());
+      expect(screen.getByText("More below ↓")).toBeInTheDocument();
+      r.unmount();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      for (const [k, d] of [["scrollHeight", ds], ["clientHeight", dc]] as const) {
         if (d) Object.defineProperty(Element.prototype, k, d); else delete (Element.prototype as any)[k];
       }
     }
