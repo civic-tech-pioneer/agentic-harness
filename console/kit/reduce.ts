@@ -90,7 +90,8 @@ function syncAsks(v: SessionView, x: Internal, toolCallId: string, decided?: { a
   // 9.8: the card shows the call of the very entry it answers; the stream's status and program output stay
   if (pick && r?.kind === "tool") {
     const own = pick.call, cur = r.call;
-    const call: ToolCall = { ...own, status: cur.status,
+    // the stream's status and output belong to the entry the card already showed; a newly shown entry starts from its own call whole
+    const call: ToolCall = r.ask?.id !== pick.ask.id ? own : { ...own, status: cur.status,
       content: [...own.content.filter((b) => b.type === "diff"), ...cur.content.filter((b) => b.type !== "diff")],
       ...("rawOutput" in cur ? { rawOutput: cur.rawOutput } : {}) };
     v.rows[f!.at] = { ...r, call, ask: pick.ask };
@@ -243,8 +244,8 @@ export function reduce(view: SessionView, message: string): SessionView {
           ...(d.reason !== undefined ? { reason: d.reason } : {}) });
         break;
       }
-      // 9.8: the card is the ask's own call, whatever the stream said of the id before
-      upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true);
+      // 9.8: the card is the ask's own call, whatever the stream said of the id before (an entry already open on the call keeps its card)
+      if (!open.some((o) => o.ask.toolCallId === a.toolCallId && o.ask.id !== a.id)) upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true);
       toToolRow(v, a.toolCallId);
       x.open = [...open.filter((o) => o.ask.id !== a.id), { ask: a, title: m.call?.title ?? askArg(a.input) ?? a.toolCallId, call: ownCall(m.call, a) }];
       syncAsks(v, x, a.toolCallId);
