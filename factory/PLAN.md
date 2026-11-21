@@ -50,9 +50,7 @@ non-negative whole number, is `unknown`; a joined part group whose whole is of k
 `unreadable`. Each with a fixture; the S14 adversary's held tests stay green.
 Touches: `kernel/` only. Protects: *guard* (asks).
 
-## Sketched
-
-### S18: spec text for S14 and S19 (cloud, after S17 merges: same files)
+### S18: spec text for S14 and S19 (in flight (cloud), routine trig_01W3ftmEhuP1yP3kuWTaQ8Nm)
 
 Outcomes: 4.5, 9.4, 9.8 say what S14 built ahead of S16 (an `id` not a non-empty string is
 `unknown`; a non-UTF-8 `raw` in `\xNN` form; a duplicate top-level key is `unknown` in the kernel
@@ -61,6 +59,8 @@ too; a joined group reads like a stored line at its last part's place) and what 
 JSON reader; a nested duplicate key in `input` is read last-wins, safe only while the host
 serializes items itself); FUNCTIONAL AGT-F-10 reads "never as running when nothing drives it" (S17).
 Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Protects: *guard* and *core*.
+
+## Sketched
 
 ### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
 
@@ -196,7 +196,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   again. User-sim ACCEPTED on run 2; adversary BREACHED 3 then 1, fixed, HELD on passes 3 and 4
   (ask and privacy boundaries). Implementer runs 1/1/2/1/1/1. Kernel 111 tests; gate 18 s.
 
-- **S17** the restart pass in the contract (PR #20, 15 min). A stage B kernel foreman finds:
+- **S17** the restart pass in the contract (PR #20, merged 2026-11-21 01:08 UTC, 15 min). A stage B kernel foreman finds:
   a host boot number `caller.boot()` (2.1, a watane need in 15); `active/<n>` (4 pages, at most
   1 024 sessions, else `busy`) of running, waiting and paused sessions; a lazy restart pass of at
   most `A + 1` calls, one session each, no key listing; one outcome per state (Claude running or
