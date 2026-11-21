@@ -2,14 +2,16 @@ use crate::{fields, parse};
 use agent_kernel::profile::{runner_prefixes, runner_words};
 use std::collections::BTreeSet;
 
+/// Section 4.1 of TECHNICAL.md, up to the next section.
 fn spec_41() -> String {
     let t = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../design/TECHNICAL.md"
     ))
     .unwrap();
-    let i = t.find("#### 4.1").or_else(|| t.find("4.1 ")).unwrap_or(0);
-    t[i..].to_string()
+    let i = t.find("\n### 4.1 ").expect("section 4.1");
+    let end = t[i + 1..].find("\n### ").map_or(t.len(), |e| i + 1 + e);
+    t[i..end].to_string()
 }
 
 fn ticks(s: &str) -> BTreeSet<String> {
@@ -17,11 +19,7 @@ fn ticks(s: &str) -> BTreeSet<String> {
 }
 
 fn spec_words() -> BTreeSet<String> {
-    let t = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../design/TECHNICAL.md"
-    ))
-    .unwrap();
+    let t = spec_41();
     let m = "and none of these, because each runs, wraps or schedules";
     let i = t.find(m).expect("marker sentence");
     let rest = &t[i + m.len()..];
@@ -57,7 +55,7 @@ fn ac2_prefixes_equal_spec_list() {
     let i = t
         .find("no name\n  starting")
         .or_else(|| t.find("no name starting"))
-        .unwrap();
+        .expect("prefix sentence");
     let rest = &t[i..];
     let end = rest.find('(').unwrap();
     let spec = ticks(&rest[..end]);
