@@ -28,6 +28,7 @@ mod regress_s25;
 mod regress_s26;
 mod restart;
 mod revoke;
+mod rules;
 mod runners;
 mod s26;
 mod s28;

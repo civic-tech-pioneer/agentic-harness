@@ -11,6 +11,7 @@ pub mod queue;
 pub mod quota;
 pub mod record;
 pub mod refuse;
+pub mod rules;
 pub mod sessions;
 pub mod state;
 pub mod transcript;
@@ -32,6 +33,7 @@ pub use record::{
     TITLE_BYTES,
 };
 pub use refuse::{refuse, Catalog, CatalogModel};
+pub use rules::{Rules, Verdict};
 pub use sessions::{
     Attached, Called, FakeHost, Full, Host, HostCall, Item, Kernel, ProviderEvent, Push, Request,
     SessionInfo,
