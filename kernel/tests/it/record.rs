@@ -125,7 +125,8 @@ fn ac3_key_and_title_caps() {
 fn allow(i: usize, reach: &str) -> agent_kernel::Allow {
     agent_kernel::Allow {
         id: i.to_string(),
-        reach: reach.to_string(),
+        tool: String::new(),
+        key: reach.to_string(),
     }
 }
 
@@ -151,7 +152,7 @@ fn ac3_allow_caps() {
     // 1 KiB each: the 64-allow count and the 64 KiB total meet at the 64th.
     let mut r = rec();
     for _ in 0..64 {
-        r.add_allow(allow(0, &"x".repeat(1022 - 19))).unwrap();
+        r.add_allow(allow(0, &"x".repeat(1022 - 27))).unwrap();
     }
     assert_eq!(
         r.add_allow(allow(0, "y")),

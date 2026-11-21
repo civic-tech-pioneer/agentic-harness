@@ -87,11 +87,7 @@ fn usersim_s33_no_session_allow_for_wide_tools() {
             "Task",
             json!({"description": "x", "prompt": "do", "subagent_type": "general-purpose"}),
         ),
-        ("Skill", json!({"skill": "pdf"})),
-        (
-            "WebFetch",
-            json!({"url": "https://example.com", "prompt": "read"}),
-        ),
+        ("mcp__watane__notes_read", json!({"id": "n1"})),
         ("WebSearch", json!({"query": "rust"})),
         ("SomeUnlistedTool", json!({"x": 1})),
     ] {
@@ -116,10 +112,8 @@ fn usersim_s33_no_session_allow_for_wide_tools() {
 
 #[test]
 fn usersim_s33_bare_name_allow_kept() {
-    for (tool, input) in [
-        ("mcp__watane__notes_read", json!({"id": "n1"})),
-        ("TodoWrite", json!({"todos": []})),
-    ] {
+    let (tool, input) = ("TodoWrite", json!({"todos": []}));
+    {
         let mut k = kernel();
         let s = started(&mut k, Some("/w"));
         let mut a = ClaudeAdapter::new();
@@ -127,7 +121,7 @@ fn usersim_s33_bare_name_allow_kept() {
         let e = ask_entry(&mut k, &s, "q1");
         assert_eq!(e["body"]["reach"], json!(tool), "{tool}: {e}");
         k.answer("alice", &s, "k1", "q1", SESSION).unwrap();
-        assert_eq!(rec(&mut k, &s).allows[0].reach, tool);
+        assert_eq!(rec(&mut k, &s).allows[0].tool, tool);
         resolve(&mut k, &mut a, &s, "q1");
         ask(&mut k, &mut a, &s, "q2", tool, input);
         assert_eq!(
@@ -217,7 +211,7 @@ fn usersim_s33_glob_absolute_pattern_asks_owner() {
         json!({"path": "/w/src", "pattern": "*.rs"}),
     );
     k.answer("alice", &s, "k1", "g1", SESSION).unwrap();
-    assert_eq!(rec(&mut k, &s).allows[0].reach, "Glob(/w/**)");
+    assert_eq!(rec(&mut k, &s).allows[0].key, "/w/**");
     resolve(&mut k, &mut a, &s, "g1");
     ask(
         &mut k,

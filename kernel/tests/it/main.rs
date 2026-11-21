@@ -37,6 +37,7 @@ mod s26;
 mod s28;
 mod s29_ceiling;
 mod s29_short;
+mod scope_s34;
 mod sessions;
 mod streams;
 mod transcript;

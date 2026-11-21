@@ -53,7 +53,7 @@ fn ac2_bash_reach_needs_only_the_plain_keys() {
     let ok = json!({"command":"ls","description":"d","timeout":5,"run_in_background":true});
     assert_eq!(
         bash(ok).as_deref(),
-        Some("Bash(ls) timeout=5 run_in_background=true")
+        Some("Bash(ls; timeout=5; run_in_background=true)")
     );
 }
 
@@ -61,11 +61,8 @@ fn ac2_bash_reach_needs_only_the_plain_keys() {
 fn ac1_only_listed_tools_have_a_reach() {
     for t in [
         "Task",
-        "Skill",
-        "WebFetch",
         "WebSearch",
         "Agent",
-        "MultiEdit",
         "KillShell",
         "BashOutput",
         "mcp__other__x",
@@ -77,10 +74,7 @@ fn ac1_only_listed_tools_have_a_reach() {
         r(None, "TodoWrite", json!({})).as_deref(),
         Some("TodoWrite")
     );
-    assert_eq!(
-        r(None, "mcp__watane__send", json!({})).as_deref(),
-        Some("mcp__watane__send")
-    );
+    assert_eq!(r(None, "mcp__watane__send", json!({})), None);
 }
 
 #[test]
@@ -93,20 +87,20 @@ fn ac2_bash_reach_pins_timeout_and_background() {
     );
     assert_eq!(
         c(json!({"command":"ls","timeout":5})).as_deref(),
-        Some("Bash(ls) timeout=5")
+        Some("Bash(ls; timeout=5)")
     );
     assert_eq!(
         c(json!({"command":"ls","run_in_background":true})).as_deref(),
-        Some("Bash(ls) run_in_background=true")
+        Some("Bash(ls; run_in_background=true)")
     );
     assert_eq!(
         c(json!({"command":"ls","run_in_background":false})).as_deref(),
-        Some("Bash(ls) run_in_background=false")
+        Some("Bash(ls; run_in_background=false)")
     );
     assert_eq!(
         c(json!({"run_in_background":true,"description":"d","timeout":5,"command":"ls"}))
             .as_deref(),
-        Some("Bash(ls) timeout=5 run_in_background=true")
+        Some("Bash(ls; timeout=5; run_in_background=true)")
     );
 }
 
@@ -133,11 +127,11 @@ fn ac3_bash_reach_refuses_odd_timeout_and_background() {
     }
     assert_eq!(
         b(json!({"timeout": 0})).as_deref(),
-        Some("Bash(ls) timeout=0")
+        Some("Bash(ls; timeout=0)")
     );
     assert_eq!(
         b(json!({"timeout": 18446744073709551615u64})).as_deref(),
-        Some("Bash(ls) timeout=18446744073709551615")
+        Some("Bash(ls; timeout=18446744073709551615)")
     );
 }
 
@@ -159,10 +153,7 @@ fn ac1_reach_of_bash_and_other_tools() {
     }
     assert_eq!(r(None, "Bash", json!({"command": 5})), None);
     assert_eq!(r(None, "WebFetch", json!({})), None);
-    assert_eq!(
-        r(None, "mcp__watane__send", json!({})).as_deref(),
-        Some("mcp__watane__send")
-    );
+    assert_eq!(r(None, "mcp__watane__send", json!({})), None);
     for none in ["AskUserQuestion", "ExitPlanMode", "Web Fetch", "Bash(ls)"] {
         assert_eq!(r(None, none, json!({})), None, "{none}");
     }
@@ -299,13 +290,14 @@ fn ac3_answer_for_session_adds_an_allow_and_sends_no_for() {
     let i = es[0]["i"].as_u64().unwrap().to_string();
     assert_eq!(
         es[0]["body"],
-        json!({"id": i, "reach": "Bash(npm test)", "given": true, "by": "owner"})
+        json!({"id": i, "tool": "Bash", "key": "npm test", "reach": "Bash(npm test)", "given": true, "by": "owner"})
     );
     assert_eq!(
         rec(&mut k, &id).allows,
         [Allow {
             id: i,
-            reach: "Bash(npm test)".into()
+            tool: "Bash".into(),
+            key: "npm test".into()
         }]
     );
     assert_eq!(answers(&k), [json!({"allow": true})]);
@@ -343,7 +335,7 @@ fn ac4_take_back_removes_the_allow_and_writes_an_entry() {
     assert!(rec(&mut k, &id).allows.is_empty());
     let es = allow_entries(&mut k, &id);
     assert_eq!(es.len(), 2);
-    let body = json!({"id": i, "reach": "Bash(npm test)", "given": false, "by": "owner"});
+    let body = json!({"id": i, "tool": "Bash", "key": "npm test", "reach": "Bash(npm test)", "given": false, "by": "owner"});
     assert_eq!(es[1]["body"], body);
     assert_eq!(c.pushes[0].value["entry"]["body"], body);
     assert!(k.host.calls[n..].iter().any(|h| matches!(h,
@@ -395,11 +387,12 @@ fn edit_ask(ws: &str, held: usize, pad: usize) -> (K, String) {
     for i in 0..held {
         let a = Allow {
             id: format!("{i:0>2}"),
-            reach: String::new(),
+            tool: "Edit".into(),
+            key: String::new(),
         };
         let pad = pad - serde_json::to_string(&a).unwrap().len();
         r.add_allow(Allow {
-            reach: "x".repeat(pad),
+            key: "x".repeat(pad),
             ..a
         })
         .unwrap();
