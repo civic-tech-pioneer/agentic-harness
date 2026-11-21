@@ -743,7 +743,8 @@ wire") are this JSON; the entry has no `activity`.
     `delete` frees the record and its `bytes` without reading the chunks.
   - *Past.* An owner is past its quota when its sessions are at the cap (for a
     new session) or its bytes are at or over its cap; the account is past when
-    its bytes are at or over 224 MiB. Each is read before the call writes, so
+    its bytes are at or over 224 MiB. Each is read before the call writes (as built (S28):
+    the flag lives only in the accounts the call read, never between calls), so
     a call that starts below a cap may end over it by its own writes (at most
     one input and what it records); the next call finds it past. No call
     takes the account past 256 MiB: one that would fails `quota` and, as

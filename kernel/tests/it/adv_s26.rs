@@ -116,8 +116,14 @@ fn adv_s26_past_quota_owner_answers_add_turn_entries() {
     k.limits.owner_bytes = Usage::load(&mut k.state, "quota/alice").bytes;
     let at = turn_entries(&mut k, &s);
     for n in 0..8 {
-        k.answer("alice", &s, &format!("ans{n}"), &format!("a{n}"), r#"{"deny":true}"#)
-            .unwrap();
+        k.answer(
+            "alice",
+            &s,
+            &format!("ans{n}"),
+            &format!("a{n}"),
+            r#"{"deny":true}"#,
+        )
+        .unwrap();
     }
     k.provider_item(
         "t1",
