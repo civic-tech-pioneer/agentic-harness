@@ -22,7 +22,8 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   // 18.6 Place: follow the end while the reader is within 40 px of it (and on open).
   const toEnd = useCallback(() => {
     const el = scroller.current;
-    if (el && atEnd.current && !focusInOpenAsk(el)) { el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop; }
+    if (el && focusInOpenAsk(el)) atEnd.current = false; // also when the ask opened on the card that had focus: the pill shows
+    if (el && atEnd.current) { el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop; }
   }, []);
   useLayoutEffect(toEnd, [view, toEnd]);
   const first = useRef(true);
@@ -47,7 +48,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const toTheEnd = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
-    (el.ownerDocument.activeElement as HTMLElement | null)?.blur?.(); // the pill takes focus (Safari does not give it on click)
+    if (focusInOpenAsk(el)) (el.ownerDocument.activeElement as HTMLElement).blur(); // the pill takes focus (Safari does not give it on click)
     atEnd.current = true; // the transcript resumes too
     el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop;
     el.dispatchEvent(new Event("scroll"));

@@ -151,6 +151,7 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
     const e = scroller.current;
     if (!e) return;
     if (measure()) { tick(); return; }
+    if (focusInOpenAsk(e)) nearEnd.current = false; // an ask may open on the card that already has focus (no focus event)
     if (nearEnd.current) { // following the end: stay on it as measured heights change the content (App keeps it on as rows arrive)
       if (e.scrollHeight - e.clientHeight - e.scrollTop > 0.5) e.scrollTop = e.scrollHeight;
       return;
