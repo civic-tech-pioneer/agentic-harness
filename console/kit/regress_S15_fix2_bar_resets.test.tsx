@@ -42,7 +42,7 @@ describe("regress S15 fix2", () => {
     expect(document.activeElement).toBe(once);
     await act(async () => { r.rerender(ui(feed([decided(3)], v1))); });
     expect(r.container.querySelector("[data-ask]")!.getAttribute("data-ask")).toBe("a2");
-    const group = r.container.querySelector("[data-ask] [role=group]")!;
-    expect(group.contains(document.activeElement)).toBe(false);
+    const bar = screen.getByRole("group", { name: "Your answer" });
+    expect(bar.contains(document.activeElement)).toBe(false);
   });
 });
