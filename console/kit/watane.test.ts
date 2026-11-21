@@ -155,25 +155,24 @@ describe("S32-3 AC3", () => {
   });
 });
 
-describe("S32-3 reconnect", () => {
-  it("reconnect_changed_ends_live_streams_gone_and_openSession_reattaches_once_each", async () => {
+describe("S32-3 changed", () => {
+  it("changed_after_every_item_neither_ends_the_stream_nor_reattaches", async () => {
     vi.useFakeTimers();
     try {
-      let n = 0;
-      const f = fakeWatane({ "sessions.attach": () => ({ ok: `st${++n}` }) });
+      const f = fakeWatane({ "sessions.attach": () => ({ ok: "st1" }) });
       let view = emptyView;
       const h = openSession(wataneKernel(f.w), "s", (v) => { view = v; });
-      f.push({ type: "changed" }); // the first open
       await vi.advanceTimersByTimeAsync(50);
-      f.push({ ...items([1, entry(1, "one")], [2, entry(2, "two")], [3, synced(2)]), stream: "st1" });
-      await vi.advanceTimersByTimeAsync(50);
-      f.push({ type: "changed" }); // the reconnect
-      await vi.advanceTimersByTimeAsync(1500);
-      f.push({ ...items([1, entry(3, "three")]), stream: "st2" });
-      await vi.advanceTimersByTimeAsync(50);
-      expect(f.calls.map((c) => c.args.after)).toEqual([0, 2]);
-      const texts = view.rows.map((r) => JSON.stringify(r)).map((j) => ["one", "two", "three"].filter((w) => j.includes(`"${w}"`))[0]);
-      expect(texts).toEqual(["one", "two", "three"]);
+      const names = ["one", "two", "three", "four", "five"];
+      f.push({ ...items([1, synced(0)]), stream: "st1" });
+      for (let n = 1; n <= 5; n++) {
+        f.push({ ...items([n + 1, entry(n, names[n - 1])]), stream: "st1" });
+        f.push({ type: "changed" });
+        await vi.advanceTimersByTimeAsync(1100);
+      }
+      expect(f.calls.map((c) => c.args.after)).toEqual([0]);
+      const texts = view.rows.map((r) => JSON.stringify(r)).map((j) => names.filter((w) => j.includes(`"${w}"`))[0]);
+      expect(texts).toEqual(names);
       h.close();
     } finally { vi.useRealTimers(); }
   });
