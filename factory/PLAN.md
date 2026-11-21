@@ -49,7 +49,7 @@ adversaries' held cases are acceptance. Watch `npm test` time: 16.4 s on a loade
 machine at S27 against S7's 14.5 s budget; S23 sets the highlight budget per block (18.6).
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
-### S1: the open probes of section 18 (in flight (local), session LOCAL_S1)
+### S1: the open probes of section 18 (in flight (local), session ca562ebb, sessionId ca562ebb-cc22-47f9-87b4-678d2159efcc)
 
 Story: a maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on the Mac and sees, for the
 current `claude`, (subagent-slash) whether a subagent prompt that starts with `/` runs a skill the profile
