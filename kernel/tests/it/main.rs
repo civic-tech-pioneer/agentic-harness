@@ -18,6 +18,7 @@ mod quota;
 mod record;
 mod refuse;
 mod regress_s14;
+mod regress_s25;
 mod restart;
 mod revoke;
 mod runners;
