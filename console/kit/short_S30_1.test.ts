@@ -106,6 +106,17 @@ describe("AC4 not held: closes at once, a placeholder stands", () => {
     expect(tool(v, "e1")!.call.status).toBe("in_progress"); // the row's status stays; the ask's call gives the rest
     expect(tool(v, "e1")!.ask!.decision!.outcome).toBe("allow");
   });
+  it("validator_a_late_read_shows_the_asks_own_call_not_the_streams_later_one", () => {
+    // TECHNICAL 14 "An ask shows the tool call that will run": the stream's later title, kind, locations, rawInput and diff never stand on the card
+    const upd = J({ sessionUpdate: "tool_call", toolCallId: "e1", title: "STREAM", kind: "execute", status: "in_progress", locations: [{ path: "evil" }], rawInput: { command: "rm -rf /" },
+      content: [{ type: "diff", path: "evil", oldText: "x", newText: "y" }, { type: "content", content: { type: "text", text: "out" } }] });
+    const v = settleShort(run(short(6, 5, "a1"), upd), 6, ask(5, "a1", "e1"));
+    const c = tool(v, "e1")!.call;
+    expect(c).toMatchObject({ title: "Edit src/e1.ts", kind: "edit", status: "in_progress", locations: [{ path: "src/e1.ts" }] });
+    expect(c.rawInput).toBeUndefined();
+    expect(c.content.filter((b) => b.type === "diff")).toEqual([]);
+    expect(c.content.map((b) => b.type)).toEqual(["content"]);
+  });
   it("ac4_a_late_read_keeps_the_later_status_and_output_of_the_call", () => {
     const upd = J({ sessionUpdate: "tool_call_update", toolCallId: "e1", status: "completed", rawOutput: "RAW", content: [{ type: "content", content: { type: "text", text: "out" } }] });
     const v0 = run(short(6, 5, "a1"), upd);
