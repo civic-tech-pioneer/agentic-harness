@@ -601,7 +601,7 @@ once; `check` runs only this step.
 
 ### 9.3 Sessions
 
-Session record: `id` (made by the kernel, at most 64 bytes; the only place this is stated), `owner`, `key`, `profile`, `backend`, `title`,
+Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `profile`, `backend`, `title`,
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
 `boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
@@ -741,7 +741,7 @@ wire") are this JSON; the entry has no `activity`.
     | Backend, state | Becomes |
     |---|---|
     | Claude, `running` or `waiting` | each open ask is decided `deny`, `by: kernel`, reason `restart`, its deadline dropped; the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
-    | `paused`, either backend | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` today (9.5; 9.8 gives nothing for a Claude rate limit) |
+    | `paused`, either backend | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` (9.5); 9.8 gives nothing for a Claude rate limit, so a slice that adds one adds its row here |
     | OpenAI, `requesting` or `ready` (waiting in the FIFO or not) | goes to `ready`, takes a request slot or waits in the FIFO under this boot (9.5); the turn stays `running` |
     | OpenAI, `retrying` | stays `retrying`; its `retry` deadline and timer are kept (7) and the request goes when it fires (9.5); nothing is sent at once, so no request is sent twice |
     | OpenAI, `tools` | stays `tools`; its open jobs of `idempotent` tools start again under their keys (taking job slots or waiting, as 9.5 "Slots"), the others get `aborted`; `pending` calls stay pending and start in waves as before, the first at once up to the free job slots; when no call is left open or pending, it goes to `ready` as above (9.5) |
