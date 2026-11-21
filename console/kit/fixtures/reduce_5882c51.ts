@@ -128,8 +128,8 @@ function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra
   const prev = v.turn;
   v.turn = state;
   if (state.state === "unknown" || state.state === "resume-lost" || state.state === "idle") markEnded(v, x);
-  // S32-fix3: 18.3 footer only after a turn seen running
-  if (state.state !== "idle" || (prev?.state !== "running" && prev?.state !== "waiting")) return;
+  // S32-fix3: 18.3 footer only at the end of a turn seen in this attach
+  if (state.state !== "idle" || !prev || prev.state === "idle") return;
   const key = `f:${v.rows[v.rows.length - 1]?.key ?? ""}`;
   if (v.rows.some((r) => r.key === key)) return;
   v.rows.push({ kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}) });
