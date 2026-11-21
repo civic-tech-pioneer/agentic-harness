@@ -377,6 +377,24 @@ fn case73_g_the_restart_step_closes_every_ask_in_every_state() {
 }
 
 #[test]
+fn case73_g_the_restart_step_leaves_an_openai_sessions_asks() {
+    let mut k = kernel();
+    let id = two_asks(&mut k);
+    let mut r = rec(&mut k, &id);
+    r.backend = "openai".into();
+    r.save(&mut k.state).unwrap();
+    let turn = r.turn.clone();
+    assert!(matches!(turn, Turn::Waiting { .. }));
+    k.host.boot = 2;
+    k.list("nobody", None, 1).unwrap();
+    k.read("alice", &id, 0, None, 1).unwrap();
+    assert!(decisions(&mut k, &id).is_empty());
+    let r = rec(&mut k, &id);
+    assert_eq!((r.boot, r.turn), (2, turn));
+    assert_eq!((r.open.len(), r.pending_answers.len()), (1, 1));
+}
+
+#[test]
 fn ac4_the_65th_ask_is_denied_busy_at_once_and_ended_writes_64_decisions() {
     let mut k = kernel();
     let id = started(&mut k);
