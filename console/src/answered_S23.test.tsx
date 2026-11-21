@@ -82,11 +82,17 @@ describe("S23-1 answered, waiting", () => {
     await waitFor(() => expect(within(card("e2")).getByRole("button", { name: "Allow once" })).toBeInTheDocument());
     expect(within(card("e2")).getByRole("alert")).toHaveTextContent("The answer was not taken");
     expect(card("e2")).toHaveAttribute("data-asking");
+    // S23-fix8 AC5 with AC8: focus is back on the card's Allow once, so Needs you hides (the one open ask's card holds focus)
+    expect(within(card("e2")).getByRole("button", { name: "Allow once" })).toHaveFocus();
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^Needs you/ })).toBeNull());
+    act(() => (document.activeElement as HTMLElement).blur()); // focus leaves the card: Needs you is back and still counts the ask
     await screen.findByRole("button", { name: "Needs you (1)" });
     // a kernel that throws before it returns a promise: the card and Needs you agree all the same
     f.answer = (() => { throw new Error("busy"); }) as typeof f.answer;
     await userEvent.setup().click(within(card("e2")).getByRole("button", { name: "Allow once" }));
     await waitFor(() => expect(within(card("e2")).getByRole("button", { name: "Allow once" })).toBeInTheDocument());
+    expect(within(card("e2")).getByRole("button", { name: "Allow once" })).toHaveFocus();
+    act(() => (document.activeElement as HTMLElement).blur());
     await screen.findByRole("button", { name: "Needs you (1)" });
   });
 
