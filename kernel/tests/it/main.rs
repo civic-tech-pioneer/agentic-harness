@@ -40,6 +40,7 @@ mod s29_short;
 mod scope_s34;
 mod sessions;
 mod streams;
+mod timers_s34;
 mod transcript;
 mod usersim_s21;
 mod usersim_s33;

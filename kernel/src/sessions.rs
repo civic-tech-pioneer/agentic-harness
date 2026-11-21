@@ -32,6 +32,9 @@ fn next_due(deadlines: &[Deadline], now: u64) -> Option<u64> {
     deadlines.iter().filter(|d| d.at > now).map(|d| d.at).min()
 }
 
+/// The longest delay the host's `timers.after` takes (7, `bad-delay`): 30 days.
+const MAX_TIMER_MS: u64 = 2_592_000_000;
+
 /// The kernel's own timer for the restart pass (R2).
 const RESTART: &str = "restart";
 /// The deadline of the 10-minute provider release (9.3, 9.5), and its delay.
@@ -618,6 +621,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     fn set_timer(&mut self, id: &str, delay_ms: u64) {
+        let delay_ms = delay_ms.min(MAX_TIMER_MS);
         match &mut self.held {
             Some(h) => h.push(Effect::TimerAfter(id.to_string(), delay_ms)),
             None => self.host.timer_after(id, delay_ms),
@@ -2784,6 +2788,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.settle(&mut rec, past, slots, work)?;
         let now = self.host.now();
         if !rec.deadlines.iter().any(|d| d.at <= now) {
+            // Nothing due (an early firing, or a deadline over 30 days ahead, 7): only the timer
+            // is set again; no key and no count changes.
+            if let Some(at) = next_due(&rec.deadlines, now) {
+                self.set_timer(&format!("s/{id}"), at - now);
+            }
             return Ok(());
         }
         let before = rec.deadlines.clone();

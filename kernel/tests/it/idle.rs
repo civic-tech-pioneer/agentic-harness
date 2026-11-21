@@ -510,14 +510,20 @@ fn with_retry(k: &mut K, id: &str, at: u64) {
 }
 
 #[test]
-fn ac3_a_firing_before_the_deadline_makes_no_host_call() {
+fn ac3_a_firing_before_the_deadline_only_sets_the_timer_again() {
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
     k.provider(&id, done()).unwrap();
     k.host.now = 2000;
     let from = k.host.calls.len();
     k.timer(&format!("s/{id}"));
-    assert_eq!(host_calls(&k, from), vec![]);
+    assert_eq!(
+        host_calls(&k, from),
+        vec![HostCall::TimerAfter {
+            id: format!("s/{id}"),
+            delay_ms: TEN - 1000
+        }]
+    );
 }
 
 #[test]
