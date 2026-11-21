@@ -65,6 +65,7 @@ const queue: Job[] = [];
 let worker: WorkerLike | undefined;
 let workerLangs = new Set<string>();
 let busy = false;
+let current: Job | undefined;
 let seq = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let epoch = 0;
@@ -83,10 +84,13 @@ export function setWorkerFactory(f: (() => WorkerLike) | undefined) {
   endWorker();
   factory = f;
   busy = false;
-  for (const j of queue.splice(0)) j.done(null);
+  const cur = current;
+  current = undefined;
+  for (const j of [...(cur ? [cur] : []), ...queue.splice(0)]) j.done(null);
 }
 
 function finish(job: Job, v: Lines | null) {
+  current = undefined;
   put(job.key, job.code, v);
   busy = false;
   job.done(v);
@@ -99,6 +103,7 @@ function pump() {
   if (!job) return;
   if (!factory) { finish(job, null); return; }
   busy = true;
+  current = job;
   let w: WorkerLike;
   try { w = worker ??= factory(); } catch { worker = undefined; finish(job, null); return; }
   const mine = epoch;
