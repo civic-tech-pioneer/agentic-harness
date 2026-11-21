@@ -6,13 +6,14 @@ import { Header, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
 
 let sent = 0;
+const LOADING: SessionView = { ...emptyView, loading: true };
 
 export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[] }) {
   // the view is tagged with its subscription (a token per run of the openSession effect), and with the session and kernel it was opened on
-  const [held, setHeld] = useState<{ tok: object | null; id: string; kernel: Kernel; view: SessionView }>({ tok: null, id: info.id, kernel, view: emptyView });
+  const [held, setHeld] = useState<{ tok: object | null; id: string; kernel: Kernel; view: SessionView }>({ tok: null, id: info.id, kernel, view: LOADING });
   const [sub, setSub] = useState<object | null>(null); // the current subscription's token
   const mine = held.tok === sub && held.id === info.id && held.kernel === kernel;
-  const view = mine ? held.view : emptyView; // a new subscription shows nothing until its first view
+  const view = mine ? held.view : LOADING; // a new subscription shows Loading until its first view
   const [stopping, setStopping] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const scroller = useRef<HTMLDivElement>(null);

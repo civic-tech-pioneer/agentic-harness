@@ -29,6 +29,7 @@ function runningWord(rows: Row[]): string {
 /** " · Edit src/sync.ts": the first open ask's card name (the card header's own, `cardName`). */
 function askSubject(view: SessionView): string {
   const id = view.openAsks[0];
+  if (id === undefined) return "";
   for (const r of view.rows) {
     if (r.kind === "tool" && r.ask?.id === id) return ` · ${cardName(r.call, r.ask)}`;
   }
