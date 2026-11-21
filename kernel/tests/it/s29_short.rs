@@ -483,9 +483,31 @@ fn ac2_a_decided_ask_for_a_pending_id_is_stored_once_and_closes_it() {
     let d = json!({"outcome": "allow", "by": "host"});
     k.provider_item("t1", decided_with("a2", d.clone()))
         .unwrap();
-    assert!(rec(&mut k, &id).pending_answers.is_empty());
-    assert_eq!(decisions_after(&mut k, &id, n).len(), 1);
+    let r = rec(&mut k, &id);
+    assert!(r.pending_answers.is_empty());
+    assert_eq!(r.open.len(), 1, "the open ask a1 is untouched");
+    let ds = decisions_after(&mut k, &id, n);
+    assert_eq!(ds.len(), 1);
+    assert!(
+        ds[0]["body"]["toolCall"].is_object(),
+        "below quota: full form"
+    );
     let m = entries(&mut k, &id).len();
     k.provider_item("t1", decided_with("a2", d)).unwrap();
-    assert_eq!(decisions_after(&mut k, &id, m).len(), 0);
+    assert_eq!(entries(&mut k, &id).len(), m);
+}
+
+#[test]
+fn ac2_below_quota_a_decided_ask_for_an_unknown_id_is_not_stored() {
+    // 9.4: not stored when its id is neither open nor pending; below quota the turn goes on.
+    let mut k = kernel();
+    let id = waiting(&mut k);
+    let n = entries(&mut k, &id).len();
+    let turn = rec(&mut k, &id).turn;
+    let d = json!({"outcome": "allow", "by": "host"});
+    k.provider_item("t1", decided_with("zz", d)).unwrap();
+    assert_eq!(entries(&mut k, &id).len(), n);
+    let r = rec(&mut k, &id);
+    assert_eq!(r.turn, turn);
+    assert_eq!((r.open.len(), r.pending_answers.len()), (1, 1));
 }
