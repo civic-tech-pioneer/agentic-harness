@@ -42,6 +42,20 @@ Outcomes:
 4. S12 polish: a finished thinking block that repeats streamed deltas is not pushed live again.
 Touches: `kernel/` only. Protects: *guard* (asks).
 
+### S17: the kernel finds its running sessions after a restart (in flight (cloud), routine trig_01WgyvfHhfLyFuHTi7DY8mAW)
+
+Story: a foreman of stage B's first kernel slice reads TECHNICAL 9.1, 9.3 and 9.5 and finds how the
+kernel, on its first call after watane restarts, learns which sessions were running, waiting or
+paused, without a prefix scan (host 7 has none; S6 RISK 5), within the one-call bound of 17.
+Outcomes:
+1. A key or index in 9.1 (for example a paged `running/<n>` list, like `owner/<owner>/<n>`) that
+   every turn-state change keeps current, with its cost per change and its cap.
+2. 9.3's restart pass: what it reads, in how many calls (bounded work per call), and what each
+   state becomes (`unknown` and its "Continue", 18.5), including sessions waiting for a slot (9.5).
+3. A numbered case in 16 per rule, assigned to stage B in 17.
+Touches: `design/TECHNICAL.md` only. Not `kernel/` (S14), not `console/` (S15).
+Protects: *core*.
+
 ### S15: the console reads the wire S10 wrote (in flight (cloud), routine trig_019YCYegVuKusDaBroYa4EoT)
 
 Story: Alice's console works against the kernel JSON of S10 unchanged.
@@ -175,7 +189,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   HELD. Implementer runs 1/1/2 + 8 fixes of 1. Suite: `npm test` 230 tests 7.8 s (+26%),
   `test:slow` 23 s, gate 45 s.
 
-- **S16** S12's spec debts (PR #17, ~7 min). The done "Code to change" lists are gone; what S14
+- **S16** S12's spec debts (PR #17, merged 2026-11-21 00:47 UTC, ~7 min). The done "Code to change" lists are gone; what S14
   still owes is named once, in 9.4 "Code to change (S14)", with case 66; 4.5: a host ask or check
   id is unique on its stream, never reused; 9.8: an item without `input` or with an open id is
   `unknown`; 9.4: `raw` as a JSON string, every line takes the `i` of its place, a repeated
