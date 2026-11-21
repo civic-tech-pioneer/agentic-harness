@@ -60,7 +60,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const asking = pending && ask.kind === "ask";
   const checking = pending && ask.kind === "check";
   // 9.4: a card with an ask names the call by the ask's input, never by what the stream said
-  const path = ask ? askArg(ask.input) ?? call.locations[0]?.path : call.locations[0]?.path;
+  const path = ask ? askArg(ask.input) : call.locations[0]?.path;
   const name = path ? `${KIND(call.kind)} ${path}` : call.title;
   const diffs = call.content.filter((c) => c.type === "diff").length;
   const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : checking ? ["Checking", "b-off"] : STATUS[call.status];

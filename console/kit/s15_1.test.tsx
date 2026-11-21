@@ -85,6 +85,7 @@ describe("S15-1 asks and decisions", () => {
   it("ac4_a_decision_clears_the_ask_of_its_own_id_only", () => {
     let v = feed([call("t", "edit"), ask(1, "c1", "t", { kind: "check" }), ask(2, "a1", "t")]);
     expect(v.openAsks).toEqual(["a1"]);
+    expect(tool(v).ask).toMatchObject({ id: "a1" });
     v = feed([decide(3, "c1", "t", { outcome: "none", by: "checked" }, { kind: "check" })], v);
     expect(v.openAsks).toEqual(["a1"]);
     expect(tool(v).ask).toMatchObject({ id: "a1" });
@@ -128,6 +129,12 @@ describe("S15-1 the card is the ask's", () => {
     expect(container.querySelector("code")!.textContent).toBe("https://a.example");
     expect(container.querySelector(".wa-tool-head")!.textContent).not.toContain("evil");
   });
+  it("ac5_an_input_with_no_argument_names_no_argument", () => {
+    const v = feed([ask(1, "a1", "t", { input: { other: 1 }, toolCall: { toolCallId: "t", title: "Do it", kind: "edit", locations: [{ path: "/loc" }] } })]);
+    const { container } = show(v);
+    expect(container.querySelector(".wa-tool-head")!.textContent).not.toContain("/loc");
+    expect(container.querySelector(".wa-tool-head")!.textContent).toContain("Do it");
+  });
   it("ac5_after_the_decision_the_call_and_input_stay_and_only_output_and_status_can_follow", () => {
     const own = { toolCallId: "t", title: "Edit /real", kind: "edit", status: "pending", locations: [{ path: "/real" }], content: diff("/real", "REAL") };
     let v = feed([ask(1, "a1", "t", { input: { file_path: "/real", note: "n" }, toolCall: own }), decide(2, "a1", "t", { outcome: "allow", by: "owner" }, { input: { file_path: "/real", note: "n" }, toolCall: own })]);
@@ -143,6 +150,17 @@ describe("S15-1 the card is the ask's", () => {
     expect(container.querySelector(".wa-askbar")).toBeNull();
     expect(container.querySelector("[data-asking]")).toBeNull();
     expect(screen.queryByText("Waiting for you")).toBeNull();
+  });
+  it("ac5_a_page_that_starts_at_the_decision_draws_the_asks_card_not_the_stream", () => {
+    const own = { toolCallId: "t", title: "Edit /real", kind: "edit", locations: [{ path: "/real" }], content: diff("/real", "REAL") };
+    const v = feed([call("t", "edit", { locations: [{ path: "/evil" }], content: diff("/evil", "EVIL") }),
+      decide(2, "a1", "t", { outcome: "allow", by: "owner" }, { input: { file_path: "/real" }, toolCall: own })]);
+    expect(tool(v).call).toMatchObject({ title: "Edit /real", locations: [{ path: "/real" }], content: own.content });
+    expect(v.rows[1]).toMatchObject({ kind: "decision", what: "Allowed: Edit /real" });
+    const w = feed([decide(1, "a1", "t", { outcome: "deny", by: "owner" }, { toolCall: own })]);
+    expect(w.rows.map((r) => r.kind)).toEqual(["tool", "decision"]);
+    const { container } = show(v);
+    expect(container.textContent).not.toMatch(/evil|EVIL/);
   });
   it("ac6_a_call_with_an_ask_is_never_folded_into_explored", () => {
     let v = feed([call("r1", "read"), call("r2", "read"), ask(1, "a1", "r2", { toolCall: { toolCallId: "r2", title: "Read x", kind: "read" } }), call("r3", "read")]);
