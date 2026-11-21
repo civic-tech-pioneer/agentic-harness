@@ -49,17 +49,21 @@ adversaries' held cases are acceptance. Watch `npm test` time: 16.4 s on a loade
 machine at S27 against S7's 14.5 s budget; S23 sets the highlight budget per block (18.6).
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
-### S28: no session is left running with nothing driving it (in flight (cloud), routine trig_01Vkr91y84XBPTb43ZP9U14m)
-
-Story: a kernel maker runs `cargo test` in `kernel/`: a provider `ended` during an active turn
-ends that turn `idle {failed {error: provider-ended}}` (closing open asks as 9.8 rule 4 and S22 D5
-say), so the next `say` starts a turn and the console offers "Try again" (18.5); spec lines in 9.3
-and 9.8 and a case in 16 (S26 RISK, PO decision). Also: the past-quota flag can no longer be read
-by a call that did not read the owner's accounts first (a type or constructor that requires it,
-S26 RISK), and `kernel/tests/it/adv_s26.rs` gets `cargo fmt` once it is no longer red-only.
-Touches: `kernel/`, `design/TECHNICAL.md` (9.3, 9.8, 16). Protects: *core* (*guard* for quota).
-
 ## Sketched
+
+### S29: ending a turn never fails at the ceiling (cloud, after S28 merges: kernel/, TECHNICAL, console/)
+
+Story: a kernel maker runs `cargo test` in `kernel/`: at and past the kernel's account ceiling,
+every call that ends a turn or closes a session's work still succeeds and frees what it holds:
+`cancel`, a provider item that ends a turn `stopped {limit: quota}` (and sends `Interrupt`), and
+`ended` (S28). All are charged into the reserve, as 9.3 "Past" says for the restart firing and
+`ended`. Past the ceiling, a decision entry carries the ask's index (`ask-i`) and its outcome, not
+a copy of the ask body, so what is written there is bounded in bytes (at most 64 small decisions
+and one `turn` entry per call); the console draws such a decision from the ask entry at `ask-i`
+(a read of that one entry when the page lacks it). Spec lines in 9.3, 9.4 and 16; a case.
+Touches: `kernel/`, `design/TECHNICAL.md`, `console/` (the short decision form only), `ui/`.
+Protects: *guard* (quota, asks). The console part is small; the PO compares it before arming.
+
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -280,6 +284,14 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   adversary BREACHED 1 then 1 (past-quota `turn` entries), fixed, HELD. Implementer runs 1 each
   of 7.
 
+- **S28** no session is left running with nothing driving it (PR #32, ~35 min). A provider
+  `ended` mid-turn closes the open asks and ends the turn `failed {provider-ended}`; the next `say`
+  resumes the Claude session; the console shows "Try again". `ended` never fails on quota (charged
+  past the ceiling, as the restart firing). The past-quota flag is a `Past` value only
+  `Past::load` makes. Case 76. User-sim ACCEPTED (run 1); adversary BREACHED 1 (the new `turn`
+  entry made `ended` fail at the ceiling, leaving the session running), fixed, HELD. Implementer
+  runs 1/1/1. Kernel 342 tests in 3.8 s; gate 28 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -373,6 +385,12 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   transcript's last `turn` entry may trail the record past quota (attach and pushes carry the
   record's turn); decisions use the chunk cap's kept room (older); for a moment after `cancel` the
   host may run one more `claude` than the kernel counts (the host's own caps bound it).
+
+- 2026-11-21 S28 RISKs: every call that ends a turn or a session's work (`cancel`, a turn ended
+  `stopped {quota}`, `ended`) succeeds at the ceiling, charged into the reserve; past the ceiling a
+  decision carries the ask's index, not its body (S29). Accepted: a deferred `ended` that the host's
+  backstop ends `consumer-failed` (host H1, stage B); `ended` on an older-boot record (only if the
+  host breaks R1).
 
 ## Human answers (2026-11-20, through the PO)
 
@@ -504,6 +522,9 @@ S2 writes each into the document that owns it.
 - 2026-11-21 S26: briefs that paraphrase a spec rule missed two of them (user-sim and adversary
   caught both); a brief should quote the rule. Implementers still skip the red phase on some
   tasks, and `cargo mutants` is not in the cloud image.
+
+- 2026-11-21 S28: a brief that changes what a call writes should quote the ceiling rule (9.3
+  "Past"); the adversary found the gap. A brief's AC that says "existing tests show it" was false.
 
 ## Suite time
 
