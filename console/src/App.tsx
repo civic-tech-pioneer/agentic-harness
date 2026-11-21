@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, MEASURE, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Kernel, type SessionView } from "../kit";
+import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, MEASURE, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
@@ -15,7 +15,9 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const setAt = useRef(-1);
   const [behind, setBehind] = useState(false); // output arrived below while the reader is not following
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set()); // asks this console answered that have no decision entry yet (9.4 rule 4)
-  useEffect(() => { setAnswered(new Set()); }, [info.id]); // ask ids repeat across sessions: what this console answered is per session
+  const answeredAsk = useRef(new Map<string, Ask | undefined>()); // the ask object each answered id stood for when it was answered
+  const viewRef = useRef(view); viewRef.current = view;
+  useEffect(() => { setAnswered(new Set()); answeredAsk.current.clear(); }, [info.id]); // ask ids repeat across sessions: what this console answered is per session
   const [needsHidden, setNeedsHidden] = useState(false);
   const lastAsk = useRef<string | null>(null); // the ask whose card last took focus
 
@@ -43,8 +45,10 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   useEffect(() => { if (view.turn?.state === "idle") setStopping(false); }, [view.turn]);
 
   const actions: Actions = useMemo(() => ({
+    answered,
     say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: (id, d) => {
+      answeredAsk.current.set(id, viewRef.current.rows.flatMap((r) => (r.kind === "tool" && r.ask?.id === id ? [r.ask] : []))[0]);
       setAnswered((a) => new Set(a).add(id));
       let p: Promise<void>;
       try { p = kernel.answer(info.id, `c${Date.now()}-${sent++}`, id, decisionJson(d)); } catch (e) { p = Promise.reject(e); } // a throw before the promise is a refusal too: the set and the card agree
@@ -55,10 +59,18 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     },
     stop: () => { setStopping(true); void kernel.interrupt(info.id); },
     takeBack: (id) => void kernel.takeBack(info.id, id),
-  }), [kernel, info.id]);
+  }), [kernel, info.id, answered]);
 
   // 9.4 rule 4: an ask with an answer sent counts as decided: Needs you, its target and the status subject skip it
-  useEffect(() => { if (answered.size && [...answered].some((id) => !view.openAsks.includes(id))) setAnswered((a) => new Set([...a].filter((id) => view.openAsks.includes(id)))); }, [answered, view.openAsks]);
+  // it also ends when the row's ask gets its decision entry or is replaced by another ask under the same id (a later stream reuses ids)
+  const askOf = (id: string) => { for (const r of view.rows) if (r.kind === "tool" && r.ask?.id === id) return r.ask; return undefined; };
+  useEffect(() => {
+    const live = (id: string) => {
+      const a = askOf(id), was = answeredAsk.current.get(id);
+      return view.openAsks.includes(id) && !a?.decision && (was === undefined || a === was);
+    };
+    if (answered.size && [...answered].some((id) => !live(id))) setAnswered((s) => new Set([...s].filter(live)));
+  }, [answered, view]);
   const shown = useMemo(() => answered.size && view.openAsks.some((id) => answered.has(id)) ? { ...view, openAsks: view.openAsks.filter((id) => !answered.has(id)) } : view, [view, answered]);
 
   const toTheEnd = useCallback(() => {
