@@ -28,15 +28,15 @@ pub use quota::{
     OWNER_PROVIDER, OWNER_SESSIONS, PROVIDER_STREAMS, RESERVE_BYTES,
 };
 pub use record::{
-    check_key, check_title, Activity, Allow, Counters, Deadline, OpenAsk, Record, Stop, Turn,
-    ALLOWS, ALLOWS_BYTES, ALLOW_BYTES, DEADLINES, ID_BYTES, KEY_BYTES, RECORD_BYTES, STREAMS,
+    check_key, check_title, Activity, Allow, Counters, Deadline, OpenAsk, Probe, Record, Stop,
+    Turn, ALLOWS, ALLOWS_BYTES, ALLOW_BYTES, DEADLINES, ID_BYTES, KEY_BYTES, RECORD_BYTES, STREAMS,
     TITLE_BYTES,
 };
 pub use refuse::{refuse, Catalog, CatalogModel};
 pub use rules::{Rules, Verdict};
 pub use sessions::{
-    Attached, Called, FakeHost, Full, Host, HostCall, Item, Kernel, ProviderEvent, Push, Request,
-    SessionInfo,
+    Attached, Called, FakeHost, Host, HostCall, Kernel, Outcome, ProviderEvent, Push, Request,
+    SessionInfo, SinkOutcome, StreamError, MAX_TIMER_MS,
 };
 pub use state::{Counts, MemState, State, TooLarge, MAX_VALUE};
 pub use transcript::{chunk_key, Joiner, Meta, NewEntry, Page, Replay, Transcript};
