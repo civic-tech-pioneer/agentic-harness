@@ -63,7 +63,7 @@ fn put<T: Serialize>(state: &mut impl State, key: &str, v: &T) -> Result<(), Ker
     let bytes = serde_json::to_vec(v).map_err(|e| KernelError::Backend(e.to_string()))?;
     state
         .put(key, bytes)
-        .map_err(|e| KernelError::Backend(format!("state: value over {} bytes", e.0)))
+        .map_err(|e| KernelError::TooLarge(e.0 as u64))
 }
 
 pub fn page_key(n: u8) -> String {
