@@ -555,3 +555,48 @@ fn ac4_an_allow_with_input_keeps_it_in_the_decision_entry() {
     assert_eq!(ds["a1"]["input"], changed);
     assert_eq!(ds["a1"]["by"], "owner");
 }
+
+/// The id rule alone (another call, the same tool and input): a reused id of an open or a pending
+/// ask is `unknown` from a fresh adapter, and the open one is not changed.
+#[test]
+fn ac2_a_fresh_adapters_reused_id_on_another_call_is_unknown() {
+    for pending in [false, true] {
+        let mut k = kernel();
+        let id = started(&mut k);
+        let mut a = ClaudeAdapter::new();
+        feed(&mut k, &mut a, &id, edit_line("a1", "c1", "/w/x"));
+        if pending {
+            k.answer("alice", &id, "k1", "a1", r#"{"deny":true}"#)
+                .unwrap();
+        }
+        let before = rec(&mut k, &id);
+        let mut fresh = ClaudeAdapter::new();
+        feed(&mut k, &mut fresh, &id, edit_line("a1", "c2", "/w/x"));
+        let es = entries(&mut k, &id);
+        let asks = es
+            .iter()
+            .filter(|e| e["kind"] == "ask" && e["body"]["id"] == "a1")
+            .count();
+        assert_eq!(asks, 1, "pending {pending}");
+        assert_eq!(es.last().unwrap()["kind"], "unknown", "pending {pending}");
+        let after = rec(&mut k, &id);
+        assert_eq!(after.open, before.open, "pending {pending}");
+        assert_eq!(after.pending_answers, before.pending_answers);
+    }
+}
+
+/// The call rule on `tool` alone: a new id on an open ask's call, with the same input and
+/// another tool, is `unknown`.
+#[test]
+fn ac2_a_fresh_adapters_other_tool_on_an_open_call_is_unknown() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    let mut a = ClaudeAdapter::new();
+    feed(&mut k, &mut a, &id, edit_line("a1", "c1", "/w/x"));
+    let mut other = edit_line("a2", "c1", "/w/x");
+    other["tool"] = json!("Write");
+    let mut fresh = ClaudeAdapter::new();
+    feed(&mut k, &mut fresh, &id, other);
+    assert_eq!(entries(&mut k, &id).last().unwrap()["kind"], "unknown");
+    assert!(!rec(&mut k, &id).open.iter().any(|o| o.id == "a2"));
+}
