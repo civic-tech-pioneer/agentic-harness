@@ -142,64 +142,118 @@ pub(crate) const TOOLS: [&str; 12] = [
     "WebSearch",
 ];
 const PER_SESSION: [&str; 4] = ["workspace", "extra-workspaces", "agent-handle", "session"];
-/// Commands that run any code given to them, or run the next word as a command (4.1). Names
-/// starting with `python` are runners too.
-const RUNNERS: [&str; 54] = [
-    "bash",
-    "sh",
-    "zsh",
-    "fish",
-    "dash",
-    "ksh",
-    "mksh",
-    "csh",
-    "tcsh",
+/// First words that run, wrap or schedule another command (4.1); equal to the spec list,
+/// which `tests/it/runners.rs` reads.
+const RUNNERS: [&str; 98] = [
+    ".",
     "ash",
-    "pwsh",
-    "env",
-    "node",
-    "deno",
+    "at",
+    "awk",
+    "bash",
+    "batch",
+    "builtin",
     "bun",
     "bunx",
-    "npx",
-    "pnpx",
-    "yarnpkg",
-    "corepack",
-    "uvx",
-    "perl",
-    "ruby",
-    "php",
-    "lua",
-    "awk",
-    "gawk",
-    "mawk",
-    "nawk",
     "busybox",
-    "toybox",
-    "setsid",
-    "ionice",
+    "byobu",
+    "capsh",
+    "chroot",
     "chrt",
-    "taskset",
-    "unshare",
-    "flock",
-    "watch",
-    "osascript",
+    "command",
+    "coproc",
+    "corepack",
+    "crontab",
+    "csh",
+    "dash",
+    "deno",
+    "doas",
+    "dtach",
+    "elixir",
+    "enable",
+    "env",
     "eval",
     "exec",
-    "source",
-    ".",
-    "command",
-    "builtin",
-    "xargs",
-    "sudo",
-    "doas",
-    "su",
-    "nohup",
+    "expect",
+    "fakeroot",
+    "fc",
+    "fish",
+    "flock",
+    "gawk",
+    "gdb",
+    "ionice",
+    "irb",
+    "julia",
+    "ksh",
+    "lldb",
+    "ltrace",
+    "lua",
+    "mawk",
+    "mksh",
+    "nawk",
     "nice",
-    "timeout",
-    "time",
+    "node",
+    "nohup",
+    "npx",
+    "nsenter",
+    "numactl",
+    "osascript",
+    "parallel",
+    "perl",
+    "php",
+    "pipx",
+    "pkexec",
+    "pnpx",
+    "prlimit",
+    "pwsh",
+    "r",
+    "rbash",
+    "rscript",
+    "ruby",
+    "run0",
+    "runuser",
+    "screen",
+    "script",
+    "sem",
+    "setpriv",
+    "setsid",
+    "sg",
+    "sh",
+    "source",
+    "ssh",
     "stdbuf",
+    "strace",
+    "su",
+    "sudo",
+    "systemd-run",
+    "taskset",
+    "tclsh",
+    "tcsh",
+    "time",
+    "timeout",
+    "tmux",
+    "toybox",
+    "trap",
+    "ts-node",
+    "tsx",
+    "unshare",
+    "uvx",
+    "valgrind",
+    "watch",
+    "xargs",
+    "yarnpkg",
+    "zellij",
+    "zsh",
 ];
+/// Runtime name prefixes that are refused with any version suffix (4.1).
+const RUNNER_PREFIXES: [&str; 7] = ["python", "pypy", "node", "perl", "ruby", "php", "lua"];
+#[doc(hidden)]
+pub fn runner_words() -> &'static [&'static str] {
+    &RUNNERS
+}
+#[doc(hidden)]
+pub fn runner_prefixes() -> &'static [&'static str] {
+    &RUNNER_PREFIXES
+}
 /// Package runners and the only second words an allow rule may pin for them: every other
 /// subcommand, abbreviation or forwarder can reach an `exec` (4.1).
 const PACKAGE_RUNNERS: [(&str, &[&str]); 5] = [
@@ -566,7 +620,7 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
         return Some("does not start with a plain command name");
     }
     let base = first.rsplit('/').next().unwrap_or(first);
-    if base.starts_with("python") || RUNNERS.contains(&base) {
+    if RUNNER_PREFIXES.iter().any(|x| base.starts_with(x)) || RUNNERS.contains(&base) {
         return Some("allows an interpreter or runner prefix");
     }
     if base == "find" {
@@ -691,6 +745,9 @@ fn frontmatter_problem(text: &str) -> Option<String> {
             ));
         }
         if line.starts_with(' ') && !seen.is_empty() {
+            if line.contains(':') {
+                return Some(format!("frontmatter continuation line {line:?} has a ':'"));
+            }
             continue;
         }
         let key = ["name", "description"]
