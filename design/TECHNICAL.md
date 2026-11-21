@@ -1277,10 +1277,17 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
       pattern's own folder and ignores `path` (adversary, S33-fix1). For
       `Write`, `Edit`, `MultiEdit` and `NotebookEdit` no segment after the
       workspace starts with `.` (`.git/config`, `.claude/`, `.mcp.json`,
-      `.vscode/`, `.husky/`: a write there can make code run later) and the
-      last segment is none of `CLAUDE.md`, `AGENTS.md`, `build.rs`,
-      `package.json`, `Makefile` in any case (4.3); such a write always asks,
-      on top of the host's protected paths (adversary RISK 1, S34). Key
+      `.vscode/`, `.husky/`: a write there can make code run later) or holds
+      a byte outside printable ASCII (a file system that folds Unicode case
+      or drops ignorable code points opens `Ma\u{212A}efile` as `Makefile`
+      or `\u{200C}.git` as `.git`; adversary, S34-fix2), and the last
+      segment is none of `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`,
+      `build.rs`, `package.json`, `Makefile`, `GNUmakefile` in any ASCII
+      case (4.3); such a write always asks, on top of the host's protected
+      paths (adversary RISK 1, S34). This list is not complete (a build file
+      such as `Cargo.toml` or `conftest.py` can also run code later): the
+      shell grant's sandbox and the host's protected paths stay the limit
+      (14). Key
       `<ws>/**`, so reach `Edit(<ws>/**)` as before.
     - *Bash.* `command` is a string with no `:`, and `Bash(<command>)`
       passes the 4.1 allow grammar (so it has no `;` or `)`); then
