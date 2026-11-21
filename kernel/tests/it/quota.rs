@@ -282,6 +282,7 @@ fn ac2_the_accounts_equal_the_bytes_of_the_keys() {
 fn ac2_a_stale_session_read_steps_and_charges() {
     let mut k = kernel();
     let a1 = start(&mut k, "alice", "k1");
+    k.attach("alice", &a1, 0).unwrap();
     k.provider(&a1, ask("a1")).unwrap();
     forge(&mut k, "alice", &a1, "stream/x1", 3);
     k.host.boot = 2;
@@ -574,7 +575,9 @@ fn ac8_a_running_turn_ends_stopped_quota_when_past() {
 fn ac8_a_waiting_turn_stops_too_and_a_new_ask_is_denied() {
     let mut k = kernel();
     let s1 = start(&mut k, "alice", "k1");
+    k.attach("alice", &s1, 0).unwrap();
     k.provider(&s1, ask("a1")).unwrap();
+    assert!(matches!(rec(&mut k, &s1).turn, Turn::Waiting { .. }));
     k.limits.owner_bytes = usage(&mut k, "quota/alice").bytes;
     let n = requests(&k).len();
     let before = entry_lines(&mut k, &s1).len();
@@ -624,7 +627,9 @@ fn ac8_an_idle_session_gets_a_denied_ask_and_no_turn_change() {
 fn ac8_decisions_resolutions_and_turns_are_stored_while_past() {
     let mut k = kernel();
     let s1 = start(&mut k, "alice", "k1");
+    k.attach("alice", &s1, 0).unwrap();
     k.provider(&s1, ask("a1")).unwrap();
+    assert!(matches!(rec(&mut k, &s1).turn, Turn::Waiting { .. }));
     k.say("alice", &s1, "q1", "queued input").unwrap();
     k.limits.owner_bytes = usage(&mut k, "quota/alice").bytes;
     let n = requests(&k).len();
@@ -659,7 +664,9 @@ fn ac8_decisions_resolutions_and_turns_are_stored_while_past() {
 fn ac8_ask_resolved_and_turn_events_are_stored_while_past() {
     let mut k = kernel();
     let s1 = start(&mut k, "alice", "k1");
+    k.attach("alice", &s1, 0).unwrap();
     k.provider(&s1, ask("a1")).unwrap();
+    assert!(matches!(rec(&mut k, &s1).turn, Turn::Waiting { .. }));
     k.say("alice", &s1, "q1", "queued input").unwrap();
     k.limits.owner_bytes = usage(&mut k, "quota/alice").bytes;
     let n = requests(&k).len();
