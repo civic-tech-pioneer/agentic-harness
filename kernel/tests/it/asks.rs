@@ -600,3 +600,18 @@ fn ac2_a_fresh_adapters_other_tool_on_an_open_call_is_unknown() {
     assert_eq!(entries(&mut k, &id).last().unwrap()["kind"], "unknown");
     assert!(!rec(&mut k, &id).open.iter().any(|o| o.id == "a2"));
 }
+
+/// The call rule fails closed: when the entry of the open ask on the call cannot be read, a fresh
+/// adapter's ask on that call is `unknown`.
+#[test]
+fn ac2_an_ask_on_a_call_whose_entry_is_unreadable_is_unknown() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    let mut a = ClaudeAdapter::new();
+    feed(&mut k, &mut a, &id, edit_line("a1", "c1", "/w/x"));
+    let key = agent_kernel::transcript::chunk_key(&id, 0);
+    k.state.put(&key, b"not json\n".repeat(64)).unwrap();
+    let mut fresh = ClaudeAdapter::new();
+    feed(&mut k, &mut fresh, &id, edit_line("a2", "c1", "/w/x"));
+    assert!(!rec(&mut k, &id).open.iter().any(|o| o.id == "a2"));
+}

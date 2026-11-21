@@ -1287,8 +1287,12 @@ impl<S: State, H: Host> Kernel<S, H> {
             .chain(rec.pending_answers.values().map(|p| (&p.call, p.i)))
             .find(|(c, _)| c.as_str() == call)
             .map(|(_, i)| i);
-        let Some(other) = at.and_then(|i| self.ask_body(rec, i)) else {
+        let Some(i) = at else {
             return false;
+        };
+        // Fail closed: an ask on a call whose earlier entry cannot be read is not shown as an ask.
+        let Some(other) = self.ask_body(rec, i) else {
+            return true;
         };
         other.pointer("/toolCall/title") != body.pointer("/toolCall/title")
             || other.get("input") != body.get("input")
