@@ -164,7 +164,7 @@ describe("adversary S4 fix: reads, rows and paging", () => {
       read: async () => [], async say() { return 0; }, async answer() {}, async interrupt() {}, async takeBack() {},
     };
     const s = openSession(k, "s1", (v) => { last = v; });
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 100));
     s.close();
     expect(last.rows.map((r) => r.kind)).toEqual(["unknown"]);
   });

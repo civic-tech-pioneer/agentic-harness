@@ -3,6 +3,7 @@
 import type { Kernel } from "../kit/kernel";
 import { fakeKernel } from "./kernel";
 import { story } from "./story";
+import { longStory } from "./long";
 import type { SidebarSession } from "../src/Sidebar";
 
 export const storyInfo = { id: "s1", title: "Fix the retry bug in sync.ts", profile: "Careful", provider: "Claude Code", workspace: "~/work/sync",
@@ -22,3 +23,20 @@ export function scriptedKernel(): Kernel {
   for (let n = 0; n < story.length; n++) fake.play(n);
   return fake;
 }
+
+/** `?long=N` (dev): a session of N finished entries with a fast stream running after them, to try the console on a long transcript. */
+export function longKernel(n: number): Kernel {
+  const script = longStory(n);
+  const fake = fakeKernel(script);
+  fake.play(0);
+  let next = 1, timer: ReturnType<typeof setInterval> | undefined;
+  const attach = fake.attach.bind(fake);
+  fake.attach = async (...a) => {
+    const r = await attach(...a);
+    if ("ok" in r && !timer) timer = setInterval(() => { if (next < script.length) fake.play(next++); else clearInterval(timer); }, 20);
+    return r;
+  };
+  return fake;
+}
+
+export const longInfo = (n: number) => ({ ...storyInfo, title: `A long session of ${n} entries` });
