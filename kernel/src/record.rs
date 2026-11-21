@@ -196,6 +196,10 @@ pub struct Record {
     pub boot: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_page: Option<u8>,
+    /// The `owner/<owner>/<n>` page that lists the session (9.1).
+    pub owner_page: u32,
+    /// The bytes of the session's keys other than its record (9.3 Quota).
+    pub bytes: u64,
     pub allows: Vec<Value>,
     pub counters: Counters,
     pub chunks: Vec<u64>,
@@ -225,6 +229,8 @@ impl Default for Record {
             turn: Turn::default(),
             boot: 0,
             active_page: None,
+            owner_page: 0,
+            bytes: 0,
             allows: Vec::new(),
             counters: Counters::default(),
             chunks: Vec::new(),
