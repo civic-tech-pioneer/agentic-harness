@@ -41,17 +41,6 @@ Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` sect
 Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
 Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 
-### S30: the console draws a short decision (in flight (cloud), routine trig_01J1aiZUvnhsy3Bb1Qzt6ZKr)
-
-Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
-ask entry at `ask-i`, reading that one entry when the page lacks it; the S9, S15 and S7 held cases
-stay green. Also (PO, S23): after an answer the status line still says "denied in m:ss if
-unanswered"; it reads "Answered, waiting" (or names the next open ask). Both forms (S29: short also for an owner past its own 64 MiB). Also: the `long_S7`
-p95 timing checks fail the default gate under parallel load (S29 saw it twice at load ~4.9):
-move the timing limits to `test:slow` or measure them in a way load cannot fail, keeping a
-functional check in `npm test`. A UI slice: PO-armed. Touches: `console/`, `ui/`.
-Protects: *guard* (asks).
-
 ### S34: scope keys for session allows, and `host-info.generation()` (in flight (cloud), routine trig_01VPZiRzn5SThNRtdbsqy9o8)
 
 Story: the human's answers of 2026-11-21 in the contract and the kernel.
@@ -79,17 +68,27 @@ Protects: *guard* (asks).
 
 ## Sketched
 
-### S32: stage A's agentic-harness part: the kernel's stream reaches a page (cloud, after watane S96 merges)
+### S32: stage A, end to end: Alice watches a real kernel stream in the console (cloud, with watane S96)
 
-Story: Alice opens the console as the kernel's page in `watane-dev serve` and sees numbered items
-of a kernel stream arrive in the page skeleton (18.4 layout and theme), as TECHNICAL 17 row A says.
-Interface (fixed in both sketches, watane PLAN step 11, S96): the `watane:host@0.1.0` streams and
-timers of TECHNICAL 2.1 as watane's S95 writes them into host/TECHNICAL (stream-sink `taken | defer`,
-`streams.resume`, `stream-producer.ended`, page connections and their queues). Outcomes: the kernel
-crate gains its first WIT world and a WASM build (`wit/world.wit`, so `check-mod.sh` checks it);
-cases 7, 20, 21 (kernel part) and 36 and 51 (kernel part) pass; the console attaches to the real
-stream in `watane-dev serve` instead of the scripted fake, with the fake kept for its unit tests.
-Touches: `kernel/`, `wit/`, `console/`, `ui/`, `mod.toml`. Protects: *core*. Waits for S96 (watane).
+Story: Alice runs `watane-dev serve` with the agent kernel installed, opens its console page, and
+sees numbered items of a real kernel stream arrive in the page (18.4 layout and theme), live and
+after a reload, with nothing doubled. One story in two repositories, landed together: watane's
+half is S96 (host H1 streams, H5 durable requests, H7 timers, page connections; pkg stage 12), this
+repository's half is this slice. Interface, named the same in both sketches: the
+`watane:host@0.1.0` streams and timers of TECHNICAL 2.1 as watane S95 wrote them in host 19
+(stream-sink `taken | defer`, `streams.resume`, `stream-producer.ended`, page connections).
+Outcomes:
+1. The kernel crate gains its first WIT world and a WASM build (`wit/world.wit`, `mod.toml`), so
+   `check-mod.sh` checks it; the kernel opens a stream to its page and pushes items.
+2. The console attaches to the real stream in `watane-dev serve` (the scripted fake stays for unit
+   tests only); a reload re-attaches after its last index.
+3. Cases 7, 20, 21 (kernel part), 36 and 51 (kernel part) pass, run against watane's host.
+4. Folded in from S30 (stopped, branch `slice/S30` kept for reuse): the short decision form (9.4),
+   the status line after an answer, the `long_S7` timing limits moved out of the default gate.
+Every spec line this needs is written in this slice, not in a later one.
+Touches: `kernel/`, `wit/`, `mod.toml`, `console/`, `ui/`, `design/TECHNICAL.md`. Protects: *core*.
+Starts when watane S96 starts (it fakes nothing it can call for real once S96 merges; until then
+it builds against S96's branch or the host 19 text).
 
 ## Done
 
@@ -448,6 +447,12 @@ Touches: `kernel/`, `wit/`, `console/`, `ui/`, `mod.toml`. Protects: *core*. Wai
   explicitly (all S33; also under Waiting, as a security boundary). Accepted: `allows` changed shape
   with no migration (nothing deployed).
 
+- 2026-11-21 The human: slices were cut by layer (kernel-only, console-only, spec-only), not as
+  stories across components. Corrected: every slice is a story a person can see, crossing watane's
+  host, the kernel mod and the console thinly; spec lines and risk fixes go into the slice that
+  builds the feature. S30 (console-only) stopped and folded into S32; S34 (the human's scope-key
+  rule, kernel and spec) finishes. Stage A is one story in two repositories (watane S96 with S32).
+
 ## Human answers (2026-11-20, through the PO)
 
 S2 writes each into the document that owns it.
@@ -574,6 +579,14 @@ S2 writes each into the document that owns it.
   of one project that waits on another's merge has no watcher that spans repositories.
 - 2026-11-21 po skill 3 Local: the hand-out's `cd` into the worktree moved the PO's Bash cwd there
   for the rest of the session; run `claude --bg` in a subshell.
+
+- 2026-11-21 PO error, recurring (the human caught it): from S3 on, the PO cut slices by folder
+  (kernel on an in-memory fake host, console on a scripted fake kernel, spec debts on their own),
+  because the watane host parts did not exist and folders kept slices apart. Each layer then made
+  more risks and spec debts, which became more layer slices. The po skill's "crosses every part
+  it needs, thinly" was read as "within this repository"; a story that needs another project
+  should be one story with a half per project, started together. Worth a line in the po skill:
+  a slice whose story names only a test run ("a kernel maker runs `cargo test`") is a layer slice.
 
 ## Suite time
 
