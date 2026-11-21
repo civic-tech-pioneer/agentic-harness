@@ -338,8 +338,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// The restart step of one session (R4): its stale `stream/` and `live/` keys go, its boot
-    /// (and its page entry's) becomes the current one, and a Claude turn nothing drives becomes
-    /// `unknown` with its open asks denied. Writes: at most the record, its page (or `slots` and
+    /// (and its page entry's) becomes the current one, a Claude session's open and pending asks
+    /// close in every turn state, and a Claude turn nothing drives becomes `unknown`. Writes: at most the record, its page (or `slots` and
     /// the page when it leaves the index), a decision entry per open ask and a `turn` entry (R3).
     // An OpenAI `running` or `waiting` session only gets the stale keys and the boot here: its rows
     // of the step table (9.5: requests, retries, tool jobs) come with stage D.
@@ -354,8 +354,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         let stale_streams = std::mem::take(&mut rec.streams);
         let driven = rec.backend == "claude"
             && matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. });
-        // Every open or pending ask closes, whatever the turn state; a driven turn ends `unknown`.
-        if self.close_all_with(rec, "restart", now, work, !driven)? {
+        // Every open or pending Claude ask closes, whatever the turn state; a driven turn ends
+        // `unknown`. An OpenAI session's asks are the kernel's own: its `waiting` row is unchanged.
+        if rec.backend == "claude" && self.close_all_with(rec, "restart", now, work, !driven)? {
             rec.updated = now;
         }
         if driven {
