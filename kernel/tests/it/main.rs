@@ -22,6 +22,7 @@ mod regress_s25;
 mod restart;
 mod revoke;
 mod runners;
+mod s26;
 mod sessions;
 mod transcript;
 mod usersim_s21;

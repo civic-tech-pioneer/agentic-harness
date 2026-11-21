@@ -62,7 +62,10 @@ fn regress_s25_quota_message_names_the_account() {
     assert!(matches!(e, KernelError::Quota(_)));
     let text = e.to_string();
     assert!(
-        !text.contains("the mod's session quota"),
+        text == "quota: this mod's agent sessions are at their limit"
+            && !["kernel", "account", "bytes", "MiB"]
+                .iter()
+                .any(|w| text.contains(w)),
         "an owner refused for the kernel's account is told: {text}"
     );
 }

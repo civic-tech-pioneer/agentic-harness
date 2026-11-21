@@ -117,6 +117,9 @@ pub enum ProviderEvent {
     Ended,
 }
 
+/// The refusal cause of the kernel's shared account: it names no other owner (14).
+const ACCOUNT_CAUSE: &str = "this mod's agent sessions are at their limit";
+
 /// A call's result and the `_meta.watane` pushes it caused, in order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Called<T> {
@@ -378,10 +381,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if a.owner.bytes >= self.limits.owner_bytes {
             Some(format!("{} per owner", size(self.limits.owner_bytes)))
         } else if a.account.bytes >= self.limits.account_bytes {
-            Some(format!(
-                "the kernel's {} account",
-                size(self.limits.account_bytes)
-            ))
+            Some(ACCOUNT_CAUSE.to_string())
         } else {
             None
         }
@@ -409,7 +409,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .account_bytes
             .saturating_add(self.limits.reserve_bytes);
         if c.owner > 0 && a.account.bytes > ceiling {
-            return Err(KernelError::Quota(format!("the {} state", size(ceiling))));
+            return Err(KernelError::Quota(ACCOUNT_CAUSE.to_string()));
         }
         self.save_accounts(a)
     }
@@ -701,6 +701,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         work: &mut Work,
     ) -> Result<(), KernelError> {
         let before = rec.turn.is_active();
+        // Past its quota only a change that ends an active turn is stored: one `turn` entry per
+        // turn (9.3 Quota).
+        if work.past && !(before && !t.is_active()) {
+            return Ok(());
+        }
         self.turn_to(rec, t, now, work)?;
         // Past its quota, or at the chunk cap, a session starts no queued input (9.3 Quota).
         if before && matches!(rec.turn, Turn::Idle { .. }) && !work.past && Self::room(rec).is_ok()
@@ -1369,8 +1374,9 @@ impl<S: State, H: Host> Kernel<S, H> {
     pub fn delete(&mut self, caller: &str, session: &str) -> Result<(), KernelError> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
-        let rec = self.session(caller, session, &mut slots, &mut Work::default())?;
-        // The record's bytes (the restart step, when it ran, sealed its change in them).
+        // No restart step (9.3): a session can always be deleted.
+        let rec = self.load_owned(caller, session)?;
+        // The record's bytes.
         let freed = rec.bytes as i64;
         let page_key = owner_page_key(caller, rec.owner_page);
         let page: Vec<String> = self
@@ -1411,7 +1417,12 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(c) = acct.owner.pages.get_mut(rec.owner_page as usize) {
             *c = c.saturating_sub(1);
         }
-        self.finish(None, &mut acct)
+        self.finish(None, &mut acct)?;
+        // After the last write, as `cancel` does: the host ends the stream and closes the asks.
+        self.host.request(Request::Cancel {
+            session: rec.id.clone(),
+        });
+        Ok(())
     }
 
     pub fn list(
