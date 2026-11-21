@@ -48,21 +48,6 @@ Touches: `kernel/` only. Fakes: the host state (S11's), `caller.boot()`, timers 
 calls. Leaves out: streams and providers, the broker (9.6), quotas beyond counting, OpenAI (9.5).
 Protects: *core* (*guard* for keys and caps).
 
-### S22: one decision per ask in the record (in flight (cloud), routine trig_01Sr73hMqqx2emLN6jfBeSvR)
-
-Story: a maker of stage B or E reads 4.5, 9.6, 9.8 and 14 and finds exactly one decision entry per
-ask in every order of events. From S18's adversary RISKs (PR #22), each failing closed today:
-1. When the kernel's recorded decision and the host's `answered.outcome` differ (checked mode: an
-   owner's allow, then an unsafe verdict), what the record shows (a correcting entry, or the
-   decision written only at `ask-resolved`).
-2. An `expired` or `cancelled` for an ask the kernel already answered but the host has not closed:
-   no second decision; an `expired`/`cancelled` item carrying an `outcome` is `unknown`.
-3. A checked provider, a trusted holder, can push its own `ask-resolved` or a false `outcome`:
-   named in 14 "Not protected" (the record only; no tool runs because of it), or a rule closing it.
-4. A check whose hook times out on `claude`'s side gets no `ask-resolved` today: how the kernel
-   closes it (the host sends `expired` for checks too, or the kernel's own deadline).
-Touches: `design/TECHNICAL.md`. Not `kernel/` (S21), not `console/` (S15). Protects: *guard*.
-
 ### S7: the console stays fast on a long session (in flight (cloud), routine trig_01QKd2ZG4iQvqxnAxHagNAqc)
 
 Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
@@ -88,7 +73,9 @@ Outcomes:
 1. `ask-resolved` as 9.8 rule 4 says (S18, PR #22): no entry for the kernel's own answer; another
    caller's answer gives the decision from `outcome` (`by: checked` on a `direct: false` stream,
    `host` otherwise); a bad `outcome`, `none` on an ask, `allow` on a check is `unknown`, the ask
-   open; plus what S22 settles for races and checks.
+   open; plus S22's 9.4 "Code to change (S20)" list (PR #24): the pending answer and the decision
+   at close (D1), D2, `ended` closing every open or pending ask (D5), `cancel` and R4 in every
+   state, `pending-answers` capped at 64 with `busy`; case 73.
 2. S15 RISK (c): the kernel's ask `toolCall` carries ACP `kind` and, for edits, the diff content
    derived from the input (9.8), so a real Edit ask's card shows its diff, not "Other <path>".
 3. S15 RISK (a): a second open ask or check on a `toolCallId` that already has an open one with a
@@ -96,7 +83,18 @@ Outcomes:
    enough; decide in the slice, failing closed.
 4. Spec: 9.4 "Code to change" drops the ten console bullets S15 built; 9.8 gains 2 and 3.
 5. Polish: the refusal text of a bad `append` kind (`kind (, ): ...`) gets its field and reason.
+6. S22 RISK 1 (PO decision): at most 64 open Claude asks and checks per session; one past that is
+   denied at once (`by: kernel`, reason `busy`), so `cancel`, R4 and `ended` write at most 64
+   decisions in one call; spec in 9.3/9.6 with a case. Also S22's wording: R4's Claude row and
+   9.8 rule 4 no longer name a kernel deadline or `ask-expiry` for Claude asks.
 Touches: `kernel/`, `design/TECHNICAL.md` (after S22 merges). Protects: *guard* (asks).
+
+### S23: the console shows an answered ask as waiting (cloud, after S7 merges: same files)
+
+Outcomes: an ask with a pending answer (S22 D1: decided at `answer`, recorded at `ask-resolved`)
+shows "Answered, waiting" in place of its bar until its decision entry arrives, with no second
+click; in checked mode the wait shows "Checking with your judge" (18.5). A UI slice: PO-armed.
+Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -250,6 +248,13 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   sequences; S9's held cases kept. Implementer runs 1 each of 5. Suite: `npm test` 280 tests
   10.0 s (+19%), `test:slow` 30 s, gate 21 s.
 
+- **S22** one decision per ask in the record (PR #24, 14 min). A Claude ask's decision is written
+  once, when it closes: the kernel's own answer is a pending answer until `answered`, and an
+  outcome that differs (an unsafe verdict after an owner's allow) gives one `deny, by: checked`;
+  the host closes a check with `expired` too (watane, 15); `ended` closes every open or pending
+  ask; `pending-answers` capped at 64; a forging checked provider named in 14 (record only);
+  case 73. User-sim ACCEPTED (run 1); adversary HELD twice (RISKs 1-5 fixed in S22-fix1).
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -326,6 +331,9 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   read mid-group shows one unknown row that can only expire: accepted (fails safe; entries over
   64 MiB do not occur under the 256 KiB-per-part rule's caps).
 
+- 2026-11-21 S22 RISK 1: open Claude asks and checks are capped at 64 per session; one past it
+  is denied at once (`busy`), so every closing call writes at most 64 decisions (S20).
+
 ## Human answers (2026-11-20, through the PO)
 
 S2 writes each into the document that owns it.
@@ -373,7 +381,8 @@ S2 writes each into the document that owns it.
   `started()` called once per start. Rec: (a), no new call into mods at start. Undo: one 2.1 line,
   one 15 row, rule R1. Blocks only stage B's host part.
 
-- **`answered` carries `outcome`** (S18, a small addition to watane's wire; on the H2 line in 15).
+- **`answered` carries `outcome`; the host closes checks with `expired` too** (S18, S22: two small
+  additions to watane's H2 wire, both on the H2 line in 15).
   Without it the kernel cannot record what a checked provider decided. Alternative: leave the wire
   as it is and design another way to learn the outcome at stage E. Undo: one field. Blocks only
   stage B's host part.
