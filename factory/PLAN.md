@@ -27,20 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S17: the kernel finds its running sessions after a restart (in flight (cloud), routine trig_01WgyvfHhfLyFuHTi7DY8mAW)
-
-Story: a foreman of stage B's first kernel slice reads TECHNICAL 9.1, 9.3 and 9.5 and finds how the
-kernel, on its first call after watane restarts, learns which sessions were running, waiting or
-paused, without a prefix scan (host 7 has none; S6 RISK 5), within the one-call bound of 17.
-Outcomes:
-1. A key or index in 9.1 (for example a paged `running/<n>` list, like `owner/<owner>/<n>`) that
-   every turn-state change keeps current, with its cost per change and its cap.
-2. 9.3's restart pass: what it reads, in how many calls (bounded work per call), and what each
-   state becomes (`unknown` and its "Continue", 18.5), including sessions waiting for a slot (9.5).
-3. A numbered case in 16 per rule, assigned to stage B in 17.
-Touches: `design/TECHNICAL.md` only. Not `kernel/` (S14), not `console/` (S15).
-Protects: *core*.
-
 ### S15: the console reads the wire S10 wrote (in flight (cloud), routine trig_019YCYegVuKusDaBroYa4EoT)
 
 Story: Alice's console works against the kernel JSON of S10 unchanged.
@@ -73,7 +59,8 @@ Outcomes: 4.5, 9.4, 9.8 say what S14 built ahead of S16 (an `id` not a non-empty
 too; a joined group reads like a stored line at its last part's place) and what S19 builds (above);
 4.5 lists `ask-resolved`'s `by` values; 14 "Not protected" names the accepted limits (a first-key
 JSON reader; a nested duplicate key in `input` is read last-wins, safe only while the host
-serializes items itself). Touches: `design/TECHNICAL.md`. Protects: *guard* and *core*.
+serializes items itself); FUNCTIONAL AGT-F-10 reads "never as running when nothing drives it" (S17).
+Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Protects: *guard* and *core*.
 
 ### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
 
@@ -84,6 +71,8 @@ budget; `test:slow` 23 s because each of 4 scripts runs its own `npm run build`:
 the transcript is virtualized; at most one render per animation frame; code is
 highlighted once its block is complete and visible; a large-transcript fixture with limits for
 input, Stop and scroll latency runs in `npm test`.
+Also (S17): a Claude `ToolCall` a page saw live before a restart is never closed by an entry;
+after the restart's `unknown` turn the console shows it as ended, not running.
 Touches: `console/`, `ui/`. Protects: *core*.
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
@@ -207,6 +196,14 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   again. User-sim ACCEPTED on run 2; adversary BREACHED 3 then 1, fixed, HELD on passes 3 and 4
   (ask and privacy boundaries). Implementer runs 1/1/2/1/1/1. Kernel 111 tests; gate 18 s.
 
+- **S17** the restart pass in the contract (PR #20, 15 min). A stage B kernel foreman finds:
+  a host boot number `caller.boot()` (2.1, a watane need in 15); `active/<n>` (4 pages, at most
+  1 024 sessions, else `busy`) of running, waiting and paused sessions; a lazy restart pass of at
+  most `A + 1` calls, one session each, no key listing; one outcome per state (Claude running or
+  waiting: asks denied `restart`, turn `unknown`; paused unchanged; OpenAI re-queued or kept);
+  `say` on `unknown` resumes; cases 67-71. User-sim ACCEPTED on run 2; no adversary (no code, 14
+  unchanged). Gate 17 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -314,6 +311,12 @@ S2 writes each into the document that owns it.
   gain `tool_use_id` and `expires-at` (host clock), and the host never passes through a stdout line
   typed like its own items. Alternatives: (2) leave it to stage B's host slice; (3) a source marker
   on host items, a wire change in both repos. Undo of 1: a few spec lines, one adapter field.
+
+- **`caller.boot()`, a new watane host import** (S17, interface between projects, not in N3).
+  The kernel cannot tell a restart from its own state, so it reads the host's start number on its
+  first call. Options: (a) `caller.boot() -> u64`, a pure read (as written); (b) a host export
+  `started()` called once per start. Rec: (a), no new call into mods at start. Undo: one 2.1 line,
+  one 15 row, rule R1. Blocks only stage B's host part.
 
 ## Friction
 
