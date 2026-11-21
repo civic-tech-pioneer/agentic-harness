@@ -62,6 +62,7 @@ fn decisions_of(k: &mut K, id: &str, ask: &str) -> Vec<Value> {
 fn adv_s20_reused_id_of_a_pending_ask_takes_a_second_answer() {
     let mut k = kernel();
     let id = k.start("alice", "k", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     let mut a = ClaudeAdapter::new();
     feed(&mut k, &mut a, &id, ask_line("a1", "/w/x"));
     k.answer("alice", &id, "k1", "a1", r#"{"deny":true}"#)
@@ -84,6 +85,7 @@ fn adv_s20_reused_id_of_a_pending_ask_takes_a_second_answer() {
 fn adv_s20_reused_id_of_a_pending_ask_gets_two_decisions() {
     let mut k = kernel();
     let id = k.start("alice", "k", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     let mut a = ClaudeAdapter::new();
     feed(&mut k, &mut a, &id, ask_line("a1", "/w/x"));
     k.answer("alice", &id, "k1", "a1", r#"{"deny":true}"#)
@@ -105,6 +107,7 @@ fn adv_s20_reused_id_of_a_pending_ask_gets_two_decisions() {
 fn adv_s20_reused_id_of_an_open_ask_shows_another_call() {
     let mut k = kernel();
     let id = k.start("alice", "k", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     let mut a = ClaudeAdapter::new();
     feed(&mut k, &mut a, &id, ask_line("a1", "/w/x"));
     let mut fresh = ClaudeAdapter::new();

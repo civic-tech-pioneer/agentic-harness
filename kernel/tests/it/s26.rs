@@ -34,7 +34,9 @@ fn kernel() -> K {
 }
 
 fn start(k: &mut K, owner: &str, key: &str) -> String {
-    k.start(owner, key, "p", "{}", IN).unwrap().value
+    let id = k.start(owner, key, "p", "{}", IN).unwrap().value;
+    k.attach(owner, &id, 0).unwrap();
+    id
 }
 
 fn requests(k: &K) -> Vec<Request> {

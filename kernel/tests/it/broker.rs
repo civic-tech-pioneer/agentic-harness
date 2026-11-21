@@ -97,9 +97,12 @@ fn kernel() -> K {
 }
 
 fn started(k: &mut K) -> String {
-    k.start("alice", "k", "p", "{}", r#"[{"type":"text","text":"hi"}]"#)
+    let id = k
+        .start("alice", "k", "p", "{}", r#"[{"type":"text","text":"hi"}]"#)
         .unwrap()
-        .value
+        .value;
+    k.attach("alice", &id, 0).unwrap();
+    id
 }
 
 fn rec(k: &mut K, id: &str) -> Record {

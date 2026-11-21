@@ -234,6 +234,8 @@ fn ac2_the_accounts_equal_the_bytes_of_the_keys() {
     k.say("bob", &b1, "s1", "queued bob").unwrap();
     check(&k);
     k.provider(&a1, message("hello")).unwrap();
+    k.attach("alice", &a1, 0).unwrap();
+    k.attach("bob", &b1, 0).unwrap();
     k.provider(&a1, ask("a1")).unwrap();
     k.provider(&b1, ask("b1")).unwrap();
     check(&k);
@@ -262,7 +264,7 @@ fn ac2_the_accounts_equal_the_bytes_of_the_keys() {
     check(&k);
     // a restart step (stale stream and live keys go)
     forge(&mut k, "alice", &a1, "stream/x1", 3);
-    forge(&mut k, "alice", &a1, &format!("live/{a1}"), 4);
+    // (the live key is the one alice's attach left)
     check(&k);
     k.host.boot = 2;
     k.list("bob", None, 1).unwrap();
@@ -432,6 +434,7 @@ fn ac5_a_cap_past_256_opens_more_owner_pages() {
 /// Alice with a waiting session (open ask `a1`, one queued input) and an idle one.
 fn busy_alice(k: &mut K) -> (String, String) {
     let s1 = start(k, "alice", "k1");
+    k.attach("alice", &s1, 0).unwrap();
     k.provider(&s1, ask("a1")).unwrap();
     k.say("alice", &s1, "q1", "queued input").unwrap();
     let s2 = start(k, "alice", "k2");
@@ -782,6 +785,7 @@ fn ac11_the_bounds_hold() {
         ]
     );
     assert_eq!(k.state.counts().puts, 5);
+    k.attach("alice", &s1, 0).unwrap();
     k.provider(&s1, ask("a1")).unwrap();
     k.state.reset_counts();
     k.answer("alice", &s1, "k8", "a1", r#"{"allow":true}"#)
@@ -809,6 +813,7 @@ fn validator_delete_frees_the_stream_and_live_keys() {
 fn validator_a_failed_step_in_a_firing_keeps_the_accounts_exact() {
     let mut k = kernel();
     let s1 = start(&mut k, "alice", "k1");
+    k.attach("alice", &s1, 0).unwrap();
     k.provider(&s1, ask("a1")).unwrap();
     // at the chunk cap, the last chunk with room for one entry: the step's decision is written,
     // its `turn` entry is refused `quota`

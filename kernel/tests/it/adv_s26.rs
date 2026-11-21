@@ -74,6 +74,7 @@ fn turn_entries(k: &mut K, id: &str) -> usize {
 fn adv_s26_past_quota_ask_resolutions_add_turn_entries() {
     let mut k = kernel();
     let s = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &s, 0).unwrap();
     for n in 0..8 {
         k.provider_item("t1", ask(&format!("a{n}"))).unwrap();
     }
@@ -110,6 +111,7 @@ fn adv_s26_past_quota_ask_resolutions_add_turn_entries() {
 fn adv_s26_past_quota_owner_answers_add_turn_entries() {
     let mut k = kernel();
     let s = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &s, 0).unwrap();
     for n in 0..8 {
         k.provider_item("t1", ask(&format!("a{n}"))).unwrap();
     }

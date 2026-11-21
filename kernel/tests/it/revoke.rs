@@ -40,6 +40,7 @@ fn revoke(k: &mut K, value: &[u8]) {
 /// A session with one queued input.
 fn queued(k: &mut K) -> String {
     let id = k.start("alice", "k", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.say("alice", &id, "q", "later").unwrap();
     id
 }
