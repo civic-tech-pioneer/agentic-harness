@@ -63,9 +63,7 @@ Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` sect
 Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
 Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 
-## Sketched
-
-### S31: the broker: session allows and rule matching (cloud, after S29 merges: kernel/)
+### S31: the broker: session allows and rule matching (in flight (cloud), routine trig_015syzZjr3V4hrjSTH3NovQu)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and asks are answered as 9.6 says, on the
 in-memory state with the fake host:
@@ -83,6 +81,8 @@ in-memory state with the fake host:
 Also: the Waiting item "session allow on `Bash`" stays open; build it so an allow on `Bash` holds
 only its exact command prefix under 4.1's grammar (the recommended option), cheap to widen.
 Touches: `kernel/`, `design/TECHNICAL.md` (9.6 lines as built). Protects: *guard* (asks, access).
+
+## Sketched
 
 ### S30: the console draws a short decision (cloud, after S23 and S29 merge: console/)
 
@@ -307,7 +307,7 @@ Protects: *guard* (asks).
   entry made `ended` fail at the ceiling, leaving the session running), fixed, HELD. Implementer
   runs 1/1/1. Kernel 342 tests in 3.8 s; gate 28 s.
 
-- **S29** ending a turn never fails at the ceiling (PR #33, 0.6 h). At and past the ceiling,
+- **S29** ending a turn never fails at the ceiling (PR #33, merged 2026-11-21 06:51 UTC, 0.6 h). At and past the ceiling,
   `cancel`, `interrupt` without a replacement, provider items while past and `ended` succeed and
   free what they hold, charged into the reserve; new work is refused `quota`. Past quota a decision
   is the short form `{id, kind, ask-i, decision}` (counted at each write), so a closing call with 64
