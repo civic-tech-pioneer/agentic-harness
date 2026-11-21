@@ -763,13 +763,15 @@ the card.
 - Reading an entry of an older `v` upgrades it in memory; an unknown `kind`
   or newer `v` reads as `{"kind": "unreadable", "raw": …}`. An `unreadable`
   entry is `{"v":<its v>,"i":<i>,"kind":"unreadable","at":<at>?,"raw":<the
-  stored JSON>}` and keeps the `i` of its place (below; and `at` when it has one), so paging, replay from
-  `i + 1` and the drop of shown indexes (18.3) still hold. Nothing is
-  migrated in bulk. The index is the one of the line's place: its chunk's
-  first index (the record's `chunks`, 9.1) plus the line's position in the
-  chunk. An `i` the stored line claims is ignored, so a corrupt line cannot
-  take another entry's index.
-- **Who makes entries.** Only the transcript store makes `part` entries, when
+  stored JSON>}`. It keeps the `i` of its place (and `at` when it has one),
+  so paging, replay from `i + 1` and the drop of shown indexes (18.3) still
+  hold. The `i` of a line's place is its chunk's first index (the record's
+  `chunks`, 9.1) plus the line's position counted from 0, so the chunk's
+  first line has the chunk's first index. An `i` the stored line claims is
+  ignored, so a corrupt line cannot take another entry's index. Nothing is
+  migrated in bulk.
+- **Who makes entries.** `append` here is the transcript store's own call
+  inside the kernel, not a function of 2.3. Only the store makes `part` entries, when
   it stores an entry over 256 KiB; `unreadable` is never stored. A session
   appends only the kinds of the table above other than `part`, made by the
   adapters (9.8) or the kernel itself, under a session id the kernel made;
