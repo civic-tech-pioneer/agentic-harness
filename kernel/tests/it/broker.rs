@@ -41,6 +41,20 @@ fn ac1_reach_of_file_tools() {
 }
 
 #[test]
+fn ac2_bash_reach_needs_only_the_plain_keys() {
+    let bash = |i: Value| r(None, "Bash", i);
+    for bad in [
+        json!({"command":"ls","dangerouslyDisableSandbox":true}),
+        json!({"command":"ls","dangerouslyDisableSandbox":false}),
+        json!({"command":"ls","x":1}),
+    ] {
+        assert_eq!(bash(bad.clone()), None, "{bad}");
+    }
+    let ok = json!({"command":"ls","description":"d","timeout":5,"run_in_background":true});
+    assert_eq!(bash(ok).as_deref(), Some("Bash(ls)"));
+}
+
+#[test]
 fn ac1_reach_of_bash_and_other_tools() {
     let bash = |c: &str| r(None, "Bash", json!({"command": c}));
     assert_eq!(bash("npm test").as_deref(), Some("Bash(npm test)"));
