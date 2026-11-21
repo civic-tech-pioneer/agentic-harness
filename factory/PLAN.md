@@ -61,7 +61,7 @@ Protects: *polish* (*core* for 1 and 2: an ask must read as one).
 
 ## Sketched
 
-### S12: the kernel catches up with the spec (cloud, after S11 merges: same files)
+### S12: the kernel catches up with the spec (in flight (cloud), routine trig_01Cphn1mCUbFd5BzkjqNq1fQ)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and the code does what S6 and S11 left as
 "code to change".
@@ -176,7 +176,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   runs 1/1/1. Gate 14 s, no tests changed. Code to change, for the next kernel slice: drop
   `yarn ls`, add the missing runner names and prefixes, the frontmatter `:` rule.
 
-- **S11** the transcript store (PR #12, opened and armed by the PO after its BLOCKED; ~45 min).
+- **S11** the transcript store (PR #12, opened and armed by the PO after its BLOCKED, merged 2026-11-21 00:11 UTC; ~45 min).
   A kernel maker sees transcripts of 10 and 10 000 entries stored in 64 KiB chunks over an
   in-memory host-7 state with counted gets; entries over 256 KiB as UTF-8-safe `part`s joined byte
   for byte; `read` both ways under 256 entries and 2 MiB; attach's replay decision (128 / 2 MiB,
