@@ -849,7 +849,10 @@ the card.
   (S14). A joined text that is not JSON, not an object, of an unknown kind or
   of a newer `v` is `unreadable` with that `i` and the joined text as `raw`
   (S14). A joined whole of kind `part` is `unreadable` (S19). A stored `part`
-  line, read alone, is still a `part`.
+  line, read alone, is still a `part`. A last part with no whole-number `i`
+  never comes from `read` or replay, which give every line one; the joiner
+  then yields the whole as parsed, and drops a whole of kind `part`, since an
+  `unreadable` entry needs an `i` (S19).
 - Reading an entry of an older `v` upgrades it in memory; an unknown `kind`
   or newer `v` reads as `{"kind": "unreadable", "raw": …}`. An `unreadable`
   entry is `{"v":<its v>,"i":<i>,"kind":"unreadable","at":<at>?,"raw":<the
@@ -984,18 +987,10 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   `id` (2.3), not by `toolCallId`, so a check's decision never clears an ask
   bar of the same call.
 
-**Code to change (S19).** The rules above and in 9.8 differ from the code in
-these places (S14 built the rest).
+**Code to change (S20).** The rules above and in 9.8 differ from the code in
+this place (S14 and S19 built the rest).
 
-- Kernel, S19: an `ask-resolved` item whose `by` is missing, not a string or
-  any other than `expired` or `cancelled` is an `unknown` entry, and the ask
-  stays open (9.8).
-- Kernel, S19: an `ask` or `check` item whose `input` is not a JSON object,
-  or whose `expires-at` is not a JSON integer from 0 to 2^64 - 1, is an
-  `unknown` entry (9.8).
-- Kernel, S19: a joined part group whose whole is of kind `part` reads as
-  `unreadable`.
-- Kernel, a later slice: an `ask-resolved` with `by: answered` closes the open
+- Kernel, S20: an `ask-resolved` with `by: answered` closes the open
   ask or check with no entry when the kernel answered it itself, and
   otherwise gives the decision entry with the item's `outcome` (`by: checked`
   on a `direct: false` stream, else `host`); a missing or bad `outcome`, `none` on
@@ -1193,7 +1188,7 @@ below is an `unknown` entry, never an ask or a decision.
    and it is not counted as open for the owner. Any other or missing
    `by`, or one that is not a string, is `unknown`. An `unknown` item leaves
    the ask open, so a later `expired` or `cancelled` still gives its decision
-   (S19; until the code to change of 9.4 is built, `answered` is `unknown`
+   (S19; until S20 builds the code to change of 9.4, `answered` is `unknown`
    too). An `ask-resolved` whose `id` is not open is `unknown`. Stage E
    builds only the provider's side (10).
 5. A line that is not valid UTF-8 is `unknown`. Its `raw` is the line as a
