@@ -41,19 +41,6 @@ Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` sect
 Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
 Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 
-### S33: session allows fail closed (in flight (cloud), routine trig_01Ee9P9uQfzEjo5m4d2RfrMf)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and a session allow never covers more than the
-participant saw (S31 RISKs, PO decisions):
-1. No session allow is offered for `Task`, `Skill`, `WebFetch` and `WebSearch` (a bare name there
-   covers every subagent, skill, URL or query); `mcp__watane__*` keeps its bare-name allow (9.6).
-2. A `Bash` reach also pins `run_in_background` and `timeout`: an ask with another value of either
-   does not match the allow.
-3. TECHNICAL 4.1 says the host sets `allowUnsandboxedCommands: false` explicitly (Claude's default
-   is `true`; "none of" read as "key absent" is not enough), and 15 gains that watane row.
-4. `factory/gate.sh` runs `cargo fmt --check` in `kernel/` (briefs required it; the gate did not).
-Touches: `kernel/`, `design/TECHNICAL.md` (4.1, 9.6, 15), `factory/gate.sh`. Protects: *guard*.
-
 ### S30: the console draws a short decision (in flight (cloud), routine trig_01J1aiZUvnhsy3Bb1Qzt6ZKr)
 
 Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
@@ -65,21 +52,7 @@ move the timing limits to `test:slow` or measure them in a way load cannot fail,
 functional check in `npm test`. A UI slice: PO-armed. Touches: `console/`, `ui/`.
 Protects: *guard* (asks).
 
-## Sketched
-
-### S32: stage A's agentic-harness part: the kernel's stream reaches a page (cloud, after watane S96 merges)
-
-Story: Alice opens the console as the kernel's page in `watane-dev serve` and sees numbered items
-of a kernel stream arrive in the page skeleton (18.4 layout and theme), as TECHNICAL 17 row A says.
-Interface (fixed in both sketches, watane PLAN step 11, S96): the `watane:host@0.1.0` streams and
-timers of TECHNICAL 2.1 as watane's S95 writes them into host/TECHNICAL (stream-sink `taken | defer`,
-`streams.resume`, `stream-producer.ended`, page connections and their queues). Outcomes: the kernel
-crate gains its first WIT world and a WASM build (`wit/world.wit`, so `check-mod.sh` checks it);
-cases 7, 20, 21 (kernel part) and 36 and 51 (kernel part) pass; the console attaches to the real
-stream in `watane-dev serve` instead of the scripted fake, with the fake kept for its unit tests.
-Touches: `kernel/`, `wit/`, `console/`, `ui/`, `mod.toml`. Protects: *core*. Waits for S96 (watane).
-
-### S34: scope keys for session allows, and `host-info.generation()` (cloud, after S33 merges: kernel/, TECHNICAL)
+### S34: scope keys for session allows, and `host-info.generation()` (in flight (cloud), routine trig_01VPZiRzn5SThNRtdbsqy9o8)
 
 Story: the human's answers of 2026-11-21 in the contract and the kernel.
 Outcomes:
@@ -95,10 +68,28 @@ Outcomes:
    `caller.boot()`; R1 and every mention renamed; 15's watane row says so.
 3. 4.5: `answered` carries `outcome`, and the host closes checks with `expired`: accepted (mark the
    15 rows accepted, no longer waiting).
+5. From S33 (PR #36): an input with a key the tool's scope function does not know gets no key
+   (file tools too, e.g. `_host`), as Bash already does; the scope function names, for stage B's
+   host, that paths are resolved (symlinks) before a key is computed, and that `mcp__watane__*`
+   keys rely on the host's `--strict-mcp-config` admitting only the `watane` server (15 rows).
 4. From watane S95: the launch document (4.1) gains `profile` (used only for the consent words),
    and the kernel's `timer-error` gains `bad-delay`.
 Touches: `kernel/`, `design/TECHNICAL.md`, `design/FUNCTIONAL.md` if a requirement changes.
 Protects: *guard* (asks).
+
+## Sketched
+
+### S32: stage A's agentic-harness part: the kernel's stream reaches a page (cloud, after watane S96 merges)
+
+Story: Alice opens the console as the kernel's page in `watane-dev serve` and sees numbered items
+of a kernel stream arrive in the page skeleton (18.4 layout and theme), as TECHNICAL 17 row A says.
+Interface (fixed in both sketches, watane PLAN step 11, S96): the `watane:host@0.1.0` streams and
+timers of TECHNICAL 2.1 as watane's S95 writes them into host/TECHNICAL (stream-sink `taken | defer`,
+`streams.resume`, `stream-producer.ended`, page connections and their queues). Outcomes: the kernel
+crate gains its first WIT world and a WASM build (`wit/world.wit`, so `check-mod.sh` checks it);
+cases 7, 20, 21 (kernel part) and 36 and 51 (kernel part) pass; the console attaches to the real
+stream in `watane-dev serve` instead of the scripted fake, with the fake kept for its unit tests.
+Touches: `kernel/`, `wit/`, `console/`, `ui/`, `mod.toml`. Protects: *core*. Waits for S96 (watane).
 
 ## Done
 
@@ -336,6 +327,12 @@ Protects: *guard* (asks).
   ACCEPTED on run 3 (72-run matrix); adversary breached on 8 of 10 passes (answers reaching a moved
   or switched ask), each fixed with a red test and a randomized open-ask invariant, HELD on passes
   7 and 10. PO check at 1440 px: look unchanged; "Answered, waiting" shown.
+
+- **S33** session allows fail closed (PR #36, merged 2026-11-21 08:24 UTC, 0.3 h). Bare-name allows
+  only for `TodoWrite` and `mcp__watane__<tool>`; a Bash reach pins `timeout` and
+  `run_in_background`; a Glob reach needs a relative pattern; 4.1: the host writes
+  `allowUnsandboxedCommands: false`; the gate runs `cargo fmt --check`. User-sim ACCEPTED; adversary
+  BREACHED 1 (an absolute Glob pattern escaped a workspace allow), fixed, HELD. Kernel 411 tests.
 
 ## Deputy decisions
 
