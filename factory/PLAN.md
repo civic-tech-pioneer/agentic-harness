@@ -63,6 +63,21 @@ ask in every order of events. From S18's adversary RISKs (PR #22), each failing 
    closes it (the host sends `expired` for checks too, or the kernel's own deadline).
 Touches: `design/TECHNICAL.md`. Not `kernel/` (S21), not `console/` (S15). Protects: *guard*.
 
+### S7: the console stays fast on a long session (in flight (cloud), routine trig_01QKd2ZG4iQvqxnAxHagNAqc)
+
+Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
+presses Stop without lag (P14).
+Outcomes: first move tests down the pyramid (S9: `npm test` 230 tests 7.8 s, over the 20%
+budget; `test:slow` 23 s because each of 4 scripts runs its own `npm run build`: share one build);
+the transcript is virtualized; at most one render per animation frame; code is
+highlighted once its block is complete and visible; a large-transcript fixture with limits for
+input, Stop and scroll latency runs in `npm test`.
+Also (S15 user-sim): the status line repeats the kind before the title ("Edit Edit s.ts"); a
+check decided `none` with no tool entry shows "Pending"; an open check sharing a card with an
+ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live before a restart is never closed by an entry;
+after the restart's `unknown` turn the console shows it as ended, not running.
+Touches: `console/`, `ui/`. Protects: *core*.
+
 ## Sketched
 
 ### S20: asks as the kernel records and shows them (cloud, after S21 and S22 merge: same files)
@@ -82,21 +97,6 @@ Outcomes:
 4. Spec: 9.4 "Code to change" drops the ten console bullets S15 built; 9.8 gains 2 and 3.
 5. Polish: the refusal text of a bad `append` kind (`kind (, ): ...`) gets its field and reason.
 Touches: `kernel/`, `design/TECHNICAL.md` (after S22 merges). Protects: *guard* (asks).
-
-### S7: the console stays fast on a long session (cloud, next on console/)
-
-Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
-presses Stop without lag (P14).
-Outcomes: first move tests down the pyramid (S9: `npm test` 230 tests 7.8 s, over the 20%
-budget; `test:slow` 23 s because each of 4 scripts runs its own `npm run build`: share one build);
-the transcript is virtualized; at most one render per animation frame; code is
-highlighted once its block is complete and visible; a large-transcript fixture with limits for
-input, Stop and scroll latency runs in `npm test`.
-Also (S15 user-sim): the status line repeats the kind before the title ("Edit Edit s.ts"); a
-check decided `none` with no tool entry shows "Pending"; an open check sharing a card with an
-ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live before a restart is never closed by an entry;
-after the restart's `unknown` turn the console shows it as ended, not running.
-Touches: `console/`, `ui/`. Protects: *core*.
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -241,7 +241,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   (run 1); adversary BREACHED 2 (`answered` closing a provider-denied ask with no decision;
   `allow` on a check), fixed, HELD on pass 3. Gate 18 s.
 
-- **S15** the console reads the wire S10 wrote (PR #23, compared and armed by the PO; 44 min).
+- **S15** the console reads the wire S10 wrote (PR #23, compared and armed by the PO, merged 2026-11-21 01:35 UTC; 44 min).
   Alice's console reads S10's kernel JSON unchanged: `expires-at`, `answer` by the ask's `id`,
   `part` groups joined across pages, replay and live, checks with no buttons, the ask card from
   the ask entry only (each entry keeps its own call); S9's "felt wrong" list fixed. PO check at
