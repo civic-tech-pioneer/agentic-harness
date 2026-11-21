@@ -14,6 +14,10 @@ const IN: &str = r#"[{"type":"text","text":"hi"}]"#;
 fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
+    for who in ["alice", "bob"] {
+        st.put(&format!("access/{who}"), br#"["p"]"#.to_vec())
+            .unwrap();
+    }
     Slots {
         boot: 1,
         ..Slots::default()
@@ -29,6 +33,9 @@ fn kernel() -> K {
 }
 
 fn started(k: &mut K, owner: &str, key: &str) -> String {
+    k.state
+        .put(&format!("access/{owner}"), br#"["p"]"#.to_vec())
+        .unwrap();
     k.start(owner, key, "p", "{}", IN).unwrap().value
 }
 
@@ -266,7 +273,7 @@ fn ac3_the_step_settles_a_claude_turn_case_69() {
     restart_host(&mut k, 2);
     let c = k.timer("restart");
     assert_eq!(
-        c.pushes,
+        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
         [json!({"type": "turn", "state": {"state": "unknown"}})]
     );
     let r = rec(&mut k, &id);
@@ -447,7 +454,7 @@ fn ac6_every_session_call_steps_a_stale_record_first() {
             "unqueue" => {
                 let c = k.unqueue("alice", &id, 1).unwrap();
                 assert_eq!(
-                    c.pushes[0],
+                    c.pushes[0].value,
                     json!({"type": "turn", "state": {"state": "unknown"}})
                 );
             }
@@ -499,14 +506,14 @@ fn ac7_expires_at_is_the_earliest_open_ask_after_one_is_answered() {
         .answer("alice", &id, "k1", "a2", r#"{"allow":true}"#)
         .unwrap();
     assert_eq!(
-        c.pushes[0]["state"],
+        c.pushes[0].value["state"],
         json!({"state": "waiting", "asks": ["a1", "a3"], "expires-at": 8000})
     );
     let c = k
         .answer("alice", &id, "k2", "a3", r#"{"deny":true}"#)
         .unwrap();
     assert_eq!(
-        c.pushes[0]["state"],
+        c.pushes[0].value["state"],
         json!({"state": "waiting", "asks": ["a1"], "expires-at": 9000})
     );
     let none = OpenAsk {

@@ -11,6 +11,10 @@ const IN: &str = r#"[{"type":"text","text":"hi"}]"#;
 fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
+    for who in ["alice", "bob"] {
+        st.put(&format!("access/{who}"), br#"["p"]"#.to_vec())
+            .unwrap();
+    }
     Slots {
         boot: 1,
         ..Slots::default()
@@ -117,4 +121,95 @@ fn ac2_queue_cap_counts_stored_bytes() {
             Ok(n)
         );
     }
+}
+
+fn is_key(e: KernelError) -> bool {
+    matches!(e, KernelError::Refused(r) if r.len() == 1 && r[0].field == "key")
+}
+
+/// AC1: an access value that is not a JSON array of strings allows none, and a refusal writes nothing.
+#[test]
+fn ac1_unreadable_access_allows_none_and_writes_nothing() {
+    let mut k = kernel();
+    for bad in [&b"not json"[..], br#"{"p":true}"#, br#"[1]"#, br#""p""#] {
+        k.state.put("access/alice", bad.to_vec()).unwrap();
+        let r = k.start("alice", "k", "p", "{}", IN);
+        assert!(
+            matches!(&r, Err(KernelError::Refused(v)) if v.len() == 1 && v[0].field == "profile"),
+            "{r:?}"
+        );
+    }
+    assert!(k.state.get("key/alice/k").is_none());
+    assert!(k.state.get("owner/alice/0").is_none());
+    assert_eq!(k.host.next_id, 0);
+}
+
+/// AC2: owner `page/x` key `k` and owner `page` key `x/k` are separate keys.
+#[test]
+fn ac2_owners_with_slashes_do_not_share_a_state_key() {
+    let mut k = kernel();
+    for who in ["page/x", "page", "100%"] {
+        k.state
+            .put(&format!("access/{who}"), br#"["p"]"#.to_vec())
+            .unwrap();
+    }
+    let a = k.start("page/x", "k", "p", "{}", IN).unwrap().value;
+    let b = k.start("page", "x/k", "p", "{}", IN).unwrap().value;
+    assert_ne!(a, b);
+    assert_eq!(k.start("page/x", "k", "p", "{}", IN).unwrap().value, a);
+    assert_eq!(k.start("page", "x/k", "p", "{}", IN).unwrap().value, b);
+    assert!(k.state.get("key/page%2Fx/k").is_some());
+    let c = k.start("100%", "k", "p", "{}", IN).unwrap().value;
+    assert!(k.state.get("key/100%25/k").is_some() && k.state.get("owner/100%25/0").is_some());
+    assert_ne!(c, a);
+}
+
+/// AC3: a kept key is bound to its session; a replay naming another is refused, a foreign one is NotOwner.
+#[test]
+fn ac3_a_replay_names_the_session_it_acted_on() {
+    let mut k = kernel();
+    let s1 = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    let s2 = k.start("alice", "k2", "p", "{}", IN).unwrap().value;
+    let bobs = k.start("bob", "k3", "p", "{}", IN).unwrap().value;
+    let n = k.say("alice", &s1, "s", IN).unwrap().value;
+    assert_eq!(k.say("alice", &s1, "s", IN).unwrap().value, n);
+    let before = k.state.get(&format!("session/{s2}"));
+    let calls = k
+        .host
+        .calls
+        .iter()
+        .filter(|c| matches!(c, HostCall::Request(_)))
+        .count();
+    assert!(is_key(k.say("alice", &s2, "s", IN).unwrap_err()));
+    assert!(is_key(
+        k.answer("alice", &s2, "s", "a", r#"{"allow":true}"#)
+            .unwrap_err()
+    ));
+    assert_eq!(k.state.get(&format!("session/{s2}")), before);
+    assert_eq!(
+        k.host
+            .calls
+            .iter()
+            .filter(|c| matches!(c, HostCall::Request(_)))
+            .count(),
+        calls
+    );
+    assert_eq!(
+        k.say("bob", &s1, "s", IN).unwrap_err(),
+        KernelError::NotOwner
+    );
+    assert_eq!(
+        k.say("alice", &bobs, "s", IN).unwrap_err(),
+        KernelError::NotOwner
+    );
+}
+
+/// AC4: a push from the restart timer names its session.
+#[test]
+fn ac4_a_push_names_its_session() {
+    let mut k = kernel();
+    let id = k.start("alice", "k", "p", "{}", IN).unwrap().value;
+    let c = k.say("alice", &id, "s", IN).unwrap();
+    assert!(c.pushes.iter().all(|p| p.session == id));
+    assert!(!c.pushes.is_empty());
 }
