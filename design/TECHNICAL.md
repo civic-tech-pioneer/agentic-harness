@@ -112,18 +112,26 @@ interface timers {                                   // no grant
   after: func(id: string, delay-ms: u64) -> result<_, timer-error>;
   cancel: func(id: string);
 }
+enum timer-error { too-many, bad-id, bad-delay }     // bad-delay: over 30 days (7)
 interface timer-sink { fired: func(id: string); }    // host-only export
+
+interface host-info {                                // no grant (the human, 2026-11-21)
+  generation: func() -> u64;  // the host's start number (rule G1)
+}
 
 // in the existing interface caller:
 identity: func() -> string;   // <publisher>/<slug>, local/<slug>, page, or agent:<handle-name>
-boot: func() -> u64;          // the host's start number (rule B1)
 ```
 
-**B1.** `caller.boot()` is the host's start number: raised once each time the
-host starts, kept in host state, the same for every call until the next start.
-It is a pure read: not a request (below), no grant. The kernel cannot tell a
-restart from its own state, so it compares this number with the one it keeps
-(9.3, "Restart").
+**G1.** `host-info.generation()` is the host's generation, its start number:
+raised once each time the host starts, kept in host state, the same for every
+call until the next start. It is a pure read: not a request (below), no grant.
+The kernel cannot tell a restart from its own state, so it compares this
+number with the one it keeps (9.3, "Restart"). (The human, 2026-11-21:
+"restart detection as a new interface `host-info` with `generation()` (in
+place of `caller.boot()`)". The kernel's stored fields that hold it keep the
+name `boot`: `slots.boot`, a record's `boot`, the `active/` pair and the
+`slots/wait/` entry; each holds a generation.)
 
 Every function with an outside effect is a request (7): `claude-code.start`,
 `claude-code-shell.start`, `https-stream.start`, `agent-tools.open`,
@@ -193,7 +201,7 @@ overlay document (9.2), a decision (below), and ACP client capabilities.
 | Decision | Meaning |
 |---|---|
 | `{"allow":true}` | allow this call |
-| `{"allow":true,"for":"session"}` | allow it and add its `reach` (9.4, 9.6) to the session's allows |
+| `{"allow":true,"for":"session"}` | allow it and add its (tool, scope key), shown as `reach` (9.4, 9.6), to the session's allows; refused `{field: "decision"}` for an ask with no `reach` |
 | `{"allow":true,"input":{…}}` | allow with a changed input; only for `AskUserQuestion` and `ExitPlanMode` (4.5) |
 | `{"deny":true,"reason":"<text>"}` | deny; `reason` is optional, empty when absent |
 
@@ -243,6 +251,7 @@ fields. Each value goes out as one `--flag=value` argument.
 
 | Field | Grammar or rule | Goes to `claude` as |
 |---|---|---|
+| `profile` | the session's kernel profile name (9.2), set by the kernel: 1 to 64 printable ASCII characters (space to `~`) | nothing: the host uses it only in the workspace consent's words (8, "{profile}"), never as an argument (watane S95) |
 | `workspace` | a workspace id the origin client holds (8) | cwd |
 | `extra-workspaces` | workspace ids, the same rule | `--add-dir=` each |
 | `model` | `[A-Za-z0-9.\-\[\]]{1,64}` | `--model=` |
@@ -508,15 +517,20 @@ and `.husky/**`. No launch can remove them.
   durability, one fsync per write; the proposal's per-batch option is not
   built). V8 (stage A, 16 "Probes named here") measures the cost and 16 "V8
   record" keeps it; whether to change this is the human's then.
-- **Timers.** Per mod: ids of at most 128 bytes, at most 256 live, delays up
-  to 30 days, stored in host state (`timers/<mod>/<id>` → due time). A due
+- **Timers.** Per mod: ids of at most 128 bytes (else `bad-id`), at most 256
+  live (else `too-many`), delays up to 30 days (2 592 000 000 ms; a longer
+  one is refused `bad-delay`, watane S95), stored in host state (`timers/<mod>/<id>` → due time). A due
   timer fires as a top-level call of the mod's `timer-sink.fired(id)`; one
   due during downtime fires soon after start. `after` with a live id
   replaces it.
 - **Kernel timers.** The kernel holds at most one host timer per session,
   `s/<session id>`, due at the session's earliest deadline (9.3, 9.5, 9.6).
   Live session timers are at most 240 kernel-wide, 16 of the host's 256 being
-  kept for the kernel's own use; what happens at the cap is in 9.3.
+  kept for the kernel's own use; what happens at the cap is in 9.3. The
+  kernel never asks a delay over 30 days, so it never meets `bad-delay`: a
+  deadline further ahead sets the timer 30 days ahead, and that firing,
+  which finds no deadline due, sets the timer again for the earliest one
+  (9.3, "Deadlines and the session timer").
 - **A call commits whole.** The host-state writes of a call (host 7) commit
   together when its call chain commits, or not at all; a deferred or failed
   call leaves no write behind. So a failed `append` (9.4) leaves no chunk
@@ -579,7 +593,8 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 ### 9.2 Profiles and overlays
 
 A profile holds the launch fields of 4.1 that are not chosen per session
-(`workspace`, `extra-workspaces`, `agent-handle` and `session` are), plus
+(`workspace`, `extra-workspaces`, `agent-handle` and `session` are; `profile`
+is the kernel's, its own name), plus
 `backend` (`claude` or `openai`), `toolsets`, `delegates` (profile names),
 `max-tool-errors`, `max-tokens`, `ask-expiry` and `subagent-limits`.
 
@@ -619,7 +634,7 @@ Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `pr
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
 `boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `owner-page` (the `owner/<owner>/<n>` page that lists it, 9.1), `bytes` (the bytes of the session's keys other than its record, 9.3 Quota, so `delete` frees them without reading them), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
-(session allows, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {i, toolCallId, kind, outcome, by, for?, reason?, input?}}`, the pending answers of 9.8 rule 4; `toolCallId` is the ask's call, kept so a later ask on the call is compared without reading every ask (9.8); `input` is the changed input an `allow` carried (2.3), shown in the decision entry and not counted in the 1 KiB; `i` and `kind` are the ask entry's index and its `ask` or `check`, so the decision entry can repeat the ask, and follow the kind rules of 9.8 rule 4, after a restart without the adapter; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
+(session allows `{id, tool, key}`, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {i, toolCallId, kind, outcome, by, for?, reason?, input?}}`, the pending answers of 9.8 rule 4; `toolCallId` is the ask's call, kept so a later ask on the call is compared without reading every ask (9.8); `input` is the changed input an `allow` carried (2.3), shown in the decision entry and not counted in the 1 KiB; `i` and `kind` are the ask entry's index and its `ask` or `check`, so the decision entry can repeat the ask, and follow the kind rules of 9.8 rule 4, after a restart without the adapter; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
 `chunks` (the first index of each entry chunk, 9.1), `streams` (the ids of the session's open streams, at most 10: 1 provider or 1 request, 8 jobs, 1 owner; 9.4, 9.5), `deadlines` (each `{what, at}`, at most 64; below), `open` (the open asks and checks, each `{id, kind, i, expires-at?}`: the ask id, `kind` `ask` or `check`, the index `i` of its ask entry (9.4), and that entry's `expires-at` when it has one; an open ask leaves `open` when it is decided or closed. A decision entry can repeat its ask (9.4) after the adapter's memory is gone (a restart), and `waiting.expires-at`, the earliest open ask's, is recomputed without reading entries), `next-index`, `created`, `updated`. The queue is not in the record: it lives
 in `queue/<id>` (9.1), at most 32 inputs, each numbered from 1 per session.
 
@@ -633,7 +648,7 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 | `key` (a client key, also in `key/<owner>/<key>`) | 256 bytes | `too-large(256)` |
 | `title` | 256 bytes | `rename` refuses `too-large(256)` |
 | `children` | live children only, at most 20 (9.7); a finished child leaves the list, its id stays in the parent's transcript | – |
-| `allows` | at most 64 session allows and 64 KiB in all, each at most 1 KiB | an answer `for: session` is refused `too-large(65536)`; the ask stays open |
+| `allows` | at most 64 session allows and 64 KiB in all, each at most 1 KiB (its tool and key) | an answer `for: session` is refused `too-large(65536)`; the ask stays open |
 | `chunks` | 16 384 chunk starts, 8 bytes each (u64), so 128 KiB of the 512 KiB record | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
 | `streams` | 10 ids | – (the slots of 9.5 allow no more; an owner stream that `attach` replaces leaves `streams` in that `attach`, not at its `ended`) |
 | `live` | the id `live/<session>` holds (9.1), or absent: the session's live owner stream, kept in the record too so a call that has the record pushes without reading that key (an item call that only forwards a delta has no record and reads the key, 9.4). `attach` sets both, and the stream's end, `lagging`, `replaced`, R4 and `delete` clear both in the same call | – |
@@ -876,7 +891,7 @@ An entry is JSON:
 | `message` | `{"role":"user"\|"agent","content":[<ACP content blocks>],"thought":{"text":"<text>","seconds":<n>}?}`; `thought` on an agent message is the thinking of that step joined, `seconds` from its first to its last thought chunk's `at`, rounded; a finished thinking block that repeats the deltas streamed for it counts once: it replaces those deltas in `text`, is not pushed live again and adds no time to `seconds`; a finished block with no streamed deltas is pushed once |
 | `tool` | an ACP ToolCall with its final status: `{"toolCallId","title","kind"?,"status","content"?,"locations"?,"rawInput"?,"rawOutput"?}`; output cut to 64 KiB, marked |
 | `ask` | the ask, below; later a decision entry that repeats it |
-| `allow` | `{"id":"<allow id>","reach":"<rule>","given":true\|false,"by":"<who>"}`: a session allow given or taken back (9.6) |
+| `allow` | `{"id":"<allow id>","tool":"<tool>","key":"<scope key>","reach":"<rule>","given":true\|false,"by":"<who>"}`: a session allow given or taken back (9.6); `reach` is the one its ask showed, `<tool>(<key>)` |
 | `verdict` | `{"on":"<ask id>"\|"input","toolCallId":"<id>"?,"outcome":"safe"\|"unsafe"\|"unsure","reasons":[…],"by":"<provider>"}`; `toolCallId` when `on` is an ask; `on` is `input` for the provider's `launch` and `input/<n>` (10) |
 | `turn` | the turn JSON of 9.3 without `activity` |
 | `compaction` | `{"tokens-before":<n>?}` |
@@ -897,8 +912,9 @@ The body of an `ask`:
 
 `kind` is `ask` or `check`. `toolCall` is the ACP ToolCall, its `rawInput` the
 input; `input` is the full input. `reach` is the session allow that
-`{"allow":true,"for":"session"}` would add (9.6); it is absent when none is
-offered (a check, an `agent:` owner). A decision is a later `ask` entry that
+`{"allow":true,"for":"session"}` would add (9.6): `<tool>(<key>)` from the
+tool's scope function; it is absent when none is offered (a check, an
+`agent:` owner, a tool or input with no scope key). A decision is a later `ask` entry that
 repeats every field of the ask and adds:
 
 ```json
@@ -1180,19 +1196,53 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   an `agent:` owner, it is denied. Kernel asks expire after `ask-expiry`
   (an `ask` deadline of the session's timer, 9.3; at the timer cap the ask is denied `timers`); Claude asks after 10 minutes (the host). A kernel ask that reaches its `ask-expiry` is denied, reason `expired`, as the host denies a Claude ask at its 10 minutes (4.5); an `ask-expiry` of 0 denies at once. The session is not allowed anything by it.
 - For Claude, rules went in as flags; the broker sees only asks. The kernel's own answer to a Claude ask (the owner's, a session allow, the "no owner stream" deny above) is kept as a pending answer; its decision entry is written when the ask closes (9.8 rule 4). A session holds at most 64 open asks and checks with the pending answers counted in (9.3); an ask past that is denied at once, `by: kernel`, reason `busy`.
-- **Session allows.** An answer `{allow, for: session}` adds a rule to the
-  session's `allows`: for a file tool the workspace it is in
-  (`Edit(<workspace>/**)`), for `Bash` the exact command with its
-  `timeout` and `run_in_background` pinned, for `TodoWrite` and an
-  `mcp__watane__<tool>` the tool's name. No other tool has one, so its asks
-  always go to the owner: a bare `Task`, `Skill`, `WebFetch` or `WebSearch`
-  would cover every subagent, skill, URL or query (the PO, 2026-11-21, S31
-  RISKs; built in S33). The rule names that reach for the page. The
-  kernel keeps it; it never sends it to `claude` as a rule
-  (`updatedPermissions`), so it can be taken back. Later asks that match an
-  allow are answered `allow` by the kernel, with `by: session-allow`.
-  `take-back` removes the allow, writes an `allow` entry, and later matching
-  calls ask again. Allows end with the session.
+- **Session allows: scope keys** (the human, 2026-11-21: "Session allows
+  use a scope key per tool: a pure scope function turns a call's input into
+  the smallest part that decides what it can reach and that a person can
+  judge at a glance (Bash: the exact command; file edits: the workspace; a
+  web fetch: the host; a skill: its name). A tool without one, or an input
+  that cannot be scoped safely, gets no key and always asks. The kernel
+  computes the key from the input that will run and shows it on the ask;
+  'allow for this session' stores (tool, key); a later call is allowed only
+  when its fresh key equals a stored pair exactly; take-back and session end
+  remove it."). Each tool may have a scope function `scope(tool, input) ->
+  key or none`, pure, in `kernel/src/broker.rs`; the table below is the whole
+  list, and a tool it does not name has none. The kernel computes the key
+  when it stores a Claude ask, from that ask's `input` (the input that will
+  run), and shows it on the ask as `reach` (9.4): `<Tool>(<key>)`, or the
+  bare `<Tool>` for an empty key. An answer `{allow, for: session}` stores
+  the pair (tool, key) in the session's `allows`. A later ask is answered
+  `allow, by: session-allow`, by the kernel, only when the key computed
+  afresh from its own input, with its tool, equals a stored pair exactly
+  (byte for byte). The kernel keeps the pair; it never sends it to `claude`
+  as a rule (`updatedPermissions`), so it can be taken back. `take-back`
+  removes the pair and writes an `allow` entry; later matching calls ask
+  again. Allows end with the session.
+
+  | Tool | Input keys it knows | Key |
+  |---|---|---|
+  | `Bash` | `command`, `description`, `timeout`, `run_in_background` | the exact command; then `; timeout=<n>` and `; run_in_background=<true\|false>` when the input has them (pinned, S33) |
+  | `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Read`, `Glob`, `Grep` | the fields of that tool's input (below) | the workspace, `<ws>/**` |
+  | `WebFetch` | `url`, `prompt` | `domain:<host>`, the URL's host after one parse |
+  | `Skill` | `skill`, `args` | the skill's name |
+  | `TodoWrite` | `todos` | empty (reach `TodoWrite`): it reaches nothing outside the session |
+
+  Every other tool has no scope function and always asks: `Task` and
+  `WebSearch` (no safe key is named: a subagent prompt or a query cannot be
+  judged at a glance), `AskUserQuestion` and `ExitPlanMode`, and
+  `mcp__watane__<tool>` until that tool names its own key (14). An input
+  with a key the tool's scope function does not know gets no key (file
+  tools too: the `_host` key that `claude` adds to run a tool on an attached
+  machine, PLAN S33 RISK 1), as does any value outside the rules below.
+  **Stage B's host** (15): the file keys assume that the path in the ask is
+  the path that runs, symlinks resolved, before the key is computed (a link
+  `<ws>/l -> /etc` would otherwise put `/etc` under `<ws>/**`); stage B's
+  first slice says how the host gives the kernel a resolved path (4.5) and
+  until then no `workspace` is set, so no file key is offered. A key for an
+  `mcp__watane__<tool>` would rely on the host's `--strict-mcp-config`
+  admitting only the `watane` server (4.4, 15), so that no other server's
+  tool can carry that name.
+
 - **As built (S31).** The OpenAI matcher is `Rules::compile(allow, ask,
   deny)` and `Rules::decide(tool, arg)` in `kernel/src/rules.rs`, pure, not
   yet called (the loop of 9.5, stage D, calls it; `ask-expiry` waits for it).
@@ -1204,39 +1254,56 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   any run, `?` one character, over the whole `arg`; a call without an `arg`
   matches only bare rules. For Claude (`kernel/src/broker.rs`,
   `kernel/src/sessions.rs`):
-  - The kernel sets an ask's `reach` when it stores the ask, replacing any
-    `reach` the item carries: none for a check, an `agent:` owner,
-    `AskUserQuestion` and `ExitPlanMode`; for `Read`, `Write`, `Edit`
-    (`file_path`), `NotebookEdit` (`notebook_path`), `Glob`, `Grep`
-    (`path`) `<Tool>(<ws>/**)` when the record's `workspace` is an absolute
-    path and the input's path lies under it with no empty, `.` or `..`
-    segment (no `workspace` is set before stage B, so none is offered yet);
-    a `Glob` also needs a `pattern` that is a string not starting with `/`
-    or `~`, with no `\` and no `..` segment (split on `/`), since
-    `claude` searches an absolute pattern's own folder and ignores `path`
-    (adversary, S33-fix1);
-    for `Bash` `Bash(<command>)`, the exact command, only when that rule
-    passes the 4.1 allow grammar, the command has no `:`, and the input has
-    no key but `command`, `description`, `timeout` and `run_in_background`
-    (so `dangerouslyDisableSandbox` always goes to the owner; S31-fix1) (the
-    Waiting item "session allow on `Bash`", option (a)); then, when the
-    input has them, ` timeout=<n>` (`timeout` a JSON integer from 0 to
-    2^64-1, written in decimal) and ` run_in_background=<true|false>` (a
-    JSON boolean), in that order, each after one space; any other value of
-    either gives no reach. So an absent key and a key with Claude's default
-    value are different reaches, and `description` is never part of it
-    (S33). `TodoWrite` and `mcp__watane__<tool>` (a name that passes the
-    4.1 rule grammar) get their name; every other tool, `Task`, `Skill`,
-    `WebFetch`, `WebSearch` and any name not listed here among them, gets
-    none (fail closed: a tool added to an allowlist later has no session
-    allow until this list names it).
-  - An ask matches an allow when its `reach` equals the allow's, byte for
-    byte (so a `Bash` allow holds only that exact command with the same
-    `timeout` and `run_in_background`; widening to a `:*` prefix is one
-    rule here).
-  - An allow is `{id, reach}`; its id is the index of its `given: true`
-    entry. An answer `for: session` whose reach is already held adds nothing
-    and writes no entry. The host gets the decision without `for`.
+  - **As built (S34): the scope functions.** The kernel sets an ask's
+    `reach` when it stores the ask, replacing any `reach` the item carries;
+    none for a check, an `agent:` owner, and every tool the table above does
+    not name. A key exists only when all of these hold, else none:
+    - *Known keys.* The input is a JSON object whose every key is one the
+      tool's row knows. The file tools know: `Read` `file_path`, `offset`,
+      `limit`, `pages`; `Write` `file_path`, `content`; `Edit` `file_path`,
+      `old_string`, `new_string`, `replace_all`; `MultiEdit` `file_path`,
+      `edits`; `NotebookEdit` `notebook_path`, `new_source`, `cell_id`,
+      `cell_type`, `edit_mode`; `Glob` `pattern`, `path`; `Grep` `pattern`,
+      `path`, `glob`, `type`, `output_mode`, `-A`, `-B`, `-C`, `-n`, `-i`,
+      `multiline`, `head_limit`, `offset`. Values of keys that are not part
+      of the key are not read.
+    - *Files.* The path (`file_path`; `notebook_path`; `path` for `Glob` and
+      `Grep`, required) is a string under the record's `workspace` (an
+      absolute path, no trailing `/`, no `(`, `)` or control character),
+      with no empty, `.` or `..` segment after it; a `Glob` also needs a
+      `pattern` that is a string not starting with `/` or `~`, with no `\`
+      and no `..` segment (split on `/`), since `claude` searches an absolute
+      pattern's own folder and ignores `path` (adversary, S33-fix1). Key
+      `<ws>/**`, so reach `Edit(<ws>/**)` as before.
+    - *Bash.* `command` is a string with no `:`, and `Bash(<command>)`
+      passes the 4.1 allow grammar (so it has no `;` or `)`); then
+      `timeout`, when present, is a JSON integer from 0 to 2^64-1, written
+      in decimal, and `run_in_background`, when present, a JSON boolean. Key
+      `<command>`, then `; timeout=<n>`, then `; run_in_background=<b>`,
+      each only when the input has it, in that order: reach `Bash(ls;
+      timeout=5; run_in_background=true)`. An absent key and a key with
+      Claude's default value are different keys; `description` is never
+      part of it. So `dangerouslyDisableSandbox` (an unknown key) always goes
+      to the owner (S31-fix1).
+    - *WebFetch.* `url` is a string of 1 to 2 048 bytes, printable ASCII
+      only (no space, no control character, no `\`), parsed once as a
+      WHATWG URL (the `url` crate, as Node's `URL` that `claude` runs); the
+      parse succeeds, the scheme is `http` or `https`, there is no username
+      or password, no port other than the scheme's default (which the parser
+      drops), and the host is a domain or an IP
+      address with no `(` or `)`. Key `domain:<host>`, the parsed host as
+      the parser writes it (lowercase; a non-ASCII name as its `xn--` form):
+      reach `WebFetch(domain:example.com)`. Path, query and scheme are not
+      part of it: an allow holds that host only, never another one, a
+      subdomain or a parent.
+    - *Skill.* `skill` is a name `[a-z0-9-]{1,64}`, or two such names joined
+      by one `:` (a plugin's skill). Key the name: reach `Skill(pdf)`.
+      `args` is not part of it.
+    - *TodoWrite.* Key empty: reach `TodoWrite`.
+  - An allow is `{id, tool, key}`; its id is the index of its `given: true`
+    entry. An answer `for: session` to an ask with no key is refused
+    `{field: "decision"}`; one whose pair is already held adds nothing and
+    writes no entry. The host gets the decision without `for`.
   - `take-back` of an id not held is `unknown-allow`, writing nothing; it
     reads no `access/` and is never refused `quota` (it only narrows; its
     entry is charged like the calls of 9.3 "Past" that cannot fail).
@@ -1554,7 +1621,7 @@ when `claude-codes` cannot parse it.
 | `consent-pending {what}` | any request, once, while a consent waits | 8 |
 | `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
-| `too-many`, `bad-id` | timers | 7 |
+| `too-many`, `bad-id`, `bad-delay` | timers | 7 (`bad-delay`: a delay over 30 days) |
 | `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider slot, 64 pending answers on the session, or 1 024 active sessions, 9.3, A3) |
 | `not-owner`, `not-direct` | providers | 2.2, 10 (`not-owner`: the caller is not the kernel) |
 | `unknown-input`, `unknown-allow`, `behind {through}` (`through`: the high-water index) | kernel | 9.3, 9.6, 9.4 |
@@ -1573,6 +1640,7 @@ Each error also carries a message that names the cause (F-QUAL-3).
 | HTTP in a mod | none: `https-stream`; `wstd` only for mods that use `wasi:http` | – |
 | SSE parsing | `sse-stream` | host (H3) |
 | MCP types in a mod | `tower-mcp-types` | kernel, if it reads MCP shapes |
+| URL parsing (WHATWG) | `url` | kernel: the `WebFetch` scope key (9.6) |
 | JSON Schema check | to choose at build time, must build for wasm32-wasip2 | kernel |
 
 Ported, not depended on (each with its licence noted in the file): the
@@ -1611,6 +1679,7 @@ stages B and E).
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `kernel/src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
+| A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
 | The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `kernel/src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
 
@@ -1645,6 +1714,8 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
 - [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended`; a lag clock from a failed `full` push to `ready` that reaches 10 s ends the stream `lagging`, except a stream its consumer has deferred (2.1, 3; P03).
 - [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7); the host builds each `ask`, `check` and `ask-resolved` item itself and never copies bytes of a `claude` line into one, and `ask-resolved {by: answered}` carries the `outcome` (4.5); the host pushes `ask-resolved {by: expired}` for a check it has not answered at its `expires-at` and writes nothing to stdin for it (4.5; S22).
+- [ ] `host/TECHNICAL.md` H2: a file tool's ask gives the kernel the path that will run with its symlinks resolved, before the kernel computes a scope key (9.6; stage B's first slice names how, in 4.5); until then no session has a `workspace` (PLAN S33 RISK 2, S34).
+- [ ] `host/TECHNICAL.md` H2: `--strict-mcp-config` admits only the `watane` server, so an `mcp__watane__<tool>` name is always watane's (4.4); a scope key for such a tool (9.6, 14) relies on it (PLAN S33 RISK 3, S34).
 - [ ] `host/TECHNICAL.md` H2: the host's `--settings=` for the shell grant always writes `sandbox.allowUnsandboxedCommands: false`, never leaves it out (Claude's default is `true`); a test reads the settings the host writes (4.1, 4.2, 14; PLAN S33).
 - [ ] `host/TECHNICAL.md` H1: byte budgets for queued items (512 MiB host, 128 MiB per origin client, 16 MiB per page connection; `full`; a page connection past its budget ends `lagging`) (3; P11).
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
