@@ -99,7 +99,7 @@ impl fmt::Display for KernelError {
             KernelError::Paused(t) => write!(f, "paused: the backend is paused until {t}"),
             KernelError::Backend(m) => write!(f, "backend: {m}"),
             KernelError::UnknownInput(n) => write!(f, "unknown-input: no input number {n}"),
-            KernelError::UnknownAllow(id) => write!(f, "unknown-allow: no pending ask {id}"),
+            KernelError::UnknownAllow(id) => write!(f, "unknown-allow: no session allow {id}"),
             KernelError::Behind(n) => write!(f, "behind: {n} entries stored, page with read"),
             KernelError::TooLarge(n) => write!(f, "too-large: over the limit of {n} bytes"),
             KernelError::Busy(cap) => write!(f, "busy: {cap}"),

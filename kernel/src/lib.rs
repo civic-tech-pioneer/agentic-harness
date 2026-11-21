@@ -2,6 +2,7 @@
 
 pub mod active;
 pub mod adapters;
+pub mod broker;
 pub mod check;
 pub mod error;
 pub mod overlay;
@@ -26,8 +27,9 @@ pub use quota::{
     OWNER_PROVIDER, OWNER_SESSIONS, PROVIDER_STREAMS, RESERVE_BYTES,
 };
 pub use record::{
-    check_key, check_title, Activity, Counters, Deadline, OpenAsk, Record, Stop, Turn, ALLOWS,
-    ALLOWS_BYTES, ALLOW_BYTES, DEADLINES, ID_BYTES, KEY_BYTES, RECORD_BYTES, STREAMS, TITLE_BYTES,
+    check_key, check_title, Activity, Allow, Counters, Deadline, OpenAsk, Record, Stop, Turn,
+    ALLOWS, ALLOWS_BYTES, ALLOW_BYTES, DEADLINES, ID_BYTES, KEY_BYTES, RECORD_BYTES, STREAMS,
+    TITLE_BYTES,
 };
 pub use refuse::{refuse, Catalog, CatalogModel};
 pub use sessions::{

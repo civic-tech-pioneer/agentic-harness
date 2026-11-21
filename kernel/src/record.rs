@@ -200,7 +200,7 @@ pub struct Record {
     pub owner_page: u32,
     /// The bytes of the session's keys other than its record (9.3 Quota).
     pub bytes: u64,
-    pub allows: Vec<Value>,
+    pub allows: Vec<Allow>,
     pub counters: Counters,
     pub chunks: Vec<u64>,
     pub streams: Vec<String>,
@@ -250,8 +250,15 @@ impl Default for Record {
     }
 }
 
-fn allow_len(v: &Value) -> usize {
-    v.to_string().len()
+/// A session allow the kernel holds (9.6): its id (the index of its `allow` entry) and its reach.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct Allow {
+    pub id: String,
+    pub reach: String,
+}
+
+fn allow_len(a: &Allow) -> usize {
+    serde_json::to_string(a).expect("an allow serializes").len()
 }
 
 impl Record {
@@ -287,7 +294,7 @@ impl Record {
         self.next_index = m.last + 1;
     }
 
-    pub fn add_allow(&mut self, allow: Value) -> Result<(), KernelError> {
+    pub fn add_allow(&mut self, allow: Allow) -> Result<(), KernelError> {
         let n = allow_len(&allow);
         let total: usize = self.allows.iter().map(allow_len).sum();
         if self.allows.len() >= ALLOWS || n > ALLOW_BYTES || total + n > ALLOWS_BYTES {

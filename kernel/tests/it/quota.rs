@@ -67,8 +67,8 @@ fn ask(id: &str) -> ProviderEvent {
         entry: Some(Entry {
             kind: Kind::Ask,
             uuid: None,
-            body: json!({"id": id, "kind": "ask", "toolCallId": id, "toolCall": {"toolCallId": id, "title": "Edit"},
-                "input": {}, "expires-at": 9000, "reach": "Edit(/w/**)"}),
+            body: json!({"id": id, "kind": "ask", "toolCallId": id, "toolCall": {"toolCallId": id, "title": "WebFetch"},
+                "input": {}, "expires-at": 9000}),
         }),
         ..Out::default()
     })

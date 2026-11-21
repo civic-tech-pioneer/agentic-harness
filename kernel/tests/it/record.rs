@@ -122,26 +122,41 @@ fn ac3_key_and_title_caps() {
     );
 }
 
+fn allow(i: usize, reach: &str) -> agent_kernel::Allow {
+    agent_kernel::Allow {
+        id: i.to_string(),
+        reach: reach.to_string(),
+    }
+}
+
 #[test]
 fn ac3_allow_caps() {
     let mut r = rec();
     for i in 0..64 {
-        r.add_allow(json!(i)).unwrap();
+        r.add_allow(allow(i, "x")).unwrap();
     }
-    assert_eq!(r.add_allow(json!(1)), Err(KernelError::TooLarge(65_536)));
+    assert_eq!(
+        r.add_allow(allow(99, "x")),
+        Err(KernelError::TooLarge(65_536))
+    );
     assert_eq!(r.allows.len(), 64);
 
     let mut r = rec();
-    let big = json!("x".repeat(1100));
-    assert_eq!(r.add_allow(big), Err(KernelError::TooLarge(65_536)));
+    assert_eq!(
+        r.add_allow(allow(1, &"x".repeat(1100))),
+        Err(KernelError::TooLarge(65_536))
+    );
     assert!(r.allows.is_empty());
 
     // 1 KiB each: the 64-allow count and the 64 KiB total meet at the 64th.
     let mut r = rec();
     for _ in 0..64 {
-        r.add_allow(json!("x".repeat(1022))).unwrap();
+        r.add_allow(allow(0, &"x".repeat(1022 - 19))).unwrap();
     }
-    assert_eq!(r.add_allow(json!("y")), Err(KernelError::TooLarge(65_536)));
+    assert_eq!(
+        r.add_allow(allow(0, "y")),
+        Err(KernelError::TooLarge(65_536))
+    );
     assert_eq!(r.allows.len(), 64);
 }
 
