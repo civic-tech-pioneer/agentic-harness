@@ -111,7 +111,8 @@ fails, committed nowhere, and becomes a fix task like a red test.
 
 Then run the acceptance agent (user-sim) with the slice id and its outcomes.
 - `ACCEPTED`: go to section 5.
-- `REJECTED`: each red test becomes a fix task, as above. Then run it again. After two rejections
+- `REJECTED`: each red test becomes a fix task, as above. A fix task that touches files the adversary
+  attacked lists its `HELD` attacks as acceptance criteria too, so the fix cannot reopen one. Then run it again. After two rejections
   of the same outcome, go to section 4.
 
 ## 4. Questions
