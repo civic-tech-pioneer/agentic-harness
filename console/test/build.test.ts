@@ -31,8 +31,10 @@ const ABS = String.raw`["'\`]\s*(?:https?:|wss?:)?\/\/`;
 type Kind = "html" | "css" | "js";
 const COMMON: [string, RegExp][] = [
   ["eval(", /(?<![\w$])eval\s*\(/],
-  ["new Function(", /new\s+Function\s*\(/],
-  ["Function(", /(?<![\w$.])Function\s*\(/],
+  // A `(` followed by `?` opens no call (no JS expression starts with `?`): `Function(?!` is regex text in Shiki's grammars
+  // (TECHNICAL 18.2: Shiki's JavaScript regex engine). The lookahead narrows the scan by syntax; every real call still matches.
+  ["new Function(", /new\s+Function\s*\((?!\s*\?)/],
+  ["Function(", /(?<![\w$.])Function\s*\((?!\s*\?)/],
   ["string timer", /\bset(?:Timeout|Interval)\s*\(\s*["'`]/],
   ["sendBeacon(", /\bsendBeacon\s*\(\s*["'`]\s*(?:https?:)?\/\//],
   ["Image().src", /\.src\s*=\s*["'`]\s*(?:https?:)?\/\//],
@@ -141,6 +143,15 @@ describe("the checks themselves", () => {
   for (const [kind, text, name] of seeds) {
     it(`ac7_seeded_bad_file_is_caught: ${name} in ${kind}`, () => { expect(scan(kind, text)).toContain(name); });
   }
+
+  it("ac7_function_call_is_caught_and_function_then_question_mark_is_not", () => {
+    expect(scan("js", 'Function("x")')).toContain("Function(");
+    expect(scan("js", 'new Function("a","b")')).toContain("new Function(");
+    expect(scan("js", "Function (x)")).toContain("Function(");
+    expect(scan("js", "new Function ( x )")).toContain("new Function(");
+    expect(scan("js", '"(?<!\\.)Function(?!\\s*:)"')).toEqual([]);
+    expect(scan("js", "new Function( ?x")).toEqual([]);
+  });
 
   it("ac7_strings_that_load_nothing_pass", () => {
     expect(scan("js", 'a.setAttribute("xmlns","http://www.w3.org/2000/svg");throw Error("https://react.dev/errors/"+n)')).toEqual([]);
