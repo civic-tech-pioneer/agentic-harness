@@ -108,10 +108,7 @@ impl ClaudeAdapter {
     fn item(&mut self, line: &[u8], at: u64) -> Vec<Out> {
         let text = match std::str::from_utf8(line) {
             Ok(t) => t,
-            Err(_) => {
-                let lossy = String::from_utf8_lossy(line);
-                return vec![unknown(Value::String(lossy.trim().to_string()))];
-            }
+            Err(_) => return vec![unknown(Value::String(escape_invalid(line)))],
         };
         let trimmed = text.trim();
         if trimmed.is_empty() {
@@ -120,6 +117,9 @@ impl ClaudeAdapter {
         let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
             return vec![unknown(Value::String(trimmed.to_string()))];
         };
+        if has_duplicate_key(trimmed) {
+            return vec![unknown(Value::String(trimmed.to_string()))];
+        }
         let ty = str_of(&value, "type");
         match ty {
             Some("initialized") | Some("tool_progress") | Some("task_progress") => return vec![],
@@ -190,13 +190,14 @@ impl ClaudeAdapter {
             }
             ClaudeBlock::Text(_) => None,
             ClaudeBlock::Thinking(t) if !t.thinking.is_empty() => {
-                // A block repeats what its deltas streamed: it adds no time then.
-                if self.thinking.deltas.is_empty() {
+                // A block repeats what its deltas streamed: it adds no time and is not pushed again.
+                let streamed = !self.thinking.deltas.is_empty();
+                if !streamed {
                     self.thinking.touch(at);
                 }
                 self.thinking.deltas.clear();
                 self.thinking.blocks.push(t.thinking.clone());
-                Some(only(chunk(&t.thinking, true)))
+                (!streamed).then(|| only(chunk(&t.thinking, true)))
             }
             ClaudeBlock::Thinking(_) => None,
             ClaudeBlock::ToolUse(t) => {
@@ -338,7 +339,12 @@ impl ClaudeAdapter {
         else {
             return vec![unknown(v.clone())];
         };
-        let input = v.get("input").cloned().unwrap_or(Value::Null);
+        let Some(input) = v.get("input").filter(|i| !i.is_null()).cloned() else {
+            return vec![unknown(v.clone())];
+        };
+        if self.open.contains_key(&id.to_string()) {
+            return vec![unknown(v.clone())];
+        }
         let body = json!({
             "id": id, "kind": kind, "toolCallId": call_id,
             "toolCall": {"toolCallId": call_id, "title": tool, "rawInput": input},
@@ -378,6 +384,42 @@ impl ClaudeAdapter {
             _ => None,
         }
     }
+}
+
+/// The line with each byte that is not valid UTF-8 written as `\xNN` (no lossy decoding).
+fn escape_invalid(line: &[u8]) -> String {
+    let mut out = String::new();
+    for chunk in line.utf8_chunks() {
+        out.push_str(chunk.valid());
+        for b in chunk.invalid() {
+            out.push_str(&format!("\\x{b:02x}"));
+        }
+    }
+    out.trim().to_string()
+}
+
+/// True when `text` is one JSON object with a key twice at its top level (4.5).
+fn has_duplicate_key(text: &str) -> bool {
+    use serde::de::{Deserializer, IgnoredAny, MapAccess, Visitor};
+    struct V;
+    impl<'de> Visitor<'de> for V {
+        type Value = bool;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an object")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut m: A) -> Result<bool, A::Error> {
+            let mut seen = std::collections::HashSet::new();
+            let mut dup = false;
+            while let Some(k) = m.next_key::<String>()? {
+                dup |= !seen.insert(k);
+                m.next_value::<IgnoredAny>()?;
+            }
+            Ok(dup)
+        }
+    }
+    serde_json::Deserializer::from_str(text)
+        .deserialize_map(V)
+        .unwrap_or(false)
 }
 
 fn ask_entry(body: Value) -> Out {

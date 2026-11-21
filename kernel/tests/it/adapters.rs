@@ -312,13 +312,13 @@ fn ac5_responses_never_panics_on_random_input() {
 }
 
 #[test]
-fn ac6_s12_bad_utf8_line_is_unknown_with_replacement_text() {
+fn ac6_s12_bad_utf8_line_is_unknown_with_escaped_bytes() {
     let mut a = ClaudeAdapter::new();
     let outs = a.line(b"{\"type\":\"initialized\"}\xff", 1);
     assert_eq!(outs.len(), 1);
     let e = outs[0].entry.as_ref().unwrap();
     assert_eq!(e.kind, Kind::Unknown);
-    assert_eq!(e.body, json!({"raw": "{\"type\":\"initialized\"}\u{FFFD}"}));
+    assert_eq!(e.body, json!({"raw": "{\"type\":\"initialized\"}\\xff"}));
 }
 
 #[test]
@@ -400,4 +400,32 @@ fn ac9_thinking_blocks_join_with_a_blank_line_and_replace_their_deltas() {
         outs[0].entry.as_ref().unwrap().body["thought"],
         json!({"text": "A\n\nB\n\nC", "seconds": 3})
     );
+}
+
+#[test]
+fn ac1_invalid_bytes_are_escaped_and_nothing_is_parsed() {
+    let mut a = ClaudeAdapter::new();
+    let raw = |outs: Vec<Out>| {
+        assert_eq!(outs.len(), 1);
+        let e = outs[0].entry.as_ref().unwrap();
+        assert_eq!(e.kind, Kind::Unknown);
+        e.body.clone()
+    };
+    assert_eq!(raw(a.line(b"\xff\xfe", 1)), json!({"raw": "\\xff\\xfe"}));
+    let mut ask =
+        br#"{"type":"ask","id":"a","tool":"Bash","input":{},"tool_use_id":"t","expires-at":5}"#
+            .to_vec();
+    ask.push(0xff);
+    assert_eq!(
+        raw(a.line(&ask, 1))["raw"]
+            .as_str()
+            .unwrap()
+            .ends_with("\\xff"),
+        true
+    );
+    let src = fs::read_dir(root().join("src/adapters")).unwrap();
+    for f in src {
+        let text = fs::read_to_string(f.unwrap().path()).unwrap();
+        assert!(!text.contains(concat!("from_utf8", "_lossy")));
+    }
 }
