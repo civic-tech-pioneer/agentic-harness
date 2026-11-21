@@ -2518,7 +2518,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                 // adapter's entry already carries its decision.
                 return self.stop_at_quota(rec, past, now, work);
             };
-            let d = body.get("decision").cloned().unwrap_or(Value::Null);
+            // Built from a fixed shape, so its size is bounded (9.3, 9.4).
+            let Some(d) = short_decision(body.get("decision")) else {
+                return self.stop_at_quota(rec, past, now, work);
+            };
             let short = NewEntry {
                 kind: "ask".into(),
                 uuid: None,
@@ -2700,4 +2703,30 @@ fn may_activate(e: &ProviderEvent) -> bool {
         ProviderEvent::Out(o) => o.entry.as_ref().is_some_and(|e| e.kind == Kind::Ask),
         ProviderEvent::Ended => false,
     }
+}
+
+/// The short form of an adapter's decision: `outcome`, `by` and `reason` (cut at 256 bytes) only.
+/// `None` when `outcome` or `by` is not one of the known values, or `reason` is not a string.
+fn short_decision(d: Option<&Value>) -> Option<Value> {
+    let d = d?.as_object()?;
+    let outcome = d.get("outcome")?.as_str()?;
+    let by = d.get("by")?.as_str()?;
+    if !["allow", "deny", "none"].contains(&outcome)
+        || !["owner", "session-allow", "checked", "kernel", "host"].contains(&by)
+    {
+        return None;
+    }
+    let mut out = json!({"outcome": outcome, "by": by});
+    match d.get("reason") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(r)) => {
+            let mut end = r.len().min(256);
+            while !r.is_char_boundary(end) {
+                end -= 1;
+            }
+            out["reason"] = Value::String(r[..end].to_string());
+        }
+        Some(_) => return None,
+    }
+    Some(out)
 }
