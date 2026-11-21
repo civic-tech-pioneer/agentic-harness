@@ -111,7 +111,23 @@ pub enum ProviderEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Called<T> {
     pub value: T,
-    pub pushes: Vec<Value>,
+    pub pushes: Vec<Push>,
+}
+
+/// One `_meta.watane` push and the session it came from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Push {
+    pub session: String,
+    pub value: Value,
+}
+
+impl Push {
+    fn of(session: &str, value: Value) -> Self {
+        Push {
+            session: session.to_string(),
+            value,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -133,7 +149,7 @@ pub struct Kernel<S: State, H: Host> {
 /// Pushes and provider requests a call collects; requests leave only after the last write.
 #[derive(Default)]
 struct Work {
-    pushes: Vec<Value>,
+    pushes: Vec<Push>,
     requests: Vec<Request>,
 }
 
@@ -158,15 +174,23 @@ fn refused(field: &str, reason: &str) -> KernelError {
 struct Kept {
     call: String,
     owner: String,
+    /// The session a `say` or `answer` acted on.
+    #[serde(default)]
+    session: Option<String>,
     value: Value,
 }
 
+/// The owner as one path segment: `%` and `/` escaped, so (owner, key) maps to one state key only.
+fn segment(owner: &str) -> String {
+    owner.replace('%', "%25").replace('/', "%2F")
+}
+
 fn key_of(owner: &str, key: &str) -> String {
-    format!("key/{owner}/{key}")
+    format!("key/{}/{key}", segment(owner))
 }
 
 fn owner_page_key(owner: &str) -> String {
-    format!("owner/{owner}/0")
+    format!("owner/{}/0", segment(owner))
 }
 
 fn turn_push(t: &Turn) -> Value {
@@ -366,7 +390,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         call: &str,
         owner: &str,
         key: &str,
-    ) -> Result<Option<T>, KernelError> {
+    ) -> Result<Option<(T, Option<String>)>, KernelError> {
         let Some(bytes) = self.state.get(&key_of(owner, key)) else {
             return Ok(None);
         };
@@ -375,9 +399,33 @@ impl<S: State, H: Host> Kernel<S, H> {
         if kept.call != call || kept.owner != owner {
             return Err(used());
         }
+        let session = kept.session;
         serde_json::from_value(kept.value)
-            .map(Some)
+            .map(|v| Some((v, session)))
             .map_err(|_| used())
+    }
+
+    /// A replay of a key kept for a session: the caller must own that session (a missing record
+    /// is the caller's own deleted one), and the key must have acted on the session named.
+    fn replay_for<T: DeserializeOwned>(
+        &mut self,
+        call: &str,
+        caller: &str,
+        key: &str,
+        session: &str,
+    ) -> Result<Option<T>, KernelError> {
+        let Some((v, kept)) = self.key_get::<T>(call, caller, key)? else {
+            return Ok(None);
+        };
+        if let Some(rec) = Record::load(&mut self.state, session) {
+            if rec.owner != caller {
+                return Err(KernelError::NotOwner);
+            }
+        }
+        if kept.as_deref() != Some(session) {
+            return Err(refused("key", "this key was used for another session"));
+        }
+        Ok(Some(v))
     }
 
     fn key_put<T: Serialize>(
@@ -385,11 +433,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         call: &str,
         owner: &str,
         key: &str,
+        session: Option<&str>,
         v: &T,
     ) -> Result<(), KernelError> {
         let kept = Kept {
             call: call.to_string(),
             owner: owner.to_string(),
+            session: session.map(str::to_string),
             value: serde_json::to_value(v).expect("a key result serializes"),
         };
         let bytes = serde_json::to_vec(&kept).expect("a key result serializes");
@@ -420,7 +470,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         if stored == rec.turn {
             if t != stored {
-                work.pushes.push(turn_push(&t));
+                work.pushes.push(Push::of(&rec.id, turn_push(&t)));
             }
             return Ok(());
         }
@@ -431,7 +481,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         self.append(rec, entry, now)?;
         rec.turn = stored;
-        work.pushes.push(turn_push(&t));
+        work.pushes.push(Push::of(&rec.id, turn_push(&t)));
         Ok(())
     }
 
@@ -477,7 +527,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         self.start_turn(rec, next.input, false, now, work)?;
         q.save(&mut self.state, &rec.id)?;
-        work.pushes.push(q.push_value());
+        work.pushes.push(Push::of(&rec.id, q.push_value()));
         Ok(())
     }
 
@@ -545,7 +595,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(())
     }
 
-    fn flush(&mut self, work: Work) -> Vec<Value> {
+    fn flush(&mut self, work: Work) -> Vec<Push> {
         for r in work.requests {
             self.host.request(r);
         }
@@ -569,13 +619,22 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<String>, KernelError> {
         check_key(key)?;
         let mut slots = self.begin()?;
-        if let Some(id) = self.key_get::<String>("start", caller, key)? {
+        if let Some((id, _)) = self.key_get::<String>("start", caller, key)? {
             return Ok(Called {
                 value: id,
                 pushes: Vec::new(),
             });
         }
         check_input(input)?;
+        // 9.1: the profiles this caller may use; absent or unreadable allows none.
+        let allowed = self
+            .state
+            .get(&format!("access/{caller}"))
+            .and_then(|b| serde_json::from_slice::<Vec<String>>(&b).ok())
+            .is_some_and(|names| names.iter().any(|n| n == profile));
+        if !allowed {
+            return Err(refused("profile", "this client may not use this profile"));
+        }
         let Some(bytes) = self.state.get(&format!("profile/{profile}")) else {
             return Err(refused("profile", "no such profile"));
         };
@@ -630,7 +689,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             )
             .map_err(|t| KernelError::TooLarge(t.0 as u64))?;
         rec.save(&mut self.state)?;
-        self.key_put("start", caller, key, &id)?;
+        self.key_put("start", caller, key, None, &id)?;
         Ok(Called {
             value: id,
             pushes: self.flush(work),
@@ -646,7 +705,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<u64>, KernelError> {
         check_key(key)?;
         let mut slots = self.begin()?;
-        if let Some(n) = self.key_get::<u64>("say", caller, key)? {
+        if let Some(n) = self.replay_for::<u64>("say", caller, key, session)? {
             return Ok(Called {
                 value: n,
                 pushes: Vec::new(),
@@ -681,7 +740,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                         let oldest = q.take_oldest().expect("the queue holds inputs");
                         self.start_turn(&mut rec, oldest.input, resume, now, &mut work)?;
                         q.save(&mut self.state, &rec.id)?;
-                        work.pushes.push(q.push_value());
+                        work.pushes.push(Push::of(&rec.id, q.push_value()));
                         n
                     }
                 };
@@ -694,11 +753,11 @@ impl<S: State, H: Host> Kernel<S, H> {
                 let mut q = Queue::load(&mut self.state, &rec.id);
                 let n = q.push(input.to_string())?;
                 q.save(&mut self.state, &rec.id)?;
-                work.pushes.push(q.push_value());
+                work.pushes.push(Push::of(&rec.id, q.push_value()));
                 n
             }
         };
-        self.key_put("say", caller, key, &n)?;
+        self.key_put("say", caller, key, Some(session), &n)?;
         Ok(Called {
             value: n,
             pushes: self.flush(work),
@@ -735,7 +794,10 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<()>, KernelError> {
         check_key(key)?;
         let mut slots = self.begin()?;
-        if self.key_get::<()>("answer", caller, key)?.is_some() {
+        if self
+            .replay_for::<()>("answer", caller, key, session)?
+            .is_some()
+        {
             return Ok(Called {
                 value: (),
                 pushes: Vec::new(),
@@ -786,7 +848,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         });
         rec.updated = now;
         rec.save(&mut self.state)?;
-        self.key_put("answer", caller, key, &())?;
+        self.key_put("answer", caller, key, Some(session), &())?;
         Ok(Called {
             value: (),
             pushes: self.flush(work),
@@ -811,7 +873,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut q = Queue::load(&mut self.state, &rec.id);
         q.remove(n)?;
         q.save(&mut self.state, &rec.id)?;
-        work.pushes.push(q.push_value());
+        work.pushes.push(Push::of(&rec.id, q.push_value()));
         Ok(Called {
             value: (),
             pushes: work.pushes,

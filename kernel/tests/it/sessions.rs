@@ -13,6 +13,10 @@ const IN: &str = r#"[{"type":"text","text":"hi"}]"#;
 fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
+    for who in ["alice", "bob"] {
+        st.put(&format!("access/{who}"), br#"["p"]"#.to_vec())
+            .unwrap();
+    }
     // The host is at boot 1 and the kernel has seen it: no restart pass starts (R1).
     Slots {
         boot: 1,
@@ -29,6 +33,9 @@ fn kernel() -> K {
 }
 
 fn started(k: &mut K, owner: &str, key: &str) -> String {
+    k.state
+        .put(&format!("access/{owner}"), br#"["p"]"#.to_vec())
+        .unwrap();
     k.start(owner, key, "p", "{}", IN).unwrap().value
 }
 
@@ -122,7 +129,7 @@ fn ac1_start_makes_the_record_and_everything_it_names() {
         }]
     );
     assert_eq!(
-        c.pushes,
+        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
         [json!({"type": "turn", "state": {"state": "running", "since": 1000}})]
     );
     assert_eq!(active::read_page(&mut k.state, 0).len(), 1);
@@ -260,7 +267,7 @@ fn ac3_say_starts_on_idle_unknown_resume_lost_and_queues_while_active() {
     let c = k.say("alice", &id, "a", "one").unwrap();
     assert_eq!(c.value, 1);
     assert_eq!(
-        c.pushes,
+        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
         [json!({"type": "queue", "inputs": [{"n": 1, "input": "one"}]})]
     );
     assert_eq!(k.say("alice", &id, "b", "two").unwrap().value, 2);
@@ -280,7 +287,7 @@ fn ac3_say_starts_on_idle_unknown_resume_lost_and_queues_while_active() {
     );
     let c = k.unqueue("alice", &id, 1).unwrap();
     assert_eq!(
-        c.pushes,
+        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
         [json!({"type": "queue", "inputs": [{"n": 2, "input": "two"}]})]
     );
     assert_eq!(
@@ -352,14 +359,14 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
     let id = started(&mut k, "alice", "k");
     let c = k.provider(&id, ask("a1", "ask", 9000)).unwrap();
     assert_eq!(
-        c.pushes,
+        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
         [
             json!({"type": "turn", "state": {"state": "waiting", "asks": ["a1"], "expires-at": 9000}})
         ]
     );
     let c2 = k.provider(&id, ask("a2", "ask", 7000)).unwrap();
     assert_eq!(
-        c2.pushes[0]["state"],
+        c2.pushes[0].value["state"],
         json!({"state": "waiting", "asks": ["a1", "a2"], "expires-at": 7000})
     );
     // a check opens but does not change the turn
@@ -389,9 +396,9 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
         }
     );
     assert_eq!(c.pushes.len(), 3);
-    assert_eq!(c.pushes[0]["state"]["state"], "idle");
-    assert_eq!(c.pushes[1]["state"]["state"], "running");
-    assert_eq!(c.pushes[2], json!({"type": "queue", "inputs": []}));
+    assert_eq!(c.pushes[0].value["state"]["state"], "idle");
+    assert_eq!(c.pushes[1].value["state"]["state"], "running");
+    assert_eq!(c.pushes[2].value, json!({"type": "queue", "inputs": []}));
     let es = entries(&mut k, "alice", &id);
     let kinds: Vec<_> = es
         .iter()
@@ -404,7 +411,7 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
     // idle: true ends the turn
     let c = k.provider(&id, idle()).unwrap();
     assert_eq!(
-        c.pushes,
+        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
         [json!({"type": "turn", "state": {"state": "idle", "stop": {"kind": "completed"}}})]
     );
     // activity is live only: pushed, never stored
@@ -416,7 +423,7 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
     k.state.reset_counts();
     let c = k.provider(&id, ProviderEvent::Turn(t)).unwrap();
     assert_eq!(
-        c.pushes[0]["state"]["activity"],
+        c.pushes[0].value["state"]["activity"],
         json!({"kind": "compacting"})
     );
     assert_eq!(k.state.counts().puts, 0);
@@ -572,7 +579,7 @@ fn ac6_answer_shapes_and_effects() {
         ["a2", "c1"]
     );
     assert_eq!(
-        c.pushes[0]["state"],
+        c.pushes[0].value["state"],
         json!({"state": "waiting", "asks": ["a2"], "expires-at": 6000})
     );
     let es = entries(&mut k, "alice", &id);
@@ -587,7 +594,7 @@ fn ac6_answer_shapes_and_effects() {
     let c = k
         .answer("alice", &id, "k2", "a2", r#"{"deny":true,"reason":"no"}"#)
         .unwrap();
-    assert_eq!(c.pushes[0]["state"]["state"], "running");
+    assert_eq!(c.pushes[0].value["state"]["state"], "running");
     assert_eq!(
         rec(&mut k, &id).turn,
         Turn::Running {
@@ -808,10 +815,10 @@ fn ac2_a_key_of_another_call_kind_or_owner_is_refused_and_kept() {
     // the first results still replay
     assert_eq!(k.start("alice", "k", "p", "{}", IN).unwrap().value, id);
     assert_eq!(k.say("alice", &id, "s", "x").unwrap().value, 1);
-    // owner "a" key "b/c" and owner "a/b" key "c" share one state key: no replay of another's
+    // owner "a" key "b/c" and owner "a/b" key "c" are separate keys (AC2 of S21-fix2)
     let x = started(&mut k, "a", "b/c");
-    let e = k.start("a/b", "c", "p", "{}", IN).unwrap_err();
-    assert!(is_key(e));
+    let y = started(&mut k, "a/b", "c");
+    assert_ne!(x, y);
     assert_eq!(k.start("a", "b/c", "p", "{}", IN).unwrap().value, x);
 }
 
@@ -846,7 +853,7 @@ fn ac3_say_resumes_a_pause_with_no_time_and_queues_on_a_timed_one() {
     let c = k.say("alice", &id, "s2", "later").unwrap();
     assert_eq!(c.value, 1);
     assert_eq!(
-        c.pushes,
+        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
         [json!({"type": "queue", "inputs": [{"n": 1, "input": "later"}]})]
     );
     assert_eq!(rec(&mut k, &id).turn, Turn::Paused { until: Some(9000) });

@@ -25,6 +25,8 @@ pub use record::{
     ALLOWS_BYTES, ALLOW_BYTES, DEADLINES, ID_BYTES, KEY_BYTES, RECORD_BYTES, STREAMS, TITLE_BYTES,
 };
 pub use refuse::{refuse, Catalog, CatalogModel};
-pub use sessions::{Called, FakeHost, Host, HostCall, Kernel, ProviderEvent, Request, SessionInfo};
+pub use sessions::{
+    Called, FakeHost, Host, HostCall, Kernel, ProviderEvent, Push, Request, SessionInfo,
+};
 pub use state::{Counts, MemState, State, TooLarge, MAX_VALUE};
 pub use transcript::{chunk_key, Joiner, Meta, NewEntry, Page, Replay, Transcript};
