@@ -16,6 +16,7 @@ mod record;
 mod refuse;
 mod regress_s14;
 mod restart;
+mod revoke;
 mod runners;
 mod sessions;
 mod transcript;

@@ -82,11 +82,15 @@ impl fmt::Display for KernelError {
                 write!(f, "refused: {} field(s) refused", rs.len())?;
                 for (i, r) in rs.iter().enumerate() {
                     let sep = if i == 0 { ": " } else { "; " };
-                    write!(
-                        f,
-                        "{sep}{} ({}, {}): {}",
-                        r.field, r.backend, r.model, r.reason
-                    )?;
+                    if r.backend.is_empty() && r.model.is_empty() {
+                        write!(f, "{sep}{}: {}", r.field, r.reason)?;
+                    } else {
+                        write!(
+                            f,
+                            "{sep}{} ({}, {}): {}",
+                            r.field, r.backend, r.model, r.reason
+                        )?;
+                    }
                 }
                 Ok(())
             }
