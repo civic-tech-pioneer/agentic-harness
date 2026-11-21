@@ -186,7 +186,7 @@ describe("S15-1 checks", () => {
     const v = feed([call("t", "edit"), ask(1, "c1", "t", { kind: "check" }), ask(2, "a1", "u", { toolCall: { toolCallId: "u", title: "Run it", kind: "execute" } })]);
     const view = { ...v, turn: { state: "waiting", asks: ["a1"], expiresAt: 5000 } as SessionView["turn"] };
     render(<StatusLine view={view} now={0} stopping={false} actions={mk()} onNeedsYou={() => {}} />);
-    expect(screen.getByRole("status").textContent).toBe("Waiting for you · Execute Run it");
+    expect(screen.getByRole("status").textContent).toBe("Waiting for you · Run it");
     const d = feed([decide(3, "c1", "t", { outcome: "deny", by: "checked", reason: "r" }, { kind: "check" })], v);
     expect(d.rows[d.rows.length - 1]).toMatchObject({ kind: "decision", what: "Denied: t", who: "checked" });
     expect(d.openAsks).toEqual(["a1"]);

@@ -274,7 +274,7 @@ describe("StatusLine", () => {
   });
 
   it("ac9_waiting_diamond_time_left_needs_you", async () => {
-    const rows = [call("a", "Edit file", "edit"), askE(1, "a", "Edit file", "edit", "src/sync.ts"), call("b", "Edit other", "edit"), askE(2, "b", "Edit other", "edit", "x.ts")];
+    const rows = [call("a", "Edit file", "edit"), askE(1, "a", "Edit file", "edit", "src/sync.ts").replace('"input":{}', '"input":{"file_path":"src/sync.ts"}'), call("b", "Edit other", "edit"), askE(2, "b", "Edit other", "edit", "x.ts")];
     status({ state: "waiting", asks: ["a-a", "a-b"], expiresAt: T + 72_000 }, { rows, asks: ["a-a", "a-b"] });
     expect(word()).toBe("Waiting for you · Edit src/sync.ts");
     expect(shape()).toBe("diamond");
@@ -284,7 +284,7 @@ describe("StatusLine", () => {
 
   it("ac9_waiting_subject_falls_back_to_the_title_and_the_clock_stops_at_zero", () => {
     status({ state: "waiting", asks: ["a-t"], expiresAt: T + 5_000 }, { rows: [call("t", "Run npm test", "execute"), askE(1, "t", "Run npm test", "execute")], asks: ["a-t"] });
-    expect(word()).toBe("Waiting for you · Execute Run npm test");
+    expect(word()).toBe("Waiting for you · Run npm test");
     expect(screen.getByText("· denied in 0:00 if unanswered")).toBeInTheDocument();
   });
 
