@@ -50,9 +50,30 @@ JSON reader; a nested duplicate key in `input` is read last-wins, safe only whil
 serializes items itself); FUNCTIONAL AGT-F-10 reads "never as running when nothing drives it" (S17).
 Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Protects: *guard* and *core*.
 
+### S21: sessions, turns and the active index on the in-memory state (in flight (cloud), routine trig_013z6HkuQwsoLGpkNY4ZQhno)
+
+Story: a kernel maker runs `cargo test` in `kernel/` and drives sessions through 9.3 on the
+in-memory host-7 state of S11, with a fake `caller.boot()`: create, turn changes, queue, the
+active index and the restart pass, each call doing bounded work.
+Outcomes:
+1. The session record of 9.3 with its caps (`key` 256 B, `title` 256 B, `allows`, `chunks`,
+   `streams`, `deadlines`; record at most 512 KiB), the turn JSON of each state, `turn` entries.
+2. The queue (`queue/<id>`): 32 inputs, 2 MiB, 256 KiB per input; `queued`, `unqueue`
+   (`unknown-input`); the `{"type":"queue"}` push as a value the caller returns.
+3. The active index (A2, A3): moves in and out of running, waiting, paused write one page and
+   `slots`; a change among them writes none; at 1 024 sessions `start`/`say` is refused `busy`.
+4. Restart (R1-R6) with a fake boot number: detection, the pass in at most `A + 1` calls, one
+   session each, Claude outcomes (asks denied `restart`, turn `unknown`, `paused` unchanged),
+   R5 (`say` on `unknown` resumes), R6 (a call on a stale record steps it first); cases 67, 68,
+   69 and 71 as kernel tests. OpenAI outcomes (case 70) wait for stage D.
+5. Keys (`key/<owner>/<key>`): a call that changes nothing is not kept (9.1).
+Touches: `kernel/` only. Fakes: the host state (S11's), `caller.boot()`, timers as recorded
+calls. Leaves out: streams and providers, the broker (9.6), quotas beyond counting, OpenAI (9.5).
+Protects: *core* (*guard* for keys and caps).
+
 ## Sketched
 
-### S20: an answered ask leaves no noise (cloud, after S18 and S19 merge)
+### S20: an answered ask leaves no noise (cloud, after S18 and S21 merge)
 
 Story: a kernel maker runs `cargo test` in `kernel/`: an `ask-resolved` after a person's or owner's
 answer, with a `by` S18 lists for answers, gives nothing (the kernel writes that decision itself
