@@ -580,7 +580,14 @@ fn fix1_ac2_a_session_allow_does_not_reach_a_dot_path() {
     );
     assert!(open(&mut k, &s, "e2"));
     assert_ne!(by(&mut k, &s, "e2").as_deref(), Some("session-allow"));
-    let o = rec(&mut k, &s);
-    let o = o.open.iter().find(|o| o.id == "e2").unwrap();
-    assert!(!format!("{o:?}").contains("reach"), "{o:?}");
+    // The stored ask entries: the first has the reach the allow took, the second none.
+    let es = k.read("alice", &s, 0, None, 512).unwrap().entries;
+    let stored = |id: &str| {
+        es.iter()
+            .map(|e| serde_json::from_str::<Value>(e).unwrap())
+            .find(|e| e["kind"] == "ask" && e["body"]["id"] == id)
+            .unwrap()
+    };
+    assert_eq!(stored("e1")["body"]["reach"], "Edit(/w/**)");
+    assert!(stored("e2")["body"].get("reach").is_none());
 }
