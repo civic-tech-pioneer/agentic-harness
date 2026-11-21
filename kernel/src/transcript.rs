@@ -339,13 +339,18 @@ impl<'a, S: State> Transcript<'a, S> {
 
 /// A stored line as a reader gets it: itself with the `i` of its place, or `unreadable` (9.4).
 fn render(line: &str, pos: u64) -> String {
+    render_as(line, pos, true)
+}
+
+/// `render`; with `allow_part` false a line of kind `part` is unreadable too (a joined whole).
+fn render_as(line: &str, pos: u64, allow_part: bool) -> String {
     let parsed: Option<Value> = serde_json::from_str(line).ok();
     if let Some(Value::Object(o)) = &parsed {
         let v_ok = o.get("v").and_then(Value::as_u64).is_some_and(|v| v <= 1);
         let kind_ok = o
             .get("kind")
             .and_then(Value::as_str)
-            .is_some_and(|k| KINDS.contains(&k));
+            .is_some_and(|k| KINDS.contains(&k) && (allow_part || k != "part"));
         if v_ok && kind_ok {
             if o.get("i").and_then(Value::as_u64) == Some(pos) {
                 return line.to_string();
@@ -479,7 +484,7 @@ impl Joiner {
         if n == m {
             // 9.4: the whole reads as a stored line at the last part's place.
             return match v.get("i").and_then(Value::as_u64) {
-                Some(i) => serde_json::from_str(&render(&group.2, i)).ok(),
+                Some(i) => serde_json::from_str(&render_as(&group.2, i, false)).ok(),
                 None => serde_json::from_str(&group.2).ok(),
             };
         }
