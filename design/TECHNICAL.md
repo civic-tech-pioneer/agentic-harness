@@ -47,7 +47,15 @@ in the same commit):
   refusal at once), `kernel/examples/check.rs` (the maker's command) and
   `kernel/tests/it/` (the tests)
 - built: `mod.toml` at the root
-- planned: `wit/world.wit` (2.3, the imports of 2.1), at the root
+- built (S32): `wit/world.wit` (2.3 and 9.9, the imports and exports of 2.1),
+  at the root, with `wit/deps/watane-host/host.wit` (host 19.1's text, 2.1
+  "Exact text"); `kernel/wasm/` (`agent-mod`, the WASM wrapper: its
+  `src/lib.rs` holds the exports, the owner checks by `caller.identity()`
+  and the host and state over the imports; 14); `logic.wasm` at the root,
+  built from it by `factory/gate.sh` and git-ignored. It is prebuilt logic
+  (watane dev 7.1): dev's builder takes only `logic/src` and the crates of
+  its allowlist (dev 6.2: `wit-bindgen`, `serde`, `serde_json`), and the
+  kernel needs the crates of 13
 - planned: `kernel/src/sessions.rs` (9.3: records, keys, queue, quota) and
   `kernel/src/transcript.rs` (9.4: entries, attach, `synced`); built:
   `kernel/src/quota.rs` (9.3 Quota: the limits, the accounts, the metered
@@ -55,9 +63,8 @@ in the same commit):
 - planned: `kernel/src/broker.rs` (9.6, session allows) and
   `kernel/src/delegation.rs` (9.7: delegates, limits, counters)
 - planned: `kernel/src/openai/` (9.5: loop, repair, errors) and
-  `kernel/src/adapters/` (9.8); when the WASM mod wraps the crate, its
-  exports and owner checks by `caller.identity()` (9.3) go into
-  `kernel/src/lib.rs` (14)
+  `kernel/src/adapters/` (9.8); the WASM mod's exports and owner checks by
+  `caller.identity()` (9.3) are in `kernel/wasm/src/lib.rs` (S32, 14)
 - `console/` (source) and `ui/` (built from it), 18
 
 A provider repository holds `mods:claude-code` with `src/lib.rs`; the checked
@@ -72,7 +79,16 @@ every watane file does.
 
 ```wit
 interface streams {                                  // no grant
-  type stream-id = string;
+  type stream-id = string;                           // 128 random bits as 32 hex chars
+  record item { seq: u64, body: list<u8> }
+  enum sink-outcome { taken, defer }
+  record version-need { found: string, need: string }
+  variant outcome {                                  // a producer's `close` passes only closed, replaced, lagging or failed
+    closed, cancelled, lagging, replaced, consumer-failed, idle-timeout, gone,
+    mismatch(string), no-binary, version(version-need), consent-refused(string),
+    no-app, no-account, failed(string),
+  }
+  enum stream-error { not-yours, unknown-stream, full, too-large }
   open: func() -> result<stream-id, stream-error>;
   push: func(s: stream-id, item: list<u8>) -> result<_, stream-error>;
   close: func(s: stream-id, outcome: outcome);
@@ -80,8 +96,6 @@ interface streams {                                  // no grant
   hand-off: func(s: stream-id) -> result<_, stream-error>;
   resume: func(s: stream-id) -> result<_, stream-error>;   // consumer only: after `defer` (3)
 }
-record item { seq: u64, body: list<u8> }
-enum sink-outcome { taken, defer }
 interface stream-sink { items: func(s: string, items: list<item>) -> sink-outcome; ended: func(s: string, outcome: outcome); }   // host-only export
 interface stream-producer { ready: func(s: string); ended: func(s: string, outcome: outcome); }               // host-only export
 
@@ -109,6 +123,7 @@ interface agent-tools {                              // no grant; a toolset need
 record tool { name: string, description: string, input-schema: string, parallel: bool, idempotent: bool }
 
 interface timers {                                   // no grant
+  enum timer-error { too-many, bad-id, bad-delay }
   after: func(id: string, delay-ms: u64) -> result<_, timer-error>;
   cancel: func(id: string);
 }
@@ -140,6 +155,37 @@ Every function with an outside effect is a request (7): `claude-code.start`,
 call commits, so a rolled-back call, deferred or failed, sends nothing to
 `claude`). `streams.resume` is not a request: it only lets a deferred batch go
 on (3); one made in the call that returns `defer` is dropped with it.
+
+**Exact text.** watane's host 19.1 (`host/wit/host.wit` in the watane
+checkout) is the exact WIT; the block above names what the kernel uses. The
+kernel's copy is `wit/deps/watane-host/host.wit`, taken from host 19.1 and
+refreshed when it changes (S32). Until watane gives restart detection (host 18
+Q34; watane S97), the WASM wrapper's start number (B1) is the constant 1: stage
+A runs no provider, so no restart step has anything to do.
+
+**The kernel's side of the seam** (S32 seam audit, against host 19):
+- An owner stream (9.4) is the kernel's own `streams.open()`, made in the
+  owner's call; it can fail `not-yours` (a page call that carries no live
+  connection, host 8.2) or `full` (32 per consumer), and `attach` then answers
+  `backend("<the host's code>: <cause>")` and writes nothing. A provider
+  stream is never opened by the kernel: it is the `stream` of the provider's
+  `start` (2.2); stage A links no provider, so a Claude session's `start` is
+  refused `backend("no Claude Code provider is linked")` and writes nothing.
+- `push` can fail `full` (the owner stream is at its window: 3, 9.4),
+  `unknown-stream` or `not-yours` (the stream ended meanwhile: the kernel drops
+  its live stream as if `ended` had come, and closes nothing), or `too-large`
+  (an item over 4 MiB, which the 64 KiB chunk of 9.1 rules out: treated as
+  `unknown-stream`).
+- `close` passes the `outcome` variant, never a text: `closed`, `replaced`,
+  `lagging`.
+- `timers.after` is asked for at most 30 days (`bad-delay` past it): a later
+  deadline is armed at 30 days, and that firing finds nothing due and arms the
+  next. The kernel's ids (`s/<session>`, `restart`) are under 128 bytes and its
+  timers stay under 256 (7), so `bad-id` and `too-many` are not met.
+- `stream-sink.items` gets a batch: the kernel takes its items in `seq`
+  order, drops every item at or below the last `seq` it took on that stream
+  (`stream/<id>` keeps it; case 7), and answers `defer` for the whole batch
+  when any item defers (3): the host then rolls the call back whole.
 
 ### 2.2 Providers (`mods:claude-code@0.1.0`)
 
@@ -186,6 +232,10 @@ record session-info { id: string, title: string, profile: string, backend: strin
 record queued-input { n: u64, input: string }
 record refusal { field: string, backend: string, model: string, reason: string }
 variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow, behind(u64), too-large(u64), busy }
+
+interface probe {                                    // stage A only (9.9); removed when stage B links a provider
+  start: func(key: string, count: u32, every-ms: u32) -> result<string, error>;
+}
 
 interface offers {                                   // a collect (W34)
   skills: func() -> list<offered-skill>;
@@ -522,7 +572,8 @@ and `.husky/**`. No launch can remove them.
   one is refused `bad-delay`, watane S95), stored in host state (`timers/<mod>/<id>` → due time). A due
   timer fires as a top-level call of the mod's `timer-sink.fired(id)`; one
   due during downtime fires soon after start. `after` with a live id
-  replaces it.
+  replaces it. The kernel asks for at most 30 days (2.1, "The kernel's side
+  of the seam").
 - **Kernel timers.** The kernel holds at most one host timer per session,
   `s/<session id>`, due at the session's earliest deadline (9.3, 9.5, 9.6).
   Live session timers are at most 240 kernel-wide, 16 of the host's 256 being
@@ -1509,6 +1560,40 @@ Libraries: `claude-codes` (types only) and `agent-client-protocol-schema`
 (v1). An unknown Claude line never fails: the adapter falls back to `unknown`
 when `claude-codes` cannot parse it.
 
+### 9.9 The stage A probe
+
+Stage A has streams and timers but no provider (17), so no session of 9.3
+can run a turn. The probe gives the console a real kernel stream all the same:
+a session whose entries the kernel writes itself, one per timer firing. It
+is the kernel's part of V8 (16): host timer, kernel, owner stream, page. It
+is removed when stage B links a provider (the interface `probe` of 2.3, this
+section, and its code).
+
+- `probe.start(key, count, every-ms)` is an owner call like `start` (9.3):
+  the owner is `caller.identity()`, `key` a client key (9.1; a repeat with the
+  same key answers the same id and changes nothing), and it counts against
+  the owner's sessions and the quota as `start` does. `count` is 1 to 1 000
+  and `every-ms` 100 to 60 000, else `refused` with one refusal naming the
+  field. It makes a session record with `backend` `probe`, `profile` empty,
+  `title` `Numbered items`, turn `idle`, no provider stream and no client
+  input, and the deadline `{what: "probe", at: now + every-ms}` on the session
+  timer (7, 9.3).
+- Each firing of the session timer with the `probe` deadline due appends the
+  next entry, `message` `{role: "agent", content: [{type: "text", text:
+  "Item <n> of <count>"}]}`, with `n` from 1, through the same store-and-push
+  path as a provider's finished entry (9.4: one write, then the push to the
+  session's live owner stream when there is one, with its index), and sets
+  the next deadline at `now + every-ms` until the `count`th entry. The
+  record keeps `n` and `count` (`probe {n, count, every-ms}`), so the firing
+  reads only the record.
+- `attach`, `read`, `list`, `rename`, `delete` and `cancel` act on a probe
+  session as on any (`cancel` drops its deadline, so no more items come).
+  `say`, `answer`, `interrupt`, `queued`, `unqueue` and `take-back` are
+  refused `backend("a probe session takes no input")`.
+- A firing during a full owner stream stores the entry and drops the live
+  stream `lagging` (9.4), as for a provider's entry; the page reattaches
+  after its last index and misses and doubles nothing.
+
 ## 10. The providers (M1)
 
 - **Unchecked:** `start` calls `claude-code.start`, then `streams.hand-off`,
@@ -1695,13 +1780,13 @@ stages B and E).
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
 | A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` |
-| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/transcript.rs`; the mod's root `src/lib.rs` if the WASM wrapper's scaffold puts the exports and owner checks there |
+| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` (the exports and owner checks by `caller.identity()`), `kernel/src/sessions.rs` (also the 9.1 stream routing, the probe of 9.9, `stream/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/transcript.rs`, `wit/world.wit` |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
-| A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `kernel/src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
+| A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
 | A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
-| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `kernel/src/lib.rs`, `console/`, `ui/` |
+| The console has no power a client lacks | it calls only 2.3 (and 9.9's `probe` in stage A), as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
 
 Not protected: a revoked `access/` entry does not stop a turn already running: no call of 2.3 writes `access/` today, so the kernel learns of the change only when a call reads the key (9.7, "Revoking"); the slice that adds the call writing `access/` ends the turns of the sessions whose profile it removes (as `cancel`); the judge account reaches any `POST` path of the origin the
@@ -2140,7 +2225,7 @@ length. A long session cannot hold the slot.
 
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
-| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; cases 36 and 51 for the host part (3); case 58 (host part); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
+| A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving: a probe session (9.9) in the transcript, live and after a reload | watane: host, pkg (H1, H5, H7); this repository: the kernel stream and the probe (9.9), the WASM wrapper and `wit/world.wit` (1), the console on the real kernel in `watane-dev serve` (18.2) | cases 7, 20, 21 pass; cases 36 and 51 for the host part (3); case 58 (host part); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
 | B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `host-info.generation` (2.1, G1), dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72, 73, 74; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts), 70; the budgets of stage D |
@@ -2190,6 +2275,15 @@ say (layout, spacing, words).
   source is in `console/`; the build writes `ui/`, which the host serves as
   any mod's page (host 8.3): same-origin script files, no inline script, no
   `eval`, no WebAssembly, no frames, no outside site.
+- The kernel: served by watane (the page has `window.watane`, host 8.5), the
+  console calls its own mod through `watane.call` and reads its streams from
+  `watane.on` (`{"type":"stream"}` and `{"type":"stream-end"}` of host 8.4;
+  `console/kit/watane.ts`). It keeps, per stream, the last `seq` it showed and
+  drops any item at or below it, and holds items of a stream whose `attach`
+  has not answered yet. In stage A it opens the owner's newest probe session
+  (`list`), or starts one (`probe.start`, 9.9). Without `window.watane` (the
+  component tests, `npm run dev`) it opens the scripted fake kernel
+  (`console/fake/`), which the page never ships as its kernel when served.
 - State: the console's own reducer over the wire of 9.4
   (`console/kit/wire.ts`, `console/kit/reduce.ts`); its view is the state the
   transcript draws. assistant-ui's External-store runtime
