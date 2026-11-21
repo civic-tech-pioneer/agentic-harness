@@ -942,7 +942,9 @@ entries it holds when that one is among them, else by reading that one entry
 ask entry is never removed while the session lives, so it is always there to
 read. Past quota, an ask entry that already carries a decision (no adapter
 makes one today, 9.8) is stored short when its `id` is open or pending, and
-is not stored otherwise.
+is not stored otherwise. The decision of an adapter's decided entry stored short
+keeps only `outcome`, `by` and `reason` (cut at 256 bytes); any other
+value makes the entry unstored.
 
 - Indexes start at 1, increase by one, never change. Deltas are never
   entries.
