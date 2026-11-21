@@ -748,11 +748,23 @@ wire") are this JSON; the entry has no `activity`.
     a call that starts below a cap may end over it by its own writes (at most
     one input and what it records); the next call finds it past. No call
     takes the account past 256 MiB: one that would fails `quota` and, as
-    every failed call, commits nothing (7). The exceptions are a firing of
-    the restart pass and a provider stream's `ended` (whose writes are
-    bounded as R4's: at most 64 decisions and one `turn` entry), which cannot
-    fail: what they wrote, even a restart step that failed, is charged to both
-    accounts and the record's `bytes`.
+    every failed call, commits nothing (7). The exceptions cannot fail at
+    the ceiling, since each ends a turn or closes a session's work and frees
+    what it holds: a firing of the restart pass, a provider stream's
+    `ended`, `cancel`, `interrupt` without a replacement, and a provider
+    item while past (among them the one that ends the turn `stopped {limit:
+    quota}` and sends `Request::Interrupt`). As built (S29): what they
+    wrote, even a restart step that failed, is charged to both accounts and
+    the record's `bytes`, and what they write is bounded in bytes: at most 64
+    decisions and one `turn` entry beyond the record and the keys they
+    delete, and every decision written while past is short (9.4), so once
+    past a call writes at most one full decision (the one that crossed, at
+    most the size of its ask entry) and the rest short (together within the
+    record's 512 KiB plus 16 KiB, as they repeat only fields the record
+    holds). A provider item while past stores nothing else (below). The 32
+    MiB reserve covers what a call that starts below the account writes past
+    it; past the account no call starts new work, so what calls write after
+    that is bounded by the asks and active turns open when it crossed.
   - *Refused `quota` when past:* `start`, `say` (whether it starts a turn or
     queues), an `interrupt` replacement, `rename`, an `answer` with `for:
     session`. Not refused: `answer` without `for: session`, `interrupt`
@@ -763,7 +775,7 @@ wire") are this JSON; the entry has no `activity`.
     sessions are at their limit", which tells an owner nothing of other owners (14).
   - *Any call when past* (the owner or the account; a provider item, an owner's
     `answer`, `interrupt`, `cancel`, `unqueue`, the restart step, a timer, `attach`'s step): an ask decision
-    and the host's `ask-resolved` are stored; a turn change is written as an entry only when it ends an active turn (so a turn gets at most
+    and the host's `ask-resolved` are stored (short, 9.4); a turn change is written as an entry only when it ends an active turn (so a turn gets at most
     one `turn` entry past quota; a provider `Turn` that would change the record's turn
     without ending it is dropped: no entry, the record's turn kept, no push; an ask
     that closes or `close_all` writes no entry, while the record's turn follows (a
@@ -908,6 +920,29 @@ Claude ask the host resolved: `reason` is the host's `by`, `expired` or
 `cancelled`; an `answered` on a `direct: true` stream that the kernel did not make, or whose
 `outcome` differs from its pending answer, has no `reason`, 9.8). Repeating the ask lets a page that starts at the decision show
 the card.
+
+**The short decision** (S29). A decision written while the owner or the
+kernel's account is past (9.3 "Past"; counted at the decision's write, with
+the bytes the call has written so far, so a call that crosses the cap writes
+the decisions after the crossing short) does not repeat the ask. Its body is
+
+```json
+{"id":"<ask id>","kind":"ask"|"check","ask-i":<i>,"decision":{"outcome":"deny","by":"kernel","reason":"cancel"}}
+```
+
+`ask-i` is the index of the ask entry (the `i` of the ask's `open` or
+`pending-answers` entry, 9.3); `decision` is as above, a pending answer's
+`input` included. The kernel writes it from the record alone, without
+reading the ask entry. It has no `toolCallId`, `toolCall`, `input`,
+`expires-at` or `reach` of its own; a reader tells it from a full decision by
+`ask-i`. A client draws its card from the ask entry at `ask-i`: from the
+entries it holds when that one is among them, else by reading that one entry
+(`read` with `after: ask-i - 1`, `max: 1`; when that line is a `part` with
+`m > 1`, `read` with `after: ask-i - m`, `max: m`, and join the parts). The
+ask entry is never removed while the session lives, so it is always there to
+read. Past quota, an ask entry that already carries a decision (no adapter
+makes one today, 9.8) is stored short when its `id` is open or pending, and
+is not stored otherwise.
 
 - Indexes start at 1, increase by one, never change. Deltas are never
   entries.
@@ -1910,6 +1945,20 @@ of `spec/VISION.md`.
     input. On `idle {completed}`, `unknown` and `resume-lost`, `ended`
     leaves the turn as it was and writes no `turn` entry; it still frees the
     stream's slot and keys.
+77. (9.3 "Past", 9.4 "The short decision") Kernel crate: with the
+    account at the ceiling (account plus reserve), each of `cancel`,
+    `interrupt` without a replacement, a provider item that ends the turn
+    `stopped {limit: quota}` (and sends `Request::Interrupt`) and a provider
+    stream's `ended` succeeds, ends the turn, frees what it holds (the
+    provider stream's slot and keys, the session's timer) and charges what it
+    wrote to both accounts and the record's `bytes`; `say`, `start` and
+    `rename` still fail `quota` there. Past quota every decision these calls
+    write is short (`id`, `kind`, `ask-i`, `decision`; no ask fields), and
+    its `ask-i` names the ask entry of the same `id`; with 64 open or pending
+    asks whose ask entries are each over 100 KiB, a closing call past quota
+    writes under 1 MiB of entries in all. Below quota the decisions repeat the
+    ask, as before; a call that crosses the cap writes the decisions after
+    the crossing short.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
