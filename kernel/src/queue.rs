@@ -52,10 +52,11 @@ impl Queue {
             .unwrap_or_default()
     }
 
-    /// An empty queue deletes the key.
+    /// A never-used queue deletes the key; an emptied one keeps its `next`, so numbers never
+    /// repeat within a session (9.3).
     pub fn save(&self, state: &mut impl State, id: &str) -> Result<(), KernelError> {
         let key = Self::key_of(id);
-        if self.is_empty() {
+        if self.is_empty() && self.next <= 1 {
             state.delete(&key);
             return Ok(());
         }

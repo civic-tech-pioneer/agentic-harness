@@ -100,6 +100,13 @@ fn ac2_over_512_kib_is_too_large_and_writes_nothing() {
     r.title = "x".repeat(600_000);
     assert_eq!(r.save(&mut st), Err(KernelError::TooLarge(524_288)));
     assert_eq!(st.len(), 0);
+    // Exactly 512 KiB is stored; one byte more is not.
+    r.title = String::new();
+    let base = serde_json::to_vec(&r).unwrap().len();
+    r.title = "x".repeat(524_288 - base);
+    assert!(r.save(&mut st).is_ok());
+    r.title.push('x');
+    assert_eq!(r.save(&mut st), Err(KernelError::TooLarge(524_288)));
 }
 
 #[test]
@@ -160,7 +167,7 @@ fn ac3_streams_deadlines_chunks() {
         Err(KernelError::Busy(m)) => assert!(m.contains("64")),
         e => panic!("{e:?}"),
     }
-    r.chunks = vec![1; 16_384];
+    r.chunks = vec![1; 16_383];
     assert!(!r.chunks_full());
     r.chunks.push(1);
     assert!(r.chunks_full());
@@ -250,5 +257,20 @@ fn ac5_queue_load_save() {
     assert_eq!(q2, q);
     q2.take_oldest();
     q2.save(&mut st, "s1").unwrap();
-    assert_eq!(st.len(), 0);
+    assert_eq!(st.len(), 1, "an emptied queue keeps its next number");
+}
+
+#[test]
+fn ac5_numbers_never_repeat_after_an_emptied_queue_is_saved() {
+    let mut st = MemState::new();
+    let mut q = Queue::load(&mut st, "s1");
+    q.save(&mut st, "s1").unwrap();
+    assert_eq!(st.len(), 0, "a never-used queue stays absent");
+    assert_eq!(q.push("a".into()), Ok(1));
+    q.remove(1).unwrap();
+    q.save(&mut st, "s1").unwrap();
+    let mut q = Queue::load(&mut st, "s1");
+    assert!(q.is_empty());
+    assert_eq!(q.remove(1), Err(KernelError::UnknownInput(1)));
+    assert_eq!(q.push("b".into()), Ok(2));
 }

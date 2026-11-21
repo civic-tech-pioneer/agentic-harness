@@ -252,8 +252,9 @@ impl Record {
         Ok(())
     }
 
+    /// At 16 384 chunk starts the session is at its quota (9.3, case 53).
     pub fn chunks_full(&self) -> bool {
-        self.chunks.len() > CHUNKS
+        self.chunks.len() >= CHUNKS
     }
 }
 
