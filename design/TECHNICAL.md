@@ -365,8 +365,10 @@ and `.husky/**`. No launch can remove them.
 | `control_request` `can_use_tool` | `{"type":"ask","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
 | `control_request` `hook_callback` (PreToolUse) | `{"type":"check","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
 | `control_cancel_request` | `{"type":"ask-resolved","id":…,"by":"cancelled"}` |
+| an `answer` the host accepted, whoever called it | `{"type":"ask-resolved","id":…,"by":"answered"}` (step 5) |
+| an ask the host denied at its `expires-at` | `{"type":"ask-resolved","id":…,"by":"expired"}` (step 5) |
 | a line whose top-level `type` is any watane item type that can share the stream: `ask`, `check`, `ask-resolved`, `initialized`, `wrapped`, `consent-pending`, and the checked provider's `verdict` and `checking` (10); a slice that adds an item type to any of these streams adds it here | never passed through: the host pushes `{"type":"wrapped","line":"<the line, as a JSON string>"}` instead |
-| a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item (a byte that is not UTF-8 becomes U+FFFD in `line`): the host decides on the parsed value, so the kernel and the host never read one line two ways |
+| a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item (a byte that is not UTF-8 becomes U+FFFD in `line`; that is the host's form, and the kernel's `raw` for such a line differs, 9.8): the host decides on the parsed value, so the kernel and the host never read one line two ways |
 | any other line, known or not | the line unchanged |
 
    `expires-at` is on the host's clock: for an ask, the time the host pushed
@@ -390,7 +392,9 @@ and `.husky/**`. No launch can remove them.
 
    After any answer, and when an ask expires (10 minutes from the push of
    the ask item, at its `expires-at`; deny), the host
-   pushes `ask-resolved {id, by}`. A second answer is `unknown-ask`. Nothing
+   pushes `ask-resolved {id, by}`: `by` is `answered` for an answer,
+   `expired` for the expiry and `cancelled` for a `control_cancel_request`
+   (step 4). The host pushes no other `by`. A second answer is `unknown-ask`. Nothing
    else is ever written: no `apply_flag_settings`, `mcp_set_servers`,
    `set_permission_mode`, `updatedPermissions` or second `initialize`.
 6. A turn is over when `claude` reports itself idle, not at the first
@@ -836,6 +840,12 @@ the card.
   chunk (64 KiB, or one entry), `read` page (2 MiB) and replay (2 MiB) holds at least one
   whole entry or part, and paging always makes progress. No content is cut by
   this rule (tool output stays cut at 64 KiB, as before).
+  A joined group reads as `read` reads a stored line at its last part's
+  place: it takes that place's `i`, and any `i` in the joined text is ignored
+  (S14). A joined text that is not JSON, not an object, of an unknown kind or
+  of a newer `v` is `unreadable` with that `i` and the joined text as `raw`
+  (S14). A joined whole of kind `part` is `unreadable` (S19). A stored `part`
+  line, read alone, is still a `part`.
 - Reading an entry of an older `v` upgrades it in memory; an unknown `kind`
   or newer `v` reads as `{"kind": "unreadable", "raw": …}`. An `unreadable`
   entry is `{"v":<its v>,"i":<i>,"kind":"unreadable","at":<at>?,"raw":<the
@@ -970,23 +980,19 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   `id` (2.3), not by `toolCallId`, so a check's decision never clears an ask
   bar of the same call.
 
-**Code to change (S14).** The transcript and adapter rules above differ from
-the code in these places (S12 built the rest).
+**Code to change (S19).** The rules above and in 9.8 differ from the code in
+these places (S14 built the rest).
 
-- Kernel, S14: every line a reader gets (`read`, replay) takes the `i` of its
-  place, readable or not, and ignores an `i` the stored line claims (today
-  only an `unreadable` line does).
-- Kernel, S14: an `ask` or `check` item without `input` is an `unknown`
-  entry, never an ask (9.8).
-- Kernel, S14: an `ask` or `check` item whose `id` is that of an ask still
-  open on the session is an `unknown` entry, and the open ask is not changed
-  (9.8).
-- Kernel, S14: the kernel relies on the host's unique `id` (4.5) and checks
-  only the open ask above; the `claude` fixtures (9.8) reuse no `id` of an
-  ask or check that opened, also after its `ask-resolved`.
-- Kernel, S14: a finished thinking block that repeats the deltas streamed for
-  it is not pushed live again as an `AgentThoughtChunk` (it already replaces
-  them in `thought.text` and adds no time to `seconds`).
+- Kernel, S19: an `ask-resolved` item whose `by` is missing, not a string or
+  any other than `expired` or `cancelled` is an `unknown` entry, and the ask
+  stays open (9.8).
+- Kernel, S19: an `ask` or `check` item whose `input` is not a JSON object,
+  or whose `expires-at` is not a JSON integer from 0 to 2^64 - 1, is an
+  `unknown` entry (9.8).
+- Kernel, S19: a joined part group whose whole is of kind `part` reads as
+  `unreadable`.
+- Kernel, a later slice: an `ask-resolved` with `by: answered` closes the open
+  ask with no entry (S19 reads it as `unknown`).
 
 ### 9.5 The OpenAI loop
 
@@ -1143,13 +1149,41 @@ Give nothing (no update, no entry): Claude `system` `init`, `status`,
 `response.reasoning_summary_text.done`,
 `response.function_call_arguments.delta`/`.done`. Then: a `wrapped` item; an
 `ask` or `check` item whose `tool_use_id` is not a non-empty string, whose
-`expires-at` is not a number, or that has no `input`; an `ask` or `check` item
-whose `id` is that of an ask or check still open on the session (the open one
-is not changed); and, on a `direct: true` stream, a `verdict` or
+`expires-at` is not a whole number from 0 to 2^64 - 1, or that has no `input`;
+an `ask` or `check` item whose `id` is that of an ask or check still open on
+the session (the open one is not changed); and, on a `direct: true` stream, a `verdict` or
 `checking` item, are each an `unknown` entry, never an ask (14). The kernel
 takes `verdict` and `checking` only from a checked provider's stream
 (`direct: false`, 10). It reads items strictly (no lossy UTF-8 decoding): an
-item it cannot parse is `unknown`, never an ask.
+item it cannot parse is `unknown`, never an ask. An item that breaks a rule
+below is an `unknown` entry, never an ask or a decision.
+
+1. The `id` of `ask`, `check` and `ask-resolved` is a non-empty JSON string. A
+   number or another JSON value is `unknown` (S14), so `"7"` and `7` never
+   name the same ask.
+2. `input` of an `ask` or `check` is a JSON object. Missing, `null` and any
+   other JSON value are `unknown`; `{}` is an object (S19).
+3. `expires-at` is a JSON integer from 0 to 2^64 - 1. A negative or
+   fractional value, `5.0`, `1e3`, a value past 2^64 - 1, a string and `null`
+   are `unknown` (S19).
+4. `ask-resolved` reads its `by`: `expired` or `cancelled` on an open ask or
+   check gives the decision entry `by: host` with `reason` = the `by` (9.4);
+   `answered` closes the ask or check and writes no entry, because the call
+   that answered wrote its decision (9.4, 9.6); any other or missing `by`, or
+   one that is not a string, is `unknown` and the ask stays open, so a later
+   `expired` or `cancelled` still gives its decision (S19; until the code to
+   change of 9.4 is built, `answered` is `unknown` too). An `ask-resolved`
+   whose `id` is not open is `unknown`. How a check answered by the checked
+   provider becomes a `by: checked` decision is stage E (10).
+5. A line that is not valid UTF-8 is `unknown`. Its `raw` is the line as a
+   JSON string: each byte that is not UTF-8 is written as the four characters
+   `\xNN` (lowercase hex), and white space is trimmed from both ends. A
+   literal `\xff` in valid text reads the same: an accepted ambiguity, only
+   for display. There is no lossy decoding. (The host's `wrapped` `line`
+   keeps U+FFFD, 4.5: that is the host's form, not a conflict.)
+6. A line with a key twice at its top level is `unknown` in the kernel too,
+   the kernel's half of 4.5's "never read one line two ways". Keys below the
+   top level are read last-wins (14).
 
 When an ask's input differs from the input of any `ToolCall` of the
 same id, earlier or later, the ask's is the one that runs and the one shown: the ask entry's
@@ -1348,7 +1382,7 @@ stages B and E).
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/transcript.rs`; the mod's root `src/lib.rs` if the WASM wrapper's scaffold puts the exports and owner checks there |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3) | `kernel/src/sessions.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
-| An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
+| An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
 | The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `kernel/src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
@@ -1356,7 +1390,7 @@ stages B and E).
 Not protected: the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose loopback reach is still to be probed (V27), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
-(spec 6); whether a subagent prompt that starts with `/` runs a skill (not
+(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes; whether a subagent prompt that starts with `/` runs a skill (not
 probed; probe V26, slice S1); whether the shell grant's sandbox blocks
 loopback (probe V27, slice S1; table in 16).
 
@@ -1626,8 +1660,8 @@ of `spec/VISION.md`.
 64. (4.5, 9.8, 10) A stdout line that is not UTF-8, one with a duplicate
     top-level `type`, and a `{"type":"verdict",…}` line each reach the kernel
     as `wrapped` and become an `unknown` entry; a `verdict` or `checking` item
-    on a `direct: true` stream is `unknown`; an ask item with a non-number
-    `expires-at` is `unknown`, no ask.
+    on a `direct: true` stream is `unknown`; an ask item with an `expires-at` that
+    is not a whole number from 0 to 2^64 - 1 is `unknown`, no ask.
 65. (18.3) With an ask open on call T for input A, a later `ToolCall` T with
     input B leaves the card showing A, and Allow answers the ask's `id`; the
     same for a later `ToolCallUpdate` T carrying `rawInput` or `title` B and
@@ -1687,6 +1721,17 @@ of `spec/VISION.md`.
     is refused `{field: "ask"}`); the pass then skips that session.
     `list` over such sessions reads no extra record, reports `unknown` for a
     Claude `running` or `waiting` one, and writes nothing.
+72. (9.4, 9.8) Kernel crate: an `ask` or `check` item whose `id` is not a
+    non-empty string (`7`, `null`, `""`), one whose `input` is missing, `null`
+    or not an object (`{}` is an ask), and one whose `expires-at` is negative,
+    fractional, `5.0`, `1e3`, past 2^64 - 1, a string or `null`, are each an
+    `unknown` entry, no ask. A line with bytes that are not UTF-8 is `unknown`
+    with `raw` holding `\xNN` for each such byte, trimmed. A line with a
+    duplicate top-level key is `unknown`. An `ask-resolved` with an unknown or
+    missing `by` is `unknown` and the ask stays open, so a later `expired`
+    gives its `by: host` decision; with `by: answered` it closes the ask and
+    writes no entry (S19 reads it as `unknown`, 9.4). A part group whose joined
+    whole is of kind `part` reads as `unreadable`.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
@@ -1712,7 +1757,7 @@ length. A long session cannot hold the slot.
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
 | A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; cases 36 and 51 for the host part (3); case 58 (host part); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `caller.boot` (2.1, B1), dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 67, 68, 69, 71; the budgets of stage B |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `caller.boot` (2.1, B1), dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts), 70; the budgets of stage D |
 | E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
