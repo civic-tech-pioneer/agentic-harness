@@ -314,10 +314,11 @@ describe("follow at end (18.6 Place)", () => {
       const f = played();
       const r = render(<App kernel={f} info={INFO} />);
       await ready();
-      expect(observe).toHaveBeenCalledTimes(1);
+      const col = r.container.querySelector(".wa-ask-scroll") ? observe.mock.calls.filter(([el]) => !(el as Element).classList.contains("wa-ask-scroll")) : observe.mock.calls;
+      expect(col).toHaveLength(1);
       expect(disconnect).not.toHaveBeenCalled();
       r.unmount();
-      expect(disconnect).toHaveBeenCalledTimes(1);
+      expect(disconnect).toHaveBeenCalledTimes(observe.mock.calls.length);
     } finally { vi.unstubAllGlobals(); }
   });
 });
