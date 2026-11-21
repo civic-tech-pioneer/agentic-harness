@@ -2,6 +2,7 @@
 
 mod adapters;
 mod adv_s11;
+mod adv_s14;
 mod adversary;
 mod check;
 mod errors;
