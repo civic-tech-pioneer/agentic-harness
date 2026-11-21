@@ -50,6 +50,7 @@ pub enum KernelError {
     UnknownInput(u64),
     UnknownAllow(String),
     Behind(u64),
+    TooLarge(u64),
     Busy(String),
 }
 
@@ -66,6 +67,7 @@ impl KernelError {
             KernelError::UnknownInput(_) => "unknown-input",
             KernelError::UnknownAllow(_) => "unknown-allow",
             KernelError::Behind(_) => "behind",
+            KernelError::TooLarge(_) => "too-large",
             KernelError::Busy(_) => "busy",
         }
     }
@@ -95,7 +97,8 @@ impl fmt::Display for KernelError {
             KernelError::UnknownInput(n) => write!(f, "unknown-input: no input number {n}"),
             KernelError::UnknownAllow(id) => write!(f, "unknown-allow: no pending ask {id}"),
             KernelError::Behind(n) => write!(f, "behind: {n} entries stored, page with read"),
-            KernelError::Busy(m) => write!(f, "busy: {m}"),
+            KernelError::TooLarge(n) => write!(f, "too-large: over the limit of {n} bytes"),
+            KernelError::Busy(cap) => write!(f, "busy: {cap}"),
         }
     }
 }
