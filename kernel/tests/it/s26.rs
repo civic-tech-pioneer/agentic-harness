@@ -311,3 +311,91 @@ fn fix2_ac3_past_quota_owner_answer_adds_no_turn_entry() {
     assert_eq!(turn_pushes(&c), vec![turn.to_json()]);
     assert_eq!(turn_entries(&mut k, &s), n);
 }
+
+/// The `turn` entries of an owner's session.
+fn turn_entries_of(k: &mut K, owner: &str, id: &str) -> usize {
+    k.read(owner, id, 0, None, 256)
+        .unwrap()
+        .entries
+        .iter()
+        .filter(|e| serde_json::from_str::<Value>(e).unwrap()["kind"] == "turn")
+        .count()
+}
+
+/// S26-fix2 AC2, 9.3 "Past" (read before the call writes): the flag is each call's own, from the
+/// accounts of the owner it acts for. Alice past her quota, Bob below it: Bob's `answer` after
+/// Alice's still writes its entry, and Alice's after Bob's still writes none.
+#[test]
+fn validator_fix2_past_is_read_per_call_and_per_owner() {
+    let mut k = kernel();
+    let a = start(&mut k, "alice", "k1");
+    let b = start(&mut k, "bob", "k1");
+    for n in ["a1", "a2", "a3", "a4"] {
+        k.provider(&a, ask(n)).unwrap();
+    }
+    for n in ["b1", "b2", "b3"] {
+        k.provider(&b, ask(n)).unwrap();
+    }
+    let alice = agent_kernel::Usage::load(&mut k.state, "quota/alice").bytes;
+    assert!(agent_kernel::Usage::load(&mut k.state, "quota/bob").bytes < alice);
+    k.limits.owner_bytes = alice;
+    let (na, nb) = (
+        turn_entries_of(&mut k, "alice", &a),
+        turn_entries_of(&mut k, "bob", &b),
+    );
+    k.answer("alice", &a, "x1", "a1", r#"{"deny":true}"#)
+        .unwrap();
+    assert_eq!(turn_entries_of(&mut k, "alice", &a), na);
+    k.answer("bob", &b, "x1", "b1", r#"{"deny":true}"#).unwrap();
+    assert_eq!(
+        turn_entries_of(&mut k, "bob", &b),
+        nb + 1,
+        "a stale past from Alice"
+    );
+    k.answer("alice", &a, "x2", "a2", r#"{"deny":true}"#)
+        .unwrap();
+    assert_eq!(
+        turn_entries_of(&mut k, "alice", &a),
+        na,
+        "a stale below from Bob"
+    );
+}
+
+/// S26-fix2 AC2, 9.3 Quota: past quota a change that ends an active turn writes its one entry:
+/// `cancel` and `interrupt` of a turn waiting on two asks, and the restart pass's `unknown` (R4).
+#[test]
+fn validator_fix2_past_quota_ending_calls_write_one_turn_entry() {
+    let mut k = kernel();
+    let ss: Vec<String> = (1..=3)
+        .map(|n| start(&mut k, "alice", &format!("k{n}")))
+        .collect();
+    for s in &ss {
+        for n in ["a1", "a2"] {
+            k.provider(s, ask(n)).unwrap();
+        }
+    }
+    k.limits.owner_bytes = agent_kernel::Usage::load(&mut k.state, "quota/alice").bytes;
+    let n: Vec<usize> = ss.iter().map(|s| turn_entries(&mut k, s)).collect();
+    k.cancel("alice", &ss[0]).unwrap();
+    k.interrupt("alice", &ss[1], None).unwrap();
+    k.host.boot = 2;
+    k.list("alice", None, 1).unwrap();
+    for _ in 0..4 {
+        k.timer("restart");
+    }
+    let idle = |t: &Turn| {
+        matches!(
+            t,
+            Turn::Idle {
+                stop: Stop::Interrupted,
+                ..
+            }
+        )
+    };
+    for (i, s) in ss.iter().enumerate() {
+        let t = Record::load(&mut k.state, s).unwrap().turn;
+        let want = if i == 2 { t == Turn::Unknown } else { idle(&t) };
+        assert!(want, "session {i}: {t:?}");
+        assert_eq!(turn_entries(&mut k, s), n[i] + 1, "session {i}");
+    }
+}
