@@ -376,10 +376,12 @@ fn usersim_s21_lazy() {
 #[test]
 fn usersim_s21_pass_bounds() {
     let mut k = kernel();
-    let mut slots = Slots::default();
-    slots.boot = 7;
-    slots.provider = 3;
-    slots.timers = 5;
+    let mut slots = Slots {
+        boot: 7,
+        provider: 3,
+        timers: 5,
+        ..Default::default()
+    };
     for p in 0..4u8 {
         let mut page = vec![];
         for i in 0..256 {
