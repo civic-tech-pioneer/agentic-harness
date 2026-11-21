@@ -10,6 +10,7 @@ mod errors;
 mod example;
 mod grammar;
 mod overlay;
+mod record;
 mod refuse;
 mod regress_s14;
 mod runners;

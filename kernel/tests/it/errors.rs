@@ -1,7 +1,7 @@
 use agent_kernel::{KernelError, Refusal};
 
 #[test]
-fn ac2_ten_codes_and_messages_name_the_cause() {
+fn ac2_twelve_codes_and_messages_name_the_cause() {
     let r = Refusal {
         field: "effort".into(),
         backend: "openai".into(),
@@ -31,8 +31,14 @@ fn ac2_ten_codes_and_messages_name_the_cause() {
             "a-9",
         ),
         (KernelError::Behind(310), "behind", "310"),
+        (KernelError::TooLarge(262144), "too-large", "262144"),
+        (
+            KernelError::Busy("1024 active sessions".into()),
+            "busy",
+            "1024 active",
+        ),
     ];
-    assert_eq!(all.len(), 10);
+    assert_eq!(all.len(), 12);
     for (e, code, data) in all {
         assert_eq!(e.code(), code);
         assert!(e.to_string().contains(data), "{e}");
