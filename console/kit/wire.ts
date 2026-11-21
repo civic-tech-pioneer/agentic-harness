@@ -1,5 +1,5 @@
 // TECHNICAL 9.4, 18.2: the assumed shape of a kernel stream message. Nothing else reads these fields.
-import type { Activity, PlanItem, ToolCall, TurnState, Ask } from "./model";
+import type { Activity, PlanItem, ToolCall, TurnState, Ask, Decision } from "./model";
 
 export interface TurnExtra { seconds?: number; tools?: number; tokens?: number }
 export type CallPatch = Partial<ToolCall> & { id: string };
@@ -7,6 +7,8 @@ export type Msg =
   | { t: "message"; i: number; role: "user" | "agent"; text: string; thought?: { text: string; seconds: number } }
   | { t: "tool"; i: number; call: CallPatch }
   | { t: "ask"; i: number; ask: Ask; call?: CallPatch }
+  /** 9.4 "The short decision": a decision that does not repeat its ask; `askI` is the ask entry's index. */
+  | { t: "short"; i: number; id: string; kind: "ask" | "check"; askI: number; decision: Decision }
   | { t: "allow"; i: number; id: string; reach: string; given: boolean; by: string }
   | { t: "verdict"; i: number; toolCallId?: string; outcome: string; reasons: string[]; by: string }
   | { t: "turn"; i?: number; state: TurnState; extra: TurnExtra }
@@ -44,6 +46,11 @@ function parseCall(o: Rec): CallPatch | undefined {
   if ("rawInput" in o) c.rawInput = o.rawInput;
   if ("rawOutput" in o) c.rawOutput = o.rawOutput;
   return c;
+}
+
+function parseDecision(d: unknown): Decision | undefined {
+  if (!isRec(d) || (d.outcome !== "allow" && d.outcome !== "deny" && d.outcome !== "none") || str(d.by) === undefined) return undefined;
+  return { outcome: d.outcome, by: d.by as string, ...(d.for === "session" ? { for: "session" as const } : {}), ...(str(d.reason) !== undefined ? { reason: d.reason as string } : {}) };
 }
 
 function parseTurn(o: unknown): { state: TurnState; extra: TurnExtra } | undefined {
@@ -100,14 +107,22 @@ function parseEntry(e: Rec): Msg {
       return call ? { t: "tool", i, call } : bad;
     }
     case "ask": {
-      const askId = str(b.id), id = str(b.toolCallId);
+      const askId = str(b.id);
+      if (askId === undefined || (b.kind !== "ask" && b.kind !== "check")) return bad;
+      if ("ask-i" in b) {
+        // 9.4 "The short decision": every other field of the body (a stray `toolCallId` too) is ignored; the card comes from the ask entry
+        const askI = b["ask-i"], decision = parseDecision(b.decision);
+        if (typeof askI !== "number" || !Number.isInteger(askI) || askI < 1 || askI >= i || !decision) return bad;
+        return { t: "short", i, id: askId, kind: b.kind, askI, decision };
+      }
+      const id = str(b.toolCallId);
       const expiresAt = num(b["expires-at"]);
-      if (askId === undefined || id === undefined || expiresAt === undefined || (b.kind !== "ask" && b.kind !== "check")) return bad;
+      if (id === undefined || expiresAt === undefined) return bad;
       const ask: Ask = { id: askId, kind: b.kind, toolCallId: id, input: b.input, expiresAt, ...(b.kind === "ask" && str(b.reach) !== undefined ? { reach: b.reach as string } : {}) };
-      const d = b.decision;
-      if (isRec(d)) {
-        if ((d.outcome !== "allow" && d.outcome !== "deny" && d.outcome !== "none") || str(d.by) === undefined) return bad;
-        ask.decision = { outcome: d.outcome, by: d.by as string, ...(d.for === "session" ? { for: "session" as const } : {}), ...(str(d.reason) !== undefined ? { reason: d.reason as string } : {}) };
+      if (isRec(b.decision)) {
+        const d = parseDecision(b.decision);
+        if (!d) return bad;
+        ask.decision = d;
       }
       // the tool call's own id is ignored: the ask's `toolCallId` names the row
       const parsed = isRec(b.toolCall) ? parseCall({ ...b.toolCall, toolCallId: id }) : undefined;
