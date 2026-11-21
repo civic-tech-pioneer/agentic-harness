@@ -332,7 +332,9 @@ impl ClaudeAdapter {
 
     fn ask(&mut self, v: &Value, kind: &str) -> Vec<Out> {
         let call_id = str_of(v, "tool_use_id").filter(|s| !s.is_empty());
-        let id = v.get("id").filter(|i| i.as_str().is_some_and(|s| !s.is_empty()));
+        let id = v
+            .get("id")
+            .filter(|i| i.as_str().is_some_and(|s| !s.is_empty()));
         let tool = str_of(v, "tool");
         let expires = v.get("expires-at").filter(|e| e.is_number());
         let (Some(call_id), Some(id), Some(tool), Some(expires)) = (call_id, id, tool, expires)
@@ -355,7 +357,9 @@ impl ClaudeAdapter {
     }
 
     fn resolved(&mut self, v: &Value) -> Vec<Out> {
-        let id = v.get("id").filter(|i| i.as_str().is_some_and(|s| !s.is_empty()));
+        let id = v
+            .get("id")
+            .filter(|i| i.as_str().is_some_and(|s| !s.is_empty()));
         let (Some(id), Some(by)) = (id, str_of(v, "by")) else {
             return vec![unknown(v.clone())];
         };
