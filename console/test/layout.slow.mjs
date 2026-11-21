@@ -55,6 +55,22 @@ try {
     console.log(`ok ${width} x ${height}`, JSON.stringify(m));
     await page.close();
   }
+  // S9-fix6: after Needs you, the asking card's header and its ask bar are both inside the transcript area.
+  for (const [width, height] of [[1440, 900], [1280, 800], [760, 900]]) {
+    const page = await browser.newPage({ viewport: { width, height } });
+    await page.goto(url);
+    await page.getByRole("button", { name: "Needs you (1)" }).click();
+    await page.waitForTimeout(800);
+    const m = await page.evaluate(() => {
+      const area = document.querySelector(".wa-scroll").getBoundingClientRect();
+      const card = document.querySelector('[data-asking="true"]');
+      const inside = (s) => { const b = card.querySelector(s).getBoundingClientRect(); return b.top >= area.top - 0.5 && b.bottom <= area.bottom + 0.5; };
+      return { head: inside(".wa-tool-head"), bar: inside(".wa-askbar") };
+    });
+    assert.deepEqual(m, { head: true, bar: true }, `asking card header and ask bar in view at ${width}x${height}`);
+    console.log(`ok needs you ${width} x ${height}`);
+    await page.close();
+  }
 } finally {
   await browser.close();
   server.close();
