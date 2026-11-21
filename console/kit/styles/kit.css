@@ -72,3 +72,10 @@
 .wa-shape[data-shape="ring"] { background: transparent; border: 2px solid var(--muted); }
 .wa-shape[data-shape="dashed-ring"] { background: transparent; border: 2px dashed var(--muted); }
 .wa-shape[data-shape="triangle"] { background: var(--danger); border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+
+/* Code blocks in an agent row (TECHNICAL 18.2, 18.4): the same size plain or highlighted, so nothing jumps when colours arrive. */
+.wa-agent .wa-code { position: relative; margin: 8px 0; padding: 8px 10px; border-radius: 9px; background: var(--wa-code); font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; white-space: pre; }
+.wa-agent .wa-code code { font: inherit; }
+.wa-code-lang { position: absolute; top: 2px; right: 8px; font-size: 10.5px; color: var(--muted); user-select: none; }
+.wa-code code span[style] { color: var(--shiki-light); }
+@media (prefers-color-scheme: dark) { .wa-code code span[style] { color: var(--shiki-dark); } }

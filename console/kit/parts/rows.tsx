@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { askArg, type Actions, type Row, type ToolCall } from "../model";
 import { AskBar } from "./askbar";
 import { DiffView } from "./diff";
+import { MessageText } from "./code";
 import { Disclosure } from "./disclosure";
 import { Pencil, Search } from "./icons";
 import { ProgramOutput } from "./output";
@@ -17,7 +18,7 @@ export function UserRow({ row }: { row: Of<"user"> }) {
 export function AgentRow({ row }: { row: Of<"agent"> }) {
   return (
     <div className="wa-agent" aria-busy={row.writing ? "true" : undefined}>
-      {row.writing && !row.text ? "Writing…" : row.text}
+      {row.writing && !row.text ? "Writing…" : <MessageText text={row.text} writing={!!row.writing} />}
     </div>
   );
 }
