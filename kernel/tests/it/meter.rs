@@ -166,11 +166,20 @@ fn ac5_few_reads() {
 fn ac6_uncharged_and_adjusted() {
     let mut m = Metered::new(mem(&[("entries/s/0", 5)]));
     m.open();
+    m.get("entries/s/0");
     m.reset_counts();
     m.delete_uncharged("entries/s/0");
     assert_eq!(m.counts().gets, 0);
     assert_eq!(m.change(), Change::default());
     assert!(m.entries().next().is_none());
+    // the meter forgets the size it saw: a new put costs its whole name and value
+    m.put("entries/s/0", vec![0; 2]).unwrap();
+    assert_eq!(m.change().owner, 13);
+    m.delete_uncharged("entries/s/0");
+    m.adjust(Change {
+        owner: -13,
+        session: -13,
+    });
     m.adjust(Change {
         owner: 5,
         session: 2,
