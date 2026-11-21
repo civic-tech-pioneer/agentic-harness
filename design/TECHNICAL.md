@@ -2032,8 +2032,9 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
   ends within 40 px of the end (`console/kit/thread.tsx`,
   `console/src/follow_S7_fix3.test.tsx`). A pointer press on the transcript's
   scrollbar or on non-focusable text inside the card is not focus leaving the
-  card and does not resume the follow (S7 RISK a; the console does not do this
-  yet, S23). Session rows do not move while the pointer is over the list.
+  card and does not resume the follow (S7 RISK a; today such a press still
+  counts as leaving, S23 builds the rule). Session rows do not move while the
+  pointer is over the list.
 - **Asks.** The bar is for an ask (`kind: "ask"`) only; a check has none.
   Allow once (primary), Allow `<reach>` this session, Deny… with a
   reason field, Cancel, and Esc in that field closing it. "Needs you" scrolls
