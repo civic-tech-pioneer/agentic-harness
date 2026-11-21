@@ -131,6 +131,7 @@ fn is_key(e: KernelError) -> bool {
 #[test]
 fn ac1_unreadable_access_allows_none_and_writes_nothing() {
     let mut k = kernel();
+    k.state.reset_counts();
     for bad in [&b"not json"[..], br#"{"p":true}"#, br#"[1]"#, br#""p""#] {
         k.state.put("access/alice", bad.to_vec()).unwrap();
         let r = k.start("alice", "k", "p", "{}", IN);
@@ -141,6 +142,17 @@ fn ac1_unreadable_access_allows_none_and_writes_nothing() {
     }
     assert!(k.state.get("key/alice/k").is_none());
     assert!(k.state.get("owner/alice/0").is_none());
+    assert_eq!(k.host.next_id, 0);
+    k.state.put("access/alice", br#"["q"]"#.to_vec()).unwrap();
+    k.state.reset_counts();
+    for who in ["alice", "carol"] {
+        let r = k.start(who, "k", "p", "{}", IN);
+        assert!(
+            matches!(&r, Err(KernelError::Refused(v)) if v.len() == 1 && v[0].field == "profile"),
+            "{r:?}"
+        );
+    }
+    assert_eq!(k.state.counts().puts, 0);
     assert_eq!(k.host.next_id, 0);
 }
 
@@ -202,6 +214,9 @@ fn ac3_a_replay_names_the_session_it_acted_on() {
         k.say("alice", &bobs, "s", IN).unwrap_err(),
         KernelError::NotOwner
     );
+    // the caller's own deleted session still replays its kept result
+    k.delete("alice", &s1).unwrap();
+    assert_eq!(k.say("alice", &s1, "s", IN).unwrap().value, n);
 }
 
 /// AC4: a push from the restart timer names its session.
