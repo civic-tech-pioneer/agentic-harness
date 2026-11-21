@@ -1211,6 +1211,10 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     (`path`) `<Tool>(<ws>/**)` when the record's `workspace` is an absolute
     path and the input's path lies under it with no empty, `.` or `..`
     segment (no `workspace` is set before stage B, so none is offered yet);
+    a `Glob` also needs a `pattern` that is a string not starting with `/`
+    or `~`, with no `\` and no `..` segment (split on `/`), since
+    `claude` searches an absolute pattern's own folder and ignores `path`
+    (adversary, S33-fix1);
     for `Bash` `Bash(<command>)`, the exact command, only when that rule
     passes the 4.1 allow grammar, the command has no `:`, and the input has
     no key but `command`, `description`, `timeout` and `run_in_background`
