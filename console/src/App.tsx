@@ -68,7 +68,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const actions: Actions = useMemo(() => ({
     answeredAsks,
     say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
-    answer: (id, d) => { const mine = openAsk(viewRef.current, id); return mine ? send(id, d, mine) : Promise.reject(new Error("no open ask")); },
+    answer: () => Promise.reject(new Error("an answer goes out only with the ask its card drew")), // fail closed: no drawn ask, no identity check
     answerDrawn: (drawn, d) => {
       const mine = openAsk(viewRef.current, drawn.id);
       // fail closed: an answer for an ask that is not the open one of its id sends and records nothing
