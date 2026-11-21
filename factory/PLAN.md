@@ -54,9 +54,7 @@ the open row stays under Recent while the pointer is over the sidebar at load; a
 bar wraps with Allow once mid-row; a story played only to a running step shows a huge clock.
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *core*. S7 follows S15.
 
-## Sketched
-
-### S19: the kernel fails closed on S14's open points (cloud, after S14 merges: same files)
+### S19: the kernel fails closed on S14's open points (in flight (cloud), routine trig_01AoUXMQeCwVABma2UGwM16y)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and every odd host item S14 found reads as
 `unknown` or `unreadable`, never as an ask or a decision.
@@ -65,6 +63,8 @@ stays open; an ask or check whose `input` is not a JSON object, or whose `expire
 non-negative whole number, is `unknown`; a joined part group whose whole is of kind `part` is
 `unreadable`. Each with a fixture; the S14 adversary's held tests stay green.
 Touches: `kernel/` only. Protects: *guard* (asks).
+
+## Sketched
 
 ### S18: spec text for S14 and S19 (cloud, after S17 merges: same files)
 
@@ -200,7 +200,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   thinking block counts once. User-sim ACCEPTED (run 1); no adversary (no code, 14 unchanged).
   Gate 15 s.
 
-- **S14** the kernel finishes the wire (PR #18, 22 min). Strict line reading (non-UTF-8 is
+- **S14** the kernel finishes the wire (PR #18, merged 2026-11-21 01:03 UTC, 22 min). Strict line reading (non-UTF-8 is
   `unknown`, bytes as `\xNN`); a duplicate top-level key is `unknown`; every line `read` or replay
   gives takes the `i` of its place, joined groups too; an ask or check without `input`, with a
   reused open id, or with a non-string id is `unknown`; a repeated thinking block is not pushed
