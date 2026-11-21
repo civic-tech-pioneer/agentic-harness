@@ -6,8 +6,7 @@ use crate::exports::watane::host::{stream_producer, stream_sink, timer_sink};
 use crate::map;
 use crate::watane::host::{caller, state, streams, timers};
 use agent_kernel::{
-    Attached, Host, Kernel, KernelError, Outcome, ProviderEvent, Request, State, StreamError,
-    TooLarge, MAX_VALUE,
+    Attached, Host, Kernel, KernelError, Outcome, Request, State, StreamError, TooLarge, MAX_VALUE,
 };
 use serde_json::Value;
 
@@ -251,7 +250,7 @@ impl stream_sink::Guest for Export {
         }
     }
     fn ended(s: String, _outcome: streams::Outcome) {
-        if let Err(e) = kernel().provider_item(&s, ProviderEvent::Ended) {
+        if let Err(e) = kernel().provider_ended(&s) {
             failed("ended", e);
         }
     }
