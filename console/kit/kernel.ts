@@ -2,6 +2,7 @@
 import { emptyView, type SessionView } from "./model";
 import { parse } from "./wire";
 import { safeReduce, settle, withUnknown } from "./reduce";
+import { joiner, partOf } from "./join";
 
 export interface Kernel {
   attach(session: string, after: number, onMessage: (json: string) => void, onEnd: (reason: string) => void):
@@ -19,6 +20,19 @@ export function decisionJson(d: { outcome: "allow" | "deny"; for?: "session"; re
 }
 
 const PAGE = 256;
+const posInt = (x: unknown): x is number => typeof x === "number" && Number.isInteger(x) && x > 0;
+
+/** The entries of pages, in index order and each index once, joined into whole entries (9.4). */
+function assemble(pages: string[][]): string[] {
+  const seen = new Map<number, string>();
+  const rest: string[] = [];
+  for (const e of pages.flat()) {
+    const m = parse(e);
+    if ("i" in m && typeof m.i === "number") seen.set(m.i, e); else rest.push(e);
+  }
+  const j = joiner();
+  return [...[...seen.entries()].sort((a, b) => a[0] - b[0]).map((x) => x[1]), ...rest].flatMap((e) => j.push(e));
+}
 const RETRY_MS = 1000;
 const MAX_DELAY_MS = 30_000;
 const MAX_TRIES = 5;
@@ -73,7 +87,17 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
     for (let tries = 0; tries < 3 && e === null && !closed; tries++) {
       if (tries) await new Promise((r) => setTimeout(r, RETRY_MS));
       if (closed) return;
-      try { e = (await kernel.read(session, n - 1, 1))[0] ?? null; } catch { e = null; }
+      try {
+        e = (await kernel.read(session, n - 1, 1))[0] ?? null;
+        // an entry stored as parts: read the whole group (9.4) and join it
+        const p = e === null ? null : partOf(e);
+        if (p && posInt(p.n) && p.n > 1 && p.n <= PAGE) {
+          const j = joiner();
+          let out: string[] = [];
+          for (const x of await kernel.read(session, n - p.n, p.n)) out = out.concat(j.push(x));
+          e = out[out.length - 1] ?? e;
+        }
+      } catch { e = null; }
     }
     if (!closed) show(settle(view, n, e));
   }
@@ -108,6 +132,13 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
         if (closed || g !== gen) return undefined;
         if (!page.length) return "the kernel returned no entries for a page it is behind on";
         let top = c;
+        // the range began inside a group: read the group's start again (9.4), once per range
+        const first = c === lo ? partOf(page[0]) : null;
+        if (first && posInt(first.n) && first.n > 1 && first.n <= PAGE) {
+          const back = await kernel.read(session, first.i - first.n, first.n);
+          if (closed || g !== gen) return undefined;
+          chunk.push(back);
+        }
         for (const e of page) { const m = parse(e); if ("i" in m && typeof m.i === "number" && m.i > top && m.i <= hi) top = m.i; }
         if (top === c) return "the kernel returned a page that adds no entry inside the range it asked for";
         chunk.push(page);
@@ -116,10 +147,10 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
       if (closed || g !== gen) return undefined;
       pages.unshift(chunk.splice(0).flat());
       hi = lo;
-      if (pages.length === 1) show(pages[0].reduce(safeReduce, base)); // the newest range shows at once; the whole is reduced once below
+      if (pages.length === 1) show(assemble(pages).reduce(safeReduce, base)); // the newest range shows at once; the whole is reduced once below
     }
     if (closed || g !== gen) return undefined;
-    show(pages.flat().reduce(safeReduce, base));
+    show(assemble(pages).reduce(safeReduce, base));
     if (view.lastIndex < through) throw new Error("the kernel's pages stop short of its own `behind`");
     return undefined;
   }
@@ -141,11 +172,12 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
       for (;;) {
         if (closed || g !== gen) return;
         view = { ...view, synced: false };
+        const join = joiner(); // replay and the live stream of this attach share it
         const r = await kernel.attach(session, view.lastIndex,
           (json) => {
             if (g !== gen || closed) return;
             const was = view.synced;
-            show(safeReduce(view, json));
+            for (const m of join.push(json)) show(safeReduce(view, m));
             if (was) tries = 0; // a live item resets the try count, not the one quick reattach
             else if (view.synced) {
               reached = true;

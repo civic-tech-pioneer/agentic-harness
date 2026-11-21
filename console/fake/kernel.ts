@@ -5,6 +5,22 @@ export interface FakeKernel extends Kernel { drop(): void; play(step?: number): 
 
 type Rec = Record<string, any>;
 
+/** 9.4: an entry's serialization cut into `part` entries at UTF-8 character boundaries, each `text` at most `size` bytes; the parts take the indexes `i-m+1 .. i`. */
+export function partsOf(entry: object, size: number): string[] {
+  const e = entry as Rec;
+  const enc = new TextEncoder();
+  const texts: string[] = [];
+  let cur = "", bytes = 0;
+  for (const ch of JSON.stringify(entry)) {
+    const b = enc.encode(ch).length;
+    if (bytes + b > size && cur) { texts.push(cur); cur = ""; bytes = 0; }
+    cur += ch; bytes += b;
+  }
+  texts.push(cur);
+  const m = texts.length;
+  return texts.map((text, k) => JSON.stringify({ v: 1, i: e.i - m + 1 + k, kind: "part", ...(e.at !== undefined ? { at: e.at } : {}), body: { n: k + 1, m, text } }));
+}
+
 /** `script` is steps of stream messages; `opts.preload` are entries (JSON) already stored. */
 export function fakeKernel(script: string[][], opts?: { preload?: string[] }): FakeKernel {
   const store: Rec[] = (opts?.preload ?? []).map((s) => JSON.parse(s));
@@ -22,7 +38,7 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[] }): F
     if (w?.type === "turn" || w?.type === "queue" || w?.type === "usage") { items[w.type] = json; return; }
     if (o.sessionUpdate === "plan") { items.plan = json; return; }
     if (w?.type === "entry") { if (w.entry.i > last()) store.push(w.entry); return; }
-    if (!o.sessionUpdate) return;
+    if (!o.sessionUpdate) { if (o.kind && o.i > last()) store.push(o); return; }
     const { i, at = 0 } = w ?? {};
     const text = o.content?.type === "text" ? (o.content.text as string) : "";
     if (o.sessionUpdate !== "agent_thought_chunk" && acc.thoughtAt !== undefined && acc.thoughtEnd === undefined) acc.thoughtEnd = at;
@@ -56,6 +72,9 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[] }): F
     calls,
     async attach(session, after, onMessage, onEnd) {
       calls.push({ name: "attach", args: [session, after] });
+      // 9.4: an `after` inside a group starts the replay at the group's first part
+      const at = store.find((e) => e.i > after);
+      if (at?.kind === "part" && at.body.n > 1) after = at.i - at.body.n;
       const entries = store.filter((e) => e.i > after);
       if (entries.length > 128) return { behind: last() };
       stream?.onEnd("replaced");
