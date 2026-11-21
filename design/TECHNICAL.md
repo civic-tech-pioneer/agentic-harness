@@ -748,9 +748,11 @@ wire") are this JSON; the entry has no `activity`.
     a call that starts below a cap may end over it by its own writes (at most
     one input and what it records); the next call finds it past. No call
     takes the account past 256 MiB: one that would fails `quota` and, as
-    every failed call, commits nothing (7). The one exception is a firing of
-    the restart pass, which cannot fail: what its step wrote, even a step that
-    failed, is charged to both accounts and the record's `bytes`.
+    every failed call, commits nothing (7). The exceptions are a firing of
+    the restart pass and a provider stream's `ended` (whose writes are
+    bounded as R4's: at most 64 decisions and one `turn` entry), which cannot
+    fail: what they wrote, even a restart step that failed, is charged to both
+    accounts and the record's `bytes`.
   - *Refused `quota` when past:* `start`, `say` (whether it starts a turn or
     queues), an `interrupt` replacement, `rename`, an `answer` with `for:
     session`. Not refused: `answer` without `for: session`, `interrupt`

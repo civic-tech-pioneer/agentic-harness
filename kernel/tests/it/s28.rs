@@ -262,3 +262,85 @@ fn ac3_the_past_flag_is_per_call() {
     assert_eq!(messages_of(&mut k, "alice", &a), na, "alice's was stored");
     assert_eq!(messages_of(&mut k, "bob", &b), nb + 1, "bob's was dropped");
 }
+
+/// Every stored byte the accounts meter (the record, owner and per-session key kinds); with
+/// `session` only the per-session kinds, which are the record's `bytes`.
+fn held(k: &K, session: bool) -> i64 {
+    k.state
+        .entries()
+        .filter(|(key, _)| {
+            let head = key.split('/').next().unwrap_or_default();
+            let kinds: &[&str] = if session {
+                &["queue", "entries", "wire", "loop", "stream", "live"]
+            } else {
+                &[
+                    "session", "queue", "entries", "wire", "loop", "stream", "live", "key", "owner",
+                ]
+            };
+            kinds.contains(&head)
+        })
+        .map(|(key, v)| (key.len() + v.len()) as i64)
+        .sum()
+}
+
+fn decisions(k: &mut K, id: &str) -> usize {
+    entries(k, id)
+        .iter()
+        .filter(|e| e["kind"] == "ask" && e["body"]["decision"].is_object())
+        .count()
+}
+
+/// S28-fix1 AC2: at the ceiling the `ended` still takes effect and is charged, past it.
+#[test]
+fn ac2_ended_at_the_ceiling_closes_the_asks_and_charges_what_it_wrote() {
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.provider_item("t1", ask("a1")).unwrap();
+    k.provider_item("t1", ask("a2")).unwrap();
+    k.answer("alice", &id, "ans1", "a2", r#"{"allow":true}"#)
+        .unwrap();
+    let r = rec(&mut k, &id);
+    assert!(matches!(r.turn, Turn::Waiting { .. }));
+    assert_eq!((r.open.len(), r.pending_answers.len()), (1, 1));
+    k.limits.account_bytes = Usage::load(&mut k.state, "quota").bytes;
+    k.limits.reserve_bytes = 0;
+    let (o0, a0, b0, h0, s0) = (
+        Usage::load(&mut k.state, "quota/alice").bytes as i64,
+        Usage::load(&mut k.state, "quota").bytes as i64,
+        rec(&mut k, &id).bytes as i64,
+        held(&k, false),
+        held(&k, true),
+    );
+    let (d0, t0) = (decisions(&mut k, &id), turns(&mut k, &id));
+    k.provider_item("t1", ProviderEvent::Ended).unwrap();
+    let r = rec(&mut k, &id);
+    assert_eq!(r.turn, failed());
+    assert!(r.open.is_empty() && r.pending_answers.is_empty());
+    assert_eq!(decisions(&mut k, &id), d0 + 2);
+    assert_eq!(turns(&mut k, &id), t0 + 1);
+    assert!(k.state.get("stream/t1").is_none());
+    assert_eq!(Slots::load(&mut k.state).provider, 0);
+    let wrote = held(&k, false) - h0;
+    assert!(wrote > 0);
+    assert_eq!(
+        Usage::load(&mut k.state, "quota/alice").bytes as i64 - o0,
+        wrote
+    );
+    assert_eq!(Usage::load(&mut k.state, "quota").bytes as i64 - a0, wrote);
+    assert_eq!(r.bytes as i64 - b0, held(&k, true) - s0);
+}
+
+/// S28-fix1 AC3: `ended` changes no `paused` turn.
+#[test]
+fn ac3_ended_leaves_a_paused_turn() {
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    let mut r = rec(&mut k, &id);
+    r.turn = Turn::Paused { until: None };
+    r.save(&mut k.state).unwrap();
+    let n = turns(&mut k, &id);
+    k.provider_item("t1", ProviderEvent::Ended).unwrap();
+    assert_eq!(rec(&mut k, &id).turn, Turn::Paused { until: None });
+    assert_eq!(turns(&mut k, &id), n);
+    assert!(k.state.get("stream/t1").is_none());
+}

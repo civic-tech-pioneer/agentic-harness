@@ -775,6 +775,16 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// both accounts take the change in the charged bytes, each written once and only when it changed.
     /// A call that would take the account past the reserve fails `quota` (the host commits nothing, 7).
     fn finish(&mut self, rec: Option<&mut Record>, a: &mut Acct) -> Result<(), KernelError> {
+        self.finish_as(rec, a, false)
+    }
+
+    /// `finish`; `cannot_fail` is a call 9.3 lets past the ceiling (it charges what it wrote).
+    fn finish_as(
+        &mut self,
+        rec: Option<&mut Record>,
+        a: &mut Acct,
+        cannot_fail: bool,
+    ) -> Result<(), KernelError> {
         if let Some(rec) = rec {
             self.seal(rec)?;
         }
@@ -785,7 +795,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .limits
             .account_bytes
             .saturating_add(self.limits.reserve_bytes);
-        if c.owner > 0 && a.account.bytes > ceiling {
+        if !cannot_fail && c.owner > 0 && a.account.bytes > ceiling {
             return Err(KernelError::Quota(ACCOUNT_CAUSE.to_string()));
         }
         self.save_accounts(a)
@@ -2341,7 +2351,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             ProviderEvent::Turn(t) => self.change_turn(&mut rec, past, t, now, &mut work)?,
             ProviderEvent::Ended => {
                 self.close_all_with(&mut rec, past, "ended", now, &mut work, false)?;
-                if rec.turn.is_active() {
+                if matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. }) {
                     let failed = Turn::Idle {
                         stop: Stop::Failed {
                             error: "provider-ended".into(),
@@ -2408,7 +2418,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if changed {
             rec.updated = now;
         }
-        self.finish(changed.then_some(&mut rec), &mut acct)?;
+        // A stream's `ended` cannot fail on quota (9.3 "Past"): its writes are bounded (R4).
+        self.finish_as(changed.then_some(&mut rec), &mut acct, ended.is_some())?;
         work.live = rec.live.clone();
         Ok(work)
     }
