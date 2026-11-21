@@ -27,27 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S21: sessions, turns and the active index on the in-memory state (in flight (cloud), routine trig_013z6HkuQwsoLGpkNY4ZQhno)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and drives sessions through 9.3 on the
-in-memory host-7 state of S11, with a fake `caller.boot()`: create, turn changes, queue, the
-active index and the restart pass, each call doing bounded work.
-Outcomes:
-1. The session record of 9.3 with its caps (`key` 256 B, `title` 256 B, `allows`, `chunks`,
-   `streams`, `deadlines`; record at most 512 KiB), the turn JSON of each state, `turn` entries.
-2. The queue (`queue/<id>`): 32 inputs, 2 MiB, 256 KiB per input; `queued`, `unqueue`
-   (`unknown-input`); the `{"type":"queue"}` push as a value the caller returns.
-3. The active index (A2, A3): moves in and out of running, waiting, paused write one page and
-   `slots`; a change among them writes none; at 1 024 sessions `start`/`say` is refused `busy`.
-4. Restart (R1-R6) with a fake boot number: detection, the pass in at most `A + 1` calls, one
-   session each, Claude outcomes (asks denied `restart`, turn `unknown`, `paused` unchanged),
-   R5 (`say` on `unknown` resumes), R6 (a call on a stale record steps it first); cases 67, 68,
-   69 and 71 as kernel tests. OpenAI outcomes (case 70) wait for stage D.
-5. Keys (`key/<owner>/<key>`): a call that changes nothing is not kept (9.1).
-Touches: `kernel/` only. Fakes: the host state (S11's), `caller.boot()`, timers as recorded
-calls. Leaves out: streams and providers, the broker (9.6), quotas beyond counting, OpenAI (9.5).
-Protects: *core* (*guard* for keys and caps).
-
 ### S7: the console stays fast on a long session (in flight (cloud), routine trig_01QKd2ZG4iQvqxnAxHagNAqc)
 
 Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
@@ -63,9 +42,21 @@ ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live b
 after the restart's `unknown` turn the console shows it as ended, not running.
 Touches: `console/`, `ui/`. Protects: *core*.
 
+### S24: spec debts from S21 (in flight (cloud), routine trig_01JAvSsKP7Wum47AMVVYG2nR)
+
+Outcomes (PR #25, "Decisions" and "For the PO"): 9.3's field list gains `open: [{id, kind, i,
+expires-at?}]`; 9.1 says `active/<n>` is a JSON array of `[id, boot]` pairs and `access/<identity>`
+a JSON array of profile names (absent or unreadable allows none); 9.3 Sizes: the queue's 2 MiB
+counts stored bytes (the input as a JSON string), and an emptied queue keeps its `next`; one
+`owner/<owner>/0` page until quotas (a 257th session of one owner is `quota`), or more pages named;
+a profile without `model` is checked as `"default"`; `access/` beyond `start`: subagent profiles
+(9.7) and revoking access while a session runs (fail closed); R4's idle Claude row and its resume
+owed to the streams slice. Touches: `design/TECHNICAL.md`. Not `kernel/` (S20). Protects: *guard*
+(access) and *core*.
+
 ## Sketched
 
-### S20: asks as the kernel records and shows them (cloud, after S21 and S22 merge: same files)
+### S20: asks as the kernel records and shows them (cloud, after S21 and S24 merge: kernel/ and TECHNICAL)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and asks are recorded and shaped as the spec
 says, with the spec fixed alongside.
@@ -82,7 +73,10 @@ Outcomes:
    different `tool` or `input` is `unknown` (9.8), or the spec says why the console's handling is
    enough; decide in the slice, failing closed.
 4. Spec: 9.4 "Code to change" drops the ten console bullets S15 built; 9.8 gains 2 and 3.
-5. Polish: the refusal text of a bad `append` kind (`kind (, ): ...`) gets its field and reason.
+5. On S21's code (`kernel/src/sessions.rs`): S21 writes the owner's decision at `answer` and closes
+   open asks at restart only for `running` and `waiting`; S22's D1-D5 replace both. `.gitignore`
+   gains `kernel/target*` (a validator committed a 550 MB `kernel/target-base`).
+   Polish: the refusal text of a bad `append` kind (`kind (, ): ...`) gets its field and reason.
 6. S22 RISK 1 (PO decision): at most 64 open Claude asks and checks per session; one past that is
    denied at once (`by: kernel`, reason `busy`), so `cancel`, R4 and `ended` write at most 64
    decisions in one call; spec in 9.3/9.6 with a case. Also S22's wording: R4's Claude row and
@@ -254,6 +248,14 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   the host closes a check with `expired` too (watane, 15); `ended` closes every open or pending
   ask; `pending-answers` capped at 64; a forging checked provider named in 14 (record only);
   case 73. User-sim ACCEPTED (run 1); adversary HELD twice (RISKs 1-5 fixed in S22-fix1).
+
+- **S21** sessions, turns, the active index and the restart pass (PR #25, 46 min). A kernel maker
+  drives sessions through 9.3 on `MemState` with a `FakeHost` (`caller.boot()`, timers, provider
+  requests as recorded calls): start, say, queue, unqueue, answer, rename, delete, list; the
+  active index; the restart pass, each call bounded; cases 67, 68, 69 (Claude), 71. `start`
+  checks `access/<identity>`, failing closed. User-sim ACCEPTED on run 2 (Continue with a full
+  queue); adversary BREACHED 2 (queue bytes counted before escaping; `start` ignored `access/`),
+  fixed, HELD twice. Implementer runs 1 each of 7. Kernel 179 tests in 3.18 s; gate 22 s.
 
 ## Deputy decisions
 
@@ -451,6 +453,11 @@ S2 writes each into the document that owns it.
 - 2026-11-21 S9: every console task rebuilds the committed `ui/`, so parallel tasks always conflict
   there on rebase; and fix tasks for the user-sim reopened adversary breaches twice (a brief that
   changes the ask card should list the adversary's held cases as acceptance).
+
+- 2026-11-21 S21: a validator committed a 550 MB build copy (`kernel/target-base`); the foreman
+  force-pushed it away. The validator's instructions (factory) or `.gitignore` should stop it.
+  Parallel kernel tasks all edit `tests/it/main.rs` and `error.rs`: trivial rebase conflicts.
+  User-sim and adversary red tests should pass clippy themselves.
 
 ## Suite time
 
