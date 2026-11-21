@@ -6,7 +6,9 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const BUDGET_S = 8.6;
+// Foreman decision (S7-fix5): the sketch requires the large-transcript fixture with its limits in `npm test`, so the budget is 20% over main
+// measured the same way (README "Time and value"): 9.2 s x 1.2 = 11.0 s, not the 8.6 s of the first red.
+const BUDGET_S = 11.0;
 const root = fileURLToPath(new URL("..", import.meta.url));
 const t = Date.now();
 const r = spawnSync(process.execPath, [root + "node_modules/vitest/vitest.mjs", "run"], { cwd: root, encoding: "utf8" });
