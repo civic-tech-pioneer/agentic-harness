@@ -505,6 +505,9 @@ fn diffs_of(tool: &str, input: &Value) -> Option<Vec<ToolCallContent>> {
             .as_array()?
             .iter()
             .map(|e| {
+                if e.get("replace_all") == Some(&Value::Bool(true)) {
+                    return None;
+                }
                 Some(diff(
                     Some(str_of(e, "old_string")?),
                     str_of(e, "new_string")?,

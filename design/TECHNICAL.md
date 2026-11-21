@@ -636,7 +636,7 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 | `streams` | 10 ids | – (the slots of 9.5 allow no more; an owner stream that `attach` replaces leaves `streams` in that `attach`, not at its `ended`) |
 | `deadlines` | 64 | – (an open ask past the 61st is denied `timers`, below) |
 | `open` | one per open ask or check, with `{id, kind, i, toolCallId, expires-at?}`. An ask with a kernel deadline (the OpenAI loop's, `ask-expiry`) is bounded by `deadlines` (a 62nd is denied `timers`); a Claude ask or check takes no kernel deadline. At most 64 open asks and checks, the pending answers counted in (`open` + `pending-answers` <= 64); past it the ask is denied at once, `by: kernel`, reason `busy`, its ask and decision entries written in that call and a `Request::Answer` deny sent, so `cancel`, R4 and `ended` write at most 64 decisions in one call | – |
-| `pending-answers` | 64 (one per Claude ask the kernel answered that the host has not closed), each at most 1 KiB without `input` (the decision's input is bounded by the 256 KiB entry rule and parts, 9.4) | the kernel sends no further answer to a Claude ask of the session until one closes: the owner's `answer` is refused `busy` (2.3), and a session allow or the "no owner stream" deny leaves the ask open for the host to close at its `expires-at` (4.5) |
+| `pending-answers` | 64 (one per Claude ask the kernel answered that the host has not closed), each at most 1 KiB without `input` (the decision's input is bounded by the record's 512 KiB: a pending allow that would push the record past 512 KiB is refused `too-large(524288)` and writes nothing) | the kernel sends no further answer to a Claude ask of the session until one closes: the owner's `answer` is refused `busy` (2.3), and a session allow or the "no owner stream" deny leaves the ask open for the host to close at its `expires-at` (4.5) |
 
 | Turn state | Meaning |
 |---|---|
@@ -1255,7 +1255,7 @@ The `toolCall` carries ACP `kind` from `tool`: `Read` `read`; `Edit`,
 `input`: `Edit` one (`path` `file_path`, `oldText` `old_string`, `newText`
 `new_string`), `Write` one with `newText` the `content` and no `oldText`,
 `MultiEdit` one per `edits` item, in order. A field missing or not a string
-gives no `content`, and an `Edit` with `replace_all: true` has none (a diff would understate what runs; the card shows `rawInput`); the ask is still an ask. Both are built from the item's
+gives no `content`, and an `Edit`, or a `MultiEdit` with any edit `replace_all: true`, has none (a diff would understate what runs; the card shows `rawInput`); the ask is still an ask. Both are built from the item's
 `input` only.
 
 A `check` is the checked provider's to answer (10); its `none` means "no
