@@ -676,7 +676,8 @@ wire") are this JSON; the entry has no `activity`.
   (`unknown-input`) one that is gone. Each change pushes `{"type":"queue",
   "inputs":[…]}` under `_meta.watane`.
 - `interrupt` ends the turn (`idle {interrupted}`), then starts the
-  replacement if given (a replacement reads `access/` again, 9.7, "Revoking"). `cancel` ends the session's stream and handle, closes
+  replacement if given (a replacement reads `access/` again, 9.7, "Revoking";
+  on `unknown` it resumes as R5). `cancel` ends the session's stream and handle, closes
   each open ask or check (one with a pending answer gets that answer as its decision,
   9.8 rule 4; an open one is denied, `by: kernel`), cancels children. `delete` cancels, removes the entries,
   the queue (`queue/<id>`) and wire history, keeps the keys.
