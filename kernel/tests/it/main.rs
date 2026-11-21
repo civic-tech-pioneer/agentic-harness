@@ -14,6 +14,7 @@ mod record;
 mod refuse;
 mod regress_s14;
 mod runners;
+mod sessions;
 mod transcript;
 
 use agent_kernel::{parse_profile, Problem, Profile};
