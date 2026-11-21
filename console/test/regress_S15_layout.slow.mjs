@@ -76,6 +76,14 @@ try {
     assert.ok(last.right >= m.bar.right - 20, `${width}: Allow once at the bar's right end`);
     if (width >= 1280) assert.ok(m.bar.height < 70 && m.btns.every((b) => Math.abs(b.top - last.top) < 4), `${width}: the bar is one row`);
     assert.ok(m.sw <= m.iw, `${width}: no horizontal scroll`);
+    // The pill itself, focused after a pointer click, draws no ring; reached by Tab, it does (:focus-visible).
+    await pill.evaluate((e) => e.focus());
+    const mouse = await pill.evaluate((e) => [e.matches(":focus"), e.matches(":focus-visible"), getComputedStyle(e).outlineStyle, getComputedStyle(e).boxShadow]);
+    assert.deepEqual(mouse, [true, false, "none", "none"], `${width}: pill focused after a click draws no ring`);
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    const key = await pill.evaluate((e) => [e.matches(":focus-visible"), getComputedStyle(e).outlineStyle]);
+    assert.deepEqual(key, [true, "solid"], `${width}: pill reached by Tab shows its ring`);
     console.log(`ok ${width}x${height}`, JSON.stringify(m.btns.map((b) => [b.t, Math.round(b.left), Math.round(b.top)])));
     await page.close();
   }

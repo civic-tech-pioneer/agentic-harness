@@ -59,7 +59,6 @@ button {
 }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.wa-needs:focus:not(:focus-visible) { outline: none; box-shadow: none; }
 /* Focus put on Allow once by "Needs you" is programmatic after a pointer click, so :focus-visible would not match: show its ring on :focus. */
 [data-ask-first]:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .wa-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
