@@ -25,7 +25,7 @@ fn ac1_reach_of_file_tools() {
         Some("NotebookEdit(/w/**)")
     );
     assert_eq!(
-        r(ws, "Glob", json!({"path": "/w/src"})).as_deref(),
+        r(ws, "Glob", json!({"path": "/w/src", "pattern": "*"})).as_deref(),
         Some("Glob(/w/**)")
     );
     assert_eq!(
@@ -514,4 +514,23 @@ fn ac5_web_fetch_and_task_asks_store_no_reach_and_refuse_for_session() {
         k.answer("alice", &id, "k2", &a, r#"{"allow":true}"#)
             .unwrap();
     }
+}
+
+#[test]
+fn ac2_glob_pattern_must_stay_relative() {
+    let g = |p: serde_json::Value| {
+        let mut i = json!({"path": "/w/src"});
+        if !p.is_null() {
+            i["pattern"] = p;
+        }
+        r(Some("/w"), "Glob", i)
+    };
+    for ok in ["*.rs", "src/**/*.ts", "a/b"] {
+        assert_eq!(g(json!(ok)).as_deref(), Some("Glob(/w/**)"), "{ok}");
+    }
+    for bad in ["/etc/*", "~/x", "~", "../x", "a/../../x", "..", "a\\b"] {
+        assert_eq!(g(json!(bad)), None, "{bad}");
+    }
+    assert_eq!(g(json!(5)), None);
+    assert_eq!(g(serde_json::Value::Null), None);
 }
