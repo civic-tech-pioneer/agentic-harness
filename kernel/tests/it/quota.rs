@@ -119,7 +119,13 @@ fn entry_lines(k: &mut K, id: &str) -> Vec<Value> {
 
 /// Puts a session key the kernel does not write yet (`stream/`, `live/`) and charges it as a call would.
 fn forge(k: &mut K, owner: &str, id: &str, key: &str, len: usize) {
-    k.state.put(key, vec![b'x'; len]).unwrap();
+    forge_value(k, owner, id, key, vec![b'x'; len]);
+}
+
+/// `forge` with the value given; the key must be new.
+fn forge_value(k: &mut K, owner: &str, id: &str, key: &str, value: Vec<u8>) {
+    let len = value.len();
+    k.state.put(key, value).unwrap();
     let mut n = (key.len() + len) as i64;
     let mut r = rec(k, id);
     let was = k.state.get(&format!("session/{id}")).unwrap().len() as i64;
@@ -767,4 +773,66 @@ fn ac11_the_bounds_hold() {
     let keys = sorted(&k);
     assert_eq!(keys.iter().filter(|x| *x == "quota").count(), 1);
     assert_eq!(keys.iter().filter(|x| *x == "quota/alice").count(), 1);
+}
+
+#[test]
+fn validator_delete_frees_the_stream_and_live_keys() {
+    let mut k = kernel();
+    let a1 = start(&mut k, "alice", "k1");
+    forge(&mut k, "alice", &a1, "stream/x1", 3);
+    forge(&mut k, "alice", &a1, &format!("live/{a1}"), 4);
+    check(&k);
+    k.delete("alice", &a1).unwrap();
+    assert!(dump(&k)
+        .keys()
+        .all(|x| !x.starts_with("stream/") && !x.starts_with("live/")));
+    check(&k);
+}
+
+#[test]
+fn validator_a_failed_step_in_a_firing_keeps_the_accounts_exact() {
+    let mut k = kernel();
+    let s1 = start(&mut k, "alice", "k1");
+    k.provider(&s1, ask("a1")).unwrap();
+    // at the chunk cap, the last chunk with room for one entry: the step's decision is written,
+    // its `turn` entry is refused `quota`
+    let was = k.state.get(&format!("session/{s1}")).unwrap().len() as u64;
+    let mut r = rec(&mut k, &s1);
+    // chunk 0 keeps the ask; the others start past it
+    let more = agent_kernel::transcript::MAX_CHUNKS as u64 - 1;
+    r.chunks = std::iter::once(0).chain(1000..1000 + more).collect();
+    r.save(&mut k.state).unwrap();
+    let mut u = usage(&mut k, "quota/alice");
+    let mut a = usage(&mut k, "quota");
+    let grew = k.state.get(&format!("session/{s1}")).unwrap().len() as u64 - was;
+    u.bytes += grew;
+    a.bytes += grew;
+    u.save(&mut k.state, "quota/alice").unwrap();
+    a.save(&mut k.state, "quota").unwrap();
+    let last = format!("entries/{s1}/{}", agent_kernel::transcript::MAX_CHUNKS - 1);
+    let lines = vec!["{}"; agent_kernel::transcript::CHUNK_ENTRIES - 1].join("\n");
+    forge_value(&mut k, "alice", &s1, &last, lines.clone().into_bytes());
+    check(&k);
+    k.host.boot = 2;
+    k.list("alice", None, 1).unwrap();
+    k.timer("restart");
+    assert!(
+        k.state.get(&last).unwrap().len() > lines.len(),
+        "the decision was written"
+    );
+    assert_eq!(rec(&mut k, &s1).boot, 1, "the step failed");
+    check(&k);
+}
+
+#[test]
+fn validator_a_firing_past_the_reserve_still_charges_its_step() {
+    let mut k = kernel();
+    let s1 = start(&mut k, "alice", "k1");
+    k.limits.account_bytes = usage(&mut k, "quota").bytes;
+    k.limits.reserve_bytes = 0;
+    k.host.boot = 2;
+    k.list("alice", None, 1).unwrap();
+    k.timer("restart");
+    assert_eq!(rec(&mut k, &s1).turn, Turn::Unknown);
+    check(&k);
 }
