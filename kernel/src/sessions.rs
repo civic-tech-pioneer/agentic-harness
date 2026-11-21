@@ -374,6 +374,15 @@ fn wire_update(mut update: Value, at: u64, i: Option<u64>) -> Value {
     update
 }
 
+/// A push as it goes on the owner stream (9.4 "The wire"): an ACP update as it is, the kernel's
+/// own items (`turn`, `queue`) under `_meta.watane`.
+fn on_wire(v: &Value) -> Value {
+    if v.get("sessionUpdate").is_some() {
+        return v.clone();
+    }
+    json!({"_meta": {"watane": v}})
+}
+
 fn turn_push(t: &Turn) -> Value {
     json!({"type": "turn", "state": t.to_json()})
 }
@@ -1288,7 +1297,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         pushes
             .iter()
-            .any(|p| self.host.push(o, p.value.clone()).is_err())
+            .any(|p| self.host.push(o, on_wire(&p.value)).is_err())
     }
 
     /// Outside an item call a full owner stream cannot be waited for: it is closed `lagging` (9.4).
@@ -2130,9 +2139,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                 break;
             }
         }
+        // The restart step's requests, when it ran, leave after the last write (7).
         Ok(Called {
             value: Attached::Live { stream: o },
-            pushes: work.pushes,
+            pushes: self.flush(work, None),
         })
     }
 

@@ -241,10 +241,15 @@ fn ac3_every_push_of_a_call_goes_to_the_live_stream_in_order() {
     let c = k.say("alice", &id, "q2", "more").unwrap();
     assert!(!c.pushes.is_empty());
     let sent = pushed(&k, &o);
+    // the kernel's own items go under `_meta.watane` on the wire, as in the replay
     assert_eq!(
         sent[before..].to_vec(),
-        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>()
+        c.pushes
+            .iter()
+            .map(|p| json!({"_meta": {"watane": p.value}}))
+            .collect::<Vec<_>>()
     );
+    assert!(sent[before..].iter().any(|v| watane(v)["type"] == "queue"));
     // a provider update: pushed with `at`; `i` when it finishes an entry
     k.host.now = 2000;
     let c = k
@@ -263,7 +268,11 @@ fn ac3_every_push_of_a_call_goes_to_the_live_stream_in_order() {
     // the timer's pushes too
     let sent = pushed(&k, &o).len();
     k.provider_item("t1", idle()).unwrap();
-    assert!(pushed(&k, &o).len() > sent);
+    let new = pushed(&k, &o)[sent..].to_vec();
+    assert!(
+        new.iter().any(|v| watane(v)["type"] == "turn"),
+        "a turn item, under `_meta.watane`: {new:?}"
+    );
 }
 
 #[test]
@@ -554,4 +563,23 @@ fn held_writes_are_seen_by_reads_and_dropped_or_applied_whole() {
     m.hold();
     assert!(m.put("c", vec![0; MAX_VALUE + 1]).is_err());
     m.discard();
+}
+
+#[test]
+fn ac1_attach_charges_both_keys_and_writes_past_the_quota() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    let owner0 = Usage::load(&mut k.state, &Usage::owner_key("alice")).bytes;
+    let rec0 = rec(&mut k, &id).bytes;
+    k.limits.owner_bytes = owner0;
+    let o = attach(&mut k, &id, 0);
+    let cost = (format!("stream/{o}").len()
+        + k.state.get(&format!("stream/{o}")).unwrap().len()
+        + format!("live/{id}").len()
+        + o.len()) as u64;
+    let r = rec(&mut k, &id);
+    let owner = Usage::load(&mut k.state, &Usage::owner_key("alice")).bytes;
+    assert!(owner - owner0 >= cost, "{owner} - {owner0} < {cost}");
+    assert!(r.bytes - rec0 >= cost);
+    assert_eq!(owner, Usage::load(&mut k.state, "quota").bytes);
 }
