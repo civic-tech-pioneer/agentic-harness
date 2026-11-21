@@ -414,7 +414,7 @@ fn ac1_a_decided_ask_past_is_stored_with_a_bounded_decision() {
         let mut keys: Vec<&String> = d.keys().collect();
         keys.sort();
         assert_eq!(keys, ["by", "outcome", "reason"]);
-        assert_eq!(d["reason"], json!(format!("{}", "x".repeat(255))));
+        assert_eq!(d["reason"], json!("x".repeat(255)));
         assert!(ds[0].to_string().len() < 1024);
     }
 }
