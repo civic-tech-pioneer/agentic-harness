@@ -502,27 +502,30 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// Whether a turn this call starts opens a provider stream (and then whether it resumes the
     /// Claude session), refusing `busy` before any write (9.5, R5). A live stream is used as it
-    /// is. Otherwise a Claude session resumes unless its turn is `resume-lost` or its profile
-    /// sets `persist: false`; `unknown` always resumes (R5).
+    /// is, resuming only on `unknown` (R5). A turn that opens one, or an `unknown` one, resumes
+    /// unless its turn is `resume-lost` or its profile sets `persist: false` (nothing was kept).
     fn plan_turn(
         &mut self,
         rec: &Record,
         slots: &Slots,
         a: &Acct,
     ) -> Result<(bool, bool), KernelError> {
-        let unknown = rec.turn == Turn::Unknown;
-        if rec.backend != "claude" || self.live_provider(rec).is_some() {
-            return Ok((false, unknown));
+        let open = rec.backend == "claude" && self.live_provider(rec).is_none();
+        if !open && rec.turn != Turn::Unknown {
+            return Ok((false, false));
         }
-        self.check_provider(slots, a)?;
-        let resume = unknown
-            || (rec.turn != Turn::ResumeLost
-                && self
-                    .state
-                    .get(&format!("profile/{}", rec.profile))
-                    .map(|b| String::from_utf8_lossy(&b).into_owned())
-                    .is_none_or(|j| parse_profile(&j).0.persist != Some(false)));
-        Ok((true, resume))
+        if open {
+            // Every refusal comes before the host opens the stream.
+            rec.stream_room()?;
+            self.check_provider(slots, a)?;
+        }
+        let resume = rec.turn != Turn::ResumeLost
+            && self
+                .state
+                .get(&format!("profile/{}", rec.profile))
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+                .is_none_or(|j| parse_profile(&j).0.persist != Some(false));
+        Ok((open, resume))
     }
 
     /// The end of a call that writes: the record (when given) takes the change in its session keys,

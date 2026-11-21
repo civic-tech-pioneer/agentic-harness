@@ -380,6 +380,13 @@ fn ac6_persist_false_and_resume_lost_start_fresh_and_unknown_resumes() {
     k.host.boot = 2;
     k.say("alice", &id, "s1", "x").unwrap();
     assert!(last_resume(&k));
+    // unknown with `persist: false`: nothing to resume, a fresh session
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "np", "{}", IN).unwrap().value;
+    k.host.boot = 2;
+    k.say("alice", &id, "s1", "x").unwrap();
+    assert_eq!(rec(&mut k, &id).streams, ["t2"]);
+    assert!(!last_resume(&k));
 }
 
 #[test]

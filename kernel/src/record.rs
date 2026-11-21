@@ -293,10 +293,16 @@ impl Record {
     }
 
     pub fn add_stream(&mut self, id: String) -> Result<(), KernelError> {
+        self.stream_room()?;
+        self.streams.push(id);
+        Ok(())
+    }
+
+    /// Refuses `busy` when the session holds all its streams.
+    pub fn stream_room(&self) -> Result<(), KernelError> {
         if self.streams.len() >= STREAMS {
             return Err(KernelError::Busy(format!("{STREAMS} streams per session")));
         }
-        self.streams.push(id);
         Ok(())
     }
 
