@@ -114,7 +114,14 @@ interface timer-sink { fired: func(id: string); }    // host-only export
 
 // in the existing interface caller:
 identity: func() -> string;   // <publisher>/<slug>, local/<slug>, page, or agent:<handle-name>
+boot: func() -> u64;          // the host's start number (rule B1)
 ```
+
+**B1.** `caller.boot()` is the host's start number: raised once each time the
+host starts, kept in host state, the same for every call until the next start.
+It is a pure read: not a request (below), no grant. The kernel cannot tell a
+restart from its own state, so it compares this number with the one it keeps
+(9.3, "Restart").
 
 Every function with an outside effect is a request (7): `claude-code.start`,
 `claude-code-shell.start`, `https-stream.start`, `agent-tools.open`,
@@ -196,7 +203,7 @@ the `id` of the ask entry (9.4; the ask id of the deadlines in 9.3), never the
 tool call id. A check (`kind: "check"`, 9.4) is answered only by the checked
 provider (10); the owner's `answer` to it is refused, `{field: "ask"}`.
 `allow` in `take-back` is the id of an `allow`
-entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5); its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
+entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5), or the active index is full at 1 024 sessions (9.3, A3); its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
 
 ## 3. Streams (H1)
 
@@ -547,11 +554,12 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `entries/<id>/<n>` | chunk n of the transcript: at most 256 entries and at most 64 KiB, or exactly one entry when that entry is over 64 KiB (an entry is at most 256 KiB, 9.4); an append that would take the last chunk past 64 KiB starts a new chunk, so an append rewrites at most 64 KiB plus the entry and earlier chunks are never rewritten; the session record's `chunks` lists the first index of each, so a read starts at the right chunk without reading the ones before |
 | `wire/<id>/<n>` | chunk n of the OpenAI wire history; the loop state's `wire-chunks` (in `loop/<id>`) lists the first wire index of each, so a request finds the chunk holding `active` (9.5) and reads none before it |
 | `loop/<id>` | the OpenAI loop state (9.5), with `active` and `wire-chunks` |
-| `quota/<owner>` | the owner's bytes and session count, the bytes counting every key the owner causes (9.3); its live session timers (9.3) and its slot counts per kind (9.5), the slot counts tagged with the boot number of `slots` (9.4): counts of an older boot read as zero, so the restart pass need not find every owner |
+| `quota/<owner>` | the owner's bytes and session count, the bytes counting every key the owner causes (9.3); its live session timers (9.3) and its slot counts per kind (9.5), the slot counts tagged with the boot number of `slots` (9.3): counts of an older boot read as zero, so the restart pass need not find every owner |
 | `quota` | the kernel-wide account: bytes and sessions of all owners (9.3) |
 | `stream/<id>` | `{session, kind}` (`kind`: `provider`, `request`, `job`, `owner`), written in the call that opens or receives the stream, deleted on its `ended` (9.4) |
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
-| `slots` | `{provider, request, job: counts; timers; boot; head, tail}`: the stream slots in use, the live session timers (9.3), the boot number (9.4) and the ends of the waiting FIFO (9.5) |
+| `active/<n>`, n 0..3 | A1: page n of the sessions whose turn is `running`, `waiting` or `paused`, each entry `{id, boot}` (`boot`: the boot number of the session's last restart step, or of the call that added it). At most 256 entries per page, so at most 1 024 listed sessions; a page is at most 24 KiB (a session id is at most 64 bytes). The record's `active-page` names the page that holds the session while it is listed. Kept by every turn change that enters or leaves the index (9.3, A2); it is what the restart pass reads in place of a prefix scan |
+| `slots` | `{provider, request, job: counts; timers; boot; active: four page counts; restart: the pass's page cursor; head, tail}`: the stream slots in use, the live session timers (9.3), the boot number (9.3), the entries of each `active/` page, the page where the restart pass goes on, and the ends of the waiting FIFO (9.5) |
 | `slots/wait/<n>` | a session id waiting for a slot (9.5) |
 
 ### 9.2 Profiles and overlays
@@ -595,6 +603,7 @@ once; `check` runs only this step.
 
 Session record: `id`, `owner`, `key`, `profile`, `backend`, `title`,
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
+`boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
 (session allows, 9.6), `counters {turns, tool-errors-in-a-row, tokens}`,
 `chunks` (the first index of each entry chunk, 9.1), `streams` (the ids of the session's open streams, at most 10: 1 provider or 1 request, 8 jobs, 1 owner; 9.4, 9.5), `deadlines` (each `{what, at}`, at most 64; below), `next-index`, `created`, `updated`. The queue is not in the record: it lives
@@ -621,7 +630,7 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
 | `waiting {asks}` | an ask is open |
 | `paused {until}` | a usage limit, or retries ran out; the `resume` deadline resumes it (below) |
 | `idle {stop}` | `completed`, `interrupted`, `stopped {limit}` (names the limit), `failed {error}` (`failed {timers}` when a retry finds no timer slot, below) |
-| `unknown` | written after a restart for a session that was running |
+| `unknown` | written by the restart step ("Restart", R4) for a Claude session that was `running` or `waiting` when watane stopped, and by nothing else; it ends with the next `say` (R5), which resumes the Claude session |
 | `resume-lost` | `claude` refused a resume; the next `say` starts a new Claude session seeded with a summary |
 
 The turn state is this JSON, one line per state:
@@ -689,6 +698,65 @@ wire") are this JSON; the entry has no `activity`.
   `delete` frees bytes (kept keys stay). The 64 MiB per owner stays a kernel
   setting; with the 224 MiB account it can be set higher without one owner
   taking the reserve.
+- **The active index.** A2: a call whose end state moves a session from
+  `idle`, `unknown` or `resume-lost` (or a new session) into `running`,
+  `waiting` or `paused` adds it to the first `active/` page with room (9.1); a
+  call that moves it out removes it from its `active-page`. Each such change
+  reads and writes `slots` and one page (at most 24 KiB each way) and the
+  record it already writes. A change among `running`, `waiting` and `paused`,
+  or a turn that ends and starts the next queued input in the same call,
+  writes no page. `delete` removes the session if listed. A3: at 1 024 listed
+  sessions, a `start` or `say` that would add one is refused `busy` (2.3, 12;
+  its message names the cap); it never waits. One owner holds at most 64
+  sessions, so 16 owners fill it: an accepted limit, as the slots of 9.5.
+- **Restart.** Streams are memory only (3), so a restart leaves turns that no
+  process drives. The kernel finds them without a prefix scan: it lists
+  nothing, it reads `active/` pages.
+  - **R1, detection.** Every top-level call except an item call on a stream
+    (`stream-sink.items`, `ended`, `stream-producer.ready`, `ended`; those
+    streams were opened in this boot) reads `slots` and calls `caller.boot()`
+    (2.1). When they differ, that call first starts the pass: it sets
+    `slots.boot`, zeroes the stream slot counts (9.5; `timers` stays, 7), sets
+    `slots.restart` to page 0, and sets the kernel's own timer `restart` (one
+    of the 16 kept for the kernel, 7) with delay 0. It does no session's step
+    itself unless it reads that session's record (R6).
+  - **R2, the pass.** Each firing of `restart` reads `active/` pages from
+    `slots.restart` on (at most the 4 pages, 96 KiB) until it finds an entry
+    whose `boot` is older, does that one session's restart step, keeps the
+    cursor and sets `restart` again with delay 0; a firing that finds none
+    cancels it. So the pass takes at most `A + 1` calls for `A` listed
+    sessions, each reading at most 96 KiB of pages plus one session's step,
+    and it lists no keys: no prefix scan. With no call after a start, nothing
+    runs until one comes (a client's call or a due timer).
+  - **R3, the step's bound.** A session's restart step reads and writes no
+    more than an `interrupt` of that session would, plus its page. A second
+    restart during the pass starts a new pass from page 0; entries of any older
+    boot are stepped then.
+  - **R4, the restart step.** It deletes the session's `stream/` keys and
+    `live/<session>` of older boots and drops those ids from `streams` (the
+    stale keys of 9.4), sets the record's `boot` and its page entry's `boot`,
+    then by backend and state:
+
+    | Backend, state | Becomes |
+    |---|---|
+    | Claude, `running` or `waiting` | each open ask is decided `deny`, `by: kernel`, reason `restart`, its deadline dropped; the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept |
+    | Claude, `paused` | stays `paused`; its `resume` deadline and timer are kept (7); when it fires the turn resumes with `session {resume}` (4.1), as after the idle release (9.5) |
+    | OpenAI, `running` (loop `requesting`, `retrying` or `ready`) | the loop goes to `ready` and takes a request slot or waits in the FIFO under this boot (9.5); `retrying` keeps its `retry` deadline; in `tools`, idempotent jobs start again under their keys, the others get `aborted` (9.5, AGT-F-27); the turn stays `running` |
+    | OpenAI, `waiting` or `paused` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
+    | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` resumes with `session {resume}`, as after the idle release |
+  - **R5, Continue.** `say` on an `unknown` session starts a turn that resumes
+    the Claude session with `session {resume}` (4.1); if `claude` refuses the
+    resume, the turn becomes `resume-lost`. When inputs are queued, the `say`
+    input joins the end of the queue and the turn starts with the oldest one,
+    so order is kept. The console's Continue (18.5) is `say` with the text
+    `Continue`.
+  - **R6, the lazy step.** Any call that reads a session record whose `boot`
+    is older than `slots.boot` does that session's restart step first, in the
+    same call (so `attach`, `read`, `say`, `answer` and `delete` never act on a
+    stale turn); the pass then finds the entry current and skips it. `list`
+    reads no extra record for this: for a record of an older boot it reports
+    the turn its restart step will give (`unknown` for a Claude `running` or
+    `waiting`), without writing.
 
 ### 9.4 Entries, transcripts, attach
 
@@ -808,12 +876,10 @@ the card.
   `live/<session>` only: no session record, no transcript chunk, no wire
   chunk, and it writes nothing. Streams are memory only (3), so after a
   restart these keys are stale; nothing reads a `stream/<id>` of an old
-  stream again (ids are never reused). Each `streams` id carries the kernel's
-  boot number (a counter in `slots`, raised once per start); the first call
-  after a restart that reads a session's record (the restart pass for a
-  running one, else its next `attach`, `say`, `read` or `delete`) deletes the
-  `stream/` keys of older boots and their `live/<session>`, in the same
-  commit. Until then they stay charged to the owner (9.3, Quota).
+  stream again (ids are never reused). The restart step of 9.3 (R4, R6)
+  deletes the `stream/` keys of older boots and their `live/<session>`, in
+  the same commit as the rest of the step; the boot number is `slots.boot`
+  (9.3, R1). Until then they stay charged to the owner (9.3, Quota).
 - **Chunk reads.** A `read` page (at most 256 entries and 2 MiB) reads at
   most one chunk per entry it returns, plus the partial chunk at each end:
   at most 258 chunks and at most 2 MiB + 320 KiB (a partial 64 KiB chunk at
@@ -985,13 +1051,15 @@ the code in these places (S12 built the rest).
   slot and starts the oldest waiting work whose session and owner are under
   their caps in the same call; work at a cap stays in the FIFO and never
   blocks another owner's. A FIFO entry whose session no longer waits
-  (interrupt, cancel, delete, restart) is skipped and removed when reached. The restart pass
-  that writes `unknown` (9.3) sets the counts to zero (streams are memory
-  only, 3).
+  (interrupt, cancel, delete) or whose entry is of an older boot is skipped and
+  removed when reached. The first call of a boot sets the counts to zero (9.3,
+  R1; streams are memory only, 3).
 - **Parallel:** the jobs of a step start together, up to the free job slots,
   only when every tool is `parallel`; else one after another, in call order.
-- **After a restart:** a `requesting` state starts again; in `tools`, jobs of
-  `idempotent` tools start again under their keys, the others get `aborted`.
+- **After a restart:** the session's restart step (9.3, R4) re-queues a
+  `requesting`, `retrying` or FIFO-waiting `ready` loop under the new boot: it
+  takes a request slot or waits in the FIFO; in `tools`, jobs of `idempotent`
+  tools start again under their keys, the others get `aborted`.
 
 ### 9.6 The broker
 
@@ -1210,7 +1278,7 @@ when `claude-codes` cannot parse it.
 | `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id` | timers | 7 |
-| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 |
+| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider slot, or 1 024 active sessions, 9.3 A3) |
 | `not-owner`, `not-direct` | providers | 2.2, 10 (`not-owner`: the caller is not the kernel) |
 | `unknown-input`, `unknown-allow`, `behind {through}` (`through`: the high-water index) | kernel | 9.3, 9.6, 9.4 |
 | `too-large` | OpenAI loop outcome | 9.5, body budget |
@@ -1296,6 +1364,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` 9.3: page connection ids and their own queues (3).
 - [ ] `host/TECHNICAL.md` host state: timers per mod, kept across restarts (7).
 - [ ] `host/TECHNICAL.md` `caller.identity()` (9.3, 14).
+- [ ] `host/TECHNICAL.md` `caller.boot()`: the start number, raised once per host start, kept in host state, a pure read (2.1, 9.3; B1).
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
 - [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended`; a lag clock from a failed `full` push to `ready` that reaches 10 s ends the stream `lagging`, except a stream its consumer has deferred (2.1, 3; P03).
 - [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7).
@@ -1303,7 +1372,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
 - [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
 - [ ] `host/TECHNICAL.md` account kind `judge` and its binding (provider identity compared exactly, `account` exactly `openai` or `judge`, `POST`, origin after one parse with `[http]`, no redirects, `no-account`, ending live judge streams when the key is removed) (5, 10, 12; N10).
-- [ ] `pkg/TECHNICAL.md` 4.5: rows for the imports and exports of 2.1 (2.1).
+- [ ] `pkg/TECHNICAL.md` 4.5: rows for the imports and exports of 2.1, `caller.boot` among them (2.1).
 - [ ] `pkg/TECHNICAL.md` 4.5: the changed `stream-sink` export, the `stream-producer.ended` export and the `streams.resume` import (2.1; P03).
 - [ ] `pkg/TECHNICAL.md` 5.1 and 7.2: two grant kinds (4.2, 8).
 - [ ] `app/TECHNICAL.md` new section: Sign in with ChatGPT and the account file (5).
@@ -1560,6 +1629,44 @@ of `spec/VISION.md`.
     text once, one live `AgentThoughtChunk` per delta and none for the
     finished block, and `seconds` from the deltas only; a finished block with
     no deltas is pushed once.
+67. (9.1, 9.3, A1–A3) Kernel crate: `start`, `say` and a turn's end move
+    sessions in and out of `active/`; each entering or leaving change reads and
+    writes `slots` and one page of at most 24 KiB; a change among `running`,
+    `waiting` and `paused`, and a turn that ends and starts the next queued
+    input, write no page; `delete` removes a listed session. With 1 024 listed
+    sessions (16 owners), a `start` or `say` that would add one is refused
+    `busy`, its message names the cap, and it does not wait; a leaving session
+    frees room for the next.
+68. (2.1, 9.3, B1, R1–R3) Kernel crate: after the host's `boot` changes, the
+    first call (not an item call on a stream) zeroes the stream slot counts,
+    keeps `timers`, sets `restart`; with 1 024 listed sessions, firings of
+    `restart` step one session each, in at most `A + 1` calls for `A` stale
+    sessions, each reading at most 96 KiB of pages plus that session's step
+    (count calls and state gets); no call lists keys. A second boot change
+    during the pass starts again from page 0. With no call after a start, no
+    session changes; a step reads and writes no more than `interrupt` of that
+    session plus its page.
+69. (9.3, 9.4, 18.5, R4 Claude part, R5) Kernel crate with the fake `claude`:
+    after a restart a `running` or `waiting` Claude session becomes `unknown`
+    (a `turn` entry, pushed), its open asks are denied `by: kernel`, reason
+    `restart`, it leaves `active/`, the queue is kept, and no `stream/` or
+    `live/` key of that session from before the restart remains; a `paused`
+    one stays `paused` and its `resume` timer resumes it with `session
+    {resume}`. `say` on an `unknown` session starts a resumed turn; a refused
+    resume gives `resume-lost`; with inputs queued, the new input joins the end
+    and the oldest starts.
+70. (9.5, R4 OpenAI part) Kernel crate with the scripted Responses server:
+    after a restart an OpenAI session `running` in `requesting`, `retrying` or
+    `ready` goes on under the new boot, taking a request slot or waiting in
+    the FIFO (FIFO entries of an older boot are skipped); `retrying` keeps its
+    `retry` deadline; idempotent jobs run again under their keys and the others
+    get `aborted`; `waiting` and `paused` sessions are unchanged, their
+    deadlines and timer kept; the turn stays `running`.
+71. (9.3, R6) After a restart, each of `attach`, `read`, `say`, `answer` and
+    `delete` on a session of an older boot does its restart step first, in the
+    same call, and acts on the new state; the pass then skips that session.
+    `list` over such sessions reads no extra record, reports `unknown` for a
+    Claude `running` or `waiting` one, and writes nothing.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
@@ -1585,9 +1692,9 @@ length. A long session cannot hold the slot.
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
 | A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; cases 36 and 51 for the host part (3); case 58 (host part); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65; the budgets of stage B |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `caller.boot` (2.1, B1), dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 67, 68, 69, 71; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
-| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts); the budgets of stage D |
+| D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts), 70; the budgets of stage D |
 | E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24, 52 (`task` part); the budgets of stage F; N5 decided |
 
@@ -1699,6 +1806,8 @@ The frames give layout, spacing and words; these values are fixed:
 | `idle {failed}` | Failed, with the cause | triangle | | Try again |
 | `unknown` | Not running: watane restarted | dashed ring | | Continue |
 | `resume-lost` | Claude no longer has this session | dashed ring | | Continue from a summary |
+
+Continue on `unknown` sends `say` with the text `Continue` (9.3, R5).
 
 Only the word and its subject are in the live region; the clock is not read
 out. Stop shows "Stopping…" until a `turn` update says idle.
