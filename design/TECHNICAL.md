@@ -1060,8 +1060,8 @@ Give nothing (no update, no entry): Claude `system` `init`, `status`,
 `response.function_call_arguments.delta`/`.done`. Then: a `wrapped` item; an
 `ask` or `check` item whose `tool_use_id` is not a non-empty string, whose
 `expires-at` is not a number, or that has no `input`; an `ask` or `check` item
-whose `id` is that of an ask still open on the session (the open ask is not
-changed); and, on a `direct: true` stream, a `verdict` or
+whose `id` is that of an ask or check still open on the session (the open one
+is not changed); and, on a `direct: true` stream, a `verdict` or
 `checking` item, are each an `unknown` entry, never an ask (14). The kernel
 takes `verdict` and `checking` only from a checked provider's stream
 (`direct: false`, 10). It reads items strictly (no lossy UTF-8 decoding): an
@@ -1553,8 +1553,8 @@ of `spec/VISION.md`.
     that claims `i` 7 in the place of index 3, and an unreadable one, read and
     replayed: each comes back with the `i` of its place. An `ask` item and
     a `check` item without `input` are `unknown` entries, no ask. A second
-    `ask` item with the `id` of an ask still open is `unknown` and the open
-    ask is unchanged; the `claude` fixtures reuse no `id` of an ask that
+    `ask` item with the `id` of an ask still open, and an `ask` item with the
+    `id` of a check still open, are `unknown` and the open one is unchanged; the `claude` fixtures reuse no `id` of an ask that
     opened, also after its `ask-resolved`. A thinking block streamed as
     deltas and then finished with the same text leaves `thought.text` as the
     text once, one live `AgentThoughtChunk` per delta and none for the
