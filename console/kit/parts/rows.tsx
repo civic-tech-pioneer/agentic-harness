@@ -66,13 +66,24 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const open = pending && ask.kind === "ask";
   // 9.4 rule 4: an answer sent and not yet decided counts as decided; a refusal other than "already decided" gives the bar back
   const [sent, setSent] = useState<{ ask: Ask; refused: boolean } | null>(null);
+  // read when the refusal arrives, before the re-mount: did focus sit in this card (on its answered line or inside it)?
+  const lineRef = useRef<HTMLElement | null>(null);
+  const focusIn = useRef(false), wasIn = useRef(false);
+  const inCard = (at: Element | null) => !!at && !!lineRef.current?.parentElement?.contains(at);
   const answered = open && actions.answeredAsks?.get(ask.id) === ask;
   const asking = open && !answered;
   const send = useMemo<Actions>(() => ({ ...actions, answer: (id, d) => {
+    wasIn.current = inCard(document.activeElement); // the pressed button, or the reason field, holds focus here
     setSent({ ask: ask!, refused: false });
     let p: void | Promise<void>;
     try { p = actions.answerDrawn ? actions.answerDrawn(ask!, d) : actions.answer(id, d); } catch (e) { p = Promise.reject(e); }
-    return Promise.resolve(p).catch((e) => { if (!isAskRefusal(e)) setSent({ ask: ask!, refused: true }); });
+    return Promise.resolve(p).catch((e) => {
+      if (isAskRefusal(e)) return;
+      // focus on body counts only when this card lost it itself (the pressed button went away), never when the participant left it
+      const at = document.activeElement;
+      focusIn.current = inCard(at) || (wasIn.current && (!at || at === document.body));
+      setSent({ ask: ask!, refused: true });
+    });
   } }), [actions, ask]);
   const checking = pending && ask.kind === "check";
   // 9.4: a card with an ask names the call by the ask's input, never by what the stream said
@@ -100,7 +111,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
     <>
       <AskScroll>{main}</AskScroll>
       <AskBar key={ask.id} call={call} askId={ask.id} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={send}
-        sent={answered} judge={judge} refused={sent?.ask === ask && sent.refused} />
+        sent={answered} judge={judge} refused={sent?.ask === ask && sent.refused} lineRef={lineRef} focusIn={focusIn} />
     </>
   ) : main;
   const head = (
