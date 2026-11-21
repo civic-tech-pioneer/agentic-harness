@@ -758,10 +758,10 @@ wire") are this JSON; the entry has no `activity`.
     the kernel's 224 MiB account or the state ceiling it reads "this mod's agent
     sessions are at their limit", which tells an owner nothing of other owners (14).
   - *A provider item when past* (the owner or the account): an ask decision
-    and the host's `ask-resolved` are stored; a turn change is stored only when it ends an active turn (so a turn gets at most
-    one `turn` entry past quota; any other change, to `running` or `waiting` from an
-    inactive turn or from one inactive state to another, writes no entry and leaves
-    the record's turn as it was); a new
+    and the host's `ask-resolved` are stored; a turn change is written as an entry only when it ends an active turn (so a turn gets at most
+    one `turn` entry past quota; a provider `Turn` that does not end it is dropped, and
+    an ask that closes or `close_all` writes no entry while the record's turn and the
+    `turn` push follow); a new
     ask is not stored and is denied at once (`Request::Answer` deny, reason
     `quota`); any other entry is not stored. When the session's turn is
     active, the first such item ends it `stopped {limit: quota}` (its `turn`

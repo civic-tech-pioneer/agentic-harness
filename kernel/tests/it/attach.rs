@@ -583,3 +583,25 @@ fn ac1_attach_charges_both_keys_and_writes_past_the_quota() {
     assert!(r.bytes - rec0 >= cost);
     assert_eq!(owner, Usage::load(&mut k.state, "quota").bytes);
 }
+
+/// S26-fix1 AC3, 9.1 `stream/<id>`: an item on an owner stream's id is no provider item.
+#[test]
+fn ac3_owner_stream_id_is_not_a_provider_item() {
+    let mut k = kernel();
+    let s = started(&mut k);
+    let o = attach(&mut k, &s, 0);
+    let keys = [
+        "slots".to_string(),
+        format!("session/{s}"),
+        format!("live/{s}"),
+        format!("stream/{o}"),
+    ];
+    let snap =
+        |k: &mut K| -> Vec<Option<Vec<u8>>> { keys.iter().map(|x| k.state.get(x)).collect() };
+    let before = snap(&mut k);
+    let a = k.provider_item(&o, ProviderEvent::Ended).unwrap();
+    assert!(matches!(a.value, Item::Done) && a.pushes.is_empty());
+    let b = k.provider_item(&o, ProviderEvent::Out(delta("x"))).unwrap();
+    assert!(matches!(b.value, Item::Done) && b.pushes.is_empty());
+    assert_eq!(snap(&mut k), before);
+}
