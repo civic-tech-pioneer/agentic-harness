@@ -416,13 +416,10 @@ fn ac1_invalid_bytes_are_escaped_and_nothing_is_parsed() {
         br#"{"type":"ask","id":"a","tool":"Bash","input":{},"tool_use_id":"t","expires-at":5}"#
             .to_vec();
     ask.push(0xff);
-    assert_eq!(
-        raw(a.line(&ask, 1))["raw"]
-            .as_str()
-            .unwrap()
-            .ends_with("\\xff"),
-        true
-    );
+    assert!(raw(a.line(&ask, 1))["raw"]
+        .as_str()
+        .unwrap()
+        .ends_with("\\xff"));
     let src = fs::read_dir(root().join("src/adapters")).unwrap();
     for f in src {
         let text = fs::read_to_string(f.unwrap().path()).unwrap();
