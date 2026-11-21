@@ -12,6 +12,7 @@ mod check;
 mod errors;
 mod example;
 mod grammar;
+mod meter;
 mod overlay;
 mod record;
 mod refuse;
