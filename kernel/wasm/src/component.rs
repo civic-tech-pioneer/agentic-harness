@@ -39,8 +39,8 @@ struct WitHost;
 const NEXT_ID: &str = "next-id";
 
 impl Host for WitHost {
-    /// TECHNICAL 2.1, "Exact text": `caller.boot()` is not in host 19.
-    fn boot(&mut self) -> u64 {
+    /// TECHNICAL 2.1, "Exact text": `host-info.generation()` is not in host 19 (watane S97): constant 1.
+    fn generation(&mut self) -> u64 {
         1
     }
     fn now(&mut self) -> u64 {
