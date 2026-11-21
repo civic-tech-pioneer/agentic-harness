@@ -98,6 +98,7 @@ describe("S9-1", () => {
     expect(a.container.querySelector(".dl.gap")!.textContent).toBe("⋯ 1 unchanged line");
     const b = render(<DiffView path="a" oldText={null} newText={"p\nq\nr"} />);
     expect(b.container.querySelectorAll(".dl.add").length).toBe(3);
+    expect(b.container.querySelectorAll(".dl.del").length).toBe(0);
     expect(b.container.querySelectorAll(".dl.gap").length).toBe(0);
   });
 
