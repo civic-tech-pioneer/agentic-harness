@@ -40,16 +40,6 @@ the open row stays under Recent while the pointer is over the sidebar at load; a
 bar wraps with Allow once mid-row; a story played only to a running step shows a huge clock.
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *core*. S7 follows S15.
 
-### S19: the kernel fails closed on S14's open points (in flight (cloud), routine trig_01AoUXMQeCwVABma2UGwM16y)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and every odd host item S14 found reads as
-`unknown` or `unreadable`, never as an ask or a decision.
-Outcomes: `ask-resolved` with a `by` other than `expired` or `cancelled` is `unknown` and the ask
-stays open; an ask or check whose `input` is not a JSON object, or whose `expires-at` is not a
-non-negative whole number, is `unknown`; a joined part group whose whole is of kind `part` is
-`unreadable`. Each with a fixture; the S14 adversary's held tests stay green.
-Touches: `kernel/` only. Protects: *guard* (asks).
-
 ### S18: spec text for S14 and S19 (in flight (cloud), routine trig_01W3ftmEhuP1yP3kuWTaQ8Nm)
 
 Outcomes: 4.5, 9.4, 9.8 say what S14 built ahead of S16 (an `id` not a non-empty string is
@@ -61,6 +51,14 @@ serializes items itself); FUNCTIONAL AGT-F-10 reads "never as running when nothi
 Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Protects: *guard* and *core*.
 
 ## Sketched
+
+### S20: an answered ask leaves no noise (cloud, after S18 and S19 merge)
+
+Story: a kernel maker runs `cargo test` in `kernel/`: an `ask-resolved` after a person's or owner's
+answer, with a `by` S18 lists for answers, gives nothing (the kernel writes that decision itself
+when it answers), while an unlisted `by` stays `unknown` with the ask open (S19). Also the refusal
+text of a bad `append` kind reads `kind (, ): ...`: give it its field and reason (S19 polish).
+Touches: `kernel/` only. Protects: *guard* (asks) and *polish*.
 
 ### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
 
@@ -204,6 +202,13 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   `say` on `unknown` resumes; cases 67-71. User-sim ACCEPTED on run 2; no adversary (no code, 14
   unchanged). Gate 17 s.
 
+- **S19** the kernel fails closed on S14's open points (PR #21, 12 min). An `ask-resolved` with a
+  `by` other than `expired` or `cancelled` is `unknown` and the ask stays open; an ask or check
+  whose `input` is not an object or whose `expires-at` is not a u64 integer is `unknown`; a joined
+  whole of kind `part` is `unreadable` (dropped when its last part has no whole `i`). User-sim
+  ACCEPTED (run 1); adversary HELD twice (one RISK fixed in S19-fix1). Implementer runs 1/1/1.
+  Kernel 116 tests in 1.63 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -270,6 +275,10 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   is `unknown`; a joined whole of kind `part` is `unreadable` (S19). Accepted limits, named in 14
   by S18: a first-key JSON reader would read a duplicate `i` differently (every reader here reads
   the last); a nested duplicate key in `input` is safe only while the host serializes the item.
+
+- 2026-11-21 S19 consequence: with an unknown `by` read as `unknown`, every answered ask would
+  add an `unknown` entry, since 4.5 names no `by` for a person's answer. Kept fail-closed; S18
+  lists the `by` values, and S20 makes the answer ones give nothing.
 
 ## Human answers (2026-11-20, through the PO)
 
