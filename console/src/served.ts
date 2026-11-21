@@ -26,3 +26,8 @@ export async function served(w: Watane): Promise<Served> {
   const sessions: SidebarSession[] = list.map((s) => ({ id: s.id, title: s.title, place: s.backend, meta: `${s.backend} · ${s.profile}`, state: "idle" }));
   return { kernel, info, sessions };
 }
+
+/** A served page that could not open a session shows the cause as text in `root`, never the fake. */
+export function openFailed(root: HTMLElement, e: unknown) {
+  root.textContent = `The console could not open a session: ${e instanceof Error ? e.message : String(e)}`;
+}

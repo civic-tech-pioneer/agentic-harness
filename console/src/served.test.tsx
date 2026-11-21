@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { App } from "./App";
-import { served } from "./served";
+import { openFailed, served } from "./served";
 import { entry, fakeWatane, items, synced } from "../kit/watane_fake";
 
 const LIST = [
@@ -25,6 +25,15 @@ describe("S32-3 AC4", () => {
     const x = await served(f.w);
     expect(f.calls[1]).toEqual({ fn: "probe.start", args: { key: "console-probe", count: 1000, "every-ms": 1000 } });
     expect(x.info.id).toBe("new");
+  });
+});
+
+describe("S32-3 failure", () => {
+  it("served_with_a_failing_list_shows_the_cause_in_root", async () => {
+    const f = fakeWatane({ "sessions.list": () => ({ err: "not-owner" }) });
+    const root = document.createElement("div");
+    await served(f.w).catch((e) => openFailed(root, e));
+    expect(root.textContent).toMatch(/could not open a session.*sessions.list failed.*not-owner/);
   });
 });
 

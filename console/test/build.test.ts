@@ -118,7 +118,16 @@ describe("the built ui/", () => {
   it("ac7_the_page_has_one_html_file_with_same_origin_script_and_style", () => {
     expect(walk(ui).filter((f) => f.endsWith(".html"))).toHaveLength(1);
     const html = readFileSync(join(ui, "index.html"), "utf8");
-    expect([...html.matchAll(/<script[^>]*\bsrc="([^"]+)"/g)].every((m) => m[1].startsWith("./") && existsSync(join(ui, m[1])))).toBe(true);
+    expect(badScripts(html, (f) => existsSync(join(ui, f)))).toEqual([]);
+  });
+
+  it("ac7_scripts_are_local_files_plus_exactly_one_watane_js", () => {
+    const has = () => true;
+    expect(badScripts('<script src="/watane.js"></script><script type="module" src="./assets/a.js"></script>', has)).toEqual([]);
+    expect(badScripts('<script src="/other.js"></script>', has)).toEqual(["/other.js"]);
+    expect(badScripts('<script src="/watane.js"></script><script src="/watane.js"></script>', has)).toEqual(["/watane.js"]);
+    expect(badScripts('<script src="//evil.example/a.js"></script>', has)).toEqual(["//evil.example/a.js"]);
+    expect(badScripts('<script src="./missing.js"></script>', () => false)).toEqual(["./missing.js"]);
   });
 });
 
@@ -192,3 +201,12 @@ describe("adversary S4 rerun: the policy scan", () => {
     it(`adv_S4_rerun_policy_scan_misses: ${what}`, () => { expect(scan(kind, seed)).not.toEqual([]); });
   }
 });
+
+/** The script srcs of a page that break ac7's rule: each is a `./` file that exists, except one `/watane.js` (host 8.5, served on the mod's own origin). */
+function badScripts(html: string, exists: (f: string) => boolean): string[] {
+  let watane = 0;
+  return [...html.matchAll(/<script[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((src) => {
+    if (src === "/watane.js") return ++watane > 1;
+    return !(src.startsWith("./") && exists(src));
+  });
+}
