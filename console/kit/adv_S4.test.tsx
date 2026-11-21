@@ -51,17 +51,17 @@ describe("adversary S4: a malformed kernel feed", () => {
   });
 
   it("adv_S4_ask_whose_tool_call_names_another_id_throws_and_the_ask_is_never_shown", () => {
-    const ask = entry(1, "ask", { toolCallId: "B", input: { command: "rm -rf ~" }, expiresAt: 9, toolCall: { toolCallId: "A", title: "Read README", kind: "read" } });
+    const ask = entry(1, "ask", { id: "a-B", kind: "ask", toolCallId: "B", input: { command: "rm -rf ~" }, "expires-at": 9, toolCall: { toolCallId: "A", title: "Read README", kind: "read" } });
     let v: SessionView = emptyView;
     expect(() => { v = reduce(emptyView, ask); }).not.toThrow();
-    expect(v.openAsks).toEqual(["B"]);
+    expect(v.openAsks).toEqual(["a-B"]);
   });
 });
 
 describe("adversary S4: a hostile agent's ask input", () => {
   const mk = (): Actions => ({ say: vi.fn(), answer: vi.fn(), stop: vi.fn(), takeBack: vi.fn() });
   const label = (call: ToolCall, reach?: string) => {
-    const r = render(<AskBar call={call} {...(reach !== undefined ? { reach } : {})} actions={mk()} />);
+    const r = render(<AskBar call={call} askId="a1" {...(reach !== undefined ? { reach } : {})} actions={mk()} />);
     const t = screen.queryAllByRole("button").map((b) => b.textContent ?? "").find((s) => s.endsWith("this session"));
     r.unmount();
     return t;
@@ -69,7 +69,7 @@ describe("adversary S4: a hostile agent's ask input", () => {
   const bash: ToolCall = { id: "t1", title: "Bash", kind: "execute", status: "pending", content: [], locations: [] };
   const edit = (p: string): ToolCall => ({ id: "t2", title: "Edit", kind: "edit", status: "pending", content: [], locations: [{ path: p }] });
   const shown = (input: object, reach?: string) => {
-    const v = reduce(emptyView, entry(1, "ask", { toolCallId: "t1", input, expiresAt: 9, ...(reach !== undefined ? { reach } : {}), toolCall: { toolCallId: "t1", title: "Bash", kind: "execute" } }));
+    const v = reduce(emptyView, entry(1, "ask", { id: "a-t1", kind: "ask", toolCallId: "t1", input, "expires-at": 9, ...(reach !== undefined ? { reach } : {}), toolCall: { toolCallId: "t1", title: "Bash", kind: "execute" } }));
     const ask = (v.rows[0] as { ask: { reach?: string } }).ask;
     return label(bash, ask.reach);
   };
@@ -85,7 +85,7 @@ describe("adversary S4: a hostile agent's ask input", () => {
   });
 
   it("adv_S4_the_reach_is_shown_verbatim_and_escaped", () => {
-    const r = render(<AskBar call={bash} reach={"<img src=x onerror=alert(1)>"} actions={mk()} />);
+    const r = render(<AskBar call={bash} askId="a1" reach={"<img src=x onerror=alert(1)>"} actions={mk()} />);
     expect(r.container.querySelector("img")).toBeNull();
     expect(screen.getByRole("button", { name: "Allow <img src=x onerror=alert(1)> this session" })).toBeInTheDocument();
     r.unmount();
@@ -93,7 +93,7 @@ describe("adversary S4: a hostile agent's ask input", () => {
 
   it("adv_S4_no_reach_no_session_allow_button", () => {
     expect(shown({ command: "rm -rf ~" })).toBeUndefined();
-    render(<AskBar call={bash} actions={mk()} />);
+    render(<AskBar call={bash} askId="a1" actions={mk()} />);
     expect(screen.getByRole("button", { name: "Allow once" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Deny…" })).toBeInTheDocument();
   });
@@ -135,14 +135,14 @@ describe("adversary S4 fix: reads, rows and paging", () => {
   });
 
   const wires = [
-    { _meta: { watane: { type: "entry", entry: { v: 1, i: 1, kind: "ask", at: 1, body: { toolCallId: 1, input: 2, expiresAt: "x", toolCall: 5, reach: 7, decision: "no" } } } } },
-    { _meta: { watane: { type: "entry", entry: { v: 1, i: 1, kind: "ask", at: 1, body: { toolCallId: "a", expiresAt: 1, toolCall: { toolCallId: 3, title: 4, kind: 5, content: "x", locations: "y" } } } } } },
+    { _meta: { watane: { type: "entry", entry: { v: 1, i: 1, kind: "ask", at: 1, body: { id: 1, kind: "ask", toolCallId: 1, input: 2, "expires-at": "x", toolCall: 5, reach: 7, decision: "no" } } } } },
+    { _meta: { watane: { type: "entry", entry: { v: 1, i: 1, kind: "ask", at: 1, body: { id: "a", kind: "ask", toolCallId: "a", "expires-at": 1, toolCall: { toolCallId: 3, title: 4, kind: 5, content: "x", locations: "y" } } } } } },
     { _meta: { watane: { type: "entry", entry: { v: 1, i: 2, kind: "message", at: 1, body: { role: "agent", content: 5, thought: { text: 1, seconds: "x" } } } } } },
     { _meta: { watane: { type: "entry", entry: { v: 1, i: 3, kind: "tool", at: 1, body: { toolCallId: "t", title: 1, kind: 2, status: 3, content: 4 } } } } },
     { _meta: { watane: { type: "entry", entry: { v: 1, i: 4, kind: "allow", at: 1, body: { id: 1, reach: 2, by: 3 } } } } },
     { _meta: { watane: { type: "entry", entry: { v: 1, i: 5, kind: "verdict", at: 1, body: { toolCallId: 1, outcome: 2, reasons: 3, by: 4 } } } } },
     { _meta: { watane: { type: "entry", entry: { v: 1, i: 6, kind: "turn", at: 1, body: { state: 1 } } } } },
-    { _meta: { watane: { type: "turn", state: { state: "waiting", asks: 1, expiresAt: "x" } } } },
+    { _meta: { watane: { type: "turn", state: { state: "waiting", asks: 1, "expires-at": "x" } } } },
     { _meta: { watane: { type: "queue", inputs: 3 } } }, { _meta: { watane: { type: "usage", "context-used": "a" } } },
     { _meta: { watane: { type: "synced", through: "x", writing: 1 } } },
     { sessionUpdate: "tool_call", toolCallId: 1 }, { sessionUpdate: "tool_call_update", toolCallId: "z", content: 4, locations: 5 },

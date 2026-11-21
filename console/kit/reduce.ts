@@ -1,8 +1,7 @@
 // TECHNICAL 18.3: turns one kernel stream message into the session view (rows and dock fields).
-import type { Ask, Internal, Row, SessionView, ToolCall, TurnState } from "./model";
+import { askArg, type Internal, type Row, type SessionView, type ToolCall, type TurnState, type Ask } from "./model";
 import { parse, type CallPatch, type TurnExtra } from "./wire";
 
-type ToolRow = Extract<Row, { kind: "tool" }>;
 type ExploredRow = Extract<Row, { kind: "explored" }>;
 const isExplored = (c: ToolCall) => (c.kind === "read" || c.kind === "search") && c.status !== "failed";
 
@@ -54,10 +53,11 @@ function upsertCall(v: SessionView, p: CallPatch, i?: number, fromAsk = false) {
     return;
   }
   const r = v.rows[f.at]!;
-  // an open ask's card shows only what the ask carries: its call replaces the streamed one whole, and the stream changes only the status
-  const holding = r.kind === "tool" && !!r.ask && !r.ask.decision && !fromAsk;
+  // 9.8: a card with an ask shows only what the ask carries: its call replaces the streamed one whole; the stream then changes only the status,
+  // and after the decision also adds program output (never title, kind, locations, rawInput or a diff)
+  const ask = r.kind === "tool" ? r.ask : undefined;
   const call: ToolCall = fromAsk ? { ...normalize(p), title: p.title ?? p.kind ?? "other" }
-    : holding ? { ...f.call, ...(p.status !== undefined ? { status: p.status } : {}) } : { ...f.call, ...p } as ToolCall;
+    : ask ? held(f.call, p, !!ask.decision) : { ...f.call, ...p } as ToolCall;
   if (r.kind === "explored" && f.n !== undefined) {
     const calls = r.calls.slice(); calls[f.n] = call;
     v.rows[f.at] = { ...explored(calls), key: r.key };
@@ -67,12 +67,27 @@ function upsertCall(v: SessionView, p: CallPatch, i?: number, fromAsk = false) {
   }
 }
 
-function removeAsk(v: SessionView, id: string) {
-  v.openAsks = v.openAsks.filter((a) => a !== id);
-  v.rows = v.rows.map((r) => {
-    if (r.kind === "tool" && r.ask?.toolCallId === id) { const { ask: _a, ...rest } = r; return rest; }
-    return r;
-  });
+function held(c: ToolCall, p: CallPatch, decided: boolean): ToolCall {
+  const next: ToolCall = { ...c };
+  if (p.status !== undefined) next.status = p.status;
+  if (!decided) return next;
+  if ("rawOutput" in p) next.rawOutput = p.rawOutput;
+  if (p.content) {
+    const output = p.content.filter((b) => { const t = (b as { type?: unknown } | null)?.type; return t === "content" || t === "terminal"; });
+    next.content = [...c.content.filter((b) => b.type === "diff"), ...output];
+  }
+  return next;
+}
+
+/** The tool row of `toolCallId` shows the first open ask, else the first open check, else `decided`; `openAsks` lists the open asks (not checks). */
+function syncAsks(v: SessionView, x: Internal, toolCallId: string, decided?: Ask) {
+  const open = x.open ?? [];
+  v.openAsks = open.filter((o) => o.ask.kind === "ask").map((o) => o.ask.id);
+  const mine = open.filter((o) => o.ask.toolCallId === toolCallId).map((o) => o.ask);
+  const pick = mine.find((a) => a.kind === "ask") ?? mine[0] ?? decided;
+  const f = find(v, toolCallId);
+  const r = f && f.n === undefined ? v.rows[f.at] : undefined;
+  if (pick && r?.kind === "tool") v.rows[f!.at] = { ...r, ask: pick };
 }
 
 function toolCount(rows: Row[]): number {
@@ -199,21 +214,23 @@ export function reduce(view: SessionView, message: string): SessionView {
     }
     case "tool": upsertCall(v, m.call, m.i); break;
     case "ask": {
-      const d = m.ask.decision;
+      const a = m.ask, d = a.decision;
+      const open = x.open ?? [];
       if (d) {
-        removeAsk(v, m.ask.toolCallId);
+        const title = m.call?.title ?? open.find((o) => o.ask.id === a.id)?.title ?? askArg(a.input) ?? a.toolCallId;
+        x.open = open.filter((o) => o.ask.id !== a.id);
+        syncAsks(v, x, a.toolCallId, a);
+        const word = d.outcome === "allow" ? "Allowed" : d.outcome === "deny" ? "Denied" : "No objection";
         v.rows.push({ kind: "decision", key: `e${m.i}`, i: m.i, who: d.by,
-          what: `${d.outcome === "allow" ? "Allowed" : "Denied"}${d.for ? " for this session" : ""}: ${toolTitle(v, m.ask.toolCallId)}`,
+          what: `${word}${d.for ? " for this session" : ""}: ${title}`,
           ...(d.reason !== undefined ? { reason: d.reason } : {}) });
         break;
       }
-      // the ask's own call is the one that will run: it wins over what the stream left in the row
-      if (!find(v, m.ask.toolCallId) || m.call) upsertCall(v, m.call ?? { id: m.ask.toolCallId }, undefined, true);
-      const at = toToolRow(v, m.ask.toolCallId);
-      const row = v.rows[at] as ToolRow;
-      const ask: Ask = m.ask;
-      v.rows[at] = { ...row, ask };
-      if (!v.openAsks.includes(ask.toolCallId)) v.openAsks = [...v.openAsks, ask.toolCallId];
+      // 9.8: the card is the ask's own call, whatever the stream said of the id before
+      upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true);
+      toToolRow(v, a.toolCallId);
+      x.open = [...open.filter((o) => o.ask.id !== a.id), { ask: a, title: m.call?.title ?? askArg(a.input) ?? a.toolCallId }];
+      syncAsks(v, x, a.toolCallId);
       break;
     }
     case "allow":
@@ -222,7 +239,7 @@ export function reduce(view: SessionView, message: string): SessionView {
       v.rows.push({ kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: m.given ? `Allowed ${m.reach} for this session` : `Took back ${m.reach}` });
       break;
     case "verdict":
-      v.rows.push({ kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: `${m.outcome}: ${toolTitle(v, m.toolCallId)}`, ...(m.reasons.length ? { reason: m.reasons.join("; ") } : {}) });
+      v.rows.push({ kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: `${m.outcome}: ${m.toolCallId === undefined ? "the input" : toolTitle(v, m.toolCallId)}`, ...(m.reasons.length ? { reason: m.reasons.join("; ") } : {}) });
       break;
     case "plan": v.plan = m.items; break;
     case "call": upsertCall(v, m.call, m.i); break;

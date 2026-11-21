@@ -47,40 +47,40 @@ describe("AC2 rows", () => {
     expect(feed([entry(1, "tool", { toolCallId: "z", kind: "read", status: "failed" })]).rows[0]!.kind).toBe("tool");
   });
   it("ac2_open_ask_marks_its_tool_row_and_a_decided_ask_is_a_decision_row", () => {
-    let v = feed([call("e", "edit"), entry(5, "ask", { toolCallId: "e", input: { x: 1 }, expiresAt: 9 })]);
-    expect(v.openAsks).toEqual(["e"]);
-    expect(v.rows[0]).toMatchObject({ kind: "tool", ask: { toolCallId: "e", expiresAt: 9 } });
-    v = feed([entry(6, "ask", { toolCallId: "e", input: {}, expiresAt: 9, decision: { outcome: "deny", reason: "no", by: "alice" } })], v);
+    let v = feed([call("e", "edit"), entry(5, "ask", { id: "a-e", kind: "ask", toolCallId: "e", input: { x: 1 }, "expires-at": 9 })]);
+    expect(v.openAsks).toEqual(["a-e"]);
+    expect(v.rows[0]).toMatchObject({ kind: "tool", ask: { id: "a-e", toolCallId: "e", expiresAt: 9 } });
+    v = feed([entry(6, "ask", { id: "a-e", kind: "ask", toolCallId: "e", input: {}, "expires-at": 9, decision: { outcome: "deny", reason: "no", by: "alice" } })], v);
     expect(v.openAsks).toEqual([]);
-    expect((v.rows[0] as { ask?: unknown }).ask).toBeUndefined();
+    expect(v.rows[0]).toMatchObject({ ask: { id: "a-e", decision: { outcome: "deny", by: "alice" } } });
     expect(v.rows[1]).toMatchObject({ kind: "decision", who: "alice", reason: "no" });
     expect((v.rows[1] as { what: string }).what).toContain("Denied");
   });
   it("ac3_ask_toolcall_replaces_the_streamed_call_in_its_row", () => {
-    let v = feed([call("e", "edit"), entry(5, "ask", { toolCallId: "e", input: {}, expiresAt: 9,
+    let v = feed([call("e", "edit"), entry(5, "ask", { id: "a-e", kind: "ask", toolCallId: "e", input: {}, "expires-at": 9,
       toolCall: { toolCallId: "e", title: "Edit /real", kind: "edit", status: "pending", locations: [{ path: "/real" }],
         content: [{ type: "diff", path: "/real", oldText: "", newText: "x" }] } })]);
     expect(v.rows[0]).toMatchObject({ kind: "tool", call: { title: "Edit /real", locations: [{ path: "/real" }], content: [{ path: "/real" }] } });
   });
-  it("ac3_stream_update_cannot_change_the_open_asks_call_until_it_is_answered", () => {
+  it("ac3_stream_update_cannot_change_the_asks_call_open_or_decided", () => {
     const real = { toolCallId: "e", title: "Edit /real", kind: "edit", status: "pending", locations: [{ path: "/real" }],
       content: [{ type: "diff", path: "/real", oldText: "", newText: "x" }] };
     const fake = { sessionUpdate: "tool_call_update", toolCallId: "e", title: "Edit /fake", kind: "read", locations: [{ path: "/fake" }],
       content: [{ type: "diff", path: "/fake", oldText: "", newText: "y" }] };
-    let v = feed([call("e", "edit"), entry(5, "ask", { toolCallId: "e", input: {}, expiresAt: 9, toolCall: real }), upd(fake),
+    let v = feed([call("e", "edit"), entry(5, "ask", { id: "a-e", kind: "ask", toolCallId: "e", input: {}, "expires-at": 9, toolCall: real }), upd(fake),
       upd({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "in_progress" })]);
     expect(v.rows[0]).toMatchObject({ kind: "tool", call: { title: "Edit /real", kind: "edit", status: "in_progress", locations: [{ path: "/real" }], content: [{ path: "/real", newText: "x" }] } });
-    v = feed([entry(6, "ask", { toolCallId: "e", input: {}, expiresAt: 9, decision: { outcome: "allow", by: "alice" } }), upd(fake)], v);
-    expect(v.rows[0]).toMatchObject({ kind: "tool", call: { title: "Edit /fake", locations: [{ path: "/fake" }] } });
+    v = feed([entry(6, "ask", { id: "a-e", kind: "ask", toolCallId: "e", input: {}, "expires-at": 9, decision: { outcome: "allow", by: "alice" } }), upd(fake)], v);
+    expect(v.rows[0]).toMatchObject({ kind: "tool", call: { title: "Edit /real", kind: "edit", locations: [{ path: "/real" }], content: [{ path: "/real", newText: "x" }] } });
   });
   it("ac2_ask_toolcall_replaces_the_streamed_call_whole", () => {
     const v = feed([call("e", "edit", { rawInput: { a: 1 }, locations: [{ path: "/s" }], content: [{ type: "diff", path: "/s", oldText: "", newText: "s" }] }),
-      entry(5, "ask", { toolCallId: "e", input: {}, expiresAt: 9, toolCall: { toolCallId: "e", kind: "execute", status: "pending" } })]);
+      entry(5, "ask", { id: "a-e", kind: "ask", toolCallId: "e", input: {}, "expires-at": 9, toolCall: { toolCallId: "e", kind: "execute", status: "pending" } })]);
     const c = (v.rows[0] as { call: object }).call;
     expect(c).toEqual({ id: "e", title: "execute", kind: "execute", status: "pending", content: [], locations: [] });
   });
   it("ac3_stream_cannot_add_output_or_input_to_an_open_ask_only_status", () => {
-    let v = feed([call("e", "edit"), entry(5, "ask", { toolCallId: "e", input: {}, expiresAt: 9, toolCall: { toolCallId: "e", title: "t", kind: "edit", status: "pending" } }),
+    let v = feed([call("e", "edit"), entry(5, "ask", { id: "a-e", kind: "ask", toolCallId: "e", input: {}, "expires-at": 9, toolCall: { toolCallId: "e", title: "t", kind: "edit", status: "pending" } }),
       upd({ sessionUpdate: "tool_call_update", toolCallId: "e", rawOutput: "o", rawInput: { z: 1 }, status: "in_progress" })]);
     const c = (v.rows[0] as unknown as { call: Record<string, unknown> }).call;
     expect(c).toMatchObject({ status: "in_progress", title: "t" });
@@ -181,9 +181,9 @@ describe("AC7 story", () => {
     const edits = v.rows.filter((r) => r.kind === "tool");
     expect(edits).toHaveLength(2);
     expect(edits[0]).toMatchObject({ call: { status: "completed", content: [{ type: "diff", path: "src/retry.ts" }] } });
-    expect(edits[1]).toMatchObject({ ask: { toolCallId: "e2" } });
-    expect(v.openAsks).toEqual(["e2"]);
-    expect(v.turn).toMatchObject({ state: "waiting", expiresAt: expiresAt });
+    expect(edits[1]).toMatchObject({ ask: { id: "a8", toolCallId: "e2" } });
+    expect(v.openAsks).toEqual(["a8"]);
+    expect(v.turn).toMatchObject({ state: "waiting", asks: ["a8"], expiresAt: expiresAt });
     expect(v.queue).toHaveLength(1);
     expect(v.usage).toEqual({ used: 42000, window: 200000, compactAt: 160000 });
     expect(v.plan).toHaveLength(3);

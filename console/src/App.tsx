@@ -43,7 +43,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
 
   const needsYou = useCallback(() => {
     const id = view.openAsks[0];
-    const card = id === undefined ? null : scroller.current?.ownerDocument.querySelector<HTMLElement>(`[data-call="${CSS.escape(id)}"]`);
+    const card = id === undefined ? null : scroller.current?.ownerDocument.querySelector<HTMLElement>(`[data-ask="${CSS.escape(id)}"]`);
     const btn = card?.querySelector<HTMLElement>("[data-ask-first]");
     if (!card || !btn) return;
     // The header says what asks, so a card that fits starts at the top; a taller one scrolls so the ask bar (with the
