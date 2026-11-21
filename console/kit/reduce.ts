@@ -210,6 +210,11 @@ function nextKey(x: Internal, prefix: string): string {
   return `${prefix}${n}`;
 }
 
+/** The ask open for `id` now (not a check): the very object the card's row holds, so a caller can tell a replaced ask from the one it saw. */
+export function openAsk(view: SessionView, id: string): Ask | undefined {
+  return view.x?.open?.find((o) => o.ask.kind === "ask" && o.ask.id === id)?.ask;
+}
+
 /** The view with one more `unknown` row showing `raw`. */
 export function withUnknown(view: SessionView, raw: unknown): SessionView {
   const x: Internal = { ...view.x };

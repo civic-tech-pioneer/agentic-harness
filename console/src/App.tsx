@@ -1,13 +1,11 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, MEASURE, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
+import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, MEASURE, openAsk, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
 
 let sent = 0;
-/** The ask open for `id` now: the reducer's own object, the one a card's row holds. */
-const openAskOf = (v: SessionView, id: string): Ask | undefined => v.x?.open?.find((o) => o.ask.kind === "ask" && o.ask.id === id)?.ask;
 
 export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[] }) {
   const [view, setView] = useState<SessionView>(emptyView);
@@ -52,17 +50,16 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   // the set is filtered while rendering, so no frame shows "Answered, waiting" on an ask that left it
   const live = useMemo<ReadonlySet<string>>(() => {
     if (!answered.size) return answered;
-    const keep = (id: string) => { const a = openAskOf(view, id), was = answeredAsk.current.get(id); return !!a && !a.decision && (was === undefined || a === was); };
+    const keep = (id: string) => { const a = openAsk(view, id), was = answeredAsk.current.get(id); return !!a && !a.decision && (was === undefined || a === was); };
     return [...answered].every(keep) ? answered : new Set([...answered].filter(keep));
   }, [answered, view]);
   useEffect(() => { if (live !== answered) setAnswered((s) => (s === answered ? live : s)); }, [live, answered]);
-  const answeredAsks = useMemo(() => new Map([...live].flatMap((id) => { const a = openAskOf(view, id); return a ? [[id, a] as const] : []; })), [live, view]);
+  const answeredAsks = useMemo(() => new Map([...live].flatMap((id) => { const a = openAsk(view, id); return a ? [[id, a] as const] : []; })), [live, view]);
   const actions: Actions = useMemo(() => ({
-    answered: live,
     answeredAsks,
     say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: (id, d) => {
-      const mine = openAskOf(viewRef.current, id);
+      const mine = openAsk(viewRef.current, id);
       answeredAsk.current.set(id, mine);
       setAnswered((a) => new Set(a).add(id));
       let p: Promise<void>;
@@ -74,7 +71,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     },
     stop: () => { setStopping(true); void kernel.interrupt(info.id); },
     takeBack: (id) => void kernel.takeBack(info.id, id),
-  }), [kernel, info.id, live, answeredAsks]);
+  }), [kernel, info.id, answeredAsks]);
 
   const shown = useMemo(() => live.size && view.openAsks.some((id) => live.has(id)) ? { ...view, openAsks: view.openAsks.filter((id) => !live.has(id)) } : view, [view, live]);
 
