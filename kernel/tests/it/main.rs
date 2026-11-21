@@ -41,6 +41,7 @@ mod sessions;
 mod streams;
 mod transcript;
 mod usersim_s21;
+mod usersim_s33;
 
 use agent_kernel::{parse_profile, Problem, Profile};
 
