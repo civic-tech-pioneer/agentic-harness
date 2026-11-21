@@ -1,6 +1,6 @@
 // TECHNICAL 18.3 (the table), 18.6: one component per row kind.
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { askArg, type Actions, type Row, type ToolCall } from "../model";
+import { askArg, cardName, type Actions, type Row, type ToolCall } from "../model";
 import { AskBar } from "./askbar";
 import { DiffView } from "./diff";
 import { MessageText } from "./code";
@@ -42,6 +42,7 @@ export function ExploredRow({ row }: { row: Of<"explored"> }) {
 
 const STATUS: Record<ToolCall["status"], [string, string]> = {
   pending: ["Pending", "b-off"], in_progress: ["Running", "b-off"], completed: ["Done", "b-ok"], failed: ["Failed", "b-bad"] };
+const DECIDED: Record<"allow" | "deny" | "none", [string, string]> = { allow: ["Allowed", "b-ok"], deny: ["Denied", "b-bad"], none: ["No objection", "b-off"] };
 const KIND = (k: string) => k.charAt(0).toUpperCase() + k.slice(1);
 
 function InputList({ input }: { input: unknown }) {
@@ -62,9 +63,11 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const checking = pending && ask.kind === "check";
   // 9.4: a card with an ask names the call by the ask's input, never by what the stream said
   const path = ask ? askArg(ask.input) : call.locations[0]?.path;
-  const name = path ? `${KIND(call.kind)} ${path}` : call.title;
+  const name = cardName(call, ask);
   const diffs = call.content.filter((c) => c.type === "diff").length;
-  const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : checking ? ["Checking", "b-off"] : STATUS[call.status];
+  const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : checking ? ["Checking", "b-off"]
+    : row.ended ? ["Ended", "b-off"]
+    : ask?.decision && call.status === "pending" ? DECIDED[ask.decision.outcome] : STATUS[call.status];
   const main = (
     <>
       {ask ? <div className="wa-input"><div className="wa-input-label">Input</div><InputList input={ask.input} /></div> : null}
@@ -91,6 +94,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
       {path ? <><span className="wa-tool-name name">{KIND(call.kind)}</span>{" "}</> : null}
       {path ? <code className="wa-tool-arg">{path}</code> : <span className="wa-tool-arg">{call.title}</span>}{" "}
       <span className={`wa-tool-status badge ${tagCls}`} data-status={call.status}>{tag}</span>
+      {row.checking && asking ? <>{" "}<span className="wa-tool-checking badge b-off">Checking</span></> : null}
     </>
   );
   return (

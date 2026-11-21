@@ -1,6 +1,6 @@
 // TECHNICAL 18.5: the status line, one shape per state; only the word and its subject are live.
 import { useId } from "react";
-import type { Actions, Row, SessionView, ToolCall } from "./model";
+import { cardName, type Actions, Row, SessionView } from "./model";
 
 type Shape = "dot" | "square" | "diamond" | "bars" | "ring" | "dashed-ring" | "triangle";
 const NAMES: Record<Shape, string> = { dot: "Running", square: "Checking", diamond: "Waiting for you", bars: "Paused", ring: "Idle", "dashed-ring": "Not running", triangle: "Failed" };
@@ -17,7 +17,7 @@ const file = (p?: string) => p ?? "";
 function runningWord(rows: Row[]): string {
   const last = rows[rows.length - 1];
   if (last?.kind === "agent" && last.writing) return "Writing";
-  const call = last?.kind === "tool" ? last.call : last?.kind === "explored" ? last.calls[last.calls.length - 1] : undefined;
+  const call = last?.kind === "tool" && !last.ended ? last.call : last?.kind === "explored" ? last.calls[last.calls.length - 1] : undefined;
   if (call && (call.status === "pending" || call.status === "in_progress")) {
     const f = file(call.locations[0]?.path);
     if (call.kind === "read") return f ? `Reading ${f}` : "Reading";
@@ -26,16 +26,13 @@ function runningWord(rows: Row[]): string {
   return "Thinking";
 }
 
-/** " · Edit src/sync.ts": the first open ask's call, its kind as a word and its first path (else its title). */
+/** " · Edit src/sync.ts": the first open ask's card name (the card header's own, `cardName`). */
 function askSubject(view: SessionView): string {
   const id = view.openAsks[0];
-  let call: ToolCall | undefined;
   for (const r of view.rows) {
-    if (r.kind === "tool" && r.ask?.id === id) call = r.call;
+    if (r.kind === "tool" && r.ask?.id === id) return ` · ${cardName(r.call, r.ask)}`;
   }
-  if (!call) return "";
-  const kind = call.kind.charAt(0).toUpperCase() + call.kind.slice(1);
-  return ` · ${kind} ${call.locations[0]?.path ?? call.title}`;
+  return "";
 }
 
 function spec(view: SessionView, now: number, onNeedsYou: () => void): Spec {

@@ -63,7 +63,7 @@ function upsertCall(v: SessionView, p: CallPatch, i?: number, fromAsk = false) {
     v.rows[f.at] = { ...explored(calls), key: r.key };
     if (!isExplored(call)) toToolRow(v, p.id);
   } else if (r.kind === "tool") {
-    v.rows[f.at] = { ...r, call, ...(i !== undefined ? { i } : {}) };
+    { const { ended: _e, ...rest } = r; v.rows[f.at] = { ...rest, call, ...(i !== undefined ? { i } : {}) }; }
   }
 }
 
@@ -94,7 +94,9 @@ function syncAsks(v: SessionView, x: Internal, toolCallId: string, decided?: { a
     const call: ToolCall = r.ask?.id !== pick.ask.id ? own : { ...own, status: cur.status,
       content: [...own.content.filter((b) => b.type === "diff"), ...cur.content.filter((b) => b.type !== "diff")],
       ...("rawOutput" in cur ? { rawOutput: cur.rawOutput } : {}) };
-    v.rows[f!.at] = { ...r, call, ask: pick.ask };
+    const { checking: _c, ...rest } = r;
+    const alsoChecking = pick.ask.kind === "ask" && mine.some((o) => o.ask.kind === "check");
+    v.rows[f!.at] = { ...rest, call, ask: pick.ask, ...(alsoChecking ? { checking: true as const } : {}) };
   }
 }
 
@@ -115,9 +117,17 @@ function toolCount(rows: Row[]): number {
   return n;
 }
 
+/** 9.3 R4: the turn is over, so a streamed call nothing drives (no open ask or check) is marked ended; its own data stays. */
+function markEnded(v: SessionView, x: Internal) {
+  const open = new Set((x.open ?? []).map((o) => o.ask.toolCallId));
+  v.rows = v.rows.map((r) => r.kind === "tool" && !r.ended && (r.call.status === "pending" || r.call.status === "in_progress") && !open.has(r.call.id) && !(r.ask && !r.ask.decision)
+    ? { ...r, ended: true as const } : r);
+}
+
 function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra) {
   const prev = v.turn;
   v.turn = state;
+  if (state.state === "unknown" || state.state === "resume-lost" || state.state === "idle") markEnded(v, x);
   if (state.state !== "idle" || prev?.state === "idle") return;
   const key = `f:${v.rows[v.rows.length - 1]?.key ?? ""}`;
   if (v.rows.some((r) => r.key === key)) return;

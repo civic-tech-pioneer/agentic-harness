@@ -18,6 +18,11 @@ export function askArg(input: unknown): string | undefined {
   }
   return undefined;
 }
+/** The card's name for a call (9.4): with an ask, its input's argument; else the call's first path; else the title. */
+export function cardName(call: ToolCall, ask?: Ask): string {
+  const path = ask ? askArg(ask.input) : call.locations[0]?.path;
+  return path ? `${call.kind.charAt(0).toUpperCase() + call.kind.slice(1)} ${path}` : call.title;
+}
 export type Activity = { kind: "checking"; on?: string } | { kind: "compacting" } | { kind: "consent"; what: string };
 export type TurnState =
   | { state: "running"; activity?: Activity; since: number }
@@ -30,7 +35,7 @@ export type Row =
   | { kind: "agent"; key: string; i?: number; text: string; writing: boolean }
   | { kind: "thought"; key: string; i?: number; text: string; streaming: boolean; seconds?: number }
   | { kind: "explored"; key: string; reads: number; searches: number; calls: ToolCall[] }
-  | { kind: "tool"; key: string; i?: number; call: ToolCall; ask?: Ask }
+  | { kind: "tool"; key: string; i?: number; call: ToolCall; ask?: Ask; checking?: true; ended?: true }
   | { kind: "decision"; key: string; i?: number; who: string; what: string; reason?: string }
   | { kind: "footer"; key: string; seconds: number; tools: number; tokens?: number }
   | { kind: "unknown"; key: string; i?: number; raw: unknown };
