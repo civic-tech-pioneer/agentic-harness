@@ -1,3 +1,4 @@
+// @vitest-environment node
 // TECHNICAL 9.4, 18.3: openSession against the fake kernel: reattach, reload, behind.
 import { describe, expect, it, vi } from "vitest";
 import { fakeKernel } from "../fake/kernel";

@@ -1,3 +1,4 @@
+// @vitest-environment node
 // S4-fix4 AC3: pages are reduced incrementally, linear in the pages.
 import { describe, expect, it, vi } from "vitest";
 

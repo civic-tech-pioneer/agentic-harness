@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Validator S15-fix1: a second entry on one call id lends nothing of its call (status, output) to the card of the entry shown (TECHNICAL 9.8, 14).
 import { describe, expect, it } from "vitest";
 import { emptyView, type Row, type SessionView } from "./model";
