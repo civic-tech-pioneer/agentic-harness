@@ -32,7 +32,6 @@ fn next_due(deadlines: &[Deadline], now: u64) -> Option<u64> {
     deadlines.iter().filter(|d| d.at > now).map(|d| d.at).min()
 }
 
-/// The longest delay the host's `timers.after` takes (7, `bad-delay`): 30 days.
 
 /// The kernel's own timer for the restart pass (R2).
 const RESTART: &str = "restart";
