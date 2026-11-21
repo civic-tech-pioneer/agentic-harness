@@ -31,7 +31,8 @@ pub use record::{
 };
 pub use refuse::{refuse, Catalog, CatalogModel};
 pub use sessions::{
-    Called, FakeHost, Host, HostCall, Kernel, ProviderEvent, Push, Request, SessionInfo,
+    Attached, Called, FakeHost, Full, Host, HostCall, Item, Kernel, ProviderEvent, Push, Request,
+    SessionInfo,
 };
 pub use state::{Counts, MemState, State, TooLarge, MAX_VALUE};
 pub use transcript::{chunk_key, Joiner, Meta, NewEntry, Page, Replay, Transcript};

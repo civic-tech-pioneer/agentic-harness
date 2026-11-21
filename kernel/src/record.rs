@@ -204,6 +204,10 @@ pub struct Record {
     pub counters: Counters,
     pub chunks: Vec<u64>,
     pub streams: Vec<String>,
+    /// The session's live owner stream, as `live/<session>` names it: a call that has the record
+    /// pushes to it without reading that key (9.4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live: Option<String>,
     pub deadlines: Vec<Deadline>,
     pub open: Vec<OpenAsk>,
     pub pending_answers: BTreeMap<String, PendingAnswer>,
@@ -235,6 +239,7 @@ impl Default for Record {
             counters: Counters::default(),
             chunks: Vec::new(),
             streams: Vec::new(),
+            live: None,
             deadlines: Vec::new(),
             open: Vec::new(),
             pending_answers: BTreeMap::new(),

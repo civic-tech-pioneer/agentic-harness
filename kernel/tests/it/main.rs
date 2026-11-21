@@ -8,6 +8,7 @@ mod adv_s20;
 mod adv_s21;
 mod adversary;
 mod asks;
+mod attach;
 mod check;
 mod errors;
 mod example;
