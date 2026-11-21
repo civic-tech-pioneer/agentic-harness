@@ -161,9 +161,9 @@ on (3); one made in the call that returns `defer` is dropped with it.
 
 **Exact text.** watane's host 19.1 (`host/wit/host.wit` in the watane
 checkout) is the exact WIT; the block above names what the kernel uses. The
-kernel's copy is `wit/deps/watane-host/host.wit`, taken from host 19.1 and
+kernel's copy is `kernel/wasm/wit/deps/watane-host/host.wit` (1), taken from host 19.1 and
 refreshed when it changes (S32). Until watane gives restart detection (host 18
-Q34; watane S97), the WASM wrapper's start number (B1) is the constant 1: stage
+Q34; watane S97), the WASM wrapper's `generation` (G1) is the constant 1: stage
 A runs no provider, so no restart step has anything to do.
 
 **The kernel's side of the seam** (S32 seam audit, against host 19):
