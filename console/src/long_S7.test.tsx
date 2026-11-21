@@ -17,6 +17,7 @@ const idle = JSON.stringify({ _meta: { watane: { type: "turn", state: { state: "
 const running = JSON.stringify({ _meta: { watane: { type: "turn", state: { state: "running", since: 1 } } } });
 const p95 = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.ceil(xs.length * 0.95) - 1]!;
 const now = () => performance.now();
+const hasButton = (name: string) => [...document.querySelectorAll("button")].some((b) => b.textContent === name || b.getAttribute("aria-label") === name);
 const rowCount = () => document.querySelectorAll(".wa-row").length;
 
 /** Resolves when pred holds, checked at once and after every DOM change. */
@@ -37,6 +38,7 @@ let fake: FakeKernel, scroller: HTMLElement, opened = 0, next = 1, stream: Retur
 let top = 0;
 let root: ReturnType<typeof createRoot>;
 const delays: number[] = [];
+let probe: MutationObserver;
 const total = () => Number(document.querySelector<HTMLElement>(".wa-transcript")!.dataset.total);
 const scrollTo = (y: number) => { top = Math.max(0, Math.min(y, total() + PAD - VIEW)); fireEvent.scroll(scroller); };
 const results: Record<string, number> = {};
@@ -57,21 +59,30 @@ beforeAll(async () => {
   await until(() => document.body.textContent!.includes(`Done with module ${N}`));
   opened = now() - t0;
   // the rest of the history is paged in (the governor lets 4 calls per second through) and shown: some 5 600 rows
-  await until(() => total() > 5000 * SLOT, 15_000);
+  const paged = until(() => total() > 5000 * SLOT, 15_000); // its own guard timer is real
+  // the governor's pacing is not what the limits are about: its clock (setTimeout, Date) is advanced by hand while the history comes in
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  let done = false;
+  paged.then(() => { done = true; }, () => { done = true; });
+  while (!done) { await vi.advanceTimersByTimeAsync(250); await new Promise<void>((r) => setImmediate(r)); }
+  vi.useRealTimers();
+  await paged;
   // the console attaches again once the history is in (the governor may make it wait for a token); a delta played before that is the fake's "message being written", which the console shows as Writing... until an entry ends it
   for (let k = 0; k < 150 && fake.calls.at(-1)?.name !== "attach"; k++) await new Promise((r) => setTimeout(r, 20));
   // 50 deltas a second; for each, the time from giving it to the fake until its text is in the DOM
   const sent = new Map<string, number>();
-  new MutationObserver(() => {
+  const watch = new MutationObserver(() => {
     if (!sent.size) return;
     const text = document.body.textContent!;
     for (const [w, t] of sent) if (text.includes(w)) { sent.delete(w); delays.push(now() - t); }
-  }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+  watch.observe(document.body, { subtree: true, childList: true, characterData: true });
+  probe = watch;
   stream = setInterval(() => { if (next < IDLE) { sent.set(`word${next}`, now()); fake.play(next++); } }, 20);
   // the 5 000 rows reach the runtime after the paint: wait until the main thread is free again (one task takes under 30 ms)
   for (let k = 0; k < 40; k++) { const t = now(); await new Promise((r) => setTimeout(r, 5)); if (k > 2 && now() - t < 30) break; }
 }, 30_000);
-afterAll(() => { clearInterval(stream); root.unmount(); console.log("S7-2 p95 (ms):", JSON.stringify(results), "open end:", Math.round(opened)); });
+afterAll(() => { clearInterval(stream); probe.disconnect(); root.unmount(); console.log("S7-2 p95 (ms):", JSON.stringify(results), "open end:", Math.round(opened)); });
 
 describe("a session of 5 000 entries with the stream running", () => {
   it("ac7_opening_shows_the_end_within_2s", () => {
@@ -137,9 +148,9 @@ describe("a session of 5 000 entries with the stream running", () => {
       await until(() => interrupts() > before && screen.queryAllByText("Stopping…").length > 0);
       ms.push(now() - t);
       fake.play(IDLE); // the turn ends, then a new one runs, so the next Stop shows
-      await until(() => screen.queryAllByText("Stopping…").length === 0);
+      await until(() => !hasButton("Stopping…") && !document.body.textContent!.includes("Stopping…")); // reset steps poll the DOM cheaply: role queries cost more than the page
       fake.play(IDLE + 1);
-      await until(() => !!screen.queryByRole("button", { name: "Stop" }));
+      await until(() => hasButton("Stop"));
     }
     results.stop = p95(ms);
     expect(results.stop).toBeLessThanOrEqual(100);

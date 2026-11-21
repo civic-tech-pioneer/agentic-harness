@@ -28,7 +28,7 @@ beforeEach(async () => {
   });
 });
 afterEach(() => { vi.unstubAllGlobals(); });
-const see = () => act(async () => { io.forEach((o) => o.cb([{ isIntersecting: true }])); await new Promise((r) => setTimeout(r, 50)); });
+const see = () => act(async () => { io.forEach((o) => o.cb([{ isIntersecting: true }])); await new Promise((r) => setTimeout(r, 15)); });
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 const calls = (n: number) => vi.waitFor(() => expect(shiki.calls).toBe(n), { timeout: 5000 });
 const warm = () => highlight("ts", "warm"); // loads Shiki and the language once, so later checks are fast

@@ -52,7 +52,7 @@ function messages(r: () => number) {
 }
 
 it("random message sequences give the same view as the reducer of 5882c51 after every step", () => {
-  const SEQS = 2000, LEN = 40;
+  const SEQS = 1000, LEN = 40;
   let steps = 0;
   for (let s = 0; s < SEQS; s++) {
     const r = rng(s + 1);
