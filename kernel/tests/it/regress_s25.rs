@@ -26,7 +26,7 @@ fn kernel() -> Kernel<MemState, FakeHost> {
     Kernel::new(
         st,
         FakeHost {
-            boot: 1,
+            generation: 1,
             now: 1000,
             ..FakeHost::default()
         },

@@ -24,7 +24,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -378,7 +378,7 @@ fn case73_g_the_restart_step_closes_every_ask_in_every_state() {
             r.turn = t;
             r.save(&mut k.state).unwrap();
         }
-        k.host.boot = 2;
+        k.host.generation = 2;
         k.list("nobody", None, 1).unwrap();
         k.read("alice", &id, 0, None, 1).unwrap();
         assert_two(&mut k, &id, "restart");
@@ -422,7 +422,7 @@ fn case73_g_the_restart_step_leaves_an_openai_sessions_asks() {
     r.save(&mut k.state).unwrap();
     let turn = r.turn.clone();
     assert!(matches!(turn, Turn::Waiting { .. }));
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.list("nobody", None, 1).unwrap();
     k.read("alice", &id, 0, None, 1).unwrap();
     assert!(decisions(&mut k, &id).is_empty());

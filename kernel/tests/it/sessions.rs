@@ -25,7 +25,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -1234,7 +1234,7 @@ fn ac1_interrupt_with_a_replacement_on_an_inactive_session_only_starts_the_turn(
 fn ac1_ac2_interrupt_and_cancel_do_the_r6_step_first() {
     let mut k = kernel();
     let id = started(&mut k, "alice", "k");
-    k.host.boot = 2;
+    k.host.generation = 2;
     let sent = requests(&k).len();
     // R6 makes the running turn `unknown`: nothing left to interrupt.
     k.interrupt("alice", &id, None).unwrap();
@@ -1244,7 +1244,7 @@ fn ac1_ac2_interrupt_and_cancel_do_the_r6_step_first() {
     let mut k = kernel();
     let id = started(&mut k, "alice", "k");
     k.provider(&id, ask("a1", "ask", 0)).unwrap();
-    k.host.boot = 2;
+    k.host.generation = 2;
     let sent = requests(&k).len();
     k.cancel("alice", &id).unwrap();
     let r = rec(&mut k, &id);

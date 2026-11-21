@@ -25,7 +25,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -101,7 +101,7 @@ fn busy(k: &mut K) -> String {
 
 /// The host restarts; a call by an owner with no sessions starts the pass and steps nothing.
 fn restart_host(k: &mut K, boot: u64) {
-    k.host.boot = boot;
+    k.host.generation = boot;
     k.list("nobody", None, 1).unwrap();
 }
 
@@ -127,15 +127,15 @@ fn ac1_every_call_reads_the_boot_and_a_change_starts_the_pass() {
     k.timer("other");
     k.delete("alice", &id).unwrap();
     k.start("alice", "k4", "none", "{}", IN).unwrap_err();
-    assert_eq!(calls(&k, |c| *c == HostCall::Boot), 10);
+    assert_eq!(calls(&k, |c| *c == HostCall::Generation), 10);
     assert_eq!(restart_timers(&k), 0);
     // the provider's item call reads neither
     let id = started(&mut k, "alice", "k5");
     k.host.calls.clear();
     k.provider(&id, ask("a1", 5)).unwrap();
-    assert!(!k.host.calls.contains(&HostCall::Boot));
+    assert!(!k.host.calls.contains(&HostCall::Generation));
     // a change of boot
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.host.calls.clear();
     k.state.reset_counts();
     k.list("alice", None, 5).unwrap();
@@ -148,7 +148,7 @@ fn ac1_every_call_reads_the_boot_and_a_change_starts_the_pass() {
     assert_eq!(
         k.host.calls,
         [
-            HostCall::Boot,
+            HostCall::Generation,
             HostCall::TimerAfter {
                 id: "restart".into(),
                 delay_ms: 0
@@ -177,7 +177,7 @@ fn ac2_the_pass_steps_one_session_per_firing_case_68() {
         .iter()
         .map(|i| k.state.get(&format!("session/{i}")))
         .collect::<Vec<_>>();
-    k.host.boot = 2;
+    k.host.generation = 2;
     // a boot change with no call changes nothing
     assert_eq!(
         ids.iter()

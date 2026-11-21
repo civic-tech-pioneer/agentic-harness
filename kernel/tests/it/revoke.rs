@@ -22,7 +22,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -111,7 +111,7 @@ fn case74_each_call_that_gives_more_work_is_refused_and_writes_nothing() {
 fn case74_continue_on_an_unknown_session_is_refused() {
     let mut k = kernel();
     let id = k.start("alice", "k", "p", "{}", IN).unwrap().value;
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.read("alice", &id, 0, None, 1).unwrap();
     assert_eq!(rec(&mut k, &id).turn, Turn::Unknown);
     revoke(&mut k, b"[]");

@@ -24,7 +24,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };

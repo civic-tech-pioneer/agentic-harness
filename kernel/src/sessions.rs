@@ -38,10 +38,10 @@ const RESTART: &str = "restart";
 const IDLE: &str = "idle";
 const IDLE_MS: u64 = 600_000;
 
-/// What the kernel needs of the host (2.1): the boot number, the clock, ids, timers, requests.
+/// What the kernel needs of the host (2.1): the generation, the clock, ids, timers, requests.
 pub trait Host {
-    /// `caller.boot()` (2.1).
-    fn boot(&mut self) -> u64;
+    /// `host-info.generation()` (2.1, G1).
+    fn generation(&mut self) -> u64;
     /// Milliseconds.
     fn now(&mut self) -> u64;
     /// A fresh session id, at most 64 bytes.
@@ -100,7 +100,7 @@ pub enum Request {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostCall {
-    Boot,
+    Generation,
     TimerAfter { id: String, delay_ms: u64 },
     TimerCancel { id: String },
     Request(Request),
@@ -111,10 +111,10 @@ pub enum HostCall {
     Resume { stream: String },
 }
 
-/// A host for tests: a settable clock and boot, ids `s1`, `s2`, ..., and a log of what was asked.
+/// A host for tests: a settable clock and generation, ids `s1`, `s2`, ..., and a log of what was asked.
 #[derive(Debug, Default)]
 pub struct FakeHost {
-    pub boot: u64,
+    pub generation: u64,
     pub now: u64,
     pub next_id: u64,
     pub next_stream: u64,
@@ -130,9 +130,9 @@ impl FakeHost {
 }
 
 impl Host for FakeHost {
-    fn boot(&mut self) -> u64 {
-        self.calls.push(HostCall::Boot);
-        self.boot
+    fn generation(&mut self) -> u64 {
+        self.calls.push(HostCall::Generation);
+        self.generation
     }
     fn now(&mut self) -> u64 {
         self.now
@@ -476,13 +476,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
     }
 
-    /// Starts a top-level call: reads `slots` and the host's boot number (R1). When they differ,
+    /// Starts a top-level call: reads `slots` and the host's generation (R1). When they differ,
     /// this call starts the restart pass: the new boot, the stream slot counts zeroed (`timers`
     /// stays), the cursor at page 0, and the timer `restart` with delay 0. It steps no session.
     fn begin(&mut self) -> Result<Slots, KernelError> {
         self.open_meter();
         let mut slots = Slots::load(&mut self.state);
-        let boot = self.host.boot();
+        let boot = self.host.generation();
         if boot != slots.boot {
             slots.boot = boot;
             slots.provider = 0;

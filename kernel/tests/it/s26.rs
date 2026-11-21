@@ -26,7 +26,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -95,7 +95,7 @@ fn stale_waiting(k: &mut K) -> String {
     let mut r = Record::load(&mut k.state, &id).unwrap();
     r.chunks = (1..=MAX_CHUNKS as u64).collect();
     r.save(&mut k.state).unwrap();
-    k.host.boot = 2;
+    k.host.generation = 2;
     id
 }
 
@@ -119,7 +119,7 @@ fn delete_writes(stale: bool) -> u64 {
     let id = start(&mut k, "alice", "k1");
     k.provider(&id, ask("a1")).unwrap();
     if stale {
-        k.host.boot = 2;
+        k.host.generation = 2;
     }
     // another session's call takes the new boot first, so the delete's own writes compare
     start(&mut k, "bob", "k1");
@@ -386,7 +386,7 @@ fn validator_fix2_past_quota_ending_calls_write_one_turn_entry() {
     let n: Vec<usize> = ss.iter().map(|s| turn_entries(&mut k, s)).collect();
     k.cancel("alice", &ss[0]).unwrap();
     k.interrupt("alice", &ss[1], None).unwrap();
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.list("alice", None, 1).unwrap();
     for _ in 0..4 {
         k.timer("restart");

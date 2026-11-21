@@ -27,7 +27,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -71,7 +71,7 @@ fn idle_at(r: &Record) -> Vec<u64> {
 fn host_calls(k: &K, from: usize) -> Vec<HostCall> {
     k.host.calls[from..]
         .iter()
-        .filter(|c| !matches!(c, HostCall::Boot | HostCall::Request(_)))
+        .filter(|c| !matches!(c, HostCall::Generation | HostCall::Request(_)))
         .cloned()
         .collect()
 }
@@ -422,7 +422,7 @@ fn ac7_a_restart_keeps_the_counts_and_a_stale_idle_firing_releases_nothing() {
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
     k.provider(&id, done()).unwrap();
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.host.now = 1000 + TEN;
     let from = k.host.calls.len();
     k.timer(&format!("s/{id}"));
@@ -441,7 +441,7 @@ fn ac7_a_restart_alone_leaves_the_timer_counts() {
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
     k.provider(&id, done()).unwrap();
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.say("bob-none", "x", "k", "y").unwrap_err();
     assert_eq!(slots(&mut k).timers, 1);
     assert_eq!(timers(&mut k, "alice"), 1);

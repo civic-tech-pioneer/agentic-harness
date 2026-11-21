@@ -27,7 +27,7 @@ fn kernel() -> K {
     Kernel::new(
         st,
         FakeHost {
-            boot: 1,
+            generation: 1,
             now: 1000,
             ..FakeHost::default()
         },
