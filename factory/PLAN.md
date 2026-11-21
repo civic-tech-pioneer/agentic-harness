@@ -49,9 +49,7 @@ adversaries' held cases are acceptance. Watch `npm test` time: 16.4 s on a loade
 machine at S27 against S7's 14.5 s budget; S23 sets the highlight budget per block (18.6).
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
-## Sketched
-
-### S29: ending a turn never fails at the ceiling (cloud, after S28 and S23 merge: kernel/, TECHNICAL, console/)
+### S29: ending a turn never fails at the ceiling (in flight (cloud), routine trig_01JKNuz9k15mKj5PFDjgY3hf)
 
 Story: a kernel maker runs `cargo test` in `kernel/`: at and past the kernel's account ceiling,
 every call that ends a turn or closes a session's work still succeeds and frees what it holds:
@@ -59,11 +57,17 @@ every call that ends a turn or closes a session's work still succeeds and frees 
 `ended` (S28). All are charged into the reserve, as 9.3 "Past" says for the restart firing and
 `ended`. Past the ceiling, a decision entry carries the ask's index (`ask-i`) and its outcome, not
 a copy of the ask body, so what is written there is bounded in bytes (at most 64 small decisions
-and one `turn` entry per call); the console draws such a decision from the ask entry at `ask-i`
-(a read of that one entry when the page lacks it). Spec lines in 9.3, 9.4 and 16; a case.
-Touches: `kernel/`, `design/TECHNICAL.md`, `console/` (the short decision form only), `ui/`.
-Protects: *guard* (quota, asks). The console part is small; the PO compares it before arming.
+and one `turn` entry per call). Spec lines in 9.3, 9.4 (the short decision form, and how a client
+draws it from the ask entry at `ask-i`) and 16; a case.
+Touches: `kernel/`, `design/TECHNICAL.md`. Protects: *guard* (quota, asks).
 
+## Sketched
+
+### S30: the console draws a short decision (cloud, after S23 and S29 merge: console/)
+
+Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
+ask entry at `ask-i`, reading that one entry when the page lacks it; the S9, S15 and S7 held cases
+stay green. A UI slice: PO-armed. Touches: `console/`, `ui/`. Protects: *guard* (asks).
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -284,7 +288,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   adversary BREACHED 1 then 1 (past-quota `turn` entries), fixed, HELD. Implementer runs 1 each
   of 7.
 
-- **S28** no session is left running with nothing driving it (PR #32, ~35 min). A provider
+- **S28** no session is left running with nothing driving it (PR #32, merged 2026-11-21 06:07 UTC, ~35 min). A provider
   `ended` mid-turn closes the open asks and ends the turn `failed {provider-ended}`; the next `say`
   resumes the Claude session; the console shows "Try again". `ended` never fails on quota (charged
   past the ceiling, as the restart firing). The past-quota flag is a `Past` value only
