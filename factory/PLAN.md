@@ -84,6 +84,18 @@ Touches: `kernel/`, `design/TECHNICAL.md` (9.6 lines as built). Protects: *guard
 
 ## Sketched
 
+### S32: stage A's agentic-harness part: the kernel's stream reaches a page (cloud, after watane S96 merges)
+
+Story: Alice opens the console as the kernel's page in `watane-dev serve` and sees numbered items
+of a kernel stream arrive in the page skeleton (18.4 layout and theme), as TECHNICAL 17 row A says.
+Interface (fixed in both sketches, watane PLAN step 11, S96): the `watane:host@0.1.0` streams and
+timers of TECHNICAL 2.1 as watane's S95 writes them into host/TECHNICAL (stream-sink `taken | defer`,
+`streams.resume`, `stream-producer.ended`, page connections and their queues). Outcomes: the kernel
+crate gains its first WIT world and a WASM build (`wit/world.wit`, so `check-mod.sh` checks it);
+cases 7, 20, 21 (kernel part) and 36 and 51 (kernel part) pass; the console attaches to the real
+stream in `watane-dev serve` instead of the scripted fake, with the fake kept for its unit tests.
+Touches: `kernel/`, `wit/`, `console/`, `ui/`, `mod.toml`. Protects: *core*. Waits for S96 (watane).
+
 ### S30: the console draws a short decision (cloud, after S23 and S29 merge: console/)
 
 Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
@@ -555,6 +567,15 @@ S2 writes each into the document that owns it.
 - 2026-11-21 S29: a load-sensitive timing test (`long_S7`) in the default gate fails parallel
   tasks' checks for code they did not touch (S30 moves it). No `cargo mutants` or `/usr/bin/time`
   in the cloud image.
+
+- 2026-11-21 Driving a second project (watane, the bridge): its PLAN has its own format (Status
+  markers, steps, Foremen) and a long history; the PO must read its README, PLAN and VISION first.
+  Its checkout holds another session's uncommitted blog files, so `git pull --rebase --autostash`
+  is unsafe there; `git merge --ff-only origin/main` works when the PO has no local commits. Its
+  branches are lowercase (`slice/s95`) while ids are `S95`: the watcher must match both. A slice
+  of one project that waits on another's merge has no watcher that spans repositories.
+- 2026-11-21 po skill 3 Local: the hand-out's `cd` into the worktree moved the PO's Bash cwd there
+  for the rest of the session; run `claude --bg` in a subshell.
 
 ## Suite time
 
