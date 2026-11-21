@@ -218,6 +218,8 @@ export function reduce(view: SessionView, message: string): SessionView {
       const open = x.open ?? [];
       if (d) {
         const title = m.call?.title ?? open.find((o) => o.ask.id === a.id)?.title ?? askArg(a.input) ?? a.toolCallId;
+        // 9.4: the decision repeats the ask, so a page that starts at it (no ask of this call seen open) still draws the ask's card
+        if (!open.some((o) => o.ask.toolCallId === a.toolCallId)) { upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true); toToolRow(v, a.toolCallId); }
         x.open = open.filter((o) => o.ask.id !== a.id);
         syncAsks(v, x, a.toolCallId, a);
         const word = d.outcome === "allow" ? "Allowed" : d.outcome === "deny" ? "Denied" : "No objection";
