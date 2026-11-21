@@ -49,25 +49,17 @@ adversaries' held cases are acceptance. Watch `npm test` time: 16.4 s on a loade
 machine at S27 against S7's 14.5 s budget; S23 sets the highlight budget per block (18.6).
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
-### S29: ending a turn never fails at the ceiling (in flight (cloud), routine trig_01JKNuz9k15mKj5PFDjgY3hf)
-
-Story: a kernel maker runs `cargo test` in `kernel/`: at and past the kernel's account ceiling,
-every call that ends a turn or closes a session's work still succeeds and frees what it holds:
-`cancel`, a provider item that ends a turn `stopped {limit: quota}` (and sends `Interrupt`), and
-`ended` (S28). All are charged into the reserve, as 9.3 "Past" says for the restart firing and
-`ended`. Past the ceiling, a decision entry carries the ask's index (`ask-i`) and its outcome, not
-a copy of the ask body, so what is written there is bounded in bytes (at most 64 small decisions
-and one `turn` entry per call). Spec lines in 9.3, 9.4 (the short decision form, and how a client
-draws it from the ask entry at `ask-i`) and 16; a case.
-Touches: `kernel/`, `design/TECHNICAL.md`. Protects: *guard* (quota, asks).
-
 ## Sketched
 
 ### S30: the console draws a short decision (cloud, after S23 and S29 merge: console/)
 
 Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
 ask entry at `ask-i`, reading that one entry when the page lacks it; the S9, S15 and S7 held cases
-stay green. A UI slice: PO-armed. Touches: `console/`, `ui/`. Protects: *guard* (asks).
+stay green; both forms (S29: short also for an owner past its own 64 MiB). Also: the `long_S7`
+p95 timing checks fail the default gate under parallel load (S29 saw it twice at load ~4.9):
+move the timing limits to `test:slow` or measure them in a way load cannot fail, keeping a
+functional check in `npm test`. A UI slice: PO-armed. Touches: `console/`, `ui/`.
+Protects: *guard* (asks).
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -296,6 +288,14 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   entry made `ended` fail at the ceiling, leaving the session running), fixed, HELD. Implementer
   runs 1/1/1. Kernel 342 tests in 3.8 s; gate 28 s.
 
+- **S29** ending a turn never fails at the ceiling (PR #33, 0.6 h). At and past the ceiling,
+  `cancel`, `interrupt` without a replacement, provider items while past and `ended` succeed and
+  free what they hold, charged into the reserve; new work is refused `quota`. Past quota a decision
+  is the short form `{id, kind, ask-i, decision}` (counted at each write), so a closing call with 64
+  open asks of 300 KiB writes 9.4 KB; case 77. User-sim ACCEPTED (run 1); adversary HELD, BREACHED 1
+  (a pending id's decided ask never closed, so repeats stored without limit), fixed, HELD.
+  Implementer runs 1 each of 4. Kernel 369 tests in 3.9 s; gate 29 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -395,6 +395,12 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   decision carries the ask's index, not its body (S29). Accepted: a deferred `ended` that the host's
   backstop ends `consumer-failed` (host H1, stage B); `ended` on an older-boot record (only if the
   host breaks R1).
+
+- 2026-11-21 S29 RISK: the reserve is shared, the bound per call: about 45 owners crossing at once
+  with full sets of open asks could pass the 32 MiB reserve, then the host's 256 MiB limit refuses
+  the writes. Accepted as a named limit (9.3 states the bound). Also accepted: a 256-byte `reason`
+  can escape to ~1.5 KiB; an adapter-made decided ask below quota is stored as given (no adapter
+  makes one; build it from the record when one does).
 
 ## Human answers (2026-11-20, through the PO)
 
@@ -529,6 +535,10 @@ S2 writes each into the document that owns it.
 
 - 2026-11-21 S28: a brief that changes what a call writes should quote the ceiling rule (9.3
   "Past"); the adversary found the gap. A brief's AC that says "existing tests show it" was false.
+
+- 2026-11-21 S29: a load-sensitive timing test (`long_S7`) in the default gate fails parallel
+  tasks' checks for code they did not touch (S30 moves it). No `cargo mutants` or `/usr/bin/time`
+  in the cloud image.
 
 ## Suite time
 
