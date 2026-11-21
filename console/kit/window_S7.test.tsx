@@ -68,6 +68,17 @@ describe("the window", () => {
     expect(m.indexes()).not.toContain(0);
   });
 
+  it("ac2_a_row_keeps_focus_while_the_window_has_lost_it", () => {
+    const m = mount(feed(j({ x: 1 }), ...users(1000, 1)));
+    m.scrollTo(0);
+    const raw = screen.getByRole("button", { name: "Show raw" });
+    act(() => raw.focus());
+    act(() => { fireEvent.blur(raw); }); // the window lost focus: a blur event, but the element still holds the document's focus
+    m.scrollTo(1e9);
+    expect(m.indexes()).toContain(0);
+    expect(document.activeElement).toBe(raw);
+  });
+
   it("ac2_folded_state_survives_the_row_leaving_the_window_and_coming_back", async () => {
     const m = mount(feed(
       j({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "deep thoughts" }, _meta: { watane: { at: 1000 } } }),
