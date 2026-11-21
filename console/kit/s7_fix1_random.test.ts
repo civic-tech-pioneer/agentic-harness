@@ -36,8 +36,7 @@ function messages(r: () => number) {
     if (x < 0.65) {
       const cid = id(), k = pick(["ask", "check"]);
       const decided = r() < 0.5 ? { decision: { outcome: pick(["allow", "deny", "none"]), by: "you", ...(r() < 0.3 ? { for: "session" } : {}) } } : {};
-      // an ask id stays on its call: S23-fix4 moves an id's open ask off its old call, which the frozen reducer does not
-      return entry(i(), "ask", { id: `${pick(["a0", "a1", "a2"])}${cid}`, kind: k, toolCallId: cid, input: {}, "expires-at": 9, ...(k === "ask" ? { reach: "r" } : {}), ...(r() < 0.8 ? { toolCall: callBody(pick([cid, "zz"])) } : {}), ...decided });
+      return entry(i(), "ask", { id: pick(["a0", "a1", "a2"]), kind: k, toolCallId: cid, input: {}, "expires-at": 9, ...(k === "ask" ? { reach: "r" } : {}), ...(r() < 0.8 ? { toolCall: callBody(pick([cid, "zz"])) } : {}), ...decided });
     }
     if (x < 0.69) return entry(i(), "verdict", { ...(r() < 0.7 ? { toolCallId: id() } : { on: "input" }), outcome: "deny", by: "rule", reasons: ["x"] });
     if (x < 0.71) return entry(i(), "allow", { id: pick(["p0", "p1"]), reach: "r", by: "you", given: r() < 0.5 });
@@ -52,13 +51,31 @@ function messages(r: () => number) {
   return { one, pick, entryAt: (k: number) => (r() < 0.2 ? null : r() < 0.5 ? entry(k, "message", { role: "agent", content: text() }) : one()) };
 }
 
+type Tool = Extract<SessionView["rows"][number], { kind: "tool" }>;
+const isOpen = (v: SessionView, ask: unknown) => !!v.x?.open?.some((o) => o.ask === ask);
+const checks = (v: SessionView, call: string) => !!v.x?.open?.some((o) => o.ask.kind === "check" && o.ask.toolCallId === call);
+/** The row's open ask and its checking flag agree with the reducer's open asks. */
+const fits = (v: SessionView, r: Tool) => (!r.ask || !!r.ask.decision || (isOpen(v, r.ask) && r.ask.toolCallId === r.call.id)) && (!r.checking || checks(v, r.call.id));
+/** S23-fix4: when an open ask's id moves to another call, the frozen reducer leaves the old call's row holding the stale ask (or a stale
+ * checking flag); the new one shows that call's next open ask (and its call) or none. Only such a row takes its ask from the new view, and only when the
+ * new row fits; the rest of that sequence is reduced (no throw) but not compared, as the frozen row stays stale and takes no updates. */
+function unstale(a: SessionView, b: SessionView): SessionView {
+  const rows = b.rows.map((r, k) => {
+    const n = a.rows[k] as Tool | undefined;
+    if (r.kind !== "tool" || fits(b, r) || n?.kind !== "tool" || n.key !== r.key || !fits(a, n)) return r;
+    const { ask: _a, checking: _c, ...rest } = r;
+    return { ...rest, call: n.call, ...(n.ask ? { ask: n.ask } : {}), ...(n.checking ? { checking: n.checking } : {}) } as Tool;
+  });
+  return { ...b, rows };
+}
+
 it("random message sequences give the same view as the reducer of 5882c51 after every step", () => {
   const SEQS = 1000, LEN = 40;
-  let steps = 0;
+  let steps = 0, moved = 0;
   for (let s = 0; s < SEQS; s++) {
     const r = rng(s + 1);
     const g = messages(r);
-    let a: SessionView = emptyView, b: SessionView = emptyView;
+    let a: SessionView = emptyView, b: SessionView = emptyView, apart = false;
     const seen: [SessionView, SessionView][] = [];
     for (let k = 0; k < LEN; k++) {
       if (seen.length && r() < 0.05) [a, b] = g.pick(seen); // a parent reduced again
@@ -70,9 +87,14 @@ it("random message sequences give the same view as the reducer of 5882c51 after 
         a = safeReduce(a, m); b = oldSafeReduce(b, m);
       }
       steps++;
-      if (JSON.stringify(a) !== JSON.stringify(b)) expect({ seed: s + 1, step: k, view: a }).toEqual({ seed: s + 1, step: k, view: b });
+      if (!apart && JSON.stringify(a) !== JSON.stringify(b)) {
+        const c = unstale(a, b);
+        if (c.rows.some((r, k) => r !== b.rows[k])) { moved++; apart = true; }
+        expect({ seed: s + 1, step: k, view: a }).toEqual({ seed: s + 1, step: k, view: c });
+      }
       seen.push([a, b]);
     }
   }
   expect(steps).toBe(SEQS * LEN);
+  expect(moved).toBeGreaterThan(0); // moved-ask sequences stay in the run
 });

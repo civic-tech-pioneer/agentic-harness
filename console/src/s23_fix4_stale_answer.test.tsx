@@ -30,6 +30,9 @@ describe("S23-fix4 stale answer", () => {
     render(<App kernel={f} info={INFO} />);
     await screen.findByRole("button", { name: "Needs you (1)" });
     await act(async () => { await Promise.resolve(seen!.answer("zz", { outcome: "allow" })).catch(() => {}); });
+    await act(async () => { await Promise.resolve(seen!.answer("a8", { outcome: "allow" })).catch(() => {}); }); // no drawn ask: refused even for the open id
+    const none = { id: "zz", kind: "ask", toolCallId: "e2", input: {}, "expires-at": 1 } as unknown as Ask;
+    await act(async () => { await Promise.resolve(seen!.answerDrawn!(none, { outcome: "allow" })).catch(() => {}); });
     expect(f.calls.some((c) => c.name === "answer")).toBe(false);
   });
 });
