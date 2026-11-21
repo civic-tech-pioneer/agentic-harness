@@ -671,12 +671,12 @@ The body of a `turn` entry (9.4) and the `state` of a `turn` item (9.4, "The
 wire") are this JSON; the entry has no `activity`.
 
 - `start` and `say` and `answer` check `key/<owner>/<key>` first: the key kept for another call kind, owner or session is refused, one refusal `{field: "key"}`, and a kept result is never overwritten (9.1).
-- `say` while `running` or `waiting` queues; `queue-full` past 32 inputs or 2 MiB. On `paused` with no `until`, `say` resumes (starts the turn); on a timed pause it queues. `queued`
+- `say` while `running` or `waiting` queues; `queue-full` past 32 inputs or 2 MiB. On `paused` with no `until`, `say` resumes (starts the turn); on a timed pause it queues. `say` reads `access/` again, whether it starts a turn or queues (9.7, "Revoking"). `queued`
   lists the queue; `unqueue` removes one input not yet taken, and refuses
   (`unknown-input`) one that is gone. Each change pushes `{"type":"queue",
   "inputs":[…]}` under `_meta.watane`.
 - `interrupt` ends the turn (`idle {interrupted}`), then starts the
-  replacement if given. `cancel` ends the session's stream and handle, closes
+  replacement if given (a replacement reads `access/` again, 9.7, "Revoking"). `cancel` ends the session's stream and handle, closes
   each open ask or check (one with a pending answer gets that answer as its decision,
   9.8 rule 4; an open one is denied, `by: kernel`), cancels children. `delete` cancels, removes the entries,
   the queue (`queue/<id>`) and wire history, keeps the keys.
