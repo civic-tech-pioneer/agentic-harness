@@ -9,6 +9,7 @@ mod example;
 mod grammar;
 mod overlay;
 mod refuse;
+mod runners;
 mod transcript;
 
 use agent_kernel::{parse_profile, Problem, Profile};
