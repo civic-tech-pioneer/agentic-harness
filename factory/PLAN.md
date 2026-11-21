@@ -27,42 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S9: the console matches the frames (in flight (cloud), routine trig_01UYdesZN7bxNcAnFwfvsuMi)
-
-Story: Alice opens the console on the scripted session and it looks and reads like the canvas row
-"Revision 2" (`design/frames/Main-2.dc.html`, `States-2.dc.html`, copies of the canvas in TECHNICAL 18), not only behaves like it. The PO
-compared S4 with `Main-2` at 1440 px after pressing Send; each gap below is from that comparison.
-Outcomes (each a view test, plus the PO's own comparison before acceptance):
-1. Ask card: header with a pencil icon, tool name, path and a "Waiting for you" tag (not
-   "Pending"); the body is a diff (removed and added lines tinted, unchanged runs folded to
-   "⋯ n unchanged lines"), not the raw tool input (`file_path ...`); the ask bar reads
-   "Allow this edit?" and lays out Deny… (left, quiet), Allow edits in `<reach>` this session,
-   Allow once (primary, right), as the frame does; focus still lands on Allow once (18.6).
-2. Status line (18.5) carries the subject and the time as words: "Waiting for you · Edit
-   `<file>` · denied in m:ss if unanswered", and "Esc to stop" at the right while a turn runs.
-   "Needs you (n)" is the centred pill with a down arrow above the dock, as in the frame.
-3. Composer: the frame's placeholders ("Add a message: it is queued and sent when this turn ends"
-   while running), a Stop button while a turn runs, the round send button, and the footer line of
-   model and permission mode when the session gives them (else left out, not invented).
-4. Header: "Profile `<name>`" chip, provider chip with its checked state ("Claude Code · no
-   judge"), folder chip with its icon, "Context" meter with a percentage, and the ⋯ menu button.
-5. Sidebar: the "Agents" title; rows grouped Needs you / Running / Recent, each with its avatar
-   letter, subtitle (`<place> · <provider or state>`) and its state shape at the right (18.5
-   shapes). "+ New session" is shown off (offers are out of this target, 18.8).
-6. Folded rows ("Thought for n s", "Explored · …", "Plan · n of m done") have the chevron and,
-   for Explored, the search icon.
-7. *guard*: `console/src/App.test.tsx` › `the page` ›
-   `ac1_app_shows_sidebar_header_rows_dock_on_the_played_story` awaits the rows instead of asserting
-   at once (it failed "expected [] to include 'user'" on PR #9, which touched only `.claude/`; main
-   green). Added after hand-out: the PO checks it before arming S9's merge, else a fix task.
-Touches: `console/`, `ui/`. Not `kernel/`, `design/`, `factory/`.
-Fakes: the same scripted kernel; extend the script where a frame shows a state it lacks.
-Protects: *polish* (*core* for 1 and 2: an ask must read as one).
-
-## Sketched
-
-## Sketched
-
 ### S12: the kernel catches up with the spec (in flight (cloud), routine trig_01Cphn1mCUbFd5BzkjqNq1fQ)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and the code does what S6 and S11 left as
@@ -103,7 +67,9 @@ Protects: *core*.
 
 Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
 presses Stop without lag (P14).
-Outcomes: the transcript is virtualized; at most one render per animation frame; code is
+Outcomes: first move tests down the pyramid (S9: `npm test` 230 tests 7.8 s, over the 20%
+budget; `test:slow` 23 s because each of 4 scripts runs its own `npm run build`: share one build);
+the transcript is virtualized; at most one render per animation frame; code is
 highlighted once its block is complete and visible; a large-transcript fixture with limits for
 input, Stop and scroll latency runs in `npm test`.
 Touches: `console/`, `ui/`. Protects: *core*.
@@ -139,6 +105,10 @@ Outcomes: S10's console list (PR #13): read `expires-at`; answer with the ask's 
 asks by it; accept `paused` without `until`, a verdict without `toolCallId`, decision `none`; join
 `part` entries across pages; a check has no buttons; the ask card comes from the ask entry only, a
 later call patch does not change it, and an open ask is never folded. The scripted fake follows.
+Also from S9 (PR #16): an ask entry without `toolCall` must not show the streamed call's header and
+diff (adversary RISK a); the user-sim's "felt wrong" list: the Needs you pill keeps its focus ring;
+the open row stays under Recent while the pointer is over the sidebar at load; at 760 px the ask
+bar wraps with Allow once mid-row; a story played only to a running step shows a huge clock.
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *core*. S7 follows S15.
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
@@ -235,6 +205,18 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   update. User-sim ACCEPTED (run 1); adversary HELD (pass 1) on profile, transcript and ask
   boundaries, with RISKs folded into S14 and S16. Implementer runs 1/1/1. Kernel 102 tests; gate
   26 s.
+
+- **S9** the console matches the frames (PR #16, compared and armed by the PO; ~1.2 h). Alice's
+  console now reads like canvas Revision 2: the edit ask as one card (pencil, path, "Waiting for
+  you", Input, a tinted folded diff, "Allow this edit?" with Deny… / Allow edits in `<reach>` this
+  session / Allow once), the status line with subject and "denied in m:ss if unanswered", the
+  Needs you pill, the frame's composer with Stop and the model line, header chips with Context %,
+  the grouped "Agents" sidebar, chevrons on folds; the console flake fixed (`ready()` waits for
+  every row kind, 20/20). PO check at 1440 and 760 px, light and dark: matches; the ask's full
+  Input above the diff departs from the frame by TECHNICAL 14 (the section holds over a frame).
+  User-sim ACCEPTED on run 3; adversary BREACHED 4 (the ask card could hide what runs), fixed,
+  HELD. Implementer runs 1/1/2 + 8 fixes of 1. Suite: `npm test` 230 tests 7.8 s (+26%),
+  `test:slow` 23 s, gate 45 s.
 
 ## Deputy decisions
 
@@ -398,6 +380,10 @@ S2 writes each into the document that owns it.
   played story (PR #9, rerun once). Weighed: *guard*, hits any PR; folded into S9 (owns
   `console/`, in flight, merge armed by the PO) rather than a separate slice on the same files.
   A cloud foreman cannot be told mid-run, so a late outcome is checked at acceptance.
+
+- 2026-11-21 S9: every console task rebuilds the committed `ui/`, so parallel tasks always conflict
+  there on rebase; and fix tasks for the user-sim reopened adversary breaches twice (a brief that
+  changes the ask card should list the adversary's held cases as acceptance).
 
 ## Suite time
 
