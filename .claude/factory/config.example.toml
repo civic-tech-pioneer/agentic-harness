@@ -9,6 +9,10 @@ repo = "civic-tech-pioneer/<name>"
 # A watane mod: the factory's mod gate (watane-dev doctor, then its contract tests).
 gate = ".claude/factory/check-mod.sh"
 
+# Run by the product owner on the Mac after each merge, in the main checkout, for what CI cannot run
+# (timing tests, say). Empty: nothing.
+main_check = ""
+
 # Run once in each new worktree before the foreman starts (an APFS clone of build output, say).
 worktree_prep = ""
 

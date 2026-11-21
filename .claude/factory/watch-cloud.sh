@@ -12,8 +12,10 @@ while :; do
   if [ -n "$C" ] && [ "$C" != "$SEEN" ]; then
     git branch -r --contains "$C" | head -1; echo "$C"; git log -1 --format=%B "$C"; exit 0
   fi
-  P=$(gh pr list --head "slice/$ID" --state all --json state,url,body \
-      --jq '.[0] | select(.state != "OPEN") | "PR \(.state) \(.url)\n\(.body)"' 2>/dev/null)
-  [ -n "$P" ] && { echo "$P"; exit 0; }
+  for B in "slice/$ID" "slice/$(echo "$ID" | tr '[:upper:]' '[:lower:]')"; do  # watane: S95 on slice/s95
+    P=$(gh pr list --head "$B" --state all --json state,url,body \
+        --jq '[.[] | select(.state != "OPEN")][0] // empty | "PR \(.state) \(.url)\n\(.body)"' 2>/dev/null)
+    [ -n "$P" ] && { echo "$P"; exit 0; }
+  done
   sleep 120
 done
