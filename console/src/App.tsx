@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { decisionJson, emptyView, MEASURE, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Kernel, type SessionView } from "../kit";
+import { decisionJson, emptyView, followPause, MEASURE, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
@@ -13,7 +13,6 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const scroller = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
   const setAt = useRef(-1);
-  const pausedAt = useRef<number | null>(null); // where the follow paused: a scroll event that reports it is late news, not the reader
   const [behind, setBehind] = useState(false); // output arrived below while the reader is not following
 
   useEffect(() => {
@@ -31,7 +30,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   useEffect(() => {
     const col = scroller.current?.firstElementChild;
     if (!col || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => { scroller.current?.dispatchEvent(new Event(MEASURE)); toEnd(); if (!atEnd.current) setBehind(true); });
+    const ro = new ResizeObserver(() => { scroller.current?.dispatchEvent(new Event(MEASURE)); toEnd(); });
     ro.observe(col);
     return () => ro.disconnect();
   }, [toEnd]);
@@ -48,7 +47,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const toTheEnd = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
-    atEnd.current = true; pausedAt.current = null;
+    atEnd.current = true; followPause.delete(el); // the transcript resumes too
     el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop;
     el.dispatchEvent(new Event("scroll"));
     setBehind(false);
@@ -76,12 +75,12 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
         <ThreadProvider view={view} actions={actions}>
           <div className="wa-scroll" ref={scroller}
             // 18.6 Place: while focus is inside a card with an open ask, the transcript does not follow the end.
-            onFocus={(e) => { if ((e.target as Element).closest("[data-asking]")) { atEnd.current = false; pausedAt.current = scroller.current?.scrollTop ?? null; } }}
+            onFocus={(e) => { if ((e.target as Element).closest("[data-asking]")) atEnd.current = false; }}
             onScroll={(e) => {
               // Our own scroll to the end may land after the column grew; that one does not stop the follow.
               const el = e.currentTarget, gap = el.scrollHeight - el.clientHeight - el.scrollTop;
               if (gap > 40 && el.scrollTop === setAt.current) return;
-              if (pausedAt.current !== null) { if (el.scrollTop === pausedAt.current) return; pausedAt.current = null; }
+              if (followPause.get(el) === el.scrollTop) return; // the transcript sets the marker on focus and clears it on a scroll elsewhere
               atEnd.current = gap <= 40;
               if (atEnd.current) setBehind(false);
             }}>
