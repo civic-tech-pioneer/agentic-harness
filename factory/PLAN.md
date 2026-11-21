@@ -27,28 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S23: the console after S7: answered asks, its risks and rough edges (in flight (cloud), routine trig_01YMS4jWtoufvUniEj7XkoYk)
-
-Outcomes:
-1. An ask with a pending answer (S22 D1) shows "Answered, waiting" in place of its bar until its
-   decision entry arrives, with no second click; in checked mode "Checking with your judge" (18.5).
-2. S7 RISK (a), with S27's 18.6 rule: a mousedown on the scrollbar or on non-focusable text in an
-   open ask's card does not resume the follow; the card stays in view until the reader moves away.
-3. S7 RISK (b): code is highlighted off the main thread (a Worker) or with a time budget per
-   block; past it the block stays plain. A test feeds a known backtracking input.
-4. S7 RISK (c): a fixture with two open asks; Needs you, focus and the follow behave with both.
-5. S7 RISK (d): the read governor clamps `now - last` so a skewed clock never makes a read wait
-   longer than its own interval.
-6. Felt wrong (S7 user-sim and PO): a session paging in its history shows "Loading" for its turn,
-   not "Idle"; after the pill, focus lands on the newest row, not the body; "Needs you (n)" hides
-   while its card is in view and focused; the pill does not cover the last card; the sidebar's
-   group for the open session agrees with the pill (the PO saw a session under Running with
-   "Needs you (1)" in the long fixture).
-A UI slice: its PR opens without auto-merge; the PO compares and arms it. The S9, S15 and S7
-adversaries' held cases are acceptance. Watch `npm test` time: 16.4 s on a loaded 4-core cloud
-machine at S27 against S7's 14.5 s budget; S23 sets the highlight budget per block (18.6).
-Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
-
 ### S1: the open probes of section 18 (in flight (local), session ca562ebb, sessionId ca562ebb-cc22-47f9-87b4-678d2159efcc)
 
 Story: a maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on the Mac and sees, for the
@@ -111,11 +89,12 @@ Outcomes:
 Touches: `kernel/`, `design/TECHNICAL.md`, `design/FUNCTIONAL.md` if a requirement changes.
 Protects: *guard* (asks).
 
-### S30: the console draws a short decision (cloud, after S23 and S29 merge: console/)
+### S30: the console draws a short decision (cloud, after S23 merges: console/)
 
 Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
 ask entry at `ask-i`, reading that one entry when the page lacks it; the S9, S15 and S7 held cases
-stay green; both forms (S29: short also for an owner past its own 64 MiB). Also: the `long_S7`
+stay green. Also (PO, S23): after an answer the status line still says "denied in m:ss if
+unanswered"; it reads "Answered, waiting" (or names the next open ask). Both forms (S29: short also for an owner past its own 64 MiB). Also: the `long_S7`
 p95 timing checks fail the default gate under parallel load (S29 saw it twice at load ~4.9):
 move the timing limits to `test:slow` or measure them in a way load cannot fail, keeping a
 functional check in `npm test`. A UI slice: PO-armed. Touches: `console/`, `ui/`.
@@ -348,6 +327,15 @@ Protects: *guard* (asks).
   function; a `Bash` allow is the exact command (option a of Waiting). User-sim ACCEPTED (run 1);
   adversary BREACHED 1 (a Bash allow covered `dangerouslyDisableSandbox`), fixed, HELD.
   Implementer runs 1 each of 4. Kernel 400 tests in 3.2 s; gate 31 s.
+
+- **S23** the console after S7 (PR #35, compared and armed by the PO; ~3.3 h). An answered ask
+  shows "Answered, waiting" (or "Checking with your judge") until its decision, with no second
+  click; a scrollbar press or the card's text no longer carries the ask out of view; code
+  highlighting cannot freeze the page; two open asks behave; status line, sidebar and pills agree;
+  each view is tied to its subscription, so an answer never reaches another session. User-sim
+  ACCEPTED on run 3 (72-run matrix); adversary breached on 8 of 10 passes (answers reaching a moved
+  or switched ask), each fixed with a red test and a randomized open-ask invariant, HELD on passes
+  7 and 10. PO check at 1440 px: look unchanged; "Answered, waiting" shown.
 
 ## Deputy decisions
 
