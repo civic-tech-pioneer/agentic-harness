@@ -365,7 +365,7 @@ and `.husky/**`. No launch can remove them.
 | `control_request` `can_use_tool` | `{"type":"ask","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
 | `control_request` `hook_callback` (PreToolUse) | `{"type":"check","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
 | `control_cancel_request` | `{"type":"ask-resolved","id":…,"by":"cancelled"}` |
-| an `answer` the host accepted, whoever called it | `{"type":"ask-resolved","id":…,"by":"answered"}` (step 5) |
+| an `answer` the host accepted, whoever called it | `{"type":"ask-resolved","id":…,"by":"answered","outcome":"allow"\|"deny"\|"none"}`: `outcome` is the answer the host sent to `claude`, `none` only for a check (step 5) |
 | an ask the host denied at its `expires-at` | `{"type":"ask-resolved","id":…,"by":"expired"}` (step 5) |
 | a line whose top-level `type` is any watane item type that can share the stream: `ask`, `check`, `ask-resolved`, `initialized`, `wrapped`, `consent-pending`, and the checked provider's `verdict` and `checking` (10); a slice that adds an item type to any of these streams adds it here | never passed through: the host pushes `{"type":"wrapped","line":"<the line, as a JSON string>"}` instead |
 | a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item (a byte that is not UTF-8 becomes U+FFFD in `line`; that is the host's form, and the kernel's `raw` for such a line differs, 9.8): the host decides on the parsed value, so the kernel and the host never read one line two ways |
@@ -378,7 +378,10 @@ and `.husky/**`. No launch can remove them.
    not passed as an ask or check: the host answers it deny (ask) or `deny` (check) at once and pushes
    nothing for it. So no `claude` stdout line can pass as a host item. The
    host's `id` of an `ask` or `check` item is unique on its stream: it is never
-   reused, also after its `ask-resolved`.
+   reused, also after its `ask-resolved`. The host builds each `ask`, `check`
+   and `ask-resolved` item from its own parsed value and serializes it
+   itself; it never copies bytes of a `claude` line into an item. An
+   `expired` or `cancelled` item has no `outcome`.
 
 5. Writes to stdin are only these:
 
@@ -392,7 +395,7 @@ and `.husky/**`. No launch can remove them.
 
    After any answer, and when an ask expires (10 minutes from the push of
    the ask item, at its `expires-at`; deny), the host
-   pushes `ask-resolved {id, by}`: `by` is `answered` for an answer,
+   pushes `ask-resolved {id, by}`: `by` is `answered` (with the `outcome` it sent) for an answer,
    `expired` for the expiry and `cancelled` for a `control_cancel_request`
    (step 4). The host pushes no other `by`. A second answer is `unknown-ask`. Nothing
    else is ever written: no `apply_flag_settings`, `mcp_set_servers`,
@@ -992,7 +995,9 @@ these places (S14 built the rest).
 - Kernel, S19: a joined part group whose whole is of kind `part` reads as
   `unreadable`.
 - Kernel, a later slice: an `ask-resolved` with `by: answered` closes the open
-  ask with no entry (S19 reads it as `unknown`).
+  ask or check with no entry when the kernel answered it itself, and
+  otherwise gives the decision entry with the item's `outcome` (S19 reads it
+  as `unknown`; 9.8).
 
 ### 9.5 The OpenAI loop
 
@@ -1162,20 +1167,27 @@ below is an `unknown` entry, never an ask or a decision.
 1. The `id` of `ask`, `check` and `ask-resolved` is a non-empty JSON string. A
    number or another JSON value is `unknown` (S14), so `"7"` and `7` never
    name the same ask.
-2. `input` of an `ask` or `check` is a JSON object. Missing, `null` and any
+2. The `tool` of an `ask` or `check` is a JSON string; any other value is
+   `unknown`. `input` of an `ask` or `check` is a JSON object. Missing, `null` and any
    other JSON value are `unknown`; `{}` is an object (S19).
 3. `expires-at` is a JSON integer from 0 to 2^64 - 1. A negative or
    fractional value, `5.0`, `1e3`, a value past 2^64 - 1, a string and `null`
    are `unknown` (S19).
-4. `ask-resolved` reads its `by`: `expired` or `cancelled` on an open ask or
-   check gives the decision entry `by: host` with `reason` = the `by` (9.4);
-   `answered` closes the ask or check and writes no entry, because the call
-   that answered wrote its decision (9.4, 9.6); any other or missing `by`, or
-   one that is not a string, is `unknown` and the ask stays open, so a later
-   `expired` or `cancelled` still gives its decision (S19; until the code to
-   change of 9.4 is built, `answered` is `unknown` too). An `ask-resolved`
-   whose `id` is not open is `unknown`. How a check answered by the checked
-   provider becomes a `by: checked` decision is stage E (10).
+4. `ask-resolved` reads its `by`. `expired` or `cancelled` on an open ask or
+   check gives the decision entry with outcome `deny`, `by: host` and
+   `reason` = the `by` (9.4). `answered` on an ask or check the kernel
+   answered itself (its own `answer`, 9.6) closes it and writes no entry,
+   because that answer wrote the decision. `answered` on one the kernel did
+   not answer (the checked provider's `deny` or its answer to a check, 10)
+   gives the decision entry with the item's `outcome`; its `by` is `checked`
+   on a checked provider's stream (`direct: false`, 10) and `host`
+   otherwise. An `answered` whose `outcome` is missing or not `allow`, `deny`
+   or `none`, or is `none` on an ask, is `unknown`. Any other or missing
+   `by`, or one that is not a string, is `unknown`. An `unknown` item leaves
+   the ask open, so a later `expired` or `cancelled` still gives its decision
+   (S19; until the code to change of 9.4 is built, `answered` is `unknown`
+   too). An `ask-resolved` whose `id` is not open is `unknown`. Stage E
+   builds only the provider's side (10).
 5. A line that is not valid UTF-8 is `unknown`. Its `raw` is the line as a
    JSON string: each byte that is not UTF-8 is written as the four characters
    `\xNN` (lowercase hex), and white space is trimmed from both ends. A
@@ -1259,7 +1271,10 @@ when `claude-codes` cannot parse it.
      `none` when safe, `deny` after an unsafe or unsure verdict, an unreadable
      one, an error or the deadline. An `ask` is answered only with `deny` (unsafe,
      unsure, unreadable, error, deadline); a safe verdict lets the ask go on to the kernel
-     unanswered, and the kernel's broker and the owner decide (9.6). So "safe"
+     unanswered, and the kernel's broker and the owner decide (9.6). The host
+     reports such an answer as `ask-resolved {by: answered, outcome}`, which
+     the kernel records as a `by: checked` decision, as it did not answer
+     itself (9.8). So "safe"
      never widens the mode. An owner's `allow` to an ask whose verdict is
      pending is forwarded only after a safe verdict; after an unsafe one the
      ask is already denied and the answer is `unknown-ask`. Claude's own hook
@@ -1391,7 +1406,7 @@ stages B and E).
 Not protected: the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose loopback reach is still to be probed (V27), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
-(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes; whether a subagent prompt that starts with `/` runs a skill (not
+(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); whether a subagent prompt that starts with `/` runs a skill (not
 probed; probe V26, slice S1); whether the shell grant's sandbox blocks
 loopback (probe V27, slice S1; table in 16).
 
@@ -1418,7 +1433,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` `caller.boot()`: the start number, raised once per host start, kept in host state, a pure read (2.1, 9.3; B1).
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
 - [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended`; a lag clock from a failed `full` push to `ready` that reaches 10 s ends the stream `lagging`, except a stream its consumer has deferred (2.1, 3; P03).
-- [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7).
+- [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7); the host builds each `ask`, `check` and `ask-resolved` item itself and never copies bytes of a `claude` line into one, and `ask-resolved {by: answered}` carries the `outcome` (4.5).
 - [ ] `host/TECHNICAL.md` H1: byte budgets for queued items (512 MiB host, 128 MiB per origin client, 16 MiB per page connection; `full`; a page connection past its budget ends `lagging`) (3; P11).
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
 - [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
@@ -1730,8 +1745,12 @@ of `spec/VISION.md`.
     with `raw` holding `\xNN` for each such byte, trimmed. A line with a
     duplicate top-level key is `unknown`. An `ask-resolved` with an unknown or
     missing `by` is `unknown` and the ask stays open, so a later `expired`
-    gives its `by: host` decision; with `by: answered` it closes the ask and
-    writes no entry (S19 reads it as `unknown`, 9.4). A part group whose joined
+    gives its `by: host` decision; with `by: answered` it closes the ask
+    with no entry when the kernel answered it itself, and gives the decision
+    entry from `outcome` otherwise (`by: checked` on a `direct: false`
+    stream, else `host`); a missing or bad `outcome`, or `none` on an ask, is
+    `unknown` (S19 reads every `answered` as `unknown`, 9.4). An `ask` or
+    `check` whose `tool` is not a string is `unknown`. A part group whose joined
     whole is of kind `part` reads as `unreadable`.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
