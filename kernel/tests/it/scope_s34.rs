@@ -619,4 +619,13 @@ fn fix2_ac2_unicode_and_new_names_get_no_write_key() {
         .as_deref(),
         Some("Write(/w/**)")
     );
+    // The ends of printable ASCII (a space, a tilde) stay writable.
+    assert_eq!(
+        r(
+            "Write",
+            json!({"file_path": "/w/my notes~.txt", "content": "x"})
+        )
+        .as_deref(),
+        Some("Write(/w/**)")
+    );
 }
