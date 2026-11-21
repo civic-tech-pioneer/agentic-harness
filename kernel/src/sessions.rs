@@ -2451,6 +2451,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         stream: &str,
         event: ProviderEvent,
     ) -> Result<Called<SinkOutcome>, KernelError> {
+        if matches!(event, ProviderEvent::Ended) {
+            let done = self.provider_ended(stream)?;
+            return Ok(Called {
+                value: SinkOutcome::Taken,
+                pushes: done.pushes,
+            });
+        }
         self.open_meter();
         let Some(key) = self.provider_key(stream) else {
             return Ok(Called {
@@ -2461,6 +2468,27 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.hold();
         let step = self.item_step(stream, &key.session, event);
         self.finish_items(step)
+    }
+
+    /// `stream-sink.ended` of a provider stream: it cannot defer, so it is applied in full (asks
+    /// closed, slot and key released, turn settled) and its pushes go to the live owner stream, or,
+    /// when that is full, close it `lagging` (9.4, outside an item call).
+    pub fn provider_ended(&mut self, stream: &str) -> Result<Called<()>, KernelError> {
+        self.open_meter();
+        let Some(key) = self.provider_key(stream) else {
+            return Ok(Called {
+                value: (),
+                pushes: Vec::new(),
+            });
+        };
+        let rec = Record::load(&mut self.state, &key.session)
+            .ok_or_else(|| KernelError::UnknownSession(key.session.clone()))?;
+        let work = self.provider_work(rec, Some(stream), ProviderEvent::Ended)?;
+        let live = work.live.clone();
+        Ok(Called {
+            value: (),
+            pushes: self.flush(work, live.as_deref()),
+        })
     }
 
     /// 2.1, case 7: a numbered batch of a provider's stream. Items at or below the last `seq`
