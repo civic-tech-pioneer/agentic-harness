@@ -11,7 +11,7 @@ use crate::check::check;
 use crate::error::{KernelError, Refusal};
 use crate::profile::{parse_profile, Backend};
 use crate::queue::{check_input, Queue, Queued};
-use crate::quota::{segment, Change, Limits, Metered, Usage};
+use crate::quota::{segment, Change, Limits, Metered, Past, Usage};
 use crate::record::{
     check_key, check_title, Deadline, OpenAsk, PendingAnswer, Record, Stop, Turn, ALLOW_BYTES,
     ID_BYTES, OPEN_ASKS,
@@ -243,9 +243,6 @@ pub struct Kernel<S: State, H: Host> {
     pub limits: Limits,
     /// What of the call's change in session bytes the record in hand already holds (`seal`).
     sealed: i64,
-    /// The owner or the account was past its quota when the call read its accounts (9.3 Quota):
-    /// set by `accounts`, so every call that reads them has it before it writes.
-    past: bool,
     /// The provider stream the call in hand opened: a call that then fails cancels it (7).
     opened: Option<String>,
     /// While an item call may still be dropped whole (3, "Deferred batch"), the host calls it
@@ -273,6 +270,8 @@ struct Work {
 
 /// The owner's account and the kernel's, as read for a call and kept for its one write (9.3 Quota).
 struct Acct {
+    /// Past quota when the accounts were read; only `accounts` makes it.
+    past: Past,
     owner_key: String,
     owner: Usage,
     account: Usage,
@@ -471,7 +470,6 @@ impl<S: State, H: Host> Kernel<S, H> {
             host,
             limits: Limits::default(),
             sealed: 0,
-            past: false,
             opened: None,
             held: None,
         }
@@ -517,9 +515,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         let owner = Usage::load(&mut self.state, &owner_key);
         let account = Usage::load(&mut self.state, Usage::ACCOUNT);
         // 9.3 "Past": the owner's bytes or the kernel's account at or over their caps.
-        self.past =
-            owner.bytes >= self.limits.owner_bytes || account.bytes >= self.limits.account_bytes;
+        let past = Past::read(&owner, &account, &self.limits);
         Acct {
+            past,
             owner_key,
             owner0: owner.clone(),
             account0: account.clone(),
@@ -821,24 +819,26 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn settle(
         &mut self,
         rec: &mut Record,
+        past: Past,
         slots: &mut Slots,
         work: &mut Work,
     ) -> Result<(), KernelError> {
         if rec.boot < slots.boot {
-            self.step(rec, slots, work)?;
+            self.step(rec, past, slots, work)?;
         }
         Ok(())
     }
 
     fn session(
         &mut self,
+        past: Past,
         caller: &str,
         id: &str,
         slots: &mut Slots,
         work: &mut Work,
     ) -> Result<Record, KernelError> {
         let mut rec = self.load_owned(caller, id)?;
-        self.settle(&mut rec, slots, work)?;
+        self.settle(&mut rec, past, slots, work)?;
         Ok(rec)
     }
 
@@ -851,6 +851,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn step(
         &mut self,
         rec: &mut Record,
+        past: Past,
         slots: &mut Slots,
         work: &mut Work,
     ) -> Result<(), KernelError> {
@@ -862,11 +863,13 @@ impl<S: State, H: Host> Kernel<S, H> {
             && matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. });
         // Every open or pending Claude ask closes, whatever the turn state; a driven turn ends
         // `unknown`. An OpenAI session's asks are the kernel's own: its `waiting` row is unchanged.
-        if rec.backend == "claude" && self.close_all_with(rec, "restart", now, work, !driven)? {
+        if rec.backend == "claude"
+            && self.close_all_with(rec, past, "restart", now, work, !driven)?
+        {
             rec.updated = now;
         }
         if driven {
-            self.turn_to(rec, Turn::Unknown, now, work)?;
+            self.turn_to(rec, past, Turn::Unknown, now, work)?;
             rec.updated = now;
             self.sync_active(rec, slots, true)?;
         } else if let Some(p) = rec.active_page {
@@ -957,11 +960,12 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn append_loose(
         &mut self,
         rec: &mut Record,
+        past: Past,
         e: NewEntry,
         at: u64,
         work: &mut Work,
     ) -> Result<Option<u64>, KernelError> {
-        if !self.past {
+        if !past.is_past() {
             let mut meta = rec.meta();
             let stored = Transcript::new(&mut self.state, &rec.id, &mut meta).append_within(
                 &e,
@@ -986,7 +990,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 tools: None,
                 tokens: None,
             };
-            self.turn_to(rec, stopped, at, work)?;
+            self.turn_to(rec, past, stopped, at, work)?;
             work.requests.push(Request::Interrupt {
                 session: rec.id.clone(),
             });
@@ -999,6 +1003,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn turn_to(
         &mut self,
         rec: &mut Record,
+        past: Past,
         t: Turn,
         now: u64,
         work: &mut Work,
@@ -1015,7 +1020,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         // Past its quota only a change that ends an active turn is written: one `turn` entry per
         // turn (9.3 Quota). The record and the push follow either way.
-        if !self.past || (rec.turn.is_active() && !stored.is_active()) {
+        if !past.is_past() || (rec.turn.is_active() && !stored.is_active()) {
             let entry = NewEntry {
                 kind: "turn".into(),
                 uuid: None,
@@ -1033,6 +1038,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn start_turn(
         &mut self,
         rec: &mut Record,
+        past: Past,
         input: String,
         resume: bool,
         now: u64,
@@ -1048,7 +1054,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             since: now,
             activity: None,
         };
-        self.turn_to(rec, running, now, work)?;
+        self.turn_to(rec, past, running, now, work)?;
         work.requests.push(Request::Turn {
             session: rec.id.clone(),
             input,
@@ -1061,6 +1067,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn next_queued(
         &mut self,
         rec: &mut Record,
+        past: Past,
         now: u64,
         work: &mut Work,
     ) -> Result<(), KernelError> {
@@ -1072,7 +1079,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if !self.may_use(&rec.owner, &rec.profile) {
             return Ok(());
         }
-        self.start_turn(rec, next.input, false, now, work)?;
+        self.start_turn(rec, past, next.input, false, now, work)?;
         q.save(&mut self.state, &rec.id)?;
         work.pushes.push(Push::of(&rec.id, q.push_value()));
         Ok(())
@@ -1082,6 +1089,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn change_turn(
         &mut self,
         rec: &mut Record,
+        past: Past,
         t: Turn,
         now: u64,
         work: &mut Work,
@@ -1093,14 +1101,17 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Turn::Running { activity, .. } = &mut bare {
             *activity = None;
         }
-        if self.past && bare != rec.turn && !(before && !t.is_active()) {
+        if past.is_past() && bare != rec.turn && !(before && !t.is_active()) {
             return Ok(());
         }
-        self.turn_to(rec, t, now, work)?;
+        self.turn_to(rec, past, t, now, work)?;
         // Past its quota, or at the chunk cap, a session starts no queued input (9.3 Quota).
-        if before && matches!(rec.turn, Turn::Idle { .. }) && !self.past && Self::room(rec).is_ok()
+        if before
+            && matches!(rec.turn, Turn::Idle { .. })
+            && !past.is_past()
+            && Self::room(rec).is_ok()
         {
-            self.next_queued(rec, now, work)?;
+            self.next_queued(rec, past, now, work)?;
         }
         Ok(())
     }
@@ -1109,6 +1120,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn close_ask(
         &mut self,
         rec: &mut Record,
+        past: Past,
         id: &str,
         now: u64,
         work: &mut Work,
@@ -1130,7 +1142,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                     .min();
                 waiting(left, expires)
             };
-            self.turn_to(rec, t, now, work)?;
+            self.turn_to(rec, past, t, now, work)?;
         }
         Ok(())
     }
@@ -1165,6 +1177,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn close_all_with(
         &mut self,
         rec: &mut Record,
+        past: Past,
         reason: &str,
         now: u64,
         work: &mut Work,
@@ -1184,7 +1197,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 since: now,
                 activity: None,
             };
-            self.turn_to(rec, t, now, work)?;
+            self.turn_to(rec, past, t, now, work)?;
         }
         Ok(any)
     }
@@ -1193,6 +1206,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn resolve(
         &mut self,
         rec: &mut Record,
+        past: Past,
         r: adapters::Resolved,
         now: u64,
         work: &mut Work,
@@ -1202,7 +1216,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let (i, kind) = match (&open, &pending) {
             (Some(o), _) => (o.i, o.kind.clone()),
             (None, Some(p)) => (p.i, p.kind.clone()),
-            (None, None) => return self.unknown_entry(rec, r.raw, now, work),
+            (None, None) => return self.unknown_entry(rec, past, r.raw, now, work),
         };
         let outcome = r.outcome.as_deref();
         let good = match r.by.as_str() {
@@ -1216,7 +1230,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             _ => false,
         };
         if !good {
-            return self.unknown_entry(rec, r.raw, now, work);
+            return self.unknown_entry(rec, past, r.raw, now, work);
         }
         let decision = match (r.by.as_str(), outcome) {
             ("answered", Some(o)) => match &pending {
@@ -1227,7 +1241,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         self.write_decision(rec, i, decision, now)?;
         if open.is_some() {
-            self.close_ask(rec, &r.id, now, work)
+            self.close_ask(rec, past, &r.id, now, work)
         } else {
             rec.pending_answers.remove(&r.id);
             Ok(())
@@ -1237,12 +1251,13 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn unknown_entry(
         &mut self,
         rec: &mut Record,
+        past: Past,
         raw: Value,
         now: u64,
         work: &mut Work,
     ) -> Result<(), KernelError> {
         let e = adapters::unknown(raw).entry.expect("unknown has an entry");
-        self.append_loose(rec, NewEntry::from(e), now, work)?;
+        self.append_loose(rec, past, NewEntry::from(e), now, work)?;
         Ok(())
     }
 
@@ -1401,6 +1416,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         active::check_room(&slots)?;
         let mut acct = self.accounts(caller);
+        let past = acct.past;
         if acct.owner.sessions >= self.limits.owner_sessions {
             return Err(KernelError::Quota(format!(
                 "{} sessions per owner",
@@ -1447,7 +1463,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             ..Record::default()
         };
         let mut work = Work::default();
-        self.start_turn(&mut rec, input.to_string(), false, now, &mut work)?;
+        self.start_turn(&mut rec, past, input.to_string(), false, now, &mut work)?;
         if backend == Backend::Claude {
             self.open_provider(&mut rec, &mut slots, &mut acct)?;
         }
@@ -1506,9 +1522,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Err(Self::revoked());
         }
         let mut acct = self.accounts(caller);
+        let past = acct.past;
         self.refuse_past(&acct)?;
         let mut work = Work::default();
-        self.settle(&mut rec, &mut slots, &mut work)?;
+        self.settle(&mut rec, past, &mut slots, &mut work)?;
         let before = rec.deadlines.clone();
         // A pause with no time ends with the next `say` (9.3); one with a time queues until it
         // resumes on its own.
@@ -1533,9 +1550,11 @@ impl<S: State, H: Host> Kernel<S, H> {
                 };
                 let now = self.host.now();
                 let n = match queued {
-                    None => self.start_turn(&mut rec, input.to_string(), resume, now, &mut work)?,
+                    None => {
+                        self.start_turn(&mut rec, past, input.to_string(), resume, now, &mut work)?
+                    }
                     Some((oldest, n)) => {
-                        self.start_turn(&mut rec, oldest.input, resume, now, &mut work)?;
+                        self.start_turn(&mut rec, past, oldest.input, resume, now, &mut work)?;
                         q.save(&mut self.state, &rec.id)?;
                         work.pushes.push(Push::of(&rec.id, q.push_value()));
                         n
@@ -1613,12 +1632,13 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Err(Self::revoked());
         }
         let mut acct = self.accounts(caller);
+        let past = acct.past;
         if d.for_session {
             self.refuse_past(&acct)?;
         }
         // The step comes after the refusals that do not depend on it; an ask it denies is refused.
         let mut work = Work::default();
-        self.settle(&mut rec, &mut slots, &mut work)?;
+        self.settle(&mut rec, past, &mut slots, &mut work)?;
         let open = rec
             .open
             .iter()
@@ -1659,7 +1679,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             rec.add_allow(Value::String(reach.to_string()))?;
         }
         let now = self.host.now();
-        self.close_ask(&mut rec, ask, now, &mut work)?;
+        self.close_ask(&mut rec, past, ask, now, &mut work)?;
         rec.pending_answers.insert(ask.to_string(), pending);
         work.requests.push(Request::Answer {
             session: rec.id.clone(),
@@ -1696,6 +1716,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut slots = self.begin()?;
         let mut rec = self.load_owned(caller, session)?;
         let mut acct = self.accounts(caller);
+        let past = acct.past;
         if let Some(input) = replacement {
             check_input(input)?;
             if !self.may_use(caller, &rec.profile) {
@@ -1704,7 +1725,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.refuse_past(&acct)?;
         }
         let mut work = Work::default();
-        self.settle(&mut rec, &mut slots, &mut work)?;
+        self.settle(&mut rec, past, &mut slots, &mut work)?;
         let was = rec.turn.is_active();
         let before = rec.deadlines.clone();
         if replacement.is_none() && !was {
@@ -1724,14 +1745,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let now = self.host.now();
         if was {
-            self.end_interrupted(&mut rec, now, &mut work)?;
+            self.end_interrupted(&mut rec, past, now, &mut work)?;
             work.requests.push(Request::Interrupt {
                 session: rec.id.clone(),
             });
         }
         let (open, resume) = plan;
         if let Some(input) = replacement {
-            self.start_turn(&mut rec, input.to_string(), resume, now, &mut work)?;
+            self.start_turn(&mut rec, past, input.to_string(), resume, now, &mut work)?;
         }
         if open {
             self.open_provider(&mut rec, &mut slots, &mut acct)?;
@@ -1751,6 +1772,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn end_interrupted(
         &mut self,
         rec: &mut Record,
+        past: Past,
         now: u64,
         work: &mut Work,
     ) -> Result<(), KernelError> {
@@ -1760,7 +1782,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             tools: None,
             tokens: None,
         };
-        self.turn_to(rec, idle, now, work)
+        self.turn_to(rec, past, idle, now, work)
     }
 
     /// 2.3 `cancel`: every open or pending ask gets its one decision, an active turn ends
@@ -1769,13 +1791,14 @@ impl<S: State, H: Host> Kernel<S, H> {
     pub fn cancel(&mut self, caller: &str, session: &str) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
+        let past = acct.past;
         let mut work = Work::default();
-        let mut rec = self.session(caller, session, &mut slots, &mut work)?;
+        let mut rec = self.session(past, caller, session, &mut slots, &mut work)?;
         let now = self.host.now();
         let was = rec.turn.is_active();
-        let closed = self.close_all_with(&mut rec, "cancel", now, &mut work, false)?;
+        let closed = self.close_all_with(&mut rec, past, "cancel", now, &mut work, false)?;
         if was {
-            self.end_interrupted(&mut rec, now, &mut work)?;
+            self.end_interrupted(&mut rec, past, now, &mut work)?;
         }
         // The host's `Cancel` ends the provider stream: its slot is free at once, and its later
         // `ended` finds no key (9.4).
@@ -1812,7 +1835,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut rec = self.load_owned(caller, id)?;
         if rec.boot < slots.boot {
             let mut acct = self.accounts(caller);
-            self.settle(&mut rec, slots, &mut Work::default())?;
+            let past = acct.past;
+            self.settle(&mut rec, past, slots, &mut Work::default())?;
             self.finish(None, &mut acct)?;
         }
         Ok(rec)
@@ -1832,8 +1856,9 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
+        let past = acct.past;
         let mut work = Work::default();
-        let mut rec = self.session(caller, session, &mut slots, &mut work)?;
+        let mut rec = self.session(past, caller, session, &mut slots, &mut work)?;
         let mut q = Queue::load(&mut self.state, &rec.id);
         q.remove(n)?;
         q.save(&mut self.state, &rec.id)?;
@@ -1863,9 +1888,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         check_title(title)?;
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
+        let past = acct.past;
         let mut rec = self.load_owned(caller, session)?;
         self.refuse_past(&acct)?;
-        self.settle(&mut rec, &mut slots, &mut Work::default())?;
+        self.settle(&mut rec, past, &mut slots, &mut Work::default())?;
         rec.title = title.to_string();
         self.finish(Some(&mut rec), &mut acct)
     }
@@ -2091,10 +2117,11 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<Attached>, KernelError> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
+        let past = acct.past;
         let mut rec = self.load_owned(caller, session)?;
         let stale = rec.boot < slots.boot;
         let mut work = Work::default();
-        self.settle(&mut rec, &mut slots, &mut work)?;
+        self.settle(&mut rec, past, &mut slots, &mut work)?;
         let mut meta = rec.meta();
         let replay = Transcript::new(&mut self.state, &rec.id, &mut meta).replay(after);
         let lines = match replay {
@@ -2296,6 +2323,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         event: ProviderEvent,
     ) -> Result<Work, KernelError> {
         let mut acct = self.accounts(&rec.owner);
+        let past = acct.past;
         let before = rec.clone();
         let was = rec.turn.is_active();
         let ended = matches!(event, ProviderEvent::Ended)
@@ -2312,9 +2340,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         let now = self.host.now();
         let mut work = Work::default();
         match event {
-            ProviderEvent::Turn(t) => self.change_turn(&mut rec, t, now, &mut work)?,
+            ProviderEvent::Turn(t) => self.change_turn(&mut rec, past, t, now, &mut work)?,
             ProviderEvent::Ended => {
-                self.close_all_with(&mut rec, "ended", now, &mut work, false)?;
+                self.close_all_with(&mut rec, past, "ended", now, &mut work, false)?;
                 if rec.turn.is_active() {
                     let failed = Turn::Idle {
                         stop: Stop::Failed {
@@ -2324,19 +2352,19 @@ impl<S: State, H: Host> Kernel<S, H> {
                         tools: None,
                         tokens: None,
                     };
-                    self.turn_to(&mut rec, failed, now, &mut work)?;
+                    self.turn_to(&mut rec, past, failed, now, &mut work)?;
                 }
             }
             ProviderEvent::Out(out) => {
                 if let Some(e) = out.entry {
-                    self.out_entry(&mut rec, e, now, &mut work)?;
+                    self.out_entry(&mut rec, past, e, now, &mut work)?;
                 }
                 if let Some(u) = out.update {
                     let push = Push::of(&rec.id, wire_update(u, now, work.stored));
                     work.pushes.push(push);
                 }
                 if let Some(r) = out.resolved {
-                    self.resolve(&mut rec, r, now, &mut work)?;
+                    self.resolve(&mut rec, past, r, now, &mut work)?;
                 }
                 if out.idle {
                     let idle = Turn::Idle {
@@ -2345,7 +2373,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                         tools: None,
                         tokens: None,
                     };
-                    self.change_turn(&mut rec, idle, now, &mut work)?;
+                    self.change_turn(&mut rec, past, idle, now, &mut work)?;
                 }
             }
         }
@@ -2423,6 +2451,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn out_entry(
         &mut self,
         rec: &mut Record,
+        past: Past,
         e: adapters::Entry,
         now: u64,
         work: &mut Work,
@@ -2432,14 +2461,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         let body = e.body.clone();
         let decided = is_ask && body.get("decision").is_some_and(|d| !d.is_null());
         if is_ask && !decided && self.reused(rec, &body) {
-            return self.unknown_entry(rec, body, now, work);
+            return self.unknown_entry(rec, past, body, now, work);
         }
         let id = body.get("id").and_then(Value::as_str);
         // An ask decision is stored as ever; any other entry is not past the quota (9.3).
         let stored = if decided {
             Some(self.append(rec, NewEntry::from(e), now)?)
         } else {
-            self.append_loose(rec, NewEntry::from(e), now, work)?
+            self.append_loose(rec, past, NewEntry::from(e), now, work)?
         };
         if let (Some(i), Kind::Message | Kind::Tool) = (stored, kind) {
             work.stored = Some(i);
@@ -2459,7 +2488,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         };
         if body.get("decision").is_some_and(|d| !d.is_null()) {
-            return self.close_ask(rec, id, now, work);
+            return self.close_ask(rec, past, id, now, work);
         }
         let kind = body.get("kind").and_then(Value::as_str).unwrap_or("ask");
         if rec.open.len() + rec.pending_answers.len() >= OPEN_ASKS {
@@ -2492,7 +2521,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             };
             asks.push(id.to_string());
             let expires = [mine, theirs].into_iter().flatten().min();
-            self.turn_to(rec, waiting(asks, expires), now, work)?;
+            self.turn_to(rec, past, waiting(asks, expires), now, work)?;
         }
         Ok(())
     }
@@ -2527,7 +2556,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         };
         let mut acct = self.accounts(&rec.owner);
-        self.settle(&mut rec, slots, work)?;
+        let past = acct.past;
+        self.settle(&mut rec, past, slots, work)?;
         let now = self.host.now();
         if !rec.deadlines.iter().any(|d| d.at <= now) {
             return Ok(());
@@ -2568,7 +2598,8 @@ impl<S: State, H: Host> Kernel<S, H> {
                 rec.active_page = Some(page);
                 let mut done = Work::default();
                 let mut acct = self.accounts(&rec.owner);
-                let stepped = self.step(&mut rec, slots, &mut done).is_ok();
+                let past = acct.past;
+                let stepped = self.step(&mut rec, past, slots, &mut done).is_ok();
                 if stepped {
                     work.pushes.append(&mut done.pushes);
                 }

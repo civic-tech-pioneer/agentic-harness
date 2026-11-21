@@ -119,6 +119,23 @@ impl Usage {
 }
 
 /// 9.1: `%` to `%25`, then `/` to `%2F`.
+/// Whether the owner or the account was past its quota when a call read its accounts (9.3
+/// Quota). The field is private to this module and only `Past::read` sets it, which `accounts`
+/// calls: no code can hold the flag without having read the accounts.
+#[derive(Clone, Copy)]
+pub struct Past(bool);
+
+impl Past {
+    /// The owner's bytes or the kernel's account at or over their caps.
+    pub(crate) fn read(owner: &Usage, account: &Usage, limits: &Limits) -> Past {
+        Past(owner.bytes >= limits.owner_bytes || account.bytes >= limits.account_bytes)
+    }
+
+    pub fn is_past(self) -> bool {
+        self.0
+    }
+}
+
 pub fn segment(owner: &str) -> String {
     owner.replace('%', "%25").replace('/', "%2F")
 }

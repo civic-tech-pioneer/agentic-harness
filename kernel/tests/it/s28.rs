@@ -218,3 +218,47 @@ fn ac6_inactive_turns_are_unchanged() {
         assert!(k.state.get("stream/t1").is_none());
     }
 }
+
+fn message(text: &str) -> ProviderEvent {
+    ProviderEvent::Out(Out {
+        entry: Some(Entry {
+            kind: Kind::Message,
+            uuid: None,
+            body: json!({"role": "assistant", "content": [{"type": "text", "text": text}]}),
+        }),
+        ..Out::default()
+    })
+}
+
+fn messages_of(k: &mut K, owner: &str, id: &str) -> usize {
+    k.read(owner, id, 0, None, 256)
+        .unwrap()
+        .entries
+        .iter()
+        .filter(|e| serde_json::from_str::<Value>(e).unwrap()["kind"] == "message")
+        .count()
+}
+
+/// S28-2 AC3 (passes before the change too: every call read the accounts first): the past flag
+/// is each call's own. Alice at her cap drops a message; Bob's call right after stores his.
+#[test]
+fn ac3_the_past_flag_is_per_call() {
+    let mut k = kernel();
+    k.state.put("access/bob", br#"["p"]"#.to_vec()).unwrap();
+    let a = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    let b = k.start("bob", "k2", "p", "{}", IN).unwrap().value;
+    for n in ["a1", "a2", "a3"] {
+        k.provider(&a, ask(n)).unwrap();
+    }
+    let alice = Usage::load(&mut k.state, "quota/alice").bytes;
+    assert!(Usage::load(&mut k.state, "quota/bob").bytes < alice);
+    k.limits.owner_bytes = alice;
+    let (na, nb) = (
+        messages_of(&mut k, "alice", &a),
+        messages_of(&mut k, "bob", &b),
+    );
+    k.provider(&a, message("dropped")).unwrap();
+    k.provider(&b, message("kept")).unwrap();
+    assert_eq!(messages_of(&mut k, "alice", &a), na, "alice's was stored");
+    assert_eq!(messages_of(&mut k, "bob", &b), nb + 1, "bob's was dropped");
+}
