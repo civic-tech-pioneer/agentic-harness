@@ -535,7 +535,10 @@ fn ac10_joiner_drops_broken_groups() {
     assert!(j.push(&part(2, 2, "1}")).is_none());
     assert!(j.push("not json").is_none());
     assert!(j.push(&part(1, 2, "{\\\"a\\\":")).is_none());
-    assert_eq!(j.push(&part(2, 2, "1}")).unwrap(), json!({"a": 1, "i": 2}));
+    assert_eq!(
+        j.push(&part(2, 2, "1}")).unwrap(),
+        json!({"v":1,"i":2,"kind":"unreadable","raw":"{\"a\":1}"})
+    );
 }
 
 #[test]
@@ -723,14 +726,17 @@ fn ac1_readable_line_takes_the_i_of_its_place() {
 }
 
 #[test]
-fn ac10_joiner_leaves_non_object_and_unindexed_wholes() {
+fn ac10_joiner_reads_non_object_wholes_as_unreadable_and_leaves_unindexed() {
     let part = |i: &str, n: u32, text: &str| {
         format!(r#"{{"v":1,{i}"kind":"part","at":1,"body":{{"n":{n},"m":2,"text":"{text}"}}}}"#)
     };
     let mut j = Joiner::new();
-    // A whole that is not an object comes back as it is.
+    // A whole that is not an object is an unreadable entry at the last part's index.
     assert!(j.push(&part(r#""i":1,"#, 1, "[1,")).is_none());
-    assert_eq!(j.push(&part(r#""i":2,"#, 2, "2]")).unwrap(), json!([1, 2]));
+    assert_eq!(
+        j.push(&part(r#""i":2,"#, 2, "2]")).unwrap(),
+        json!({"v":1,"i":2,"kind":"unreadable","raw":"[1,2]"})
+    );
     // A last part with no numeric i leaves the whole's own fields alone.
     assert!(j.push(&part(r#""i":3,"#, 1, "{\\\"i\\\":")).is_none());
     assert_eq!(
@@ -739,4 +745,19 @@ fn ac10_joiner_leaves_non_object_and_unindexed_wholes() {
     );
     assert!(j.push(&part(r#""i":5,"#, 1, "{\\\"a\\\":")).is_none());
     assert_eq!(j.push(&part("", 2, "1}")).unwrap(), json!({"a": 1}));
+}
+
+#[test]
+fn ac10_joiner_non_json_whole_is_unreadable() {
+    let part = |i: u32, n: u32, text: &str| {
+        format!(
+            r#"{{"v":1,"i":{i},"kind":"part","at":1,"body":{{"n":{n},"m":2,"text":"{text}"}}}}"#
+        )
+    };
+    let mut j = Joiner::new();
+    assert!(j.push(&part(4, 1, "{")).is_none());
+    assert_eq!(
+        j.push(&part(5, 2, "x")).unwrap(),
+        json!({"v":1,"i":5,"kind":"unreadable","raw":"{x"})
+    );
 }
