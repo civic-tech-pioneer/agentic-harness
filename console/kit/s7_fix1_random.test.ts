@@ -59,9 +59,16 @@ const fits = (v: SessionView, r: Tool) => (!r.ask || !!r.ask.decision || (isOpen
 /** S23-fix4: when an open ask's id moves to another call, the frozen reducer leaves the old call's row holding the stale ask (or a stale
  * checking flag); the new one shows that call's next open ask (and its call) or none. Only such a row takes its ask from the new view, and only when the
  * new row fits; the rest of that sequence is reduced (no throw) but not compared, as the frozen row stays stale and takes no updates. */
+let decidedFixed = 0;
 function unstale(a: SessionView, b: SessionView): SessionView {
   const rows = b.rows.map((r, k) => {
     const n = a.rows[k] as Tool | undefined;
+    // S23-fix5: the frozen reducer shows a decided card the call of the moved entry it removed (another call than the ask's); the new one
+    // keeps the ask's own call. Only the call is taken from the new row, and only when that is the ask's own call.
+    if (r.kind === "tool" && r.ask?.decision && r.call.id !== r.ask.toolCallId && n?.kind === "tool" && n.key === r.key && n.call.id === n.ask?.toolCallId) {
+      decidedFixed++;
+      return { ...r, call: n.call } as Tool;
+    }
     if (r.kind !== "tool" || fits(b, r) || n?.kind !== "tool" || n.key !== r.key || !fits(a, n)) return r;
     const { ask: _a, checking: _c, ...rest } = r;
     return { ...rest, call: n.call, ...(n.ask ? { ask: n.ask } : {}), ...(n.checking ? { checking: n.checking } : {}) } as Tool;
@@ -97,4 +104,5 @@ it("random message sequences give the same view as the reducer of 5882c51 after 
   }
   expect(steps).toBe(SEQS * LEN);
   expect(moved).toBeGreaterThan(0); // moved-ask sequences stay in the run
+  expect(decidedFixed).toBeGreaterThan(0); // the decided-card excuse fires
 });
