@@ -721,3 +721,22 @@ fn ac1_readable_line_takes_the_i_of_its_place() {
         (5..=10).collect::<Vec<u64>>()
     );
 }
+
+#[test]
+fn ac10_joiner_leaves_non_object_and_unindexed_wholes() {
+    let part = |i: &str, n: u32, text: &str| {
+        format!(r#"{{"v":1,{i}"kind":"part","at":1,"body":{{"n":{n},"m":2,"text":"{text}"}}}}"#)
+    };
+    let mut j = Joiner::new();
+    // A whole that is not an object comes back as it is.
+    assert!(j.push(&part(r#""i":1,"#, 1, "[1,")).is_none());
+    assert_eq!(j.push(&part(r#""i":2,"#, 2, "2]")).unwrap(), json!([1, 2]));
+    // A last part with no numeric i leaves the whole's own fields alone.
+    assert!(j.push(&part(r#""i":3,"#, 1, "{\\\"i\\\":")).is_none());
+    assert_eq!(
+        j.push(&part(r#""i":"x","#, 2, "7}")).unwrap(),
+        json!({"i": 7})
+    );
+    assert!(j.push(&part(r#""i":5,"#, 1, "{\\\"a\\\":")).is_none());
+    assert_eq!(j.push(&part("", 2, "1}")).unwrap(), json!({"a": 1}));
+}
