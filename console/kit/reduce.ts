@@ -18,12 +18,58 @@ function normalize(p: CallPatch): ToolCall {
     ...("rawInput" in p ? { rawInput: p.rawInput } : {}), ...("rawOutput" in p ? { rawOutput: p.rawOutput } : {}) };
 }
 
+/**
+ * P14: where things are in a rows array, so one message costs the same at row 10 as at row 5 000. Kept per rows array (a WeakMap, so the
+ * view stays plain data), patched as the reducer puts, pushes and splices rows, and rebuilt for a rows array it has not seen.
+ * `keys` and `calls` hold the first position of a row key and of a call id (a call inside an explored row maps to that row).
+ */
+interface Idx { keys: Map<string, number>; calls: Map<string, number>; writing: Set<number>; thinking: Set<number>; dup: boolean; changed: boolean }
+const indexes = new WeakMap<Row[], Idx>();
+let I: Idx;
+
+function addCall(id: string, k: number) { const p = I.calls.get(id); if (p === undefined || p > k) I.calls.set(id, k); }
+function regRow(k: number, r: Row) {
+  const have = I.keys.get(r.key);
+  if (have === undefined) I.keys.set(r.key, k); else if (have !== k) I.dup = true;
+  if (r.kind === "agent") { if (r.writing) I.writing.add(k); }
+  else if (r.kind === "thought") { if (r.streaming) I.thinking.add(k); }
+  else if (r.kind === "tool") addCall(r.call.id, k);
+  else if (r.kind === "explored") for (const c of r.calls) addCall(c.id, k);
+}
+function unregRow(k: number, r: Row) {
+  if (I.keys.get(r.key) === k) I.keys.delete(r.key);
+  I.writing.delete(k); I.thinking.delete(k);
+  if (r.kind === "tool") { if (I.calls.get(r.call.id) === k) I.calls.delete(r.call.id); }
+  else if (r.kind === "explored") for (const c of r.calls) if (I.calls.get(c.id) === k) I.calls.delete(c.id);
+}
+function build(rows: Row[]): Idx {
+  const prev = I;
+  I = { keys: new Map(), calls: new Map(), writing: new Set(), thinking: new Set(), dup: false, changed: false };
+  for (let k = 0; k < rows.length; k++) regRow(k, rows[k]!);
+  const made = I; I = prev;
+  return made;
+}
+
+function put(v: SessionView, k: number, row: Row) { unregRow(k, v.rows[k]!); v.rows[k] = row; regRow(k, row); I.changed = true; }
+function push(v: SessionView, ...rows: Row[]) { for (const r of rows) { v.rows.push(r); regRow(v.rows.length - 1, r); } I.changed = true; }
+/** Replaces `del` rows at `at` with `ins`; the rows after it are registered again at their new positions. */
+function splice(v: SessionView, at: number, del: number, ...ins: Row[]) {
+  for (let k = at; k < v.rows.length; k++) unregRow(k, v.rows[k]!);
+  v.rows.splice(at, del, ...ins);
+  for (let k = at; k < v.rows.length; k++) regRow(k, v.rows[k]!);
+  I.changed = true;
+}
+const firstOf = (s: Set<number>) => { let m = -1; for (const k of s) if (m < 0 || k < m) m = k; return m; };
+const lastOf = (s: Set<number>) => { let m = -1; for (const k of s) if (k > m) m = k; return m; };
+const hasKey = (key: string) => I.keys.has(key);
+const keyAt = (key: string) => I.keys.get(key) ?? -1;
+
 function find(v: SessionView, id: string): { at: number; n?: number; call: ToolCall } | undefined {
-  for (let at = 0; at < v.rows.length; at++) {
-    const r = v.rows[at]!;
-    if (r.kind === "tool" && r.call.id === id) return { at, call: r.call };
-    if (r.kind === "explored") { const n = r.calls.findIndex((c) => c.id === id); if (n >= 0) return { at, n, call: r.calls[n]! }; }
-  }
+  const at = I.calls.get(id);
+  if (at === undefined) return undefined;
+  const r = v.rows[at]!;
+  if (r.kind === "tool" && r.call.id === id) return { at, call: r.call };
+  if (r.kind === "explored") { const n = r.calls.findIndex((c) => c.id === id); if (n >= 0) return { at, n, call: r.calls[n]! }; }
   return undefined;
 }
 
@@ -37,7 +83,7 @@ function toToolRow(v: SessionView, id: string): number {
   if (before.length) rows.push({ ...explored(before), key: r.key });
   rows.push({ kind: "tool", key: `c${id}`, call: f.call });
   if (after.length) rows.push(explored(after));
-  v.rows.splice(f.at, 1, ...rows);
+  splice(v, f.at, 1, ...rows);
   return f.at + (before.length ? 1 : 0);
 }
 
@@ -47,9 +93,9 @@ function upsertCall(v: SessionView, p: CallPatch, i?: number, fromAsk = false) {
     const call = normalize(p);
     const last = v.rows[v.rows.length - 1];
     if (isExplored(call)) {
-      if (last?.kind === "explored") v.rows[v.rows.length - 1] = { ...explored([...last.calls, call]), key: last.key };
-      else v.rows.push(explored([call]));
-    } else v.rows.push({ kind: "tool", key: `c${call.id}`, call, ...(i !== undefined ? { i } : {}) });
+      if (last?.kind === "explored") put(v, v.rows.length - 1, { ...explored([...last.calls, call]), key: last.key });
+      else push(v, explored([call]));
+    } else push(v, { kind: "tool", key: `c${call.id}`, call, ...(i !== undefined ? { i } : {}) });
     return;
   }
   const r = v.rows[f.at]!;
@@ -60,10 +106,10 @@ function upsertCall(v: SessionView, p: CallPatch, i?: number, fromAsk = false) {
     : ask ? held(f.call, p, !!ask.decision) : { ...f.call, ...p } as ToolCall;
   if (r.kind === "explored" && f.n !== undefined) {
     const calls = r.calls.slice(); calls[f.n] = call;
-    v.rows[f.at] = { ...explored(calls), key: r.key };
+    put(v, f.at, { ...explored(calls), key: r.key });
     if (!isExplored(call)) toToolRow(v, p.id);
   } else if (r.kind === "tool") {
-    { const { ended: _e, ...rest } = r; v.rows[f.at] = { ...rest, call, ...(i !== undefined ? { i } : {}) }; }
+    { const { ended: _e, ...rest } = r; put(v, f.at, { ...rest, call, ...(i !== undefined ? { i } : {}) }); }
   }
 }
 
@@ -96,7 +142,7 @@ function syncAsks(v: SessionView, x: Internal, toolCallId: string, decided?: { a
       ...("rawOutput" in cur ? { rawOutput: cur.rawOutput } : {}) };
     const { checking: _c, ...rest } = r;
     const alsoChecking = pick.ask.kind === "ask" && mine.some((o) => o.ask.kind === "check");
-    v.rows[f!.at] = { ...rest, call, ask: pick.ask, ...(alsoChecking ? { checking: true as const } : {}) };
+    put(v, f!.at, { ...rest, call, ask: pick.ask, ...(alsoChecking ? { checking: true as const } : {}) });
   }
 }
 
@@ -120,8 +166,13 @@ function toolCount(rows: Row[]): number {
 /** 9.3 R4: the turn is over, so a streamed call nothing drives (no open ask or check) is marked ended; its own data stays. */
 function markEnded(v: SessionView, x: Internal) {
   const open = new Set((x.open ?? []).map((o) => o.ask.toolCallId));
-  v.rows = v.rows.map((r) => r.kind === "tool" && !r.ended && (r.call.status === "pending" || r.call.status === "in_progress") && !open.has(r.call.id) && !(r.ask && !r.ask.decision)
-    ? { ...r, ended: true as const } : r);
+  let out: Row[] | undefined;
+  for (let k = 0; k < v.rows.length; k++) {
+    const r = v.rows[k]!;
+    if (r.kind === "tool" && !r.ended && (r.call.status === "pending" || r.call.status === "in_progress") && !open.has(r.call.id) && !(r.ask && !r.ask.decision))
+      (out ??= v.rows.slice())[k] = { ...r, ended: true as const };
+  }
+  if (out) { v.rows = out; I.changed = true; }
 }
 
 function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra) {
@@ -130,19 +181,17 @@ function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra
   if (state.state === "unknown" || state.state === "resume-lost" || state.state === "idle") markEnded(v, x);
   if (state.state !== "idle" || prev?.state === "idle") return;
   const key = `f:${v.rows[v.rows.length - 1]?.key ?? ""}`;
-  if (v.rows.some((r) => r.key === key)) return;
-  v.rows.push({ kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}) });
+  if (hasKey(key)) return;
+  push(v, { kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}) });
 }
 
 /** Folds the thought that is streaming, if any, at time `at` (ms). */
 function fold(v: SessionView, x: Internal, at?: number) {
-  for (let k = v.rows.length - 1; k >= 0; k--) {
-    const r = v.rows[k]!;
-    if (r.kind === "thought" && r.streaming) {
-      const seconds = at !== undefined && x.thoughtAt !== undefined ? Math.round((at - x.thoughtAt) / 1000) : 0;
-      v.rows[k] = { ...r, streaming: false, seconds };
-      break;
-    }
+  const k = lastOf(I.thinking);
+  if (k >= 0) {
+    const r = v.rows[k] as Extract<Row, { kind: "thought" }>;
+    const seconds = at !== undefined && x.thoughtAt !== undefined ? Math.round((at - x.thoughtAt) / 1000) : 0;
+    put(v, k, { ...r, streaming: false, seconds });
   }
   x.thoughtAt = undefined;
 }
@@ -192,8 +241,13 @@ export function settle(view: SessionView, n: number, entry: string | null): Sess
 export function reduce(view: SessionView, message: string): SessionView {
   const m = parse(message);
   const i = "i" in m ? m.i : undefined;
-  const refetch = m.t === "message" && view.rows.some((r) => r.key === `~p${m.i}`);
+  let idx = indexes.get(view.rows);
+  if (!idx) { idx = build(view.rows); indexes.set(view.rows, idx); }
+  I = idx;
+  const refetch = m.t === "message" && hasKey(`~p${m.i}`);
   if (m.t !== "synced" && i !== undefined && i <= view.lastIndex && !refetch) return view;
+  indexes.delete(view.rows); // the index now follows the new rows; a reduce that throws leaves none, and the next one rebuilds
+  I.changed = false; I.dup = false;
   const x: Internal = { ...view.x };
   const v: SessionView = { ...view, rows: view.rows.slice(), x };
 
@@ -207,9 +261,9 @@ export function reduce(view: SessionView, message: string): SessionView {
       // 9.4 no partial replay: a message being written at attach shows as "Writing…" until its entry
       x.skip = m.writing;
       if (m.writing) {
-        const k = v.rows.findIndex((r) => r.kind === "agent" && r.writing);
+        const k = firstOf(I.writing);
         const row: Row = { kind: "agent", key: "~w", text: "", writing: true };
-        if (k >= 0) v.rows[k] = row; else v.rows.push(row);
+        if (k >= 0) put(v, k, row); else push(v, row);
       }
       break;
     case "queue": v.queue = m.inputs; break;
@@ -217,24 +271,24 @@ export function reduce(view: SessionView, message: string): SessionView {
     case "turn": setTurn(v, x, m.state, m.extra); break;
     case "compaction": break;
     case "unreadable":
-      v.rows.push({ kind: "unknown", key: i !== undefined ? `e${i}` : nextKey(x, "u"), ...(i !== undefined ? { i } : {}), raw: m.raw });
+      push(v, { kind: "unknown", key: i !== undefined ? `e${i}` : nextKey(x, "u"), ...(i !== undefined ? { i } : {}), raw: m.raw });
       break;
     case "message": {
       if (m.role === "user") {
         const row: Row = { kind: "user", key: `e${m.i}`, i: m.i, text: m.text };
         const last = v.rows[v.rows.length - 1];
-        const p = v.rows.findIndex((r) => r.key === `~p${m.i}`);
-        if (p >= 0) v.rows[p] = row;
-        else if (last?.kind === "user" && last.key.startsWith("~")) v.rows[v.rows.length - 1] = row; else v.rows.push(row);
+        const p = keyAt(`~p${m.i}`);
+        if (p >= 0) put(v, p, row);
+        else if (last?.kind === "user" && last.key.startsWith("~")) put(v, v.rows.length - 1, row); else push(v, row);
         break;
       }
       const rows: Row[] = [];
       if (m.thought) rows.push({ kind: "thought", key: `e${m.i}-t`, i: m.i, text: m.thought.text, streaming: false, seconds: m.thought.seconds });
       rows.push({ kind: "agent", key: `e${m.i}`, i: m.i, text: m.text, writing: false });
-      let w = v.rows.findIndex((r) => r.key === `~p${m.i}`);
-      if (w < 0) w = v.rows.findIndex((r) => r.kind === "agent" && r.writing);
-      if (w > 0 && v.rows[w - 1]!.kind === "thought" && v.rows[w - 1]!.key.startsWith("~")) { w--; v.rows.splice(w, 2, ...rows); }
-      else if (w >= 0) v.rows.splice(w, 1, ...rows); else v.rows.push(...rows);
+      let w = keyAt(`~p${m.i}`);
+      if (w < 0) w = firstOf(I.writing);
+      if (w > 0 && v.rows[w - 1]!.kind === "thought" && v.rows[w - 1]!.key.startsWith("~")) { w--; splice(v, w, 2, ...rows); }
+      else if (w >= 0) splice(v, w, 1, ...rows); else push(v, ...rows);
       break;
     }
     case "tool": upsertCall(v, m.call, m.i); break;
@@ -249,7 +303,7 @@ export function reduce(view: SessionView, message: string): SessionView {
         x.open = open.filter((o) => o.ask.id !== a.id);
         syncAsks(v, x, a.toolCallId, { ask: a, call: own });
         const word = d.outcome === "allow" ? "Allowed" : d.outcome === "deny" ? "Denied" : "No objection";
-        v.rows.push({ kind: "decision", key: `e${m.i}`, i: m.i, who: d.by,
+        push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: d.by,
           what: `${word}${d.for ? " for this session" : ""}: ${title}`,
           ...(d.reason !== undefined ? { reason: d.reason } : {}) });
         break;
@@ -264,10 +318,10 @@ export function reduce(view: SessionView, message: string): SessionView {
     case "allow":
       v.allows = v.allows.filter((a) => a.id !== m.id);
       if (m.given) v.allows.push({ id: m.id, reach: m.reach });
-      v.rows.push({ kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: m.given ? `Allowed ${m.reach} for this session` : `Took back ${m.reach}` });
+      push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: m.given ? `Allowed ${m.reach} for this session` : `Took back ${m.reach}` });
       break;
     case "verdict":
-      v.rows.push({ kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: `${m.outcome}: ${m.toolCallId === undefined ? "the input" : toolTitle(v, m.toolCallId)}`, ...(m.reasons.length ? { reason: m.reasons.join("; ") } : {}) });
+      push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: `${m.outcome}: ${m.toolCallId === undefined ? "the input" : toolTitle(v, m.toolCallId)}`, ...(m.reasons.length ? { reason: m.reasons.join("; ") } : {}) });
       break;
     case "plan": v.plan = m.items; break;
     case "call": upsertCall(v, m.call, m.i); break;
@@ -276,31 +330,33 @@ export function reduce(view: SessionView, message: string): SessionView {
       if (x.skip && m.part !== "user") {
         // a delta of the message being written at attach: dropped; its finishing update fetches the entry
         if (m.part === "agent" && m.i !== undefined) {
-          const k = v.rows.findIndex((r) => r.key === "~w");
-          if (k >= 0) v.rows[k] = { kind: "agent", key: `~p${m.i}`, text: "", writing: true };
+          const k = keyAt("~w");
+          if (k >= 0) put(v, k, { kind: "agent", key: `~p${m.i}`, text: "", writing: true });
           x.skip = false;
         }
         break;
       }
       if (m.part === "thought") {
-        if (last?.kind === "thought" && last.streaming) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-        else { v.rows.push({ kind: "thought", key: nextKey(x, "~t"), text: m.text, streaming: true }); x.thoughtAt = m.at; }
+        if (last?.kind === "thought" && last.streaming) put(v, v.rows.length - 1, { ...last, text: last.text + m.text });
+        else { push(v, { kind: "thought", key: nextKey(x, "~t"), text: m.text, streaming: true }); x.thoughtAt = m.at; }
         break;
       }
       if (m.part === "user") {
-        if (last?.kind === "user" && last.key.startsWith("~")) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-        else v.rows.push({ kind: "user", key: nextKey(x, "~u"), text: m.text });
+        if (last?.kind === "user" && last.key.startsWith("~")) put(v, v.rows.length - 1, { ...last, text: last.text + m.text });
+        else push(v, { kind: "user", key: nextKey(x, "~u"), text: m.text });
         if (m.i !== undefined) finish(v, m.i);
         break;
       }
-      if (last?.kind === "agent" && last.writing) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
-      else v.rows.push({ kind: "agent", key: nextKey(x, "~a"), text: m.text, writing: true });
+      if (last?.kind === "agent" && last.writing) put(v, v.rows.length - 1, { ...last, text: last.text + m.text });
+      else push(v, { kind: "agent", key: nextKey(x, "~a"), text: m.text, writing: true });
       if (m.i !== undefined) finish(v, m.i);
       break;
     }
   }
   if (i !== undefined) v.lastIndex = Math.max(v.lastIndex, i);
-  v.rows = uniqueKeys(v.rows);
+  if (I.dup) { v.rows = uniqueKeys(v.rows); I = build(v.rows); }
+  if (!I.changed) { v.rows = view.rows; }
+  indexes.set(v.rows, I);
   return v;
 }
 
@@ -316,8 +372,8 @@ function finish(v: SessionView, i: number) {
   const k = v.rows.length - 1;
   const r = v.rows[k]!;
   if (r.kind === "agent") {
-    v.rows[k] = { ...r, key: `e${i}`, i, writing: false };
+    put(v, k, { ...r, key: `e${i}`, i, writing: false });
     const t = v.rows[k - 1];
-    if (t?.kind === "thought" && t.key.startsWith("~")) v.rows[k - 1] = { ...t, key: `e${i}-t`, i };
-  } else if (r.kind === "user") v.rows[k] = { ...r, key: `e${i}`, i };
+    if (t?.kind === "thought" && t.key.startsWith("~")) put(v, k - 1, { ...t, key: `e${i}-t`, i });
+  } else if (r.kind === "user") put(v, k, { ...r, key: `e${i}`, i });
 }
