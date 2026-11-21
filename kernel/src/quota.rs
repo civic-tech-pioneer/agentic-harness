@@ -12,6 +12,9 @@ pub const RESERVE_BYTES: u64 = 32 << 20;
 /// Provider streams the kernel holds, and one owner (9.5 "Slots").
 pub const PROVIDER_STREAMS: u32 = 8;
 pub const OWNER_PROVIDER: u32 = 4;
+/// Session timers the kernel holds, and one owner (9.3 "Deadlines and the session timer").
+pub const SESSION_TIMERS: u32 = 240;
+pub const OWNER_TIMERS: u32 = 120;
 
 /// The kernel settings for the caps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +25,8 @@ pub struct Limits {
     pub reserve_bytes: u64,
     pub provider: u32,
     pub owner_provider: u32,
+    pub timers: u32,
+    pub owner_timers: u32,
 }
 
 impl Default for Limits {
@@ -33,6 +38,8 @@ impl Default for Limits {
             reserve_bytes: RESERVE_BYTES,
             provider: PROVIDER_STREAMS,
             owner_provider: OWNER_PROVIDER,
+            timers: SESSION_TIMERS,
+            owner_timers: OWNER_TIMERS,
         }
     }
 }
@@ -47,6 +54,9 @@ pub struct Usage {
     /// The owner's provider streams, valid only while `slots_boot` is the boot of `slots` (9.1).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub provider: u32,
+    /// The owner's session timers; kept across a restart, so not tagged with a boot (9.3).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub timers: u32,
     #[serde(default, skip_serializing_if = "is_zero", rename = "slots-boot")]
     pub slots_boot: u64,
 }

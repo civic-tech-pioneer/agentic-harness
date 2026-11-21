@@ -12,6 +12,7 @@ mod check;
 mod errors;
 mod example;
 mod grammar;
+mod idle;
 mod meter;
 mod overlay;
 mod quota;
