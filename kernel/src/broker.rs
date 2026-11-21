@@ -42,8 +42,17 @@ pub fn reach(
     Some(format!("{tool}({ws}/**)"))
 }
 
-/// `Bash(<command>)`: only that exact command, and only when it passes the allow grammar (4.1).
+/// `Bash(<command>)`: only that exact command run as allowed (no key beyond the four plain
+/// ones, so no sandbox escape), and only when it passes the allow grammar (4.1).
 fn bash(input: &Value) -> Option<String> {
+    let keys = ["command", "description", "timeout", "run_in_background"];
+    if input
+        .as_object()?
+        .keys()
+        .any(|k| !keys.contains(&k.as_str()))
+    {
+        return None;
+    }
     let command = input.get("command")?.as_str()?;
     if command.contains(':') {
         return None;
