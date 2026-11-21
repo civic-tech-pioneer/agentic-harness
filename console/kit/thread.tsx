@@ -123,17 +123,22 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
     if (!r || !e) return;
     scroller.current = e;
     origin.current = r.getBoundingClientRect().top - e.getBoundingClientRect().top + e.scrollTop;
+    let pausedAt: number | null = null; // where focus in an ask card paused the follow: a scroll event that reports it is late news
     const onScroll = () => {
+      if (pausedAt !== null) { if (e.scrollTop === pausedAt) return; pausedAt = null; }
       nearEnd.current = e.scrollHeight - e.clientHeight - e.scrollTop <= NEAR_END;
       pick();
       tick();
     };
     e.addEventListener("scroll", onScroll, { passive: true });
+    // focus inside a card with an open ask ends the follow of the end (18.6 Place); scrolling back near the end resumes it
+    const onFocus = (ev: FocusEvent) => { if ((ev.target as Element).closest?.("[data-asking]")) { nearEnd.current = false; pausedAt = e.scrollTop; pick(); } };
+    e.addEventListener("focusin", onFocus);
     // the page's one resize observer (App) tells the scroller when the column changed size: a fold opened, a font came in
     const onResize = () => { if (measure()) tick(); };
     e.addEventListener(MEASURE, onResize);
     tick(); // the viewport is known now
-    return () => { e.removeEventListener("scroll", onScroll); e.removeEventListener(MEASURE, onResize); scroller.current = null; };
+    return () => { e.removeEventListener("scroll", onScroll); e.removeEventListener("focusin", onFocus); e.removeEventListener(MEASURE, onResize); scroller.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

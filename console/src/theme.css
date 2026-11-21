@@ -129,7 +129,8 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .wa-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 16px; overflow-anchor: none; } /* the transcript holds the reader's row still itself (P14) */
 .wa-column { max-width: 780px; margin: 0 auto; }
 
-.wa-dock { flex: none; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 780px; margin: 0 auto; padding: 8px 16px 16px; }
+.wa-dock { position: relative; flex: none; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 780px; margin: 0 auto; padding: 8px 16px 16px; }
+.wa-pill { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 8px; cursor: pointer; color: var(--ink); box-shadow: 0 2px 8px rgba(0,0,0,.18); z-index: 2; }
 .wa-needs { align-self: center; display: inline-flex; align-items: center; gap: 8px; height: 30px; min-height: 30px; padding: 0 12px; border-radius: 15px; background: var(--amber-bg); border-color: var(--amber); color: var(--amber); font-size: 12.5px; font-weight: 600; }
 .wa-plan, .wa-queue { padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); font-size: 14px; }
 .wa-plan ul, .wa-queue ul { margin: 4px 0 0; padding-left: 20px; }

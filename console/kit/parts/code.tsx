@@ -1,7 +1,7 @@
 // An agent row's text: prose and fenced code blocks (TECHNICAL 18.2, P14). A block is highlighted once it is complete and near the
 // viewport, and once per (language, code); until then it is plain monospace of the same size. Output is React elements, never HTML.
 import { useEffect, useRef, useState } from "react";
-import { highlight, known, peek, type Lines } from "./highlight";
+import { highlight, known, MAX_CODE, peek, type Lines } from "./highlight";
 
 type Seg = { code: false; text: string } | { code: true; lang: string; text: string; complete: boolean };
 
@@ -29,7 +29,10 @@ function CodeBlock({ lang, code, complete }: { lang: string; code: string; compl
   const ref = useRef<HTMLPreElement>(null);
   const [near, setNear] = useState(false);
   const [lines, setLines] = useState<Lines | null>(() => (complete ? peek(lang, code) ?? null : null));
-  const can = complete && !!known(lang);
+  const can = complete && !!known(lang) && code.length <= MAX_CODE;
+  // tokens belong to one (lang, code): when either changes they are dropped at once, the plain text of the new code shows
+  const of = useRef({ lang, code });
+  if (of.current.lang !== lang || of.current.code !== code) { of.current = { lang, code }; setLines(complete ? peek(lang, code) ?? null : null); }
 
   useEffect(() => {
     if (!can || near || !ref.current) return;
