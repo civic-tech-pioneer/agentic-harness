@@ -6,6 +6,9 @@ import { Header, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
 
 let sent = 0;
+/** The ask open for `id` now: the reducer's own object, the one a card's row holds. */
+const openAskOf = (v: SessionView, id: string): Ask | undefined => v.x?.open?.find((o) => o.ask.kind === "ask" && o.ask.id === id)?.ask;
+
 export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[] }) {
   const [view, setView] = useState<SessionView>(emptyView);
   const [stopping, setStopping] = useState(false);
@@ -49,27 +52,29 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   // the set is filtered while rendering, so no frame shows "Answered, waiting" on an ask that left it
   const live = useMemo<ReadonlySet<string>>(() => {
     if (!answered.size) return answered;
-    const askOf = (id: string) => { for (const r of view.rows) if (r.kind === "tool" && r.ask?.id === id) return r.ask; return undefined; };
-    const keep = (id: string) => { const a = askOf(id), was = answeredAsk.current.get(id); return view.openAsks.includes(id) && !a?.decision && (was === undefined || a === was); };
+    const keep = (id: string) => { const a = openAskOf(view, id), was = answeredAsk.current.get(id); return !!a && !a.decision && (was === undefined || a === was); };
     return [...answered].every(keep) ? answered : new Set([...answered].filter(keep));
   }, [answered, view]);
   useEffect(() => { if (live !== answered) setAnswered((s) => (s === answered ? live : s)); }, [live, answered]);
+  const answeredAsks = useMemo(() => new Map([...live].flatMap((id) => { const a = openAskOf(view, id); return a ? [[id, a] as const] : []; })), [live, view]);
   const actions: Actions = useMemo(() => ({
     answered: live,
+    answeredAsks,
     say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: (id, d) => {
-      answeredAsk.current.set(id, viewRef.current.rows.flatMap((r) => (r.kind === "tool" && r.ask?.id === id ? [r.ask] : []))[0]);
+      const mine = openAskOf(viewRef.current, id);
+      answeredAsk.current.set(id, mine);
       setAnswered((a) => new Set(a).add(id));
       let p: Promise<void>;
       try { p = kernel.answer(info.id, `c${Date.now()}-${sent++}`, id, decisionJson(d)); } catch (e) { p = Promise.reject(e); } // a throw before the promise is a refusal too: the set and the card agree
       return p.catch((e) => {
-        if (!isAskRefusal(e)) setAnswered((a) => { const n = new Set(a); n.delete(id); return n; }); // "already decided" keeps it: the decision entry is on its way
+        if (!isAskRefusal(e) && answeredAsk.current.get(id) === mine) { answeredAsk.current.delete(id); setAnswered((a) => { const n = new Set(a); n.delete(id); return n; }); } // "already decided" keeps it: the decision entry is on its way
         throw e;
       });
     },
     stop: () => { setStopping(true); void kernel.interrupt(info.id); },
     takeBack: (id) => void kernel.takeBack(info.id, id),
-  }), [kernel, info.id, live]);
+  }), [kernel, info.id, live, answeredAsks]);
 
   const shown = useMemo(() => live.size && view.openAsks.some((id) => live.has(id)) ? { ...view, openAsks: view.openAsks.filter((id) => !live.has(id)) } : view, [view, live]);
 
