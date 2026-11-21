@@ -13,6 +13,8 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const scroller = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
   const setAt = useRef(-1);
+  const pausedAt = useRef<number | null>(null); // where the follow paused: a scroll event that reports it is late news, not the reader
+  const [behind, setBehind] = useState(false); // output arrived below while the reader is not following
 
   useEffect(() => {
     const s = openSession(kernel, info.id, setView);
@@ -24,10 +26,12 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     if (el && atEnd.current) { el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop; }
   }, []);
   useLayoutEffect(toEnd, [view, toEnd]);
+  const first = useRef(true);
+  useEffect(() => { if (first.current) { first.current = false; return; } if (!atEnd.current) setBehind(true); }, [view]);
   useEffect(() => {
     const col = scroller.current?.firstElementChild;
     if (!col || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => { scroller.current?.dispatchEvent(new Event(MEASURE)); toEnd(); });
+    const ro = new ResizeObserver(() => { scroller.current?.dispatchEvent(new Event(MEASURE)); toEnd(); if (!atEnd.current) setBehind(true); });
     ro.observe(col);
     return () => ro.disconnect();
   }, [toEnd]);
@@ -40,6 +44,15 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     stop: () => { setStopping(true); void kernel.interrupt(info.id); },
     takeBack: (id) => void kernel.takeBack(info.id, id),
   }), [kernel, info.id]);
+
+  const toTheEnd = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    atEnd.current = true; pausedAt.current = null;
+    el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop;
+    el.dispatchEvent(new Event("scroll"));
+    setBehind(false);
+  }, []);
 
   const needsYou = useCallback(() => {
     const id = view.openAsks[0];
@@ -62,15 +75,19 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
         <Header info={info} view={view} actions={actions} />
         <ThreadProvider view={view} actions={actions}>
           <div className="wa-scroll" ref={scroller}
+            // 18.6 Place: while focus is inside a card with an open ask, the transcript does not follow the end.
+            onFocus={(e) => { if ((e.target as Element).closest("[data-asking]")) { atEnd.current = false; pausedAt.current = scroller.current?.scrollTop ?? null; } }}
             onScroll={(e) => {
               // Our own scroll to the end may land after the column grew; that one does not stop the follow.
               const el = e.currentTarget, gap = el.scrollHeight - el.clientHeight - el.scrollTop;
               if (gap > 40 && el.scrollTop === setAt.current) return;
+              if (pausedAt.current !== null) { if (el.scrollTop === pausedAt.current) return; pausedAt.current = null; }
               atEnd.current = gap <= 40;
+              if (atEnd.current) setBehind(false);
             }}>
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
           </div>
-          <Dock view={view} actions={actions} onNeedsYou={needsYou} session={{ model: info.model, mode: info.mode }} stopping={stopping}
+          <Dock view={view} actions={actions} onNeedsYou={needsYou} behind={behind && !atEnd.current} onBehind={toTheEnd} session={{ model: info.model, mode: info.mode }} stopping={stopping}
             status={<StatusLine view={view} now={now} stopping={stopping} actions={actions} onNeedsYou={needsYou} />} />
         </ThreadProvider>
       </main>

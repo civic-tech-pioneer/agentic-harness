@@ -46,7 +46,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   );
 }
 
-export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; status: ReactNode;
+export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; behind?: boolean; onBehind?: () => void; status: ReactNode;
   session?: { model?: string; mode?: string }; stopping?: boolean }) {
   const { view } = props;
   const [opened, setOpened] = useState<boolean | null>(null);
@@ -54,6 +54,12 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   const folded = !(opened ?? !(view.openAsks.length > 0 || view.queue.length > 0));
   return (
     <div className="wa-dock">
+      {props.behind ? (
+        <button type="button" className="wa-chip wa-pill" onClick={props.onBehind}>
+          <svg width="14" height="14" strokeWidth="2.2" {...svg}><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+          New activity below
+        </button>
+      ) : null}
       {view.openAsks.length ? (
         <button type="button" className="wa-needs" onClick={props.onNeedsYou}>
           <svg width="14" height="14" strokeWidth="2.2" {...svg}><path d="M12 5v14M6 13l6 6 6-6" /></svg>

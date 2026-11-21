@@ -119,3 +119,17 @@ describe("MessageText", () => {
     expect(container.querySelector("code")!.textContent).toBe(evil);
   });
 });
+
+describe("code block change (S7-fix2)", () => {
+  it("ac4_code_that_grows_past_64_KiB_shows_the_whole_new_text_and_none_of_the_old_tokens", async () => {
+    const { container, rerender } = render(<MessageText text={"```ts\nconst old = 1;\n```"} writing={false} />);
+    await see();
+    await vi.waitFor(() => expect(container.querySelectorAll("code span span").length).toBeGreaterThan(0));
+    const big = "const big = 1;\n".repeat(5000);
+    rerender(<MessageText text={"```ts\n" + big + "\n```"} writing={false} />);
+    await see();
+    const code = container.querySelector("code")!;
+    expect(code.querySelectorAll("span").length).toBe(0);
+    expect(code.textContent).toBe(big);
+  });
+});
