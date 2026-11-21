@@ -27,19 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S15: the console reads the wire S10 wrote (in flight (cloud), routine trig_019YCYegVuKusDaBroYa4EoT)
-
-Story: Alice's console works against the kernel JSON of S10 unchanged.
-Outcomes: S10's console list (PR #13): read `expires-at`; answer with the ask's `id` and key open
-asks by it; accept `paused` without `until`, a verdict without `toolCallId`, decision `none`; join
-`part` entries across pages; a check has no buttons; the ask card comes from the ask entry only, a
-later call patch does not change it, and an open ask is never folded. The scripted fake follows.
-Also from S9 (PR #16): an ask entry without `toolCall` must not show the streamed call's header and
-diff (adversary RISK a); the user-sim's "felt wrong" list: the Needs you pill keeps its focus ring;
-the open row stays under Recent while the pointer is over the sidebar at load; at 760 px the ask
-bar wraps with Allow once mid-row; a story played only to a running step shows a huge clock.
-Touches: `console/`, `ui/`. Protects: *guard* (asks) and *core*. S7 follows S15.
-
 ### S21: sessions, turns and the active index on the in-memory state (in flight (cloud), routine trig_013z6HkuQwsoLGpkNY4ZQhno)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and drives sessions through 9.3 on the
@@ -78,17 +65,25 @@ Touches: `design/TECHNICAL.md`. Not `kernel/` (S21), not `console/` (S15). Prote
 
 ## Sketched
 
-### S20: an answered ask leaves no noise (cloud, after S21 and S22 merge: same files)
+### S20: asks as the kernel records and shows them (cloud, after S21 and S22 merge: same files)
 
-Story: a kernel maker runs `cargo test` in `kernel/` and `ask-resolved` behaves as 9.8 rule 4 says
-(S18, PR #22): no entry for the kernel's own answer (the ask counts as decided from `answer`);
-another caller's answer gives the decision from `outcome` (`by: checked` on a `direct: false`
-stream, `host` otherwise); a missing or bad `outcome`, `none` on an ask or `allow` on a check is
-`unknown` and the ask stays open; plus what S22 settles for races and checks. Also the refusal
-text of a bad `append` kind (`kind (, ): ...`) gets its field and reason (S19 polish).
-Touches: `kernel/` only. Protects: *guard* (asks) and *polish*.
+Story: a kernel maker runs `cargo test` in `kernel/` and asks are recorded and shaped as the spec
+says, with the spec fixed alongside.
+Outcomes:
+1. `ask-resolved` as 9.8 rule 4 says (S18, PR #22): no entry for the kernel's own answer; another
+   caller's answer gives the decision from `outcome` (`by: checked` on a `direct: false` stream,
+   `host` otherwise); a bad `outcome`, `none` on an ask, `allow` on a check is `unknown`, the ask
+   open; plus what S22 settles for races and checks.
+2. S15 RISK (c): the kernel's ask `toolCall` carries ACP `kind` and, for edits, the diff content
+   derived from the input (9.8), so a real Edit ask's card shows its diff, not "Other <path>".
+3. S15 RISK (a): a second open ask or check on a `toolCallId` that already has an open one with a
+   different `tool` or `input` is `unknown` (9.8), or the spec says why the console's handling is
+   enough; decide in the slice, failing closed.
+4. Spec: 9.4 "Code to change" drops the ten console bullets S15 built; 9.8 gains 2 and 3.
+5. Polish: the refusal text of a bad `append` kind (`kind (, ): ...`) gets its field and reason.
+Touches: `kernel/`, `design/TECHNICAL.md` (after S22 merges). Protects: *guard* (asks).
 
-### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
+### S7: the console stays fast on a long session (cloud, next on console/)
 
 Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
 presses Stop without lag (P14).
@@ -97,7 +92,9 @@ budget; `test:slow` 23 s because each of 4 scripts runs its own `npm run build`:
 the transcript is virtualized; at most one render per animation frame; code is
 highlighted once its block is complete and visible; a large-transcript fixture with limits for
 input, Stop and scroll latency runs in `npm test`.
-Also (S17): a Claude `ToolCall` a page saw live before a restart is never closed by an entry;
+Also (S15 user-sim): the status line repeats the kind before the title ("Edit Edit s.ts"); a
+check decided `none` with no tool entry shows "Pending"; an open check sharing a card with an
+ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live before a restart is never closed by an entry;
 after the restart's `unknown` turn the console shows it as ended, not running.
 Touches: `console/`, `ui/`. Protects: *core*.
 
@@ -244,6 +241,15 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   (run 1); adversary BREACHED 2 (`answered` closing a provider-denied ask with no decision;
   `allow` on a check), fixed, HELD on pass 3. Gate 18 s.
 
+- **S15** the console reads the wire S10 wrote (PR #23, compared and armed by the PO; 44 min).
+  Alice's console reads S10's kernel JSON unchanged: `expires-at`, `answer` by the ask's `id`,
+  `part` groups joined across pages, replay and live, checks with no buttons, the ask card from
+  the ask entry only (each entry keeps its own call); S9's "felt wrong" list fixed. PO check at
+  1440 and 760 px: look unchanged from S9, Allow once at the end of the bar. User-sim ACCEPTED
+  (run 1); adversary BREACHED 1 (two entries on one call id), fixed, HELD over 4 000 random
+  sequences; S9's held cases kept. Implementer runs 1 each of 5. Suite: `npm test` 280 tests
+  10.0 s (+19%), `test:slow` 30 s, gate 21 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -314,6 +320,11 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 - 2026-11-21 S19 consequence: with an unknown `by` read as `unknown`, every answered ask would
   add an `unknown` entry, since 4.5 names no `by` for a person's answer. Kept fail-closed; S18
   lists the `by` values, and S20 makes the answer ones give nothing.
+
+- 2026-11-21 S15's open risks: (a) two entries on one `toolCallId` and (c) the ask's `toolCall`
+  without `kind` or diff go to S20 (kernel and 9.8, fail-closed); (b) a part group over 256 parts
+  read mid-group shows one unknown row that can only expire: accepted (fails safe; entries over
+  64 MiB do not occur under the 256 KiB-per-part rule's caps).
 
 ## Human answers (2026-11-20, through the PO)
 
