@@ -42,9 +42,7 @@ ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live b
 after the restart's `unknown` turn the console shows it as ended, not running.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-## Sketched
-
-### S26: the kernel tracks its provider streams (cloud, after S25 merges: kernel/)
+### S26: the kernel tracks its provider streams (in flight (cloud), routine trig_01UPrShuM2hVaWsXaqncpSnh)
 
 Story: a kernel maker drives a Claude session through a fake provider stream on the in-memory
 state: open, items, `ended`, the 10-minute idle release and the resume after it (case 52), R4's
@@ -55,6 +53,8 @@ slice)" names. Also from S25 (PO decisions, PR #28): `delete` skips a failing re
 per turn; the quota refusal says "this mod's agent sessions are at their limit" without naming the
 kernel's shared account (14 "A session is private"); spec lines for each in 9.3.
 Touches: `kernel/`, `design/TECHNICAL.md` (9.3). Protects: *core* (*guard* for the S25 items).
+
+## Sketched
 
 ### S23: the console shows an answered ask as waiting (cloud, after S7 merges: same files)
 
@@ -247,7 +247,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   or a reload; `MultiEdit` with `replace_all`), fixed, HELD. Implementer runs 2/1/1/1/1. Kernel 227
   tests in 3.9 s; gate 18 s.
 
-- **S25** quotas (PR #28, ~48 min). Owners are held to 9.3 "Quota": 64 sessions and 64 MiB per
+- **S25** quotas (PR #28, merged 2026-11-21 04:04 UTC, ~48 min). Owners are held to 9.3 "Quota": 64 sessions and 64 MiB per
   owner (settable), the 224 MiB account and 32 MiB reserve, more owner pages past 256, `quota`
   refusals naming their cap, a running turn ends `stopped {limit: quota}`, kept keys stay charged;
   a key costs its name plus its value, metered per call; past quota a new ask is denied and the
