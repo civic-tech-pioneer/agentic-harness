@@ -2052,15 +2052,18 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
   150 ms.
 - **Long sessions.** A session of thousands of entries costs what a short one
   does (P14).
-  - The transcript is windowed: 100 rows plus the rows kept, so at most about
-    120 are mounted (`WINDOW_CAP` in `console/kit/thread.tsx`). A row with
-    focus, and a row with an open ask or check, stays mounted.
+  - The transcript is windowed: the rows within 800 px of the viewport, at
+    most 100 (`OVERSCAN`, `WINDOW_CAP` in `console/kit/thread.tsx`), plus the
+    rows kept, so at most about 120 are mounted. A row with focus, and a row
+    with an open ask or check, stays mounted.
   - The page is told at most once per animation frame, with a 16 ms timer
     where there is no frame (`console/kit/kernel.ts`).
-  - Code is highlighted once its block is complete and near the viewport, off
-    the main thread or within a time budget per block, past which the block
-    stays plain (the budget is S23; today only the size limit is built). A
-    block over 64 KiB stays plain (`console/kit/parts/highlight.ts`).
+  - Code is highlighted once its block is complete and near the viewport,
+    off the main thread or on it. Either way each block has a time budget
+    (S23 sets its value): a block past it stays plain, and on a Worker the
+    Worker is ended so the blocks behind it are not held up. Today only the
+    size limit is built: a block over 64 KiB (`MAX_CODE` characters,
+    `console/kit/parts/highlight.ts`) stays plain.
   - The reducer does no work per message that walks the transcript: at 5 000
     rows a message costs at most 8 times what it costs at 300 rows, and at
     most 50 µs (`console/kit/s7_fix1.test.ts`; copying the rows array on a
