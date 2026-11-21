@@ -6,7 +6,7 @@ import { story } from "../fake/story";
 import { openSession } from "./kernel";
 import type { SessionView } from "./model";
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
+const flush = () => new Promise((r) => setTimeout(r, 80)); // P14: a view reaches the page once per frame (a 16 ms timer here)
 function open(k: ReturnType<typeof fakeKernel>) {
   const views: SessionView[] = [];
   const s = openSession(k, "s1", (v) => views.push(v));
@@ -20,6 +20,7 @@ describe("AC5 reattach and reload", () => {
     await flush();
     expect(k.calls[0]).toEqual({ name: "attach", args: ["s1", 0] });
     k.play(0); k.play(1);
+    await flush();
     const before = a.last();
     expect(before.lastIndex).toBe(6);
     k.drop();
@@ -27,6 +28,7 @@ describe("AC5 reattach and reload", () => {
     expect(k.calls.filter((c) => c.name === "attach")[1]!.args).toEqual(["s1", before.lastIndex]);
     expect(a.last().rows).toEqual(before.rows);
     k.play(2);
+    await flush();
     const after = a.last();
     expect(after.rows.slice(0, before.rows.length)).toEqual(before.rows);
     expect(after.rows.length).toBeGreaterThan(before.rows.length);
@@ -155,7 +157,7 @@ describe("S4-fix2 AC3 behind that cannot be paged", () => {
         const k = { async attach() { return { behind }; }, read: async () => { reads++; return ["{}"]; }, say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
         let last: SessionView | undefined;
         const s = openSession(k, "s1", (v) => { last = v; });
-        await vi.advanceTimersByTimeAsync(10);
+        await vi.advanceTimersByTimeAsync(30);
         s.close();
         expect(reads).toBe(0);
         expect(last!.rows.some((r) => r.kind === "unknown" && String(r.raw).includes("not an index"))).toBe(true);

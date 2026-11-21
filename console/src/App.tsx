@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { decisionJson, emptyView, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Kernel, type SessionView } from "../kit";
+import { decisionJson, emptyView, MEASURE, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
@@ -27,7 +27,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   useEffect(() => {
     const col = scroller.current?.firstElementChild;
     if (!col || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(toEnd);
+    const ro = new ResizeObserver(() => { scroller.current?.dispatchEvent(new Event(MEASURE)); toEnd(); });
     ro.observe(col);
     return () => ro.disconnect();
   }, [toEnd]);
@@ -51,6 +51,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     const fits = card.getBoundingClientRect().height <= (scroller.current?.clientHeight ?? 0);
     if (fits) card.scrollIntoView?.({ block: "start" });
     else (card.querySelector<HTMLElement>(".wa-askbar") ?? card).scrollIntoView?.({ block: "end" });
+    scroller.current?.dispatchEvent(new Event("scroll")); // the position changed now: tell the transcript and the follow before anything else renders
     btn.focus({ preventScroll: true });
   }, [view.openAsks]);
 

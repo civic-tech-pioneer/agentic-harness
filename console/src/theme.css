@@ -126,7 +126,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .wa-iconbtn { width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-color: transparent; background: transparent; color: var(--muted); }
 @media (max-width: 759.98px) { .wa-meter { display: none; } }
 
-.wa-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 16px; }
+.wa-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 16px; overflow-anchor: none; } /* the transcript holds the reader's row still itself (P14) */
 .wa-column { max-width: 780px; margin: 0 auto; }
 
 .wa-dock { flex: none; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 780px; margin: 0 auto; padding: 8px 16px 16px; }

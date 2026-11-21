@@ -101,10 +101,18 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
     }
     if (!closed) show(settle(view, n, e));
   }
-  const show = (v: SessionView) => {
+  /** P14: the reducer sees every message at once, but the page is told at most once per animation frame (a 16 ms timer where there is none). */
+  let frame: number | ReturnType<typeof setTimeout> | undefined;
+  let framed = false;
+  const flush = () => {
+    frame = undefined;
+    if (closed) return;
+    const v = view;
+    onView(v);
+  };
+  const show = (v: SessionView, now = false) => {
     view = v;
     if (closed) return;
-    onView(v);
     // a message the view saw only in part: fetch its entry, which replaces the row
     for (const r of v.rows) {
       const n = r.key.startsWith("~p") ? Number(r.key.slice(2)) : NaN;
@@ -112,6 +120,14 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
       fetching.add(n);
       void fetchEntry(n).finally(() => fetching.delete(n));
     }
+    if (now) { // the newest page of a long session shows at once (18.3), not with the next frame
+      if (frame !== undefined) { if (framed) cancelAnimationFrame(frame as number); else clearTimeout(frame as ReturnType<typeof setTimeout>); }
+      flush();
+      return;
+    }
+    if (frame !== undefined) return;
+    if (typeof requestAnimationFrame === "function") { framed = true; frame = requestAnimationFrame(flush); }
+    else { framed = false; frame = setTimeout(flush, 16); }
   };
 
   /** Pages in the entries before `through`, newest page first; a page that adds no index inside its range fails. */
@@ -147,7 +163,7 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
       if (closed || g !== gen) return undefined;
       pages.unshift(chunk.splice(0).flat());
       hi = lo;
-      if (pages.length === 1) show(assemble(pages).reduce(safeReduce, base)); // the newest range shows at once; the whole is reduced once below
+      if (pages.length === 1) show(assemble(pages).reduce(safeReduce, base), true); // the newest range shows at once; the whole is reduced once below
     }
     if (closed || g !== gen) return undefined;
     show(assemble(pages).reduce(safeReduce, base));
@@ -207,5 +223,5 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
   }
 
   void connect();
-  return { close() { closed = true; gen++; gov.stop(); if (timer) clearTimeout(timer); if (stable) clearTimeout(stable); } };
+  return { close() { closed = true; gen++; gov.stop(); if (frame !== undefined) { if (framed) cancelAnimationFrame(frame as number); else clearTimeout(frame as ReturnType<typeof setTimeout>); frame = undefined; } if (timer) clearTimeout(timer); if (stable) clearTimeout(stable); } };
 }

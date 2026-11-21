@@ -4,6 +4,7 @@
 @media (prefers-color-scheme: dark) {
   .wa-transcript { --wa-ok: #6FD39E; --wa-ok-bg: #132A1E; --wa-bad-bg: #2E1615; --wa-off-bg: #26262A; --wa-code: #202024; --wa-add: rgba(127, 209, 160, .12); --wa-del: rgba(242, 146, 140, .12); }
 }
+.wa-gap { flex: none; } /* stands for the rows outside the window (P14) */
 .wa-row { min-height: 44px; display: flex; flex-direction: column; justify-content: center; min-width: 0; overflow-wrap: anywhere; }
 .wa-user { align-self: flex-end; max-width: 85%; padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--panel); }
 .wa-agent { white-space: pre-wrap; }

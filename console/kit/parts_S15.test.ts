@@ -5,7 +5,7 @@ import { fakeKernel, partsOf } from "../fake/kernel";
 import { openSession } from "./kernel";
 import type { SessionView } from "./model";
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
+const flush = () => new Promise((r) => setTimeout(r, 40)); // P14: a view reaches the page once per frame (a 16 ms timer here)
 const msg = (i: number, text: string) => ({ v: 1, i, kind: "message", at: i, body: { role: "agent", content: [{ type: "text", text }] } });
 const user = (i: number) => JSON.stringify({ v: 1, i, kind: "message", at: i, body: { role: "user", content: [{ type: "text", text: `u${i}` }] } });
 const big = "é漢x".repeat(100 * 1024); // about 600 KB, multi-byte
@@ -24,6 +24,7 @@ describe("S15-2 parts in the console", () => {
     const a = open(k);
     await flush();
     k.play(0);
+    await flush();
     expect(agents(a.last())).toEqual([big]);
     expect(a.last().lastIndex).toBe(2);
     a.s.close();

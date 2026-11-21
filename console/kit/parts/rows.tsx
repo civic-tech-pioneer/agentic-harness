@@ -4,7 +4,7 @@ import { askArg, cardName, type Actions, type Row, type ToolCall } from "../mode
 import { AskBar } from "./askbar";
 import { DiffView } from "./diff";
 import { MessageText } from "./code";
-import { Disclosure } from "./disclosure";
+import { Disclosure, useFold } from "./disclosure";
 import { Pencil, Search } from "./icons";
 import { ProgramOutput } from "./output";
 
@@ -28,13 +28,13 @@ export function ThoughtRow({ row }: { row: Of<"thought"> }) {
     return <div className="wa-thought" data-open="true" aria-busy="true"><p className="wa-fold-label">Thinking…</p><div className="wa-fold-body">{row.text}</div></div>;
   }
   const label = row.seconds === undefined ? "Thought" : `Thought for ${row.seconds} s`;
-  return <Disclosure className="wa-thought" label={label}>{row.text}</Disclosure>;
+  return <Disclosure className="wa-thought" label={label} stateKey={row.key}>{row.text}</Disclosure>;
 }
 
 export function ExploredRow({ row }: { row: Of<"explored"> }) {
   const parts = [row.reads ? plural(row.reads, "read", "reads") : "", row.searches ? plural(row.searches, "search", "searches") : ""].filter(Boolean);
   return (
-    <Disclosure className="wa-explored" icon={<Search />} label={`Explored · ${parts.join(", ")}`}>
+    <Disclosure className="wa-explored" stateKey={row.key} icon={<Search />} label={`Explored · ${parts.join(", ")}`}>
       <ul>{row.calls.map((c) => <li key={c.id}>{c.title}</li>)}</ul>
     </Disclosure>
   );
@@ -99,7 +99,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   );
   return (
     <section className={`wa-tool card${asking ? " ask" : ""}`} data-call={call.id} data-ask={ask?.id} data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
-      <ToolCard head={head} open={call.status === "failed" || pending} initial={!!ask}>{body}</ToolCard>
+      <ToolCard stateKey={row.key} head={head} open={call.status === "failed" || pending} initial={!!ask}>{body}</ToolCard>
     </section>
   );
 }
@@ -131,8 +131,8 @@ function AskScroll({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ToolCard({ head, open, initial, children }: { head: React.ReactNode; open: boolean; initial: boolean; children: React.ReactNode }) {
-  const [shown, setShown] = useState(open || initial);
+function ToolCard({ stateKey, head, open, initial, children }: { stateKey: string; head: React.ReactNode; open: boolean; initial: boolean; children: React.ReactNode }) {
+  const [shown, setShown] = useFold(stateKey, open || initial);
   return (
     <>
       <button type="button" className="wa-tool-head chead" aria-expanded={shown || open} onClick={() => setShown(!shown)}>{head}</button>
@@ -152,7 +152,7 @@ export function FooterRow({ row }: { row: Of<"footer"> }) {
 }
 
 export function UnknownRow({ row }: { row: Of<"unknown"> }) {
-  const [raw, setRaw] = useState(false);
+  const [raw, setRaw] = useFold(row.key, false);
   return (
     <div className="wa-unknown">
       <span>An event this console does not know</span>{" "}

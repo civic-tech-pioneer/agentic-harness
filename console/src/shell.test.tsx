@@ -142,7 +142,7 @@ describe("app", () => {
     const cur = screen.getByRole("button", { current: true });
     expect(within(cur).getByRole("img", { name: "Needs you" })).toBeInTheDocument();
     act(() => f.play(story.length));
-    expect(within(screen.getByRole("button", { current: true })).getByRole("img", { name: "Idle" })).toBeInTheDocument();
+    await waitFor(() => expect(within(screen.getByRole("button", { current: true })).getByRole("img", { name: "Idle" })).toBeInTheDocument());
   });
   it("ac6_without_sessions_only_the_open_one_shows", () => {
     render(<App kernel={fakeKernel([])} info={storyInfo} />);
