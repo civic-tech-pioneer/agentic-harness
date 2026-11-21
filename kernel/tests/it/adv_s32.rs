@@ -71,3 +71,39 @@ fn adv_s32_ended_on_a_full_owner_stream_is_lost() {
         rec.turn
     );
 }
+
+/// S32-fix1 (validator): the wrapper's entry `provider_ended` on a full owner stream closes that
+/// stream `lagging` and takes its `live/` key (9.4, outside an item call), and still applies the
+/// end: the turn is settled and the turn change is in the transcript, for the page that
+/// reattaches after its last index.
+#[test]
+fn validator_s32_fix1_ended_closes_a_full_owner_stream_lagging() {
+    let mut k = claude_kernel();
+    let id = k
+        .start("alice", "k1", "p", "{}", r#"[{"type":"text","text":"hi"}]"#)
+        .unwrap()
+        .value;
+    let o = match k.attach("alice", &id, 0).unwrap().value {
+        Attached::Live { stream } => stream,
+        other => panic!("{other:?}"),
+    };
+    let t = Record::load(&mut k.state, &id)
+        .unwrap()
+        .streams
+        .into_iter()
+        .find(|s| *s != o)
+        .expect("the provider stream");
+    let last = Record::load(&mut k.state, &id).unwrap().next_index;
+    k.host.full.insert(o.clone());
+    let c = k.provider_ended(&t).unwrap();
+    assert!(!c.pushes.is_empty(), "the end has pushes");
+    assert!(k.host.calls.contains(&HostCall::Close {
+        stream: o.clone(),
+        outcome: Outcome::Lagging
+    }));
+    assert!(k.state.get(&format!("live/{id}")).is_none());
+    let rec = Record::load(&mut k.state, &id).unwrap();
+    assert!(rec.live.is_none() && !rec.streams.contains(&o));
+    assert!(rec.next_index > last, "the end's turn entry is stored");
+    assert!(k.state.get(&format!("stream/{t}")).is_none());
+}
