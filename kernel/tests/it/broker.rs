@@ -85,8 +85,7 @@ fn ac1_only_listed_tools_have_a_reach() {
 
 #[test]
 fn ac2_bash_reach_pins_timeout_and_background() {
-    let b = |i: Value| r(None, "Bash", i);
-    let c = |i: Value| b(i);
+    let c = |i: Value| r(None, "Bash", i);
     assert_eq!(c(json!({"command":"ls"})).as_deref(), Some("Bash(ls)"));
     assert_eq!(
         c(json!({"command":"ls","description":"d"})).as_deref(),

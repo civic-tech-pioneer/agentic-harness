@@ -43,7 +43,8 @@ pub fn reach(
 }
 
 /// `Bash(<command>)`: only that exact command run as allowed (no key beyond the four plain
-/// ones, so no sandbox escape), and only when it passes the allow grammar (4.1).
+/// ones, so no sandbox escape), and only when it passes the allow grammar (4.1); then
+/// ` timeout=<n>` and ` run_in_background=<bool>` when the input has them (S33).
 fn bash(input: &Value) -> Option<String> {
     let keys = ["command", "description", "timeout", "run_in_background"];
     if input
