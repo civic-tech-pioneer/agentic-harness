@@ -59,33 +59,28 @@ Touches: `console/`, `ui/`. Not `kernel/`, `design/`, `factory/`.
 Fakes: the same scripted kernel; extend the script where a frame shows a state it lacks.
 Protects: *polish* (*core* for 1 and 2: an ask must read as one).
 
-### S11: the transcript store: entries, parts and pages (in flight (cloud), routine trig_01SrbFBAegdjggbPmwt45bFR)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and sees a session's transcript stored and
-read back as 9.4 and 9.1 say, against an in-memory key-value state of host 7's shape (get, put,
-delete; 4 MiB per value; no prefix scan), for transcripts of 10 and of 10 000 entries.
-Outcomes:
-1. Append: indexes start at 1 and rise by one; chunks `entries/<id>/<n>` hold what 9.1 and 9.4 say
-   on main at delivery (S6, P08, changed them to at most 64 KiB, or one entry over 64 KiB; the PO
-   checks this on delivery); the session record's `chunks` lists each chunk's first index, so a read touches only
-   the chunks it needs (a test counts the gets).
-2. An entry over 256 KiB is stored as consecutive `part` entries cut at UTF-8 boundaries, the
-   whole carrying the last part's index; a reader joins parts across pages; a read whose `after`
-   falls inside a group starts at its first part.
-3. `read(after, before?, max)` returns `page {entries, last}` ascending, at most `max` (at most
-   256) and 2 MiB, with `before` paging backwards; `last` is the high-water index; every page
-   makes progress.
-4. The replay decision of `attach`: at most 128 entries and 2 MiB after `after`, else
-   `behind {through}`; the stream part of attach is left out.
-5. An entry of unknown `kind` or newer `v` reads as `unreadable` with its raw text and keeps its
-   `i`. Also: drop `ls` from yarn's runner words (S3 debt; 4.1 text comes with S6 or S10).
-Touches: `kernel/` only. Not `design/`: a spec question is a `BLOCKED`, with the option that keeps
-the others open built meanwhile.
-Fakes: the host's key-value state (an in-memory map behind a small trait in `kernel/`).
-Leaves out: streams and live pushes, queue, sessions (9.3), quotas, `expires-at` from the item.
-Protects: *core*.
-
 ## Sketched
+
+### S12: the kernel catches up with the spec (cloud, after S11 merges: same files)
+
+Story: a kernel maker runs `cargo test` in `kernel/` and the code does what S6 and S11 left as
+"code to change".
+Outcomes:
+1. `RUNNERS` holds every refused first word and runtime prefix 4.1 names (S6); a test reads 4.1's
+   list from TECHNICAL and fails on a word the code lacks.
+2. Skill frontmatter continuation lines may not contain `:` (S6, 9.2).
+3. An `unreadable` line keeps the index of its place, never one it claims (S11 RISK).
+4. `append` takes only the adapters' entry kinds and refuses `part` and unknown kinds from callers
+   (S11 RISK); `read` with `max` 0 is refused `refused` until 2.3 says otherwise.
+Touches: `kernel/` only. Protects: *guard*.
+
+### S13: spec debts from S11 (cloud, after S10 merges: same files)
+
+Outcomes: 9.4 reads "`attach` with an `after` that falls inside a group starts at the group's
+first part; `read` takes `after` as given" (S11, deputy decision (a)); 2.3 says `max` is 1 to 256
+and 0 is refused; 7 or 9.1 says a host commit is atomic per call, so a failed `append` leaves no
+charged chunk; and whatever S10 names for a later design slice. Touches: `design/TECHNICAL.md`.
+Protects: *core*.
 
 ### S7: the console stays fast on a long session (cloud, after S9 merges: same files)
 
@@ -181,6 +176,13 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   runs 1/1/1. Gate 14 s, no tests changed. Code to change, for the next kernel slice: drop
   `yarn ls`, add the missing runner names and prefixes, the frontmatter `:` rule.
 
+- **S11** the transcript store (PR #12, opened and armed by the PO after its BLOCKED; ~45 min).
+  A kernel maker sees transcripts of 10 and 10 000 entries stored in 64 KiB chunks over an
+  in-memory host-7 state with counted gets; entries over 256 KiB as UTF-8-safe `part`s joined byte
+  for byte; `read` both ways under 256 entries and 2 MiB; attach's replay decision (128 / 2 MiB,
+  else `behind`); `unreadable` keeps its `i`; `Bash(yarn ls)` refused. User-sim ACCEPTED (run 1);
+  adversary BREACHED 1 (`read(u64::MAX)` overflow), fixed, HELD.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -229,6 +231,12 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   first kernel slice; the session allow on `Bash` is under Waiting.
 - 2026-11-21 Next kernel slice after S11 is S12: S6's code to change (runner names, `yarn ls`,
   frontmatter `:`), then `expires-at` once S10 writes it.
+
+- 2026-11-21 S11 BLOCKED on 9.4: "read with an after inside a group starts at its first part"
+  loops forever on entries over a page (cases 34, 49). Decided (a), as built: only `attach` moves
+  `after` to the group's start; `read` takes `after` as given (a client that lost the start reads
+  with `after = i - n`). Undo: one call, one test, one sentence; (c), a `restart` flag on `read`,
+  can come on top. The sentence goes to S13; the RISKs to S12 and S13.
 
 ## Human answers (2026-11-20, through the PO)
 
