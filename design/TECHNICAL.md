@@ -759,9 +759,10 @@ wire") are this JSON; the entry has no `activity`.
     sessions are at their limit", which tells an owner nothing of other owners (14).
   - *A provider item when past* (the owner or the account): an ask decision
     and the host's `ask-resolved` are stored; a turn change is written as an entry only when it ends an active turn (so a turn gets at most
-    one `turn` entry past quota; a provider `Turn` that does not end it is dropped, and
-    an ask that closes or `close_all` writes no entry while the record's turn and the
-    `turn` push follow); a new
+    one `turn` entry past quota; a provider `Turn` that would change the record's turn
+    without ending it is dropped: no entry, the record's turn kept, no push; an ask
+    that closes or `close_all` writes no entry, while the record's turn follows (a
+    `waiting` turn's asks shrink, then it is `running`) and the `turn` push goes out); a new
     ask is not stored and is denied at once (`Request::Answer` deny, reason
     `quota`); any other entry is not stored. When the session's turn is
     active, the first such item ends it `stopped {limit: quota}` (its `turn`

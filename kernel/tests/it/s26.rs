@@ -2,7 +2,7 @@
 //! account refusal names no other owner (TECHNICAL 9.3, 14).
 
 use agent_kernel::active::{self, Slots};
-use agent_kernel::adapters::{Entry, Kind, Out};
+use agent_kernel::adapters::{Entry, Kind, Out, Resolved};
 use agent_kernel::transcript::MAX_CHUNKS;
 use agent_kernel::*;
 use serde_json::{json, Value};
@@ -236,5 +236,55 @@ fn ac3_past_quota_an_active_change_writes_nothing_but_activity_still_pushes() {
         c.pushes[0].value["state"]["activity"],
         json!({"kind": "compacting"})
     );
+    assert_eq!(turn_entries(&mut k, &s), n);
+}
+
+fn resolved(id: &str) -> ProviderEvent {
+    ProviderEvent::Out(Out {
+        resolved: Some(Resolved {
+            id: id.into(),
+            by: "answered".into(),
+            outcome: Some("deny".into()),
+            direct: true,
+            raw: json!({"type": "ask-resolved", "id": id, "by": "answered"}),
+        }),
+        ..Out::default()
+    })
+}
+
+/// The turn pushes of a call, with the record's turn after it.
+fn turn_pushes(c: &Called<Item>) -> Vec<Value> {
+    c.pushes
+        .iter()
+        .filter(|p| p.value["type"] == "turn")
+        .map(|p| p.value["state"].clone())
+        .collect()
+}
+
+/// S26-fix1 AC2, 9.3 Quota: past quota an ask that closes, and `close_all`, write no `turn`
+/// entry, but the record's turn follows (the waiting asks shrink, then `running`) and is pushed.
+#[test]
+fn fix1_ac2_past_quota_closing_asks_move_the_turn_without_entries() {
+    let mut k = kernel();
+    let s = start(&mut k, "alice", "k1");
+    for a in ["a1", "a2", "a3"] {
+        k.provider_item("t1", ask(a)).unwrap();
+    }
+    k.limits.owner_bytes = agent_kernel::Usage::load(&mut k.state, "quota/alice").bytes;
+    let n = turn_entries(&mut k, &s);
+    let turn = |k: &mut K| Record::load(&mut k.state, &s).unwrap().turn;
+    let c = k.provider_item("t1", resolved("a1")).unwrap();
+    let Turn::Waiting { asks, .. } = turn(&mut k) else {
+        panic!("still waiting: {:?}", turn(&mut k))
+    };
+    assert_eq!(asks, vec!["a2".to_string(), "a3".to_string()]);
+    assert_eq!(turn_pushes(&c), vec![turn(&mut k).to_json()]);
+    let c = k.provider_item("t1", resolved("a2")).unwrap();
+    assert!(matches!(turn(&mut k), Turn::Waiting { ref asks, .. } if asks == &["a3"]));
+    assert_eq!(turn_pushes(&c), vec![turn(&mut k).to_json()]);
+    // `close_all` (the provider stream ends): the last ask goes, the turn runs
+    let c = k.provider_item("t1", ProviderEvent::Ended).unwrap();
+    assert!(matches!(turn(&mut k), Turn::Running { .. }));
+    assert_eq!(turn_pushes(&c), vec![turn(&mut k).to_json()]);
     assert_eq!(turn_entries(&mut k, &s), n);
 }
