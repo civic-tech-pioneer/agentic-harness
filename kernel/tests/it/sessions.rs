@@ -1167,3 +1167,62 @@ fn ac4_an_openai_profile_without_a_model_is_refused() {
     // A Claude profile without `model` still starts.
     k.start("alice", "k2", "p", "{}", IN).unwrap();
 }
+
+#[test]
+fn ac1_interrupt_with_a_replacement_on_an_inactive_session_only_starts_the_turn() {
+    for (t, resume) in [
+        (completed(), false),
+        (Turn::Unknown, true),
+        (Turn::ResumeLost, false),
+    ] {
+        let mut k = kernel();
+        let id = started(&mut k, "alice", "k");
+        k.provider(&id, idle()).unwrap();
+        assert!(page0(&mut k).is_empty());
+        let mut r = rec(&mut k, &id);
+        r.turn = t;
+        r.save(&mut k.state).unwrap();
+        let sent = requests(&k).len();
+        k.interrupt("alice", &id, Some("instead")).unwrap();
+        // No turn to end: no `Request::Interrupt`; `unknown` resumes as R5 Continue does.
+        assert_eq!(
+            requests(&k)[sent..],
+            [Request::Turn {
+                session: id.clone(),
+                input: "instead".into(),
+                resume
+            }]
+        );
+        assert!(matches!(rec(&mut k, &id).turn, Turn::Running { .. }));
+        assert_eq!(page0(&mut k), std::slice::from_ref(&id));
+    }
+}
+
+#[test]
+fn ac1_ac2_interrupt_and_cancel_do_the_r6_step_first() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    k.host.boot = 2;
+    let sent = requests(&k).len();
+    // R6 makes the running turn `unknown`: nothing left to interrupt.
+    k.interrupt("alice", &id, None).unwrap();
+    assert_eq!(rec(&mut k, &id).turn, Turn::Unknown);
+    assert_eq!(requests(&k).len(), sent);
+
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    k.provider(&id, ask("a1", "ask", 0)).unwrap();
+    k.host.boot = 2;
+    let sent = requests(&k).len();
+    k.cancel("alice", &id).unwrap();
+    let r = rec(&mut k, &id);
+    assert_eq!(r.turn, Turn::Unknown);
+    let es = entries(&mut k, "alice", &id);
+    let reasons: Vec<&Value> = es
+        .iter()
+        .filter(|e| e["kind"] == "ask" && e["body"]["decision"].is_object())
+        .map(|e| &e["body"]["decision"]["reason"])
+        .collect();
+    assert_eq!(reasons, [&json!("restart")]);
+    assert_eq!(requests(&k)[sent..], [Request::Cancel { session: id }]);
+}
