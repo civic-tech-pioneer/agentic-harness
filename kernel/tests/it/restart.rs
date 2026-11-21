@@ -522,6 +522,7 @@ fn ac7_expires_at_is_the_earliest_open_ask_after_one_is_answered() {
         kind: "ask".into(),
         i: 1,
         expires_at: None,
+        call: String::new(),
     };
     assert!(!serde_json::to_string(&none).unwrap().contains("expires-at"));
 }

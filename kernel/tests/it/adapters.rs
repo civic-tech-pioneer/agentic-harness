@@ -622,3 +622,20 @@ fn ac3_after_resolution_another_input_is_an_ask_again() {
     );
     assert_eq!(kind_of(&out), "ask");
 }
+
+#[test]
+fn ac3_edit_with_replace_all_has_no_diff() {
+    let mut a = ClaudeAdapter::new();
+    let edit =
+        json!({"file_path": "/w/a", "old_string": "x", "new_string": "y", "replace_all": true});
+    let b = body_of(&line(
+        &mut a,
+        ask_line("ask", "1", "c1", "Edit", edit.clone()),
+    ));
+    assert!(b["toolCall"].get("content").is_none(), "{b}");
+    assert_eq!(b["toolCall"]["rawInput"], edit);
+    let off =
+        json!({"file_path": "/w/a", "old_string": "x", "new_string": "y", "replace_all": false});
+    let b = body_of(&line(&mut a, ask_line("ask", "2", "c2", "Edit", off)));
+    assert!(b["toolCall"]["content"].is_array());
+}

@@ -494,6 +494,7 @@ fn diffs_of(tool: &str, input: &Value) -> Option<Vec<ToolCallContent>> {
         ToolCallContent::Diff(d)
     };
     match tool {
+        "Edit" if input.get("replace_all") == Some(&Value::Bool(true)) => None,
         "Edit" => Some(vec![diff(
             Some(str_of(input, "old_string")?),
             str_of(input, "new_string")?,

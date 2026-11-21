@@ -124,6 +124,9 @@ pub struct OpenAsk {
     /// "ask" or "check".
     pub kind: String,
     pub i: u64,
+    /// The ask's `toolCallId`, so a second ask on the same call is compared (9.8).
+    #[serde(rename = "toolCallId", default)]
+    pub call: String,
     /// The ask entry's `expires-at`, kept so the turn's earliest one needs no entry read.
     #[serde(
         rename = "expires-at",
@@ -138,6 +141,9 @@ pub struct OpenAsk {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingAnswer {
     pub i: u64,
+    /// The ask's `toolCallId`.
+    #[serde(rename = "toolCallId", default)]
+    pub call: String,
     /// "ask" or "check".
     pub kind: String,
     pub outcome: String,
@@ -146,6 +152,9 @@ pub struct PendingAnswer {
     pub for_: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// The changed `input` an `allow` carried; not counted in the 1 KiB cap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<Value>,
 }
 
 impl PendingAnswer {
@@ -157,6 +166,9 @@ impl PendingAnswer {
         }
         if let Some(r) = &self.reason {
             d["reason"] = Value::String(r.clone());
+        }
+        if let Some(i) = &self.input {
+            d["input"] = i.clone();
         }
         d
     }

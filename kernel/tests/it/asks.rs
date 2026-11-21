@@ -171,6 +171,8 @@ fn ac1_a_pending_answer_over_1_kib_or_the_64th_pending_refuses_and_writes_nothin
                 by: "owner".into(),
                 for_: None,
                 reason: None,
+                call: String::new(),
+                input: None,
             },
         );
     }
@@ -180,6 +182,7 @@ fn ac1_a_pending_answer_over_1_kib_or_the_64th_pending_refuses_and_writes_nothin
         kind: "ask".into(),
         i: 2,
         expires_at: None,
+        call: String::new(),
     });
     r.save(&mut k.state).unwrap();
     let before = k.state.get(&format!("session/{id}"));
@@ -487,4 +490,68 @@ fn ac2_the_adapter_reports_and_keeps_or_drops_the_open_id() {
             .resolved
             .is_none());
     }
+}
+
+fn edit_line(id: &str, call: &str, path: &str) -> Value {
+    json!({"type": "ask", "id": id, "tool": "Edit",
+        "input": {"file_path": path, "old_string": "a", "new_string": "b"},
+        "tool_use_id": call, "expires-at": 9000})
+}
+
+#[test]
+fn ac5_a_fresh_adapters_new_id_on_a_pending_call_with_another_input_is_unknown() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    let mut a = ClaudeAdapter::new();
+    feed(&mut k, &mut a, &id, edit_line("a1", "c1", "/w/x"));
+    k.answer("alice", &id, "k1", "a1", r#"{"deny":true}"#)
+        .unwrap();
+    let mut fresh = ClaudeAdapter::new();
+    feed(&mut k, &mut fresh, &id, edit_line("a2", "c1", "/w/other"));
+    let es = entries(&mut k, &id);
+    assert!(!es
+        .iter()
+        .any(|e| e["kind"] == "ask" && e["body"]["id"] == "a2"));
+    assert!(es.iter().any(|e| e["kind"] == "unknown"));
+    let err = k
+        .answer("alice", &id, "k2", "a2", r#"{"allow":true}"#)
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("ask"), "{err:?}");
+}
+
+#[test]
+fn ac5_the_same_tool_and_input_on_a_pending_call_is_an_ask() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    let mut a = ClaudeAdapter::new();
+    feed(&mut k, &mut a, &id, edit_line("a1", "c1", "/w/x"));
+    k.answer("alice", &id, "k1", "a1", r#"{"deny":true}"#)
+        .unwrap();
+    let mut fresh = ClaudeAdapter::new();
+    feed(&mut k, &mut fresh, &id, edit_line("a2", "c1", "/w/x"));
+    assert!(rec(&mut k, &id).open.iter().any(|o| o.id == "a2"));
+}
+
+#[test]
+fn ac4_an_allow_with_input_keeps_it_in_the_decision_entry() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    let mut a = ClaudeAdapter::new();
+    feed(&mut k, &mut a, &id, edit_line("a1", "c1", "/w/x"));
+    let changed = json!({"file_path": "/w/y", "old_string": "a", "new_string": "c"});
+    let d = json!({"allow": true, "input": changed});
+    k.answer("alice", &id, "k1", "a1", &d.to_string()).unwrap();
+    assert_eq!(
+        rec(&mut k, &id).pending_answers["a1"].input,
+        Some(changed.clone())
+    );
+    feed(
+        &mut k,
+        &mut a,
+        &id,
+        resolved_line("a1", "answered", Some("allow")),
+    );
+    let ds = decisions(&mut k, &id);
+    assert_eq!(ds["a1"]["input"], changed);
+    assert_eq!(ds["a1"]["by"], "owner");
 }

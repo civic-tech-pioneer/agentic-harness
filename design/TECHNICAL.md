@@ -617,7 +617,7 @@ Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `pr
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
 `boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
-(session allows, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {i, kind, outcome, by, for?, reason?}}`, the pending answers of 9.8 rule 4; `i` and `kind` are the ask entry's index and its `ask` or `check`, so the decision entry can repeat the ask, and follow the kind rules of 9.8 rule 4, after a restart without the adapter; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
+(session allows, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {i, toolCallId, kind, outcome, by, for?, reason?, input?}}`, the pending answers of 9.8 rule 4; `toolCallId` is the ask's call, kept so a later ask on the call is compared without reading every ask (9.8); `input` is the changed input an `allow` carried (2.3), shown in the decision entry and not counted in the 1 KiB; `i` and `kind` are the ask entry's index and its `ask` or `check`, so the decision entry can repeat the ask, and follow the kind rules of 9.8 rule 4, after a restart without the adapter; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
 `chunks` (the first index of each entry chunk, 9.1), `streams` (the ids of the session's open streams, at most 10: 1 provider or 1 request, 8 jobs, 1 owner; 9.4, 9.5), `deadlines` (each `{what, at}`, at most 64; below), `open` (the open asks and checks, each `{id, kind, i, expires-at?}`: the ask id, `kind` `ask` or `check`, the index `i` of its ask entry (9.4), and that entry's `expires-at` when it has one; an open ask leaves `open` when it is decided or closed. A decision entry can repeat its ask (9.4) after the adapter's memory is gone (a restart), and `waiting.expires-at`, the earliest open ask's, is recomputed without reading entries), `next-index`, `created`, `updated`. The queue is not in the record: it lives
 in `queue/<id>` (9.1), at most 32 inputs, each numbered from 1 per session.
 
@@ -635,8 +635,8 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 | `chunks` | 16 384 chunk starts, 8 bytes each (u64), so 128 KiB of the 512 KiB record | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
 | `streams` | 10 ids | – (the slots of 9.5 allow no more; an owner stream that `attach` replaces leaves `streams` in that `attach`, not at its `ended`) |
 | `deadlines` | 64 | – (an open ask past the 61st is denied `timers`, below) |
-| `open` | one per open ask or check. An ask with a kernel deadline (the OpenAI loop's, `ask-expiry`) is bounded by `deadlines` (a 62nd is denied `timers`); a Claude ask or check takes no kernel deadline. At most 64 open asks and checks, the pending answers counted in (`open` + `pending-answers` <= 64); past it the ask is denied at once, `by: kernel`, reason `busy`, its ask and decision entries written in that call and a `Request::Answer` deny sent, so `cancel`, R4 and `ended` write at most 64 decisions in one call | – |
-| `pending-answers` | 64 (one per Claude ask the kernel answered that the host has not closed), each at most 1 KiB | the kernel sends no further answer to a Claude ask of the session until one closes: the owner's `answer` is refused `busy` (2.3), and a session allow or the "no owner stream" deny leaves the ask open for the host to close at its `expires-at` (4.5) |
+| `open` | one per open ask or check, with `{id, kind, i, toolCallId, expires-at?}`. An ask with a kernel deadline (the OpenAI loop's, `ask-expiry`) is bounded by `deadlines` (a 62nd is denied `timers`); a Claude ask or check takes no kernel deadline. At most 64 open asks and checks, the pending answers counted in (`open` + `pending-answers` <= 64); past it the ask is denied at once, `by: kernel`, reason `busy`, its ask and decision entries written in that call and a `Request::Answer` deny sent, so `cancel`, R4 and `ended` write at most 64 decisions in one call | – |
+| `pending-answers` | 64 (one per Claude ask the kernel answered that the host has not closed), each at most 1 KiB without `input` (the decision's input is bounded by the 256 KiB entry rule and parts, 9.4) | the kernel sends no further answer to a Claude ask of the session until one closes: the owner's `answer` is refused `busy` (2.3), and a session allow or the "no owner stream" deny leaves the ask open for the host to close at its `expires-at` (4.5) |
 
 | Turn state | Meaning |
 |---|---|
@@ -677,7 +677,7 @@ wire") are this JSON; the entry has no `activity`.
   "inputs":[…]}` under `_meta.watane`.
 - `interrupt` ends the turn (`idle {interrupted}`), then starts the
   replacement if given (a replacement reads `access/` again, 9.7, "Revoking";
-  on `unknown` it resumes as R5). `cancel` ends the session's stream and handle, closes
+  on `unknown` the replacement starts first, queued inputs waiting, and resumes as R5 does). `cancel` ends the session's stream and handle, closes
   each open ask or check (one with a pending answer gets that answer as its decision,
   9.8 rule 4; an open one is denied, `by: kernel`), cancels children. `delete` cancels, removes the entries,
   the queue (`queue/<id>`) and wire history, keeps the keys.
@@ -1168,10 +1168,10 @@ Give nothing (no update, no entry): Claude `system` `init`, `status`,
 `tool` is not a string, whose `expires-at` is not a whole number from 0 to 2^64 - 1, or whose `input` is not
 a JSON object;
 an `ask` or `check` item whose `id` is that of an ask or check still open on
-the session (the open one is not changed); an `ask` or `check` item whose
-`tool_use_id` is that of an open ask or check with a different `tool` or
+the session or of an ask with a pending answer (the open one is not changed); an `ask` or `check` item whose
+`tool_use_id` is that of an open ask or check, or of an ask with a pending answer, with a different `tool` or
 `input` (the open one is not changed: one card per call, since a client draws
-the card of a call from its ask, 18.3); and, on a `direct: true` stream, a `verdict` or
+the card of a call from its ask, 18.3); these rules hold against the session record (`open` and `pending-answers`), not only a stream's memory, so a second stream or a reloaded instance is held to them; and, on a `direct: true` stream, a `verdict` or
 `checking` item, are each an `unknown` entry, never an ask (14). The kernel
 takes `verdict` and `checking` only from a checked provider's stream
 (`direct: false`, 10). It reads items strictly (no lossy UTF-8 decoding): an
@@ -1255,7 +1255,7 @@ The `toolCall` carries ACP `kind` from `tool`: `Read` `read`; `Edit`,
 `input`: `Edit` one (`path` `file_path`, `oldText` `old_string`, `newText`
 `new_string`), `Write` one with `newText` the `content` and no `oldText`,
 `MultiEdit` one per `edits` item, in order. A field missing or not a string
-gives no `content`; the ask is still an ask. Both are built from the item's
+gives no `content`, and an `Edit` with `replace_all: true` has none (a diff would understate what runs; the card shows `rawInput`); the ask is still an ask. Both are built from the item's
 `input` only.
 
 A `check` is the checked provider's to answer (10); its `none` means "no
