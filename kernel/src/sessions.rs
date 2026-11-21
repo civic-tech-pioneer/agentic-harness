@@ -728,7 +728,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 // the end and the oldest starts the turn.
                 let resume = rec.turn == Turn::Unknown;
                 let mut q = Queue::load(&mut self.state, &rec.id);
-                // The oldest leaves before the new input joins, so a full queue never refuses.
+                // The oldest leaves before the new input joins, so 32 queued inputs never refuse; the 2 MiB of stored bytes still can (`queue-full`).
                 let queued = if q.is_empty() {
                     None
                 } else {
