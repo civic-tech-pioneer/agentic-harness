@@ -538,11 +538,11 @@
     },
     {
       "at": 1763600000000,
-      "raw": "{\"type\":\"ask\",\"id\":\"okask0\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":0}"
+      "raw": "{\"type\":\"ask\",\"id\":\"okask0\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_ok\",\"expires-at\":0}"
     },
     {
       "at": 1763600000000,
-      "raw": "{\"type\":\"ask\",\"id\":\"okask1\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":18446744073709551615}"
+      "raw": "{\"type\":\"ask\",\"id\":\"okask1\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_ok\",\"expires-at\":18446744073709551615}"
     },
     {
       "at": 1763600000000,
@@ -630,11 +630,11 @@
     },
     {
       "at": 1763600000000,
-      "raw": "{\"type\":\"check\",\"id\":\"okcheck0\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":0}"
+      "raw": "{\"type\":\"check\",\"id\":\"okcheck0\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_ok\",\"expires-at\":0}"
     },
     {
       "at": 1763600000000,
-      "raw": "{\"type\":\"check\",\"id\":\"okcheck1\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":18446744073709551615}"
+      "raw": "{\"type\":\"check\",\"id\":\"okcheck1\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_ok\",\"expires-at\":18446744073709551615}"
     }
   ],
   "expected": [
@@ -1645,9 +1645,9 @@
           "body": {
             "id": "okask0",
             "kind": "ask",
-            "toolCallId": "toolu_1",
+            "toolCallId": "toolu_ok",
             "toolCall": {
-              "toolCallId": "toolu_1",
+              "toolCallId": "toolu_ok",
               "title": "Bash",
               "kind": "execute",
               "rawInput": {
@@ -1669,9 +1669,9 @@
           "body": {
             "id": "okask1",
             "kind": "ask",
-            "toolCallId": "toolu_1",
+            "toolCallId": "toolu_ok",
             "toolCall": {
-              "toolCallId": "toolu_1",
+              "toolCallId": "toolu_ok",
               "title": "Bash",
               "kind": "execute",
               "rawInput": {
@@ -1924,9 +1924,9 @@
           "body": {
             "id": "okcheck0",
             "kind": "check",
-            "toolCallId": "toolu_1",
+            "toolCallId": "toolu_ok",
             "toolCall": {
-              "toolCallId": "toolu_1",
+              "toolCallId": "toolu_ok",
               "title": "Bash",
               "kind": "execute",
               "rawInput": {
@@ -1948,9 +1948,9 @@
           "body": {
             "id": "okcheck1",
             "kind": "check",
-            "toolCallId": "toolu_1",
+            "toolCallId": "toolu_ok",
             "toolCall": {
-              "toolCallId": "toolu_1",
+              "toolCallId": "toolu_ok",
               "title": "Bash",
               "kind": "execute",
               "rawInput": {
