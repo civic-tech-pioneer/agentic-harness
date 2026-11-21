@@ -516,6 +516,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let owner_key = Usage::owner_key(owner);
         let owner = Usage::load(&mut self.state, &owner_key);
         let account = Usage::load(&mut self.state, Usage::ACCOUNT);
+        // 9.3 "Past": the owner's bytes or the kernel's account at or over their caps.
         self.past =
             owner.bytes >= self.limits.owner_bytes || account.bytes >= self.limits.account_bytes;
         Acct {
@@ -525,11 +526,6 @@ impl<S: State, H: Host> Kernel<S, H> {
             owner,
             account,
         }
-    }
-
-    /// 9.3 "Past": the owner's bytes or the kernel's account at or over their caps.
-    fn past(&self, a: &Acct) -> bool {
-        a.owner.bytes >= self.limits.owner_bytes || a.account.bytes >= self.limits.account_bytes
     }
 
     /// The cap `past` found, named for the refusal.

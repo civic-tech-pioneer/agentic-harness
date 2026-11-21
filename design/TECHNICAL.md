@@ -757,7 +757,8 @@ wire") are this JSON; the entry has no `activity`.
     owner's own caps (`64 sessions per owner`, `64 MiB per owner`); when the cause is
     the kernel's 224 MiB account or the state ceiling it reads "this mod's agent
     sessions are at their limit", which tells an owner nothing of other owners (14).
-  - *A provider item when past* (the owner or the account): an ask decision
+  - *Any call when past* (the owner or the account; a provider item, an owner's
+    `answer`, `interrupt`, `cancel`, `unqueue`, the restart step, a timer, `attach`'s step): an ask decision
     and the host's `ask-resolved` are stored; a turn change is written as an entry only when it ends an active turn (so a turn gets at most
     one `turn` entry past quota; a provider `Turn` that would change the record's turn
     without ending it is dropped: no entry, the record's turn kept, no push; an ask
