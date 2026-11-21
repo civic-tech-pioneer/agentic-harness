@@ -3,6 +3,7 @@
 import type { Kernel } from "../kit/kernel";
 import { fakeKernel } from "./kernel";
 import { story } from "./story";
+import { secondAsk } from "./asks";
 import { longStory } from "./long";
 import type { SidebarSession } from "../src/Sidebar";
 
@@ -18,9 +19,12 @@ export const storySessions: SidebarSession[] = [
   { id: "d3", title: "Release notes 0.4", place: "site", meta: "site · Claude Code · yesterday", state: "idle" },
 ];
 
+/** `?second=1` (dev, the slow checks): a second open ask at the end of the story; `?refuse=busy`: the kernel refuses each answer as busy. */
 export function scriptedKernel(): Kernel {
-  const fake = fakeKernel(story);
-  for (let n = 0; n < story.length; n++) fake.play(n);
+  const q = typeof location === "undefined" ? new URLSearchParams() : new URLSearchParams(location.search);
+  const script = q.get("second") ? [...story, secondAsk] : story;
+  const fake = fakeKernel(script, q.get("refuse") === "busy" ? { refuseAnswer: "busy" } : {});
+  for (let n = 0; n < script.length; n++) fake.play(n);
   return fake;
 }
 
