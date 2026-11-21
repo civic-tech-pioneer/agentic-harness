@@ -1039,7 +1039,9 @@ this place (S14 and S19 built the rest).
   the `resume` deadline's check and the OpenAI `task` check come with 9.7 and
   the loop (9.5).
 - Kernel, S20 (S24): an OpenAI profile without `model` is refused
-  `{field: "model"}` (9.2); `start` now checks it with the model `"default"`.
+  `{field: "model"}` (9.2); today `start` checks a profile of either backend
+  without `model` as `"default"`.
+- Kernel, S20 (S24): case 74, revoking `access/` (9.7).
 - Kernel, S20: at most 64 open Claude asks and checks per session (the
   record's `open`, 9.3); one past that is denied at once, `by: kernel`, reason
   `busy`, so `cancel`, R4 and `ended` write at most 64 decisions in one call.
@@ -1051,6 +1053,9 @@ this place (S14 and S19 built the rest).
   session's next `say` after the idle release or a restart resumes with
   `session {resume}` (R4, `idle` row); until then the kernel sends a fresh
   session (`resume: false`).
+- Kernel, the quota slice: the per-owner caps of 9.3 Quota (64 sessions,
+  64 MiB) and the kernel's accounts are not built; today one owner holds up
+  to the 256 ids of `owner/<owner>/0`.
 
 ### 9.5 The OpenAI loop
 
@@ -1184,7 +1189,8 @@ this place (S14 and S19 built the rest).
   profile against the root's owner, as `task` does, since a child's own
   profile is never listed. A `resume` deadline (9.3) that fires after a
   revocation does not resume the turn: it stays `paused` with no time, as at
-  the timer cap, so only a `say` resumes it, and that `say` is refused. A turn
+  the timer cap (the deadline is gone, so a session with no other deadline
+  frees its timer, 9.3), so only a `say` resumes it, and that `say` is refused. A turn
   already running is not stopped by the change itself (a limit, 14).
 - OpenAI: `task(profile, input)` starts a child and returns its id at once;
   the child's final message arrives later as the call's output. A child's
@@ -1874,6 +1880,14 @@ of `spec/VISION.md`.
     decisions, `deny, by: kernel, reason: ended` and the pending answer. (g)
     `cancel` and the restart step with the same two asks give the same two
     kinds.
+74. (9.7 "Revoking", 9.1) Kernel crate: an owner starts a session on
+    profile `p` and queues one input; then `p` leaves `access/<owner>`. `say`,
+    `interrupt` with a replacement, Continue on an `unknown` session and
+    `answer` with `allow` are each refused `{field: "profile"}`; the turn's
+    end starts no queued input and the queue stays; a `resume` deadline
+    leaves the turn `paused` with no time; `read`, `answer` with `deny`,
+    `cancel` and `delete` still work. An unreadable `access/` value acts as
+    an empty one.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
@@ -1899,7 +1913,7 @@ length. A long session cannot hold the slot.
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
 | A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; cases 36 and 51 for the host part (3); case 58 (host part); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `caller.boot` (2.1, B1), dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72, 73; the budgets of stage B |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `caller.boot` (2.1, B1), dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72, 73, 74; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts), 70; the budgets of stage D |
 | E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
