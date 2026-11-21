@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>highlight harness</title></head>
 <body><script type="module">
-// Test-only page for test/highlight_backtrack.slow.mjs (served by vite dev, never part of the build): the real kit/parts/highlight.ts.
+// Test-only page for test/highlight_backtrack.slow.mjs (built by that script with the console vite config into a temp folder, never into ui/): the real kit/parts/highlight.ts.
 import * as h from "/kit/parts/highlight.ts";
 window.h = h;
 window.ready = true;

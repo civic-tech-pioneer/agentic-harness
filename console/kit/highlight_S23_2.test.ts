@@ -68,6 +68,17 @@ describe("highlight budget", () => {
     expect(made[0].terminated).toBe(true);
   });
 
+  it("ac3_resetting_the_seam_leaves_the_block_in_flight_and_the_queued_ones_plain", async () => {
+    setWorkerFactory(factory(["hung C"]));
+    const c = highlight("ts", "hung C");
+    const d = highlight("ts", "queued D");
+    await vi.advanceTimersByTimeAsync(0);
+    setWorkerFactory(undefined);
+    expect(await c).toBeNull();
+    expect(await d).toBeNull();
+    expect(made[0].terminated).toBe(true);
+  });
+
   it("ac3_with_no_worker_and_no_factory_the_block_stays_plain", async () => {
     setWorkerFactory(undefined);
     expect(await highlight("ts", "no worker")).toBeNull();
