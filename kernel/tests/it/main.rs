@@ -13,6 +13,7 @@ mod overlay;
 mod record;
 mod refuse;
 mod regress_s14;
+mod restart;
 mod runners;
 mod sessions;
 mod transcript;

@@ -18,6 +18,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+/// The kernel's own timer for the restart pass (R2).
+const RESTART: &str = "restart";
+
 /// What the kernel needs of the host (2.1): the boot number, the clock, ids, timers, requests.
 pub trait Host {
     /// `caller.boot()` (2.1).
@@ -251,19 +254,109 @@ impl<S: State, H: Host> Kernel<S, H> {
         Kernel { state, host }
     }
 
-    /// Starts a top-level call: reads `slots` (R1 goes here).
-    fn begin(&mut self) -> Slots {
-        Slots::load(&mut self.state)
+    /// Starts a top-level call: reads `slots` and the host's boot number (R1). When they differ,
+    /// this call starts the restart pass: the new boot, the stream slot counts zeroed (`timers`
+    /// stays), the cursor at page 0, and the timer `restart` with delay 0. It steps no session.
+    fn begin(&mut self) -> Result<Slots, KernelError> {
+        let mut slots = Slots::load(&mut self.state);
+        let boot = self.host.boot();
+        if boot != slots.boot {
+            slots.boot = boot;
+            slots.provider = 0;
+            slots.request = 0;
+            slots.job = 0;
+            slots.restart = Some(0);
+            slots.save(&mut self.state)?;
+            self.host.timer_after(RESTART, 0);
+        }
+        Ok(slots)
     }
 
-    /// Loads a session record for the caller: unknown, or another owner's, is an error (R6 goes here).
-    fn session(&mut self, caller: &str, id: &str) -> Result<Record, KernelError> {
+    /// Loads a session record for the caller: unknown, or another owner's, is an error. It does not
+    /// step a stale record (`settle` does), so a call can check what it can before the step writes.
+    fn load_owned(&mut self, caller: &str, id: &str) -> Result<Record, KernelError> {
         let rec = Record::load(&mut self.state, id)
             .ok_or_else(|| KernelError::UnknownSession(id.to_string()))?;
         if rec.owner != caller {
             return Err(KernelError::NotOwner);
         }
         Ok(rec)
+    }
+
+    /// R6: a record of an older boot does its restart step before the call acts on it.
+    fn settle(
+        &mut self,
+        rec: &mut Record,
+        slots: &mut Slots,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
+        if rec.boot < slots.boot {
+            self.step(rec, slots, work)?;
+        }
+        Ok(())
+    }
+
+    fn session(
+        &mut self,
+        caller: &str,
+        id: &str,
+        slots: &mut Slots,
+        work: &mut Work,
+    ) -> Result<Record, KernelError> {
+        let mut rec = self.load_owned(caller, id)?;
+        self.settle(&mut rec, slots, work)?;
+        Ok(rec)
+    }
+
+    /// The restart step of one session (R4): its stale `stream/` and `live/` keys go, its boot
+    /// (and its page entry's) becomes the current one, and a Claude turn nothing drives becomes
+    /// `unknown` with its open asks denied. Writes: at most the record, its page (or `slots` and
+    /// the page when it leaves the index), a decision entry per open ask and a `turn` entry (R3).
+    // An OpenAI `running` or `waiting` session only gets the stale keys and the boot here: its rows
+    // of the step table (9.5: requests, retries, tool jobs) come with stage D.
+    fn step(
+        &mut self,
+        rec: &mut Record,
+        slots: &mut Slots,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
+        let now = self.host.now();
+        rec.boot = slots.boot;
+        let stale_streams = std::mem::take(&mut rec.streams);
+        let driven = rec.backend == "claude"
+            && matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. });
+        if driven {
+            for o in std::mem::take(&mut rec.open) {
+                rec.deadlines.retain(|d| d.what != format!("ask {}", o.id));
+                let Some(mut body) = self.ask_body(rec, o.i) else {
+                    continue;
+                };
+                let Some(obj) = body.as_object_mut() else {
+                    continue;
+                };
+                obj.insert(
+                    "decision".into(),
+                    json!({"outcome": "deny", "by": "kernel", "reason": "restart"}),
+                );
+                let entry = NewEntry {
+                    kind: "ask".into(),
+                    uuid: None,
+                    body,
+                };
+                self.append(rec, entry, now)?;
+            }
+            self.turn_to(rec, Turn::Unknown, now, work)?;
+            rec.updated = now;
+            self.sync_active(rec, slots, true)?;
+        } else if let Some(p) = rec.active_page {
+            active::set_boot(&mut self.state, p, &rec.id, slots.boot)?;
+        }
+        rec.save(&mut self.state)?;
+        for s in stale_streams {
+            self.state.delete(&format!("stream/{s}"));
+        }
+        self.state.delete(&format!("live/{}", rec.id));
+        Ok(())
     }
 
     /// The kept result of `call` for this key; a key kept by another call or owner is refused
@@ -348,6 +441,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         &mut self,
         rec: &mut Record,
         input: String,
+        resume: bool,
         now: u64,
         work: &mut Work,
     ) -> Result<u64, KernelError> {
@@ -365,7 +459,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         work.requests.push(Request::Turn {
             session: rec.id.clone(),
             input,
-            resume: false,
+            resume,
         });
         Ok(n)
     }
@@ -381,7 +475,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let Some(next) = q.take_oldest() else {
             return Ok(());
         };
-        self.start_turn(rec, next.input, now, work)?;
+        self.start_turn(rec, next.input, false, now, work)?;
         q.save(&mut self.state, &rec.id)?;
         work.pushes.push(q.push_value());
         Ok(())
@@ -412,7 +506,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         work: &mut Work,
     ) -> Result<(), KernelError> {
         rec.open.retain(|o| o.id != id);
-        if let Turn::Waiting { asks, expires_at } = rec.turn.clone() {
+        if let Turn::Waiting { asks, .. } = rec.turn.clone() {
             let left: Vec<String> = asks.into_iter().filter(|a| a != id).collect();
             let t = if left.is_empty() {
                 Turn::Running {
@@ -420,7 +514,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                     activity: None,
                 }
             } else {
-                waiting(left, expires_at)
+                let expires = rec
+                    .open
+                    .iter()
+                    .filter(|o| left.contains(&o.id))
+                    .filter_map(|o| o.expires_at)
+                    .min();
+                waiting(left, expires)
             };
             self.turn_to(rec, t, now, work)?;
         }
@@ -468,7 +568,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         input: &str,
     ) -> Result<Called<String>, KernelError> {
         check_key(key)?;
-        let mut slots = self.begin();
+        let mut slots = self.begin()?;
         if let Some(id) = self.key_get::<String>("start", caller, key)? {
             return Ok(Called {
                 value: id,
@@ -520,7 +620,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             ..Record::default()
         };
         let mut work = Work::default();
-        self.start_turn(&mut rec, input.to_string(), now, &mut work)?;
+        self.start_turn(&mut rec, input.to_string(), false, now, &mut work)?;
         self.sync_active(&mut rec, &mut slots, false)?;
         page.push(id.clone());
         self.state
@@ -545,7 +645,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         input: &str,
     ) -> Result<Called<u64>, KernelError> {
         check_key(key)?;
-        let mut slots = self.begin();
+        let mut slots = self.begin()?;
         if let Some(n) = self.key_get::<u64>("say", caller, key)? {
             return Ok(Called {
                 value: n,
@@ -553,8 +653,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             });
         }
         check_input(input)?;
-        let mut rec = self.session(caller, session)?;
+        let mut rec = self.load_owned(caller, session)?;
         let mut work = Work::default();
+        self.settle(&mut rec, &mut slots, &mut work)?;
         // A pause with no time ends with the next `say` (9.3); one with a time queues until it
         // resumes on its own.
         let n = match rec.turn {
@@ -564,8 +665,26 @@ impl<S: State, H: Host> Kernel<S, H> {
                 if !was {
                     active::check_room(&slots)?;
                 }
+                // R5: `unknown` resumes the Claude session; with inputs queued, this one joins
+                // the end and the oldest starts the turn.
+                let resume = rec.turn == Turn::Unknown;
+                let mut q = Queue::load(&mut self.state, &rec.id);
+                let queued = if q.is_empty() {
+                    None
+                } else {
+                    Some(q.push(input.to_string())?)
+                };
                 let now = self.host.now();
-                let n = self.start_turn(&mut rec, input.to_string(), now, &mut work)?;
+                let n = match queued {
+                    None => self.start_turn(&mut rec, input.to_string(), resume, now, &mut work)?,
+                    Some(n) => {
+                        let oldest = q.take_oldest().expect("the queue holds inputs");
+                        self.start_turn(&mut rec, oldest.input, resume, now, &mut work)?;
+                        q.save(&mut self.state, &rec.id)?;
+                        work.pushes.push(q.push_value());
+                        n
+                    }
+                };
                 self.sync_active(&mut rec, &mut slots, was)?;
                 rec.updated = now;
                 rec.save(&mut self.state)?;
@@ -615,15 +734,18 @@ impl<S: State, H: Host> Kernel<S, H> {
         decision: &str,
     ) -> Result<Called<()>, KernelError> {
         check_key(key)?;
-        self.begin();
+        let mut slots = self.begin()?;
         if self.key_get::<()>("answer", caller, key)?.is_some() {
             return Ok(Called {
                 value: (),
                 pushes: Vec::new(),
             });
         }
-        let mut rec = self.session(caller, session)?;
+        let mut rec = self.load_owned(caller, session)?;
         let d = parse_decision(decision)?;
+        // The step comes after the refusals that do not depend on it; an ask it denies is refused.
+        let mut work = Work::default();
+        self.settle(&mut rec, &mut slots, &mut work)?;
         let open = rec
             .open
             .iter()
@@ -650,7 +772,6 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         obj.insert("decision".into(), dec);
         let now = self.host.now();
-        let mut work = Work::default();
         let entry = NewEntry {
             kind: "ask".into(),
             uuid: None,
@@ -673,8 +794,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     pub fn queued(&mut self, caller: &str, session: &str) -> Result<Vec<Queued>, KernelError> {
-        self.begin();
-        let rec = self.session(caller, session)?;
+        let mut slots = self.begin()?;
+        let rec = self.session(caller, session, &mut slots, &mut Work::default())?;
         Ok(Queue::load(&mut self.state, &rec.id).inputs)
     }
 
@@ -684,14 +805,16 @@ impl<S: State, H: Host> Kernel<S, H> {
         session: &str,
         n: u64,
     ) -> Result<Called<()>, KernelError> {
-        self.begin();
-        let rec = self.session(caller, session)?;
+        let mut slots = self.begin()?;
+        let mut work = Work::default();
+        let rec = self.session(caller, session, &mut slots, &mut work)?;
         let mut q = Queue::load(&mut self.state, &rec.id);
         q.remove(n)?;
         q.save(&mut self.state, &rec.id)?;
+        work.pushes.push(q.push_value());
         Ok(Called {
             value: (),
-            pushes: vec![q.push_value()],
+            pushes: work.pushes,
         })
     }
 
@@ -703,23 +826,23 @@ impl<S: State, H: Host> Kernel<S, H> {
         before: Option<u64>,
         max: u32,
     ) -> Result<Page, KernelError> {
-        self.begin();
-        let rec = self.session(caller, session)?;
+        let mut slots = self.begin()?;
+        let rec = self.session(caller, session, &mut slots, &mut Work::default())?;
         let mut meta = rec.meta();
         Transcript::new(&mut self.state, &rec.id, &mut meta).read(after, before, max)
     }
 
     pub fn rename(&mut self, caller: &str, session: &str, title: &str) -> Result<(), KernelError> {
         check_title(title)?;
-        self.begin();
-        let mut rec = self.session(caller, session)?;
+        let mut slots = self.begin()?;
+        let mut rec = self.session(caller, session, &mut slots, &mut Work::default())?;
         rec.title = title.to_string();
         rec.save(&mut self.state)
     }
 
     pub fn delete(&mut self, caller: &str, session: &str) -> Result<(), KernelError> {
-        let mut slots = self.begin();
-        let rec = self.session(caller, session)?;
+        let mut slots = self.begin()?;
+        let rec = self.session(caller, session, &mut slots, &mut Work::default())?;
         let page_key = owner_page_key(caller);
         let page: Vec<String> = self
             .state
@@ -757,7 +880,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if max == 0 {
             return Err(refused("max", "max must be at least 1"));
         }
-        self.begin();
+        let slots = self.begin()?;
         let ids: Vec<String> = self
             .state
             .get(&owner_page_key(caller))
@@ -773,12 +896,17 @@ impl<S: State, H: Host> Kernel<S, H> {
                 break;
             }
             if let Some(r) = Record::load(&mut self.state, id).filter(|r| r.owner == caller) {
+                // R6: the turn the restart step will give, without writing it.
+                let stale = r.boot < slots.boot
+                    && r.backend == "claude"
+                    && matches!(r.turn, Turn::Running { .. } | Turn::Waiting { .. });
+                let turn = if stale { Turn::Unknown } else { r.turn };
                 out.push(SessionInfo {
                     id: r.id,
                     title: r.title,
                     profile: r.profile,
                     backend: r.backend,
-                    turn: r.turn.to_json().to_string(),
+                    turn: turn.to_json().to_string(),
                     updated: r.updated,
                 });
             }
@@ -860,13 +988,14 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         }
         let kind = body.get("kind").and_then(Value::as_str).unwrap_or("ask");
+        let mine = body.get("expires-at").and_then(Value::as_u64);
         rec.open.push(OpenAsk {
             id: id.to_string(),
             kind: kind.to_string(),
             i,
+            expires_at: mine,
         });
         if kind == "ask" {
-            let mine = body.get("expires-at").and_then(Value::as_u64);
             let (mut asks, theirs) = match &rec.turn {
                 Turn::Waiting { asks, expires_at } => (asks.clone(), *expires_at),
                 _ => (Vec::new(), None),
@@ -878,12 +1007,51 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(())
     }
 
-    /// `timer-sink.fired`: session timers and deadlines are not built yet (R2 comes with S21-4).
-    pub fn timer(&mut self, _id: &str) -> Called<()> {
+    /// `timer-sink.fired`. Session timers and deadlines are not built yet; `restart` is R2.
+    pub fn timer(&mut self, id: &str) -> Called<()> {
+        let mut work = Work::default();
+        if let Ok(mut slots) = self.begin() {
+            if id == RESTART {
+                // A failed step leaves the pass where it is: the next call or firing retries it.
+                let _ = self.restart_firing(&mut slots, &mut work);
+            }
+        }
         Called {
             value: (),
-            pushes: Vec::new(),
+            pushes: work.pushes,
         }
+    }
+
+    /// One firing of the pass (R2): the next session of an older boot does its step, or the pass ends.
+    fn restart_firing(&mut self, slots: &mut Slots, work: &mut Work) -> Result<(), KernelError> {
+        let from = slots.restart;
+        if from.is_none() {
+            return Ok(());
+        }
+        let Some((page, entry)) = active::next_stale(&mut self.state, slots) else {
+            slots.save(&mut self.state)?;
+            self.host.timer_cancel(RESTART);
+            return Ok(());
+        };
+        let mut saved = false;
+        match Record::load(&mut self.state, &entry.id) {
+            None => {
+                // A listed session with no record: nothing to step; drop the entry.
+                active::remove(&mut self.state, slots, &entry.id, page)?;
+                saved = true;
+            }
+            Some(mut rec) if rec.boot < slots.boot => {
+                rec.active_page = Some(page);
+                self.step(&mut rec, slots, work)?;
+                saved = rec.active_page.is_none();
+            }
+            Some(_) => active::set_boot(&mut self.state, page, &entry.id, slots.boot)?,
+        }
+        if !saved && slots.restart != from {
+            slots.save(&mut self.state)?;
+        }
+        self.host.timer_after(RESTART, 0);
+        Ok(())
     }
 }
 

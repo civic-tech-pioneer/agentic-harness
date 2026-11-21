@@ -122,6 +122,13 @@ pub struct OpenAsk {
     /// "ask" or "check".
     pub kind: String,
     pub i: u64,
+    /// The ask entry's `expires-at`, kept so the turn's earliest one needs no entry read.
+    #[serde(
+        rename = "expires-at",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub expires_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
