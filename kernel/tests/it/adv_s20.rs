@@ -120,3 +120,23 @@ fn adv_s20_reused_id_of_an_open_ask_shows_another_call() {
         .collect();
     assert_eq!(cards, vec![json!("/w/x")], "ask entries for a1");
 }
+
+/// 9.8 (S20-fix1): an `Edit` with `replace_all: true` shows no diff, since a one-place diff
+/// understates what runs. A `MultiEdit` item takes the same `replace_all` (claude's MultiEdit edits
+/// each carry it), yet its diff is still built: the card shows one replacement where every
+/// occurrence is replaced.
+#[test]
+fn adv_s20_multiedit_replace_all_shows_a_diff() {
+    let mut a = ClaudeAdapter::new();
+    let input = json!({"file_path": "/w/a", "edits": [
+        {"old_string": "x", "new_string": "y", "replace_all": true}]});
+    let item = json!({"type": "ask", "id": "m1", "tool": "MultiEdit", "input": input,
+        "tool_use_id": "toolu_m", "expires-at": 9000});
+    let out = a.line(item.to_string().as_bytes(), 1000);
+    let b = &out[0].entry.as_ref().unwrap().body;
+    assert_eq!(b["kind"], "ask");
+    assert!(
+        b["toolCall"].get("content").is_none(),
+        "a diff for replace_all: {b}"
+    );
+}
