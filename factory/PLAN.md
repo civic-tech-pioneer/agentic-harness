@@ -27,21 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S14: the kernel finishes the wire and closes S12's risks (in flight (cloud), routine trig_01VXmBJKmd8rdeq3RMbrFi8n)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and every item of S10's kernel list (PR #13)
-holds in code, checked item by item; S12 (PR #15) already did most of it.
-Outcomes:
-1. What S12 left of S10's list, each with a fixture (the foreman checks each item against the
-   code and names the ones already done): an item with a bad `tool_use_id` or `expires-at`, a
-   `wrapped` item, `verdict`/`checking` on a direct stream read as `unknown`; strict line reading
-   (no lossy UTF-8); hook and progress lines give nothing.
-2. S12 RISK 1: every rendered line takes the `i` of its place, readable or not.
-3. S12 RISK 2 and 3 (with S16's text): an ask or check item without `input`, or reusing the id of
-   an open ask, reads as `unknown`.
-4. S12 polish: a finished thinking block that repeats streamed deltas is not pushed live again.
-Touches: `kernel/` only. Protects: *guard* (asks).
-
 ### S17: the kernel finds its running sessions after a restart (in flight (cloud), routine trig_01WgyvfHhfLyFuHTi7DY8mAW)
 
 Story: a foreman of stage B's first kernel slice reads TECHNICAL 9.1, 9.3 and 9.5 and finds how the
@@ -70,6 +55,25 @@ bar wraps with Allow once mid-row; a story played only to a running step shows a
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *core*. S7 follows S15.
 
 ## Sketched
+
+### S19: the kernel fails closed on S14's open points (cloud, after S14 merges: same files)
+
+Story: a kernel maker runs `cargo test` in `kernel/` and every odd host item S14 found reads as
+`unknown` or `unreadable`, never as an ask or a decision.
+Outcomes: `ask-resolved` with a `by` other than `expired` or `cancelled` is `unknown` and the ask
+stays open; an ask or check whose `input` is not a JSON object, or whose `expires-at` is not a
+non-negative whole number, is `unknown`; a joined part group whose whole is of kind `part` is
+`unreadable`. Each with a fixture; the S14 adversary's held tests stay green.
+Touches: `kernel/` only. Protects: *guard* (asks).
+
+### S18: spec text for S14 and S19 (cloud, after S17 merges: same files)
+
+Outcomes: 4.5, 9.4, 9.8 say what S14 built ahead of S16 (an `id` not a non-empty string is
+`unknown`; a non-UTF-8 `raw` in `\xNN` form; a duplicate top-level key is `unknown` in the kernel
+too; a joined group reads like a stored line at its last part's place) and what S19 builds (above);
+4.5 lists `ask-resolved`'s `by` values; 14 "Not protected" names the accepted limits (a first-key
+JSON reader; a nested duplicate key in `input` is read last-wins, safe only while the host
+serializes items itself). Touches: `design/TECHNICAL.md`. Protects: *guard* and *core*.
 
 ### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
 
@@ -196,6 +200,13 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   thinking block counts once. User-sim ACCEPTED (run 1); no adversary (no code, 14 unchanged).
   Gate 15 s.
 
+- **S14** the kernel finishes the wire (PR #18, 22 min). Strict line reading (non-UTF-8 is
+  `unknown`, bytes as `\xNN`); a duplicate top-level key is `unknown`; every line `read` or replay
+  gives takes the `i` of its place, joined groups too; an ask or check without `input`, with a
+  reused open id, or with a non-string id is `unknown`; a repeated thinking block is not pushed
+  again. User-sim ACCEPTED on run 2; adversary BREACHED 3 then 1, fixed, HELD on passes 3 and 4
+  (ask and privacy boundaries). Implementer runs 1/1/2/1/1/1. Kernel 111 tests; gate 18 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -256,6 +267,12 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   an ask goes out live once, as its entry; the wrap list stays a blocklist (each new item type is
   added to 4.5), the envelope option still declined. S10's code lists become S14 (kernel) and S15
   (console); S12 was already out, so S14 follows it.
+
+- 2026-11-21 S14's open points, decided fail-closed: an unknown `by` on `ask-resolved` is
+  `unknown` and the ask stays open; a non-object `input` or a negative or fractional `expires-at`
+  is `unknown`; a joined whole of kind `part` is `unreadable` (S19). Accepted limits, named in 14
+  by S18: a first-key JSON reader would read a duplicate `i` differently (every reader here reads
+  the last); a nested duplicate key in `input` is safe only while the host serializes the item.
 
 ## Human answers (2026-11-20, through the PO)
 
