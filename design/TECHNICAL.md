@@ -196,7 +196,7 @@ the `id` of the ask entry (9.4; the ask id of the deadlines in 9.3), never the
 tool call id. A check (`kind: "check"`, 9.4) is answered only by the checked
 provider (10); the owner's `answer` to it is refused, `{field: "ask"}`.
 `allow` in `take-back` is the id of an `allow`
-entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5); its message names the cap. `read`: 9.4.
+entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5); its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
 
 ## 3. Streams (H1)
 
@@ -494,6 +494,10 @@ and `.husky/**`. No launch can remove them.
   `s/<session id>`, due at the session's earliest deadline (9.3, 9.5, 9.6).
   Live session timers are at most 240 kernel-wide, 16 of the host's 256 being
   kept for the kernel's own use; what happens at the cap is in 9.3.
+- **A call commits whole.** The host-state writes of a call (host 7) commit
+  together when its call chain commits, or not at all; a deferred or failed
+  call leaves no write behind. So a failed `append` (9.4) leaves no chunk
+  written and nothing charged to the owner (9.3, Quota).
 - **Rolled back.** `claude-session.say`, `answer`, `interrupt` and `compact`
   are requests too: a call that is rolled back (deferred or failed, 3) sends
   nothing to `claude`, and its `timers.after` and `timers.cancel` are dropped
@@ -747,8 +751,11 @@ the card.
   character boundaries; the whole entry carries the index of its last part.
   A reader joins the `text` of parts 1..m in order and parses the result as
   one entry. A page (`read` either way, a replay) may end inside a group, and
-  the client joins the parts across pages. `attach` and `read` with an
-  `after` that falls inside a group start at the group's first part. Live, a finished entry over 256 KiB goes
+  the client joins the parts across pages. `attach` with an `after` that
+  falls inside a group starts at the group's first part; `read` takes `after`
+  as given, because a `read` that moved `after` back would return the same
+  page again. A client that lost a group's start reads again with
+  `after = i - n` (each part carries its `n`). Live, a finished entry over 256 KiB goes
   out as its parts, as replay pushes entries, never as one update. So every
   chunk (64 KiB, or one entry), `read` page (2 MiB) and replay (2 MiB) holds at least one
   whole entry or part, and paging always makes progress. No content is cut by
@@ -758,7 +765,15 @@ the card.
   entry is `{"v":<its v>,"i":<i>,"kind":"unreadable","at":<at>?,"raw":<the
   stored JSON>}` and keeps its `i` (and `at` when it has one), so paging, replay from
   `i + 1` and the drop of shown indexes (18.3) still hold. Nothing is
-  migrated in bulk.
+  migrated in bulk. The index is the one of the line's place: its chunk's
+  first index (the record's `chunks`, 9.1) plus the line's position in the
+  chunk. An `i` the stored line claims is ignored, so a corrupt line cannot
+  take another entry's index.
+- **Who makes entries.** Only the transcript store makes `part` entries, when
+  it stores an entry over 256 KiB; `unreadable` is never stored. A session
+  appends only the kinds of the table above other than `part`, made by the
+  adapters (9.8) or the kernel itself, under a session id the kernel made;
+  never a kind or id a caller names.
 - `attach(session, after, caps)`: in one call, read the entries with
   `i > after`, open the owner's stream and register it as the session's live
   stream; push those entries, then `{"type":"synced","through":<i>}`; then
@@ -766,13 +781,13 @@ the card.
 - **Replay fits the stream window.** `attach` replays at most 128 entries and
   2 MiB, half the in-flight limit of 3. When more entries lie after `after`,
   it opens nothing and returns `behind {through}`, `through` being the session's high-water index (`last` of `read`); the client pages with
-  `read` first, then attaches again. `read` returns at most `max` (at most
-  256) entries and at most 2 MiB, so every replay call stays within its
+  `read` first, then attaches again. `read` returns at most `max` (1 to 256, 2.3)
+  entries and at most 2 MiB, so every replay call stays within its
   budget, whatever the length of the transcript.
 - **`read`** returns a `page {entries, last}`. Without `before`: the oldest
   entries with `i > after`. With `before = b`: the newest entries with
-  `after < i < b`. Both give them in ascending order, at most `max` (at most
-  256) and 2 MiB. `last` is the session's highest stored index when the call
+  `after < i < b`. Both give them in ascending order, at most `max` (1 to 256,
+  2.3) entries and 2 MiB. `last` is the session's highest stored index when the call
   ran (the high-water mark), so a client paging backwards knows where the
   live end is.
 - **A full owner stream.** The kernel pushes to the owner's live stream in
@@ -805,7 +820,8 @@ the card.
   at most 258 chunks and at most 2 MiB + 320 KiB (a partial 64 KiB chunk at
   the start, and at the end one chunk of up to 256 KiB read to learn that its
   entry does not fit), so it stays bounded. Appending an entry rewrites only the last
-  chunk (9.1).
+  chunk (9.1). An `append` that fails leaves no chunk written and nothing
+  charged to the owner (7, "A call commits whole"; 9.3, Quota).
 - **No partial replay.** A message still being written is not replayed: its
   text so far lives only in the deltas already sent, and keeping it would cost
   a state write per delta (V6). A client that attaches mid-message drops that
@@ -883,6 +899,15 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 - Kernel, S12: `ask-resolved` becomes a decision entry that repeats the ask.
 - Kernel, S12: a finished agent message carries `thought`.
 - Kernel, S12: live updates carry `_meta.watane.at`.
+
+**Code to change (S14).** The transcript rules above differ from the code in
+one place; S12 covers the rest (outcome 3: the `unreadable` index, R4;
+outcome 4: `append` takes only the adapters' kinds, `read` with `max` 0 is
+refused). `read` with `max` over 256 already reads as 256, and `attach`'s
+group start and a call committing whole need no code.
+
+- Kernel, S14: check that `read` with `max` 0 is refused with the field
+  `max` (S12 outcome 4 refuses it).
 
 ### 9.5 The OpenAI loop
 
@@ -1399,7 +1424,8 @@ of `spec/VISION.md`.
     a removed key gives `no-account`.
 34. (9.4) An entry of 3 MiB is stored as `part` entries of at most 256 KiB;
     `read` forwards and backwards, and attach, each make progress and give it
-    back byte for byte; an `after` inside the group starts at its first part.
+    back byte for byte; `attach` with an `after` inside the group starts at its
+    first part, and `read` takes `after` as given and still makes progress.
 35. (9.3) An input over 256 KiB is `too-large`; the 33rd queued input, or one
     that takes the queue past 2 MiB, is `queue-full`; with every record field
     at its cap the record stays under 512 KiB; the 65th session allow is
@@ -1513,7 +1539,7 @@ of `spec/VISION.md`.
     `{}`, `{"none":true}`, `{"allow":true,"deny":true}`,
     `{"deny":true,"for":"session"}` and `{"allow":"yes"}` is refused `{field: "decision"}`; the owner's answer to a
     check is refused `{field: "ask"}`.
-61. (9.4) A stored entry of a newer `v` reads as `unreadable` with its own `i`;
+61. (9.4) A stored entry of a newer `v` reads as `unreadable` with the `i` of its place;
     attach after it replays from `i + 1`, and a client that showed it drops it
     on replay.
 62. (4.5) The fake `claude` prints a line
