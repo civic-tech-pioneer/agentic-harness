@@ -815,7 +815,8 @@ wire") are this JSON; the entry has no `activity`.
     `unknown`; an OpenAI turn is `running` because its step starts it again;
     `list` reports the turn the step will give (R6).
   - **R5, Continue.** `say` on an `unknown` session starts a turn that resumes
-    the Claude session with `session {resume}` (4.1); if `claude` refuses the
+    the Claude session with `session {resume}` (4.1), unless its profile sets
+    `persist: false` (nothing was kept: a fresh session); if `claude` refuses the
     resume, the turn becomes `resume-lost`. When inputs are queued, the `say`
     input is still taken when the queue is full: the turn starts with the oldest
     queued input, then the new one joins the end of the queue, so order is kept
