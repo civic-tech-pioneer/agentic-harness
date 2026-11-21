@@ -744,7 +744,7 @@ wire") are this JSON; the entry has no `activity`.
     | `paused`, either backend | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` today (9.5; 9.8 gives nothing for a Claude rate limit) |
     | OpenAI, `requesting` or `ready` (waiting in the FIFO or not) | goes to `ready`, takes a request slot or waits in the FIFO under this boot (9.5); the turn stays `running` |
     | OpenAI, `retrying` | stays `retrying`; its `retry` deadline and timer are kept (7) and the request goes when it fires (9.5); nothing is sent at once, so no request is sent twice |
-    | OpenAI, `tools` | stays `tools`; its open jobs of `idempotent` tools start again under their keys (taking job slots or waiting, as 9.5 "Slots"), the others get `aborted`; `pending` calls stay pending and start in waves as before |
+    | OpenAI, `tools` | stays `tools`; its open jobs of `idempotent` tools start again under their keys (taking job slots or waiting, as 9.5 "Slots"), the others get `aborted`; `pending` calls stay pending and start in waves as before, the first at once up to the free job slots; when no call is left open or pending, it goes to `ready` as above (9.5) |
     | OpenAI, `waiting` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
     | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` resumes with `session {resume}`, as after the idle release |
 
@@ -763,8 +763,9 @@ wire") are this JSON; the entry has no `activity`.
     is older than `slots.boot` does that session's restart step first, in the
     same call (so `attach`, `read`, `say`, `answer` and `delete` never act on a
     stale turn; an `answer` to an ask that step just denied is refused with one
-    refusal `{field: "ask"}`, as for a check (2.3): the spec gives no other result for
-    an ask already decided); the pass then finds the entry current and skips it. `list`
+    refusal `{field: "ask"}`, as for a check (2.3), and as an answer after the
+    turn ended (16, case 9): the spec gives no other result for an ask already
+    decided); the pass then finds the entry current and skips it. `list`
     reads no extra record for this: for a record of an older boot it reports
     the turn its restart step will give (`unknown` for a Claude `running` or
     `waiting`), without writing.
@@ -1073,7 +1074,8 @@ the code in these places (S12 built the rest).
   deadline and timer kept, and the request goes when it fires; `tools` stays,
   its open jobs of `idempotent` tools start again under their keys (job slots
   as above), the others get `aborted`, `pending` calls start in waves as
-  before; `waiting` and `paused` are unchanged.
+  before, the first at once up to the free job slots, and with no call left
+  open or pending it goes to `ready`; `waiting` and `paused` are unchanged.
 
 ### 9.6 The broker
 
@@ -1674,8 +1676,10 @@ of `spec/VISION.md`.
     waiting in the FIFO (FIFO entries of an older boot are skipped); a
     `retrying` one stays, keeps its `retry` deadline and timer, and sends its
     request once, when it fires; in `tools`, open idempotent jobs run again
-    under their keys, the others get `aborted`, `pending` calls stay pending;
-    `waiting` and `paused` sessions (either backend) are unchanged, their
+    under their keys, the others get `aborted`, `pending` calls stay pending
+    and start up to the free job slots, and a `tools` loop with no call left
+    open or pending goes to `ready`; OpenAI `waiting` sessions and `paused`
+    ones (either backend) are unchanged, their
     deadlines and timer kept; the turn stays `running` where it was.
 71. (9.3, R6) After a restart, each of `attach`, `read`, `say`, `answer` and
     `delete` on a session of an older boot does its restart step first, in the
