@@ -1947,10 +1947,13 @@ say (layout, spacing, words).
   source is in `console/`; the build writes `ui/`, which the host serves as
   any mod's page (host 8.3): same-origin script files, no inline script, no
   `eval`, no WebAssembly, no frames, no outside site.
-- State: assistant-ui's External-store runtime (`useExternalStoreRuntime`),
-  fed by the console's own reducer over the wire of 9.4
-  (`console/kit/wire.ts`, `console/kit/reduce.ts`). The ACP adapter of
-  assistant-ui is not published, so the console reads ACP itself.
+- State: the console's own reducer over the wire of 9.4
+  (`console/kit/wire.ts`, `console/kit/reduce.ts`); its view is the state the
+  transcript draws. assistant-ui's External-store runtime
+  (`useExternalStoreRuntime`) is fed only the newest rows (100 today,
+  `RUNTIME_TAIL` in `console/kit/thread.tsx`), and nothing reads its
+  messages. Dropping the runtime is open (the human's call). The ACP adapter
+  of assistant-ui is not published, so the console reads ACP itself.
 - Rendering: Shiki with its JavaScript regex engine for code, anser
   (escaped) for program output, and a diff view that needs no `eval`.
 - Every dependency is pinned in a lockfile, and the build records a hash of
@@ -2021,8 +2024,16 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
 ### 18.6 Behaviour
 
 - **Place.** The transcript follows new output only while the reader is
-  within 40 px of the end; otherwise a "New activity below" pill appears.
-  Session rows do not move while the pointer is over the list.
+  within 40 px of the end and focus is not inside a card with an open ask;
+  otherwise a "New activity below" pill appears. While focus is inside such a
+  card the transcript does not follow, whatever the scroll position. Needs you
+  ends the follow. The pill returns to the end and resumes it. Focus leaving
+  the card (or the ask being decided) resumes it too, at the next scroll that
+  ends within 40 px of the end (`console/kit/thread.tsx`,
+  `console/src/follow_S7_fix3.test.tsx`). A pointer press on the transcript's
+  scrollbar or on non-focusable text inside the card is not focus leaving the
+  card and does not resume the follow (S7 RISK a; the console does not do this
+  yet, S23). Session rows do not move while the pointer is over the list.
 - **Asks.** The bar is for an ask (`kind: "ask"`) only; a check has none.
   Allow once (primary), Allow `<reach>` this session, Deny… with a
   reason field, Cancel, and Esc in that field closing it. "Needs you" scrolls
@@ -2038,6 +2049,23 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
 - **Motion.** Only under `prefers-reduced-motion: no-preference`; hover
   styles only under `hover: hover`; a pressed button scales to 0.96 over
   150 ms.
+- **Long sessions.** A session of thousands of entries costs what a short one
+  does (P14).
+  - The transcript is windowed: 100 rows plus the rows kept, so at most about
+    120 are mounted (`WINDOW_CAP` in `console/kit/thread.tsx`). A row with
+    focus, and a row with an open ask or check, stays mounted.
+  - The page is told at most once per animation frame, with a 16 ms timer
+    where there is no frame (`console/kit/kernel.ts`).
+  - Code is highlighted once its block is complete and near the viewport, off
+    the main thread or within a time budget per block, past which the block
+    stays plain (the budget is S23; today only the size limit is built). A
+    block over 64 KiB stays plain (`console/kit/parts/highlight.ts`).
+  - The reducer's cost per message does not grow with the transcript's length
+    (`console/kit/s7_fix1.test.ts`).
+  - The long fixture runs in `npm test` (`console/src/long_S7.test.tsx`): 5 000
+    entries and the stream at 50 deltas a second; p95 over 20 samples: input
+    at most 50 ms, Stop at most 100 ms, scroll at most 100 ms, stream at most
+    100 ms; the end shown at most 2 s after open.
 - **Accessibility.** Every state has its own shape; a streaming message is
   `aria-busy` until done; every control is reachable by keyboard and named.
 
@@ -2046,6 +2074,7 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
 | Level | What | How |
 |---|---|---|
 | View | each row of 18.3 and 18.5 from recorded event streams: the fake `claude`'s and the scripted Responses server's output, stored as fixtures | a component test run, under the 2-minute budget |
+| Long | the limits of "Long sessions" in 18.6 on 5 000 entries with the stream running (`console/src/long_S7.test.tsx`, the fixture `console/fake/long.ts`) | in the component test run |
 | Page | AGT-J6 against the kernel in `watane-dev serve` with the fake `claude` | a browser test, marked slow |
 | Seen | each slice's console part, by the user-sim against the frames | the acceptance step |
 
