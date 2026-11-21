@@ -41,7 +41,9 @@ export type Row =
   | { kind: "unknown"; key: string; i?: number; raw: unknown };
 export interface PlanItem { content: string; status: "pending"|"in_progress"|"completed" }
 /** The reducer's own bookkeeping; a reader of the view ignores it. */
-export interface Internal { skip?: boolean; thoughtAt?: number; seq?: number; open?: { ask: Ask; title: string; call: ToolCall }[] }
+export interface Internal { skip?: boolean; thoughtAt?: number; seq?: number; open?: { ask: Ask; title: string; call: ToolCall }[];
+  /** Short decisions (9.4) whose ask entry the view did not hold: each has a placeholder decision row `e<i>` until its ask entry is read (`settleShort`). */
+  shorts?: { i: number; askI: number; id: string; kind: "ask" | "check"; decision: Decision }[] }
 export interface SessionView {
   rows: Row[]; openAsks: string[]; turn: TurnState | null;
   queue: { n: number; input: string }[]; plan: PlanItem[] | null;

@@ -4,7 +4,7 @@
 // exactly the open entry for its own call (TECHNICAL 18.3, 9.8).
 import { expect, it } from "vitest";
 import { emptyView, type Row, type SessionView } from "./model";
-import { openAsk, reduce } from "./reduce";
+import { openAsk, reduce, settleShort } from "./reduce";
 
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -12,6 +12,7 @@ function rng(seed: number) {
 }
 const J = JSON.stringify;
 
+const decision0 = (m: string) => "decision" in JSON.parse(m)._meta.watane.entry.body;
 function check(v: SessionView, log: string[]) {
   const fail = (what: string) => { throw new Error(`${what}\n${log.join("\n")}`); };
   const open = v.x?.open ?? [];
@@ -45,10 +46,33 @@ it("ac3_open_ask_invariant_holds_after_every_message", () => {
   for (let s = 0; s < 1000; s++) {
     let v = emptyView, n = 1;
     const log: string[] = [];
+    const sent: { i: number; id: string; kind: string; m: string }[] = []; // S30-1: the ask entries sent, which short decisions name
+    const waiting: number[] = []; // the placeholders whose ask entry has not been read yet
     for (let k = 0; k < 10; k++) {
       const call = pick(["e1", "e2", "e3"]), id = pick(["a1", "a2", "a3"]), kind = pick(["ask", "ask", "check"]);
       const x = r(), callKind = r() < 0.2 ? { kind: "read" } : {}; // validator: a read call sits in an explored row until an ask splits it
       let m: string;
+      if (waiting.length && r() < 0.3) {
+        // S30-1: a read of the ask entry returns (the entry sent at `ask-i`, or nothing); it is applied to the view as it is now
+        const i = waiting.splice(Math.floor(r() * waiting.length), 1)[0]!;
+        const sh = v.x?.shorts?.find((q) => q.i === i);
+        const e = sent.find((q) => q.i === sh?.askI);
+        log.push(`settle ${i} ${e?.m}`);
+        v = settleShort(v, i, r() < 0.8 ? e?.m ?? null : null);
+        check(v, log);
+        continue;
+      }
+      if (sent.length && r() < 0.2) {
+        // S30-1: a short decision of a sent ask (held when that ask is open at that index, else not held), or of an id nobody sent
+        const e = pick(sent);
+        const i = n++;
+        m = J({ _meta: { watane: { type: "entry", entry: { v: 1, i, kind: "ask", at: i, body: { id: r() < 0.9 ? e.id : "a9", kind: e.kind, "ask-i": e.i, decision: { outcome: pick(["allow", "deny", "none"]), by: "kernel" } } } } } });
+        log.push(m);
+        v = reduce(v, m);
+        if (v.x?.shorts?.some((q) => q.i === i)) waiting.push(i);
+        check(v, log);
+        continue;
+      }
       if (x < 0.2) m = J({ sessionUpdate: pick(["tool_call", "tool_call_update"]), toolCallId: call, title: `t${call}`, ...callKind, status: pick(["pending", "in_progress", "completed"]), ...(r() < 0.3 ? { content: [{ type: "content", content: { type: "text", text: "o" } }] } : {}) });
       else {
         const decision = x < 0.5 ? { decision: { outcome: pick(["allow", "deny"]), by: "you" } } : {};
@@ -58,6 +82,7 @@ it("ac3_open_ask_invariant_holds_after_every_message", () => {
       }
       log.push(m);
       v = reduce(v, m);
+      if (!m.includes("sessionUpdate") && !decision0(m)) { const b = JSON.parse(m)._meta.watane.entry; sent.push({ i: b.i, id: b.body.id, kind: b.body.kind, m: JSON.stringify(b) }); }
       check(v, log);
     }
   }
