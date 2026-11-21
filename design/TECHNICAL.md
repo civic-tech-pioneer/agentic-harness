@@ -557,7 +557,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | Key | Value |
 |---|---|
 | `profile/<name>` | a profile (9.2) |
-| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed. `start` checks it before it reads `profile/<name>` and refuses a name not listed with the refusal of a profile that does not exist (`refused`, `{field: "profile"}`), so a client learns nothing about profiles it may not use. A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
+| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed. `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile may say so). A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
 | `adopted/<offer id>` | `{content hash, content}` |
 | `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
 | `session/<id>` | the session record (9.3) |
@@ -608,7 +608,7 @@ No profile field reads workspace instructions (`AGENTS.md`, `CLAUDE.md`)
 (`FUNCTIONAL.md` section 5).
 
 Compilation: profile, then adopted offers it names, then the overlay; then the
-refuse table (11) for the backend and model (a profile without `model` is checked with the model `"default"`, the backend's default model). Every refusal is returned at
+refuse table (11) for the backend and model (a Claude profile without `model` is checked with the model `"default"`, `claude`'s default model, and launches with no `--model=`; an OpenAI profile without `model` is refused `{field: "model"}`, since OpenAI has no default model to check `effort` and `json-schema` against). Every refusal is returned at
 once; `check` runs only this step.
 
 ### 9.3 Sessions
@@ -1034,8 +1034,12 @@ this place (S14 and S19 built the rest).
 - Kernel, S20 (S24, AC8 b): `say`, `interrupt` with a replacement, R5
   Continue and the owner's `answer` with `allow` do not read `access/` again,
   and a turn that ends starts the next queued input without reading it (9.7,
-  "Revoking"); only `start` checks it. The OpenAI `task` check comes with the
-  loop (9.5).
+  "Revoking"); only `start` checks it. The client call `check` (2.3), not
+  built yet, reads it first as `start` does (9.1). The child-session check,
+  the `resume` deadline's check and the OpenAI `task` check come with 9.7 and
+  the loop (9.5).
+- Kernel, S20 (S24): an OpenAI profile without `model` is refused
+  `{field: "model"}` (9.2); `start` now checks it with the model `"default"`.
 - Kernel, S20: at most 64 open Claude asks and checks per session (the
   record's `open`, 9.3); one past that is denied at once, `by: kernel`, reason
   `busy`, so `cancel`, R4 and `ended` write at most 64 decisions in one call.
@@ -1176,8 +1180,12 @@ this place (S14 and S19 built the rest).
   queue is kept for `unqueue` or `delete`. Calls that only read or take power
   away still work: `read`, `attach`, `list`, `queued`, `unqueue`, `rename`,
   `answer` with `deny`, `interrupt` without a replacement, `cancel`,
-  `take-back`, `delete`. A turn already running is not stopped by the change
-  itself (a limit, 14).
+  `take-back`, `delete`. A call on a child session checks the root session's
+  profile against the root's owner, as `task` does, since a child's own
+  profile is never listed. A `resume` deadline (9.3) that fires after a
+  revocation does not resume the turn: it stays `paused` with no time, as at
+  the timer cap, so only a `say` resumes it, and that `say` is refused. A turn
+  already running is not stopped by the change itself (a limit, 14).
 - OpenAI: `task(profile, input)` starts a child and returns its id at once;
   the child's final message arrives later as the call's output. A child's
   request has no `task` tool, and a `task` call from a child is refused.
