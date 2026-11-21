@@ -485,7 +485,10 @@ impl Joiner {
             // 9.4: the whole reads as a stored line at the last part's place.
             return match v.get("i").and_then(Value::as_u64) {
                 Some(i) => serde_json::from_str(&render_as(&group.2, i, false)).ok(),
-                None => serde_json::from_str(&group.2).ok(),
+                // An `unreadable` entry needs an index: a `part` whole is dropped.
+                None => serde_json::from_str::<Value>(&group.2)
+                    .ok()
+                    .filter(|w| w.get("kind").and_then(Value::as_str) != Some("part")),
             };
         }
         self.open = Some((n + 1, m, group.2));
