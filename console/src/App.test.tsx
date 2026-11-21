@@ -18,7 +18,16 @@ const played = () => {
 };
 const mk = (): Actions => ({ say: vi.fn(), answer: vi.fn(), stop: vi.fn(), takeBack: vi.fn() });
 const rowsOf = (c: HTMLElement) => [...c.querySelectorAll(".wa-row")].map((r) => `${r.getAttribute("data-kind")}:${r.textContent}`);
-const ready = () => screen.findByRole("button", { name: "Needs you (1)" });
+// The played story reaches the DOM in steps: wait for all of its rows, not only the first ask.
+const ready = async () => {
+  const button = await screen.findByRole("button", { name: "Needs you (1)" });
+  await waitFor(() => {
+    const kinds = new Set([...document.querySelectorAll(".wa-row")].map((r) => r.getAttribute("data-kind")));
+    for (const k of ["user", "thought", "agent", "explored", "tool"]) expect(kinds).toContain(k);
+    expect(screen.getByText("also add a test")).toBeInTheDocument();
+  });
+  return button;
+};
 
 describe("the page", () => {
   it("ac1_app_shows_sidebar_header_rows_dock_on_the_played_story", async () => {
