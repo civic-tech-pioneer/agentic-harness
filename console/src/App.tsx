@@ -8,8 +8,11 @@ import { Dock } from "./Dock";
 let sent = 0;
 
 export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[] }) {
-  const [held, setHeld] = useState<{ id: string; view: SessionView }>({ id: info.id, view: emptyView }); // the view is tagged with the session it belongs to
-  const view = held.id === info.id ? held.view : emptyView; // a new info.id shows nothing until that session's first view
+  // the view is tagged with its subscription (a token per run of the openSession effect), and with the session and kernel it was opened on
+  const [held, setHeld] = useState<{ tok: object | null; id: string; kernel: Kernel; view: SessionView }>({ tok: null, id: info.id, kernel, view: emptyView });
+  const [sub, setSub] = useState<object | null>(null); // the current subscription's token
+  const mine = held.tok === sub && held.id === info.id && held.kernel === kernel;
+  const view = mine ? held.view : emptyView; // a new subscription shows nothing until its first view
   const [stopping, setStopping] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const scroller = useRef<HTMLDivElement>(null);
@@ -20,6 +23,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const answeredAsk = useRef(new Map<string, Ask | undefined>()); // the ask object each answered id stood for when it was answered
   const viewRef = useRef(view); viewRef.current = view;
   const heldRef = useRef(held); heldRef.current = held;
+  const subRef = useRef(sub); subRef.current = sub;
   const [needsHidden, setNeedsHidden] = useState(false);
   const lastAsk = useRef<string | null>(null); // the ask whose card last took focus
   // ask ids repeat across sessions: what this console answered is per session; a new session opens at its end, not stopping
@@ -28,7 +32,9 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   useEffect(() => {
     const id = info.id;
     let open = true; // a late view of a closed session is never kept
-    const s = openSession(kernel, id, (v) => { if (open) setHeld({ id, view: v }); });
+    const tok = {};
+    setSub(tok);
+    const s = openSession(kernel, id, (v) => { if (open) setHeld({ tok, id, kernel, view: v }); });
     return () => { open = false; s.close(); };
   }, [kernel, info.id]);
   // 18.6 Place: follow the end while the reader is within 40 px of it (and on open).
@@ -75,7 +81,8 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: () => Promise.reject(new Error("an answer goes out only with the ask its card drew")), // fail closed: no drawn ask, no identity check
     answerDrawn: (drawn, d) => {
-      if (heldRef.current.id !== info.id) return Promise.reject(new Error("the view is not this session's")); // fail closed
+      const h = heldRef.current;
+      if (!(h.tok === subRef.current && h.id === info.id && h.kernel === kernel)) return Promise.reject(new Error("the view is not this session's")); // fail closed
       const mine = openAsk(viewRef.current, drawn.id);
       // fail closed: an answer for an ask that is not the open one of its id sends and records nothing
       return mine === drawn ? send(drawn.id, d, mine) : Promise.reject(new Error("the ask is no longer the one the card drew"));
