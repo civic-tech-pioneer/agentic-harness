@@ -66,8 +66,8 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const name = cardName(call, ask);
   const diffs = call.content.filter((c) => c.type === "diff").length;
   const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : checking ? ["Checking", "b-off"]
-    : row.ended ? ["Ended", "b-off"]
-    : ask?.decision && call.status === "pending" ? DECIDED[ask.decision.outcome] : STATUS[call.status];
+    : ask?.decision && call.status === "pending" ? DECIDED[ask.decision.outcome]
+    : row.ended ? ["Ended", "b-off"] : STATUS[call.status];
   const main = (
     <>
       {ask ? <div className="wa-input"><div className="wa-input-label">Input</div><InputList input={ask.input} /></div> : null}

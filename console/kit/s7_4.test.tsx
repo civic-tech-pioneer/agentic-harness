@@ -44,6 +44,11 @@ describe("S7-4", () => {
     expect(tag.textContent).toBe(word);
     expect(tag.className).toContain(cls);
   });
+  it("ac2_the_decision_still_explains_a_call_that_never_ran_after_the_turn_ends", () => {
+    const v = feed([ask(1, "a1", "t", { toolCall: { toolCallId: "t", kind: "edit", title: "Edit s.ts" } }), ask(2, "a1", "t", { toolCall: { toolCallId: "t", kind: "edit", title: "Edit s.ts" }, decision: { outcome: "deny", by: "you" } }), turn({ state: "unknown" })]);
+    expect(tool(v)).toMatchObject({ ended: true, call: { status: "pending" } });
+    expect(show(v).container.querySelector(".wa-tool-status")!.textContent).toBe("Denied");
+  });
   it("ac2_a_later_status_shows_as_today", () => {
     const v = feed([ask(1, "a1", "t", { toolCall: { toolCallId: "t", kind: "edit", title: "Edit s.ts" } }), ask(2, "a1", "t", { toolCall: { toolCallId: "t", kind: "edit", title: "Edit s.ts" }, decision: { outcome: "allow", by: "you" } }), patch("t", { status: "completed" })]);
     const { container } = show(v);
