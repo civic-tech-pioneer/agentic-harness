@@ -118,24 +118,32 @@ impl Usage {
     }
 }
 
-/// 9.1: `%` to `%25`, then `/` to `%2F`.
 /// Whether the owner or the account was past its quota when a call read its accounts (9.3
-/// Quota). The field is private to this module and only `Past::read` sets it, which `accounts`
-/// calls: no code can hold the flag without having read the accounts.
+/// Quota). The field is private to this module and only `Past::load` sets it, from the two
+/// accounts it reads itself: no code can hold the flag without having read the accounts.
 #[derive(Clone, Copy)]
-pub struct Past(bool);
+pub(crate) struct Past(bool);
 
 impl Past {
-    /// The owner's bytes or the kernel's account at or over their caps.
-    pub(crate) fn read(owner: &Usage, account: &Usage, limits: &Limits) -> Past {
-        Past(owner.bytes >= limits.owner_bytes || account.bytes >= limits.account_bytes)
+    /// Reads the owner's account and the kernel's; past when the owner's bytes or the account's
+    /// are at or over their caps.
+    pub(crate) fn load(
+        state: &mut impl State,
+        owner_key: &str,
+        limits: &Limits,
+    ) -> (Past, Usage, Usage) {
+        let owner = Usage::load(state, owner_key);
+        let account = Usage::load(state, Usage::ACCOUNT);
+        let past = owner.bytes >= limits.owner_bytes || account.bytes >= limits.account_bytes;
+        (Past(past), owner, account)
     }
 
-    pub fn is_past(self) -> bool {
+    pub(crate) fn is_past(self) -> bool {
         self.0
     }
 }
 
+/// 9.1: `%` to `%25`, then `/` to `%2F`.
 pub fn segment(owner: &str) -> String {
     owner.replace('%', "%25").replace('/', "%2F")
 }

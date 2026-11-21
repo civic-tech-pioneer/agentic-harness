@@ -512,10 +512,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// Reads the owner's account and the kernel's (9.1).
     fn accounts(&mut self, owner: &str) -> Acct {
         let owner_key = Usage::owner_key(owner);
-        let owner = Usage::load(&mut self.state, &owner_key);
-        let account = Usage::load(&mut self.state, Usage::ACCOUNT);
         // 9.3 "Past": the owner's bytes or the kernel's account at or over their caps.
-        let past = Past::read(&owner, &account, &self.limits);
+        let (past, owner, account) = Past::load(&mut self.state, &owner_key, &self.limits);
         Acct {
             past,
             owner_key,
