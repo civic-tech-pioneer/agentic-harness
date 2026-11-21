@@ -412,6 +412,8 @@ fn ac1_invalid_bytes_are_escaped_and_nothing_is_parsed() {
         e.body.clone()
     };
     assert_eq!(raw(a.line(b"\xff\xfe", 1)), json!({"raw": "\\xff\\xfe"}));
+    // Trimmed like a UTF-8 line's raw text: surrounding whitespace is not kept.
+    assert_eq!(raw(a.line(b" \xff\n", 1)), json!({"raw": "\\xff"}));
     let mut ask =
         br#"{"type":"ask","id":"a","tool":"Bash","input":{},"tool_use_id":"t","expires-at":5}"#
             .to_vec();
