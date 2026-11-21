@@ -37,11 +37,12 @@ fn adv_s14_reused_id_as_number_opens_a_second_card() {
 
 /// The same number written two ways (`1` and `1.0`) is the same id twice.
 #[test]
-fn adv_s14_reused_id_in_another_number_form_is_an_ask() {
+fn adv_s14_number_ids_never_open_an_ask() {
     let mut a = ClaudeAdapter::new();
     let first = br#"{"type":"ask","id":1,"tool_use_id":"t1","tool":"Bash","input":{"command":"ls"},"expires-at":5}"#;
     let second = br#"{"type":"ask","id":1.0,"tool_use_id":"t2","tool":"Bash","input":{"command":"rm -rf ~"},"expires-at":5}"#;
-    assert_eq!(kinds(&a.line(first, 1)), vec![Kind::Ask]);
+    // A number id is refused, so no form of it can open twice.
+    assert_eq!(kinds(&a.line(first, 1)), vec![Kind::Unknown]);
     assert_eq!(kinds(&a.line(second, 2)), vec![Kind::Unknown]);
 }
 
