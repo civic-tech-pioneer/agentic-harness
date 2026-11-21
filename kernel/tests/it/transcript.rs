@@ -798,13 +798,31 @@ fn ac2_joiner_part_whole_other_or_no_i_is_unreadable_at_last_part() {
 }
 
 #[test]
-fn ac4_joiner_part_whole_without_last_i_is_as_before() {
-    let whole = r#"{"v":1,"kind":"part","at":1}"#;
+fn ac3_joiner_message_whole_without_last_i_is_as_before() {
+    let whole = r#"{"v":1,"kind":"message","at":1}"#;
     let (a, b) = whole.split_at(10);
     let no_i = json!({"v":1,"kind":"part","at":1,"body":{"n":2,"m":2,"text":b}}).to_string();
     let mut j = Joiner::new();
     assert!(j.push(&part_line(4, 1, a)).is_none());
-    assert_eq!(j.push(&no_i).unwrap(), json!({"v":1,"kind":"part","at":1}));
+    assert_eq!(
+        j.push(&no_i).unwrap(),
+        json!({"v":1,"kind":"message","at":1})
+    );
+}
+
+#[test]
+fn fix1_ac1_ac2_joiner_part_whole_without_whole_number_last_i_is_dropped() {
+    let whole = r#"{"v":1,"i":5,"kind":"part","at":1,"body":{"n":1,"m":1,"text":"x"}}"#;
+    let (a, b) = whole.split_at(20);
+    for last in [json!(5.0), json!("5"), json!(-1), json!(null)] {
+        let mut line = json!({"v":1,"kind":"part","at":1,"body":{"n":2,"m":2,"text":b}});
+        if !last.is_null() {
+            line["i"] = last;
+        }
+        let mut j = Joiner::new();
+        assert!(j.push(&part_line(4, 1, a)).is_none());
+        assert!(j.push(&line.to_string()).is_none());
+    }
 }
 
 #[test]
