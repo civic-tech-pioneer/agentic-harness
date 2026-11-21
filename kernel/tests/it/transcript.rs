@@ -535,7 +535,7 @@ fn ac10_joiner_drops_broken_groups() {
     assert!(j.push(&part(2, 2, "1}")).is_none());
     assert!(j.push("not json").is_none());
     assert!(j.push(&part(1, 2, "{\\\"a\\\":")).is_none());
-    assert_eq!(j.push(&part(2, 2, "1}")).unwrap(), json!({"a": 1}));
+    assert_eq!(j.push(&part(2, 2, "1}")).unwrap(), json!({"a": 1, "i": 2}));
 }
 
 #[test]
