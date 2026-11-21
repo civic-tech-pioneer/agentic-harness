@@ -58,6 +58,8 @@ beforeAll(async () => {
   opened = now() - t0;
   // the rest of the history is paged in (the governor lets 4 calls per second through) and shown: some 5 600 rows
   await until(() => total() > 5000 * SLOT, 15_000);
+  // the console attaches again once the history is in (the governor may make it wait for a token); a delta played before that is the fake's "message being written", which the console shows as Writing... until an entry ends it
+  for (let k = 0; k < 150 && fake.calls.at(-1)?.name !== "attach"; k++) await new Promise((r) => setTimeout(r, 20));
   // 50 deltas a second; for each, the time from giving it to the fake until its text is in the DOM
   const sent = new Map<string, number>();
   new MutationObserver(() => {
