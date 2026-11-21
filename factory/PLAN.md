@@ -51,7 +51,7 @@ Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
 ## Sketched
 
-### S29: ending a turn never fails at the ceiling (cloud, after S28 merges: kernel/, TECHNICAL, console/)
+### S29: ending a turn never fails at the ceiling (cloud, after S28 and S23 merge: kernel/, TECHNICAL, console/)
 
 Story: a kernel maker runs `cargo test` in `kernel/`: at and past the kernel's account ceiling,
 every call that ends a turn or closes a session's work still succeeds and frees what it holds:
