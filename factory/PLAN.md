@@ -108,7 +108,7 @@ highlighted once its block is complete and visible; a large-transcript fixture w
 input, Stop and scroll latency runs in `npm test`.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-### S14: the kernel finishes the wire and closes S12's risks (cloud, after S12 merges: same files)
+### S14: the kernel finishes the wire and closes S12's risks (in flight (cloud), routine trig_01VXmBJKmd8rdeq3RMbrFi8n)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and every item of S10's kernel list (PR #13)
 holds in code, checked item by item; S12 (PR #15) already did most of it.
@@ -227,7 +227,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   read as 256; 7: "A call commits whole"; 9.4: `unreadable` keeps the `i` of its place, and "Who
   makes entries". User-sim ACCEPTED (run 1); no adversary (no code, 14 unchanged). Gate 16 s.
 
-- **S12** the kernel catches up with the spec (PR #15, 19 min). `RUNNERS` equals 4.1's 98 words
+- **S12** the kernel catches up with the spec (PR #15, merged 2026-11-21 00:36 UTC, 19 min). `RUNNERS` equals 4.1's 98 words
   (a test reads 4.1) plus runtime prefixes; frontmatter `:` rule; `unreadable` at its own place;
   `append` takes only whole-entry kinds; `read` refuses `max` 0 with field `max`; the Claude
   adapter builds the 9.4 ask from the item (`expires-at` from the item, no `options`), writes
