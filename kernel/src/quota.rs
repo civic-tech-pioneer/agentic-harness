@@ -9,6 +9,9 @@ pub const OWNER_SESSIONS: u64 = 64;
 pub const OWNER_BYTES: u64 = 64 << 20;
 pub const ACCOUNT_BYTES: u64 = 224 << 20;
 pub const RESERVE_BYTES: u64 = 32 << 20;
+/// Provider streams the kernel holds, and one owner (9.5 "Slots").
+pub const PROVIDER_STREAMS: u32 = 8;
+pub const OWNER_PROVIDER: u32 = 4;
 
 /// The kernel settings for the caps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +20,8 @@ pub struct Limits {
     pub owner_bytes: u64,
     pub account_bytes: u64,
     pub reserve_bytes: u64,
+    pub provider: u32,
+    pub owner_provider: u32,
 }
 
 impl Default for Limits {
@@ -26,6 +31,8 @@ impl Default for Limits {
             owner_bytes: OWNER_BYTES,
             account_bytes: ACCOUNT_BYTES,
             reserve_bytes: RESERVE_BYTES,
+            provider: PROVIDER_STREAMS,
+            owner_provider: OWNER_PROVIDER,
         }
     }
 }
@@ -37,6 +44,15 @@ pub struct Usage {
     pub sessions: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pages: Vec<u32>,
+    /// The owner's provider streams, valid only while `slots_boot` is the boot of `slots` (9.1).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub provider: u32,
+    #[serde(default, skip_serializing_if = "is_zero", rename = "slots-boot")]
+    pub slots_boot: u64,
+}
+
+fn is_zero<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
 }
 
 impl Usage {
@@ -59,6 +75,27 @@ impl Usage {
         state
             .put(key, v)
             .map_err(|t| KernelError::TooLarge(t.0 as u64))
+    }
+
+    /// The owner's provider streams of this boot: a count tagged with an older boot reads zero.
+    pub fn provider_at(&self, boot: u64) -> u32 {
+        if self.slots_boot == boot {
+            self.provider
+        } else {
+            0
+        }
+    }
+
+    /// Takes one more provider stream, restarting the count when it is of an older boot.
+    pub fn open_provider(&mut self, boot: u64) {
+        self.provider = self.provider_at(boot) + 1;
+        self.slots_boot = boot;
+    }
+
+    /// Frees one; an older boot's count is already zero.
+    pub fn close_provider(&mut self, boot: u64) {
+        self.provider = self.provider_at(boot).saturating_sub(1);
+        self.slots_boot = boot;
     }
 
     /// Adds a signed delta to `bytes`, never below 0.

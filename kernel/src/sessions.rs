@@ -37,6 +37,10 @@ pub trait Host {
     fn timer_cancel(&mut self, id: &str);
     /// What goes to the provider: recorded, never run.
     fn request(&mut self, r: Request);
+    /// Opens a provider stream for a Claude session (3): its id, as the host's items will carry it.
+    fn open_stream(&mut self) -> String;
+    /// The consumer's `cancel` of a stream the kernel holds.
+    fn cancel_stream(&mut self, stream: &str);
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +67,8 @@ pub enum HostCall {
     TimerAfter { id: String, delay_ms: u64 },
     TimerCancel { id: String },
     Request(Request),
+    Open { stream: String },
+    CancelStream { stream: String },
 }
 
 /// A host for tests: a settable clock and boot, ids `s1`, `s2`, ..., and a log of what was asked.
@@ -71,6 +77,7 @@ pub struct FakeHost {
     pub boot: u64,
     pub now: u64,
     pub next_id: u64,
+    pub next_stream: u64,
     pub calls: Vec<HostCall>,
 }
 
@@ -104,6 +111,19 @@ impl Host for FakeHost {
     }
     fn request(&mut self, r: Request) {
         self.calls.push(HostCall::Request(r));
+    }
+    fn open_stream(&mut self) -> String {
+        self.next_stream += 1;
+        let stream = format!("t{}", self.next_stream);
+        self.calls.push(HostCall::Open {
+            stream: stream.clone(),
+        });
+        stream
+    }
+    fn cancel_stream(&mut self, stream: &str) {
+        self.calls.push(HostCall::CancelStream {
+            stream: stream.to_string(),
+        });
     }
 }
 
@@ -223,6 +243,19 @@ struct Kept {
     #[serde(default)]
     session: Option<String>,
     value: Value,
+}
+
+/// What `stream/<id>` holds (9.1): the session a stream serves and what kind of stream it is.
+#[derive(Serialize, Deserialize)]
+struct StreamKey {
+    session: String,
+    kind: String,
+}
+
+const PROVIDER: &str = "provider";
+
+fn stream_key(id: &str) -> String {
+    format!("stream/{id}")
 }
 
 fn key_of(owner: &str, key: &str) -> String {
@@ -392,6 +425,104 @@ impl<S: State, H: Host> Kernel<S, H> {
             Some(cause) => Err(KernelError::Quota(cause)),
             None => Ok(()),
         }
+    }
+
+    /// 9.5 "Slots": refuses `busy` when the kernel holds all its provider streams or the owner its share.
+    fn check_provider(&self, slots: &Slots, a: &Acct) -> Result<(), KernelError> {
+        if slots.provider >= self.limits.provider {
+            return Err(KernelError::Busy(format!(
+                "{} provider streams",
+                self.limits.provider
+            )));
+        }
+        if a.owner.provider_at(slots.boot) >= self.limits.owner_provider {
+            return Err(KernelError::Busy(format!(
+                "{} provider streams per owner",
+                self.limits.owner_provider
+            )));
+        }
+        Ok(())
+    }
+
+    /// The session's live provider stream: the first of its `streams` whose key says `provider`.
+    fn live_provider(&mut self, rec: &Record) -> Option<String> {
+        for s in &rec.streams {
+            let Some(bytes) = self.state.get(&stream_key(s)) else {
+                continue;
+            };
+            if serde_json::from_slice::<StreamKey>(&bytes).is_ok_and(|k| k.kind == PROVIDER) {
+                return Some(s.clone());
+            }
+        }
+        None
+    }
+
+    /// Opens the session's provider stream: the host's id, its `stream/` key, the record's
+    /// `streams`, and one slot of the kernel and of the owner. `slots` is saved by the caller.
+    fn open_provider(
+        &mut self,
+        rec: &mut Record,
+        slots: &mut Slots,
+        a: &mut Acct,
+    ) -> Result<(), KernelError> {
+        let t = self.host.open_stream();
+        let key = StreamKey {
+            session: rec.id.clone(),
+            kind: PROVIDER.to_string(),
+        };
+        let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
+        self.state
+            .put(&stream_key(&t), bytes)
+            .map_err(|e| KernelError::TooLarge(e.0 as u64))?;
+        rec.add_stream(t)?;
+        slots.provider += 1;
+        a.owner.open_provider(slots.boot);
+        Ok(())
+    }
+
+    /// Releases a provider stream the session holds: its key, its place in `streams`, and, when
+    /// the stream is of this boot, one slot of the kernel and of the owner. Whether `slots`
+    /// changed; the caller saves it.
+    fn release_provider(
+        &mut self,
+        rec: &mut Record,
+        stream: &str,
+        slots: &mut Slots,
+        a: &mut Acct,
+    ) -> bool {
+        self.state.delete(&stream_key(stream));
+        rec.streams.retain(|s| s != stream);
+        if rec.boot != slots.boot {
+            return false;
+        }
+        slots.provider = slots.provider.saturating_sub(1);
+        a.owner.close_provider(slots.boot);
+        true
+    }
+
+    /// Whether a turn this call starts opens a provider stream (and then whether it resumes the
+    /// Claude session), refusing `busy` before any write (9.5, R5). A live stream is used as it
+    /// is. Otherwise a Claude session resumes unless its turn is `resume-lost` or its profile
+    /// sets `persist: false`; `unknown` always resumes (R5).
+    fn plan_turn(
+        &mut self,
+        rec: &Record,
+        slots: &Slots,
+        a: &Acct,
+    ) -> Result<(bool, bool), KernelError> {
+        let unknown = rec.turn == Turn::Unknown;
+        if rec.backend != "claude" || self.live_provider(rec).is_some() {
+            return Ok((false, unknown));
+        }
+        self.check_provider(slots, a)?;
+        let resume = unknown
+            || (rec.turn != Turn::ResumeLost
+                && self
+                    .state
+                    .get(&format!("profile/{}", rec.profile))
+                    .map(|b| String::from_utf8_lossy(&b).into_owned())
+                    .is_none_or(|j| parse_profile(&j).0.persist != Some(false)));
+        Ok((true, resume))
     }
 
     /// The end of a call that writes: the record (when given) takes the change in its session keys,
@@ -872,21 +1003,23 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// Moves the session in or out of `active/` as its end state asks (A2); one `slots` and one page.
+    /// Whether it saved `slots`.
     fn sync_active(
         &mut self,
         rec: &mut Record,
         slots: &mut Slots,
         was: bool,
-    ) -> Result<(), KernelError> {
+    ) -> Result<bool, KernelError> {
         let will = rec.turn.is_active();
         if !was && will {
             rec.active_page = Some(active::add(&mut self.state, slots, &rec.id, slots.boot)?);
+            return Ok(true);
         } else if was && !will {
             if let Some(p) = rec.active_page.take() {
-                active::remove(&mut self.state, slots, &rec.id, p)?;
+                return active::remove(&mut self.state, slots, &rec.id, p);
             }
         }
-        Ok(())
+        Ok(false)
     }
 
     fn flush(&mut self, work: Work) -> Vec<Push> {
@@ -965,6 +1098,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             )));
         }
         self.refuse_past(&acct)?;
+        if backend == Backend::Claude {
+            self.check_provider(&slots, &acct)?;
+        }
         // 9.1: the first page with room, or the next one.
         let n = acct
             .owner
@@ -1002,6 +1138,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         let mut work = Work::default();
         self.start_turn(&mut rec, input.to_string(), false, now, &mut work)?;
+        if backend == Backend::Claude {
+            self.open_provider(&mut rec, &mut slots, &mut acct)?;
+        }
+        // The first turn is active: this saves `slots` with the slot taken.
         self.sync_active(&mut rec, &mut slots, false)?;
         page.push(id.clone());
         self.state
@@ -1059,8 +1199,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                     active::check_room(&slots)?;
                 }
                 // R5: `unknown` resumes the Claude session; with inputs queued, this one joins
-                // the end and the oldest starts the turn.
-                let resume = rec.turn == Turn::Unknown;
+                // the end and the oldest starts the turn. A turn with no live provider stream
+                // opens one (9.5), and resumes the Claude session it had (9.4).
+                let (open, resume) = self.plan_turn(&rec, &slots, &acct)?;
                 let mut q = Queue::load(&mut self.state, &rec.id);
                 // The oldest leaves before the new input joins, so 32 queued inputs never refuse; the 2 MiB of stored bytes still can (`queue-full`).
                 let queued = if q.is_empty() {
@@ -1079,7 +1220,12 @@ impl<S: State, H: Host> Kernel<S, H> {
                         n
                     }
                 };
-                self.sync_active(&mut rec, &mut slots, was)?;
+                if open {
+                    self.open_provider(&mut rec, &mut slots, &mut acct)?;
+                }
+                if !self.sync_active(&mut rec, &mut slots, was)? && open {
+                    slots.save(&mut self.state)?;
+                }
                 rec.updated = now;
                 n
             }
@@ -1236,11 +1382,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                 pushes: work.pushes,
             });
         }
+        let mut plan = (false, false);
         if replacement.is_some() {
             Self::room(&rec)?;
             if !was {
                 active::check_room(&slots)?;
             }
+            plan = self.plan_turn(&rec, &slots, &acct)?;
         }
         let now = self.host.now();
         if was {
@@ -1249,11 +1397,16 @@ impl<S: State, H: Host> Kernel<S, H> {
                 session: rec.id.clone(),
             });
         }
+        let (open, resume) = plan;
         if let Some(input) = replacement {
-            let resume = rec.turn == Turn::Unknown;
             self.start_turn(&mut rec, input.to_string(), resume, now, &mut work)?;
         }
-        self.sync_active(&mut rec, &mut slots, was)?;
+        if open {
+            self.open_provider(&mut rec, &mut slots, &mut acct)?;
+        }
+        if !self.sync_active(&mut rec, &mut slots, was)? && open {
+            slots.save(&mut self.state)?;
+        }
         rec.updated = now;
         self.finish(Some(&mut rec), &mut acct)?;
         Ok(Called {
@@ -1291,7 +1444,15 @@ impl<S: State, H: Host> Kernel<S, H> {
         if was {
             self.end_interrupted(&mut rec, now, &mut work)?;
         }
-        self.sync_active(&mut rec, &mut slots, was)?;
+        // The host's `Cancel` ends the provider stream: its slot is free at once, and its later
+        // `ended` finds no key (9.4).
+        let freed = match self.live_provider(&rec) {
+            Some(t) => self.release_provider(&mut rec, &t, &mut slots, &mut acct),
+            None => false,
+        };
+        if !self.sync_active(&mut rec, &mut slots, was)? && freed {
+            slots.save(&mut self.state)?;
+        }
         work.requests.push(Request::Cancel {
             session: rec.id.clone(),
         });
@@ -1388,8 +1549,25 @@ impl<S: State, H: Host> Kernel<S, H> {
             .get(&page_key)
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
+        // The slots of this boot's provider streams; a stale record's streams were counted zero.
+        let mut slot_freed = false;
+        if rec.boot == slots.boot {
+            for s in &rec.streams {
+                let bytes = self.state.get(&stream_key(s));
+                let kind = bytes.and_then(|b| serde_json::from_slice::<StreamKey>(&b).ok());
+                if kind.is_some_and(|k| k.kind == PROVIDER) {
+                    slots.provider = slots.provider.saturating_sub(1);
+                    acct.owner.close_provider(slots.boot);
+                    slot_freed = true;
+                }
+            }
+        }
+        let mut saved = false;
         if let Some(p) = rec.active_page {
-            active::remove(&mut self.state, &mut slots, &rec.id, p)?;
+            saved = active::remove(&mut self.state, &mut slots, &rec.id, p)?;
+        }
+        if slot_freed && !saved {
+            slots.save(&mut self.state)?;
         }
         for n in 0..rec.chunks.len() {
             self.state
@@ -1397,7 +1575,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         self.state.delete_uncharged(&Queue::key_of(&rec.id));
         for s in &rec.streams {
-            self.state.delete_uncharged(&format!("stream/{s}"));
+            self.state.delete_uncharged(&stream_key(s));
         }
         self.state.delete_uncharged(&format!("live/{}", rec.id));
         let page: Vec<String> = page.into_iter().filter(|i| *i != rec.id).collect();
@@ -1487,22 +1665,63 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(out)
     }
 
-    /// One item of a provider's stream: no R1, no owner (the kernel's own).
+    /// One item of a provider's stream, by its id: `stream/<id>` is read first and names the
+    /// session (9.4). An id with no key (never opened, ended, or of an older boot) changes
+    /// nothing and sends nothing.
+    pub fn provider_item(
+        &mut self,
+        stream: &str,
+        event: ProviderEvent,
+    ) -> Result<Called<()>, KernelError> {
+        self.open_meter();
+        let key = self
+            .state
+            .get(&stream_key(stream))
+            .and_then(|b| serde_json::from_slice::<StreamKey>(&b).ok());
+        let Some(key) = key else {
+            return Ok(Called {
+                value: (),
+                pushes: Vec::new(),
+            });
+        };
+        let rec = Record::load(&mut self.state, &key.session)
+            .ok_or_else(|| KernelError::UnknownSession(key.session.clone()))?;
+        self.provider_on(rec, Some(stream), event)
+    }
+
+    /// One item of a provider's stream for a session, for tests: it goes by the session's live
+    /// provider stream, or, with none, acts on the session directly.
     pub fn provider(
         &mut self,
         session: &str,
         event: ProviderEvent,
     ) -> Result<Called<()>, KernelError> {
         self.open_meter();
-        let mut rec = Record::load(&mut self.state, session)
+        let rec = Record::load(&mut self.state, session)
             .ok_or_else(|| KernelError::UnknownSession(session.to_string()))?;
+        let stream = self.live_provider(&rec);
+        self.provider_on(rec, stream.as_deref(), event)
+    }
+
+    /// The item's work, on the session it names; `stream` is the provider stream it came on.
+    fn provider_on(
+        &mut self,
+        mut rec: Record,
+        stream: Option<&str>,
+        event: ProviderEvent,
+    ) -> Result<Called<()>, KernelError> {
         let mut acct = self.accounts(&rec.owner);
         let before = rec.clone();
         let was = rec.turn.is_active();
+        let ended = matches!(event, ProviderEvent::Ended)
+            .then_some(stream)
+            .flatten();
         let mut slots = None;
-        if !was && may_activate(&event) {
+        if (!was && may_activate(&event)) || ended.is_some() {
             let s = Slots::load(&mut self.state);
-            active::check_room(&s)?;
+            if !was && may_activate(&event) {
+                active::check_room(&s)?;
+            }
             slots = Some(s);
         }
         let now = self.host.now();
@@ -1531,12 +1750,24 @@ impl<S: State, H: Host> Kernel<S, H> {
                 }
             }
         }
+        // 9.4: the stream's `ended` frees its slot and keys.
+        let mut freed = false;
+        if let (Some(t), Some(s)) = (ended, slots.as_mut()) {
+            freed = self.release_provider(&mut rec, t, s, &mut acct);
+        }
+        let mut saved = false;
         if was != rec.turn.is_active() {
-            let mut s = match slots {
+            let mut s = match slots.take() {
                 Some(s) => s,
                 None => Slots::load(&mut self.state),
             };
-            self.sync_active(&mut rec, &mut s, was)?;
+            saved = self.sync_active(&mut rec, &mut s, was)?;
+            slots = Some(s);
+        }
+        if freed && !saved {
+            if let Some(s) = &slots {
+                s.save(&mut self.state)?;
+            }
         }
         let changed = rec != before;
         if changed {

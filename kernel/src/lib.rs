@@ -23,7 +23,7 @@ pub use profile::{
 pub use queue::{check_input, Queue, Queued, INPUT_BYTES, QUEUE_BYTES, QUEUE_INPUTS};
 pub use quota::{
     scope, segment, Change, Limits, Metered, Scope, Usage, ACCOUNT_BYTES, OWNER_BYTES,
-    OWNER_SESSIONS, RESERVE_BYTES,
+    OWNER_PROVIDER, OWNER_SESSIONS, PROVIDER_STREAMS, RESERVE_BYTES,
 };
 pub use record::{
     check_key, check_title, Activity, Counters, Deadline, OpenAsk, Record, Stop, Turn, ALLOWS,

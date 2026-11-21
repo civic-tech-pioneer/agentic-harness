@@ -807,7 +807,7 @@ wire") are this JSON; the entry has no `activity`.
     | OpenAI, `retrying` | stays `retrying`; its `retry` deadline and timer are kept (7) and the request goes when it fires (9.5); nothing is sent at once, so no request is sent twice |
     | OpenAI, `tools` | stays `tools`; its open jobs of `idempotent` tools start again under their keys (taking job slots or waiting, as 9.5 "Slots"), the others get `aborted`; `pending` calls stay pending and start in waves as before, the first at once up to the free job slots; when no call is left open or pending, it goes to `ready` as above (9.5) |
     | OpenAI, `waiting` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
-    | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, in every state (as built), `restart` for an open one and its answer for a pending one, the turn kept; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` resumes with `session {resume}` once the kernel tracks provider streams across a restart (owed, "Code to change (a later slice)" below), as after the idle release |
+    | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, in every state (as built), `restart` for an open one and its answer for a pending one, the turn kept; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` opens a new provider stream and resumes with `session {resume}` (`persist: false`: a fresh session), as after the idle release; no slot count is decremented for it (R1 zeroed the kernel's, the owner's reads zero by its boot tag) |
 
     AGT-F-27 applies to the tool jobs of 6 (the OpenAI loop, row `tools`),
     the only calls a mod marks safe to repeat. AGT-F-10: no stored turn is
@@ -1022,13 +1022,6 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   the turn's last `Plan` update when the turn has one.
 - `turn`: `state` is the turn JSON of 9.3. `queue`: `inputs` as `queued` gives
   them. `usage`: `compact-at` is optional.
-
-**Code to change (a later slice).** Owed, and not the rule above.
-
-- Kernel, the slice that tracks provider streams across a restart: a Claude
-  session's next `say` after the idle release or a restart resumes with
-  `session {resume}` (R4, `idle` row); until then the kernel sends a fresh
-  session (`resume: false`).
 
 ### 9.5 The OpenAI loop
 

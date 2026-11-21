@@ -161,6 +161,8 @@ fn ac1_every_call_reads_the_boot_and_a_change_starts_the_pass() {
 #[test]
 fn ac2_the_pass_steps_one_session_per_firing_case_68() {
     let mut k = kernel();
+    k.limits.provider = 4096;
+    k.limits.owner_provider = 4096;
     k.limits.owner_sessions = 256;
     let mut ids = Vec::new();
     for o in 0..4 {
@@ -227,6 +229,8 @@ fn ac2_the_pass_steps_one_session_per_firing_case_68() {
 #[test]
 fn ac2_a_second_boot_change_restarts_the_pass_from_page_zero() {
     let mut k = kernel();
+    k.limits.provider = 4096;
+    k.limits.owner_provider = 4096;
     k.limits.owner_sessions = 256;
     let ids: Vec<String> = (0..300)
         .map(|n| started(&mut k, &format!("o{}", n / 200), &format!("k{n}")))
@@ -443,7 +447,7 @@ fn ac6_the_lazy_step_comes_first_in_read_and_answer_case_71() {
 }
 
 #[test]
-fn ac6_every_session_call_steps_a_stale_record_first() {
+fn ac6_every_session_call_but_delete_steps_a_stale_record_first() {
     for call in ["say", "queued", "unqueue", "rename", "delete"] {
         let mut k = kernel();
         let id = busy(&mut k);

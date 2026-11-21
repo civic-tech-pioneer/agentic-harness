@@ -108,22 +108,23 @@ pub fn add(
     Ok(page)
 }
 
-/// Drops `id` from `page` only.
+/// Drops `id` from `page` only; whether it was there (and `slots` was saved).
 pub fn remove(
     state: &mut impl State,
     slots: &mut Slots,
     id: &str,
     page: u8,
-) -> Result<(), KernelError> {
+) -> Result<bool, KernelError> {
     let mut entries = read_page(state, page);
     let Some(i) = entries.iter().position(|e| e.id == id) else {
-        return Ok(());
+        return Ok(false);
     };
     entries.remove(i);
     put(state, &page_key(page), &entries)?;
     let c = &mut slots.active[page as usize];
     *c = c.saturating_sub(1);
-    slots.save(state)
+    slots.save(state)?;
+    Ok(true)
 }
 
 pub fn set_boot(state: &mut impl State, page: u8, id: &str, boot: u64) -> Result<(), KernelError> {
