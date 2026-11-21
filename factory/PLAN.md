@@ -209,7 +209,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   nothing"; cases 60-65; AGENTS.md tests made true. User-sim ACCEPTED on run 2; adversary BREACHED
   4 then 1, fixed, HELD on pass 3. Implementer runs 1 each of 5 tasks. Gate 20 s.
 
-- **S13** S11's spec debts (PR #14, 5 min in flight). 9.4: only `attach` moves `after` to a
+- **S13** S11's spec debts (PR #14, merged 2026-11-21 00:25 UTC, 5 min in flight). 9.4: only `attach` moves `after` to a
   group's first part, `read` takes it as given (case 34); 2.3: `max` 1 to 256, 0 refused, over 256
   read as 256; 7: "A call commits whole"; 9.4: `unreadable` keeps the `i` of its place, and "Who
   makes entries". User-sim ACCEPTED (run 1); no adversary (no code, 14 unchanged). Gate 16 s.
