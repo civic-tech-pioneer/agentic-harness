@@ -63,24 +63,18 @@ Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` sect
 Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
 Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 
-### S31: the broker: session allows and rule matching (in flight (cloud), routine trig_015syzZjr3V4hrjSTH3NovQu)
+### S33: session allows fail closed (in flight (cloud), routine trig_01Ee9P9uQfzEjo5m4d2RfrMf)
 
-Story: a kernel maker runs `cargo test` in `kernel/` and asks are answered as 9.6 says, on the
-in-memory state with the fake host:
-1. An answer `{allow, for: session}` adds a session allow (the tool's name, and for a file tool
-   `Edit(<workspace>/**)`), never sent to `claude` as a rule; later matching Claude asks are
-   answered `allow` by the kernel, `by: session-allow`, as pending answers (S22 D1).
-2. Before answering from a session allow, the kernel reads `access/` for the session's profile;
-   a revoked profile makes the ask go to the owner instead (PO decision, S20).
-3. `take-back` removes the allow, writes an `allow` entry, and later matching calls ask again;
-   allows end with the session; the `allows` caps of 9.3 (64, 64 KiB, 1 KiB each).
-4. An ask with no attached owner stream, or for an `agent:` owner, is denied at once.
-5. The OpenAI matcher (deny, then ask, then allow; `Name(arg)` with `*` and `?`; strictest wins;
-   an unparsable rule disables its tool; an unnamed tool asks) as a pure function with tests;
-   kernel asks' `ask-expiry` deadline waits for stage D's loop.
-Also: the Waiting item "session allow on `Bash`" stays open; build it so an allow on `Bash` holds
-only its exact command prefix under 4.1's grammar (the recommended option), cheap to widen.
-Touches: `kernel/`, `design/TECHNICAL.md` (9.6 lines as built). Protects: *guard* (asks, access).
+Story: a kernel maker runs `cargo test` in `kernel/` and a session allow never covers more than the
+participant saw (S31 RISKs, PO decisions):
+1. No session allow is offered for `Task`, `Skill`, `WebFetch` and `WebSearch` (a bare name there
+   covers every subagent, skill, URL or query); `mcp__watane__*` keeps its bare-name allow (9.6).
+2. A `Bash` reach also pins `run_in_background` and `timeout`: an ask with another value of either
+   does not match the allow.
+3. TECHNICAL 4.1 says the host sets `allowUnsandboxedCommands: false` explicitly (Claude's default
+   is `true`; "none of" read as "key absent" is not enough), and 15 gains that watane row.
+4. `factory/gate.sh` runs `cargo fmt --check` in `kernel/` (briefs required it; the gate did not).
+Touches: `kernel/`, `design/TECHNICAL.md` (4.1, 9.6, 15), `factory/gate.sh`. Protects: *guard*.
 
 ## Sketched
 
@@ -327,6 +321,13 @@ Protects: *guard* (asks).
   (a pending id's decided ask never closed, so repeats stored without limit), fixed, HELD.
   Implementer runs 1 each of 4. Kernel 369 tests in 3.9 s; gate 29 s.
 
+- **S31** the broker (PR #34, merged 2026-11-21 07:31 UTC, 0.6 h). Session allows answer later
+  matching Claude asks (`by: session-allow`), with `access/` reread before each; `take-back`; no
+  owner stream or an `agent:` owner denies at once (`no-owner`); the OpenAI rule matcher as a pure
+  function; a `Bash` allow is the exact command (option a of Waiting). User-sim ACCEPTED (run 1);
+  adversary BREACHED 1 (a Bash allow covered `dangerouslyDisableSandbox`), fixed, HELD.
+  Implementer runs 1 each of 4. Kernel 400 tests in 3.2 s; gate 31 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -436,6 +437,11 @@ Protects: *guard* (asks).
 - 2026-11-21 The human trusted the agentic-harness folder (via the parent session); S1 goes to a
   local foreman.
 
+- 2026-11-21 S31 RISKs: no session allow for `Task`, `Skill`, `WebFetch`, `WebSearch`; a Bash
+  reach pins `run_in_background` and `timeout`; the host sets `allowUnsandboxedCommands: false`
+  explicitly (all S33; also under Waiting, as a security boundary). Accepted: `allows` changed shape
+  with no migration (nothing deployed).
+
 ## Human answers (2026-11-20, through the PO)
 
 S2 writes each into the document that owns it.
@@ -482,6 +488,11 @@ S2 writes each into the document that owns it.
   Without it the kernel cannot record what a checked provider decided. Alternative: leave the wire
   as it is and design another way to learn the outcome at stage E. Undo: one field. Blocks only
   stage B's host part.
+
+- **Session allows beyond Bash** (S31, security boundary; built fail-closed in S33). A session
+  allow on `Task`, `Skill`, `WebFetch` or `WebSearch` would cover every subagent, skill, URL or
+  query, so none is offered. Alternative: offer them as 9.6 first said (bare tool name). Rec: keep
+  them off. Undo: one rule in the reach table.
 
 ## Friction
 
