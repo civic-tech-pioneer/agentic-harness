@@ -1,6 +1,6 @@
 // TECHNICAL 18.3 (the table), 18.6: one component per row kind.
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import type { Actions, Row, ToolCall } from "../model";
+import { askArg, type Actions, type Row, type ToolCall } from "../model";
 import { AskBar } from "./askbar";
 import { DiffView } from "./diff";
 import { Disclosure } from "./disclosure";
@@ -56,29 +56,32 @@ function InputList({ input }: { input: unknown }) {
 
 export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions }) {
   const { call, ask } = row;
-  const asking = !!ask && !ask.decision;
-  const path = call.locations[0]?.path;
+  const pending = !!ask && !ask.decision;
+  const asking = pending && ask.kind === "ask";
+  const checking = pending && ask.kind === "check";
+  // 9.4: a card with an ask names the call by the ask's input, never by what the stream said
+  const path = ask ? askArg(ask.input) ?? call.locations[0]?.path : call.locations[0]?.path;
   const name = path ? `${KIND(call.kind)} ${path}` : call.title;
   const diffs = call.content.filter((c) => c.type === "diff").length;
-  const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : STATUS[call.status];
+  const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : checking ? ["Checking", "b-off"] : STATUS[call.status];
   const main = (
     <>
-      {asking ? <div className="wa-input"><div className="wa-input-label">Input</div><InputList input={ask.input} /></div> : null}
+      {ask ? <div className="wa-input"><div className="wa-input-label">Input</div><InputList input={ask.input} /></div> : null}
       {call.content.map((c, n) =>
         c.type === "diff" ? (
           <React.Fragment key={n}>
             {diffs > 1 || c.path !== path ? <div className="wa-diff-path">{c.path}</div> : null}
             <DiffView path={c.path} oldText={c.oldText} newText={c.newText} />
           </React.Fragment>)
-        : c.type === "content" && !asking ? <ProgramOutput key={n} text={c.content.text} />
+        : c.type === "content" && !pending ? <ProgramOutput key={n} text={c.content.text} />
         : null)}
-      {!asking && typeof call.rawOutput === "string" && !call.content.some((c) => c.type === "content") ? <ProgramOutput text={call.rawOutput} /> : null}
+      {!pending && typeof call.rawOutput === "string" && !call.content.some((c) => c.type === "content") ? <ProgramOutput text={call.rawOutput} /> : null}
     </>
   );
   const body = asking ? (
     <>
       <AskScroll>{main}</AskScroll>
-      <AskBar call={call} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} />
+      <AskBar call={call} askId={ask.id} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} />
     </>
   ) : main;
   const head = (
@@ -90,8 +93,8 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
     </>
   );
   return (
-    <section className={`wa-tool card${asking ? " ask" : ""}`} data-call={call.id} data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
-      <ToolCard head={head} open={call.status === "failed" || asking}>{body}</ToolCard>
+    <section className={`wa-tool card${asking ? " ask" : ""}`} data-call={call.id} data-ask={ask?.id} data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
+      <ToolCard head={head} open={call.status === "failed" || pending} initial={!!ask}>{body}</ToolCard>
     </section>
   );
 }
@@ -123,8 +126,8 @@ function AskScroll({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ToolCard({ head, open, children }: { head: React.ReactNode; open: boolean; children: React.ReactNode }) {
-  const [shown, setShown] = useState(open);
+function ToolCard({ head, open, initial, children }: { head: React.ReactNode; open: boolean; initial: boolean; children: React.ReactNode }) {
+  const [shown, setShown] = useState(open || initial);
   return (
     <>
       <button type="button" className="wa-tool-head chead" aria-expanded={shown || open} onClick={() => setShown(!shown)}>{head}</button>

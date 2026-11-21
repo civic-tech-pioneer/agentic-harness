@@ -103,7 +103,7 @@ describe("the page", () => {
     render(<App kernel={fake} info={INFO} />);
     await ready();
     await userEvent.setup().click(screen.getByRole("button", { name: /^Allow .+ this session$/ }));
-    expect(fake.calls.find((c) => c.name === "answer")?.args.slice(2)).toEqual(["e2", '{"allow":true,"for":"session"}']);
+    expect(fake.calls.find((c) => c.name === "answer")?.args.slice(2)).toEqual(["a8", '{"allow":true,"for":"session"}']);
     expect(decisionJson({ outcome: "allow" })).toBe('{"allow":true}');
     expect(decisionJson({ outcome: "deny", reason: "not now" })).toBe('{"deny":true,"reason":"not now"}');
   });

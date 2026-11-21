@@ -7,13 +7,22 @@ export type ToolContent =
   | { type: "terminal"; terminalId: string };
 export interface ToolCall { id: string; title: string; kind: ToolKind; status: ToolStatus;
   content: ToolContent[]; locations: { path: string; line?: number }[]; rawInput?: unknown; rawOutput?: unknown }
-export interface Decision { outcome: "allow"|"deny"; for?: "session"; reason?: string; by: string }
-export interface Ask { toolCallId: string; input: unknown; expiresAt: number; reach?: string; decision?: Decision }
+export interface Decision { outcome: "allow"|"deny"|"none"; for?: "session"; reason?: string; by: string }
+export interface Ask { id: string; kind: "ask"|"check"; toolCallId: string; input: unknown; expiresAt: number; reach?: string; decision?: Decision }
+/** The one argument of an ask's input the card names (9.4): `file_path`, `path`, `command`, `url`, `pattern`, in that order. */
+export function askArg(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  for (const k of ["file_path", "path", "command", "url", "pattern"]) {
+    const v = (input as Record<string, unknown>)[k];
+    if (typeof v === "string" && v !== "") return v;
+  }
+  return undefined;
+}
 export type Activity = { kind: "checking"; on?: string } | { kind: "compacting" } | { kind: "consent"; what: string };
 export type TurnState =
   | { state: "running"; activity?: Activity; since: number }
   | { state: "waiting"; asks: string[]; expiresAt: number }
-  | { state: "paused"; until: number }
+  | { state: "paused"; until?: number }
   | { state: "idle"; stop: { kind: "completed" } | { kind: "interrupted" } | { kind: "stopped"; limit: string } | { kind: "failed"; error: string } }
   | { state: "unknown" } | { state: "resume-lost" };
 export type Row =
@@ -27,7 +36,7 @@ export type Row =
   | { kind: "unknown"; key: string; i?: number; raw: unknown };
 export interface PlanItem { content: string; status: "pending"|"in_progress"|"completed" }
 /** The reducer's own bookkeeping; a reader of the view ignores it. */
-export interface Internal { skip?: boolean; thoughtAt?: number; seq?: number }
+export interface Internal { skip?: boolean; thoughtAt?: number; seq?: number; open?: { ask: Ask; title: string }[] }
 export interface SessionView {
   rows: Row[]; openAsks: string[]; turn: TurnState | null;
   queue: { n: number; input: string }[]; plan: PlanItem[] | null;
@@ -41,7 +50,7 @@ export const emptyView: SessionView = {
 };
 export interface Actions {
   say(text: string): void;
-  answer(toolCallId: string, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void;
+  answer(ask: string, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void;
   stop(): void;
   takeBack(allowId: string): void;
 }

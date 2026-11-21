@@ -22,7 +22,7 @@ const diff = (path: string, o: string | null, n: string) => [{ type: "diff", pat
 const entry = (i: number, kind: string, body: object) => w({ type: "entry", entry: { v: 1, i, kind, at: 1000, body } });
 const askOf = (id: string, kind: string, content: object[], input: object, reach?: string) => feed(
   call(id, kind === "edit" ? "Edit a.ts" : "Run it", kind, { locations: [{ path: "a.ts" }], content }),
-  entry(8, "ask", { toolCallId: id, ...(reach ? { reach } : {}), input, expiresAt: 9,
+  entry(8, "ask", { id: `a-${id}`, kind: "ask", toolCallId: id, ...(reach ? { reach } : {}), input, "expires-at": 9,
     toolCall: { toolCallId: id, title: "x", kind, status: "pending", locations: [{ path: "a.ts" }], content } }));
 const lines = (n: number, from = 1) => Array.from({ length: n }, (_, k) => `line ${from + k}`).join("\n");
 
@@ -66,7 +66,7 @@ describe("S9-1", () => {
     a.unmount();
     show(askOf("b", "execute", [], { command: "git status" }));
     expect(screen.getByText("command")).toBeInTheDocument();
-    expect(screen.getByText("git status")).toBeInTheDocument();
+    expect(within(document.querySelector(".wa-input")! as HTMLElement).getByText("git status")).toBeInTheDocument();
   });
 
   it("ac2_input_block_is_labelled_and_above_the_diff", () => {
@@ -208,7 +208,7 @@ describe("S9-1", () => {
     await u.click(screen.getByRole("button", { name: "Deny…" }));
     await u.type(screen.getByRole("textbox", { name: "Tell the agent why" }), "no");
     await u.click(screen.getByRole("button", { name: "Deny" }));
-    expect(actions.answer).toHaveBeenCalledWith("e", { outcome: "deny", reason: "no" });
+    expect(actions.answer).toHaveBeenCalledWith("a-e", { outcome: "deny", reason: "no" });
   });
 
   it("ac5_fold_buttons_have_chevrons_and_names_unchanged", async () => {
@@ -243,7 +243,7 @@ describe("S9-1", () => {
 
   it("ac6_story_e2_diff_folds", () => {
     const view = story.flat().reduce(reduce, emptyView);
-    expect(view.openAsks).toEqual(["e2"]);
+    expect(view.openAsks).toEqual(["a8"]);
     show(view);
     const card = screen.getByRole("region", { name: "Edit src/sync.ts" });
     // At least 10 unchanged lines between two changes: 3 of context on each side, so a fold of 4 or more.

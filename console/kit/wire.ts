@@ -8,7 +8,7 @@ export type Msg =
   | { t: "tool"; i: number; call: CallPatch }
   | { t: "ask"; i: number; ask: Ask; call?: CallPatch }
   | { t: "allow"; i: number; id: string; reach: string; given: boolean; by: string }
-  | { t: "verdict"; i: number; toolCallId: string; outcome: string; reasons: string[]; by: string }
+  | { t: "verdict"; i: number; toolCallId?: string; outcome: string; reasons: string[]; by: string }
   | { t: "turn"; i?: number; state: TurnState; extra: TurnExtra }
   | { t: "compaction"; i: number }
   | { t: "unreadable"; i?: number; raw: unknown }
@@ -58,9 +58,10 @@ function parseTurn(o: unknown): { state: TurnState; extra: TurnExtra } | undefin
       return { state: { state: "running", ...(activity ? { activity } : {}), since: num(o.since) ?? 0 }, extra: {} };
     }
     case "waiting":
-      if (!Array.isArray(o.asks) || num(o.expiresAt) === undefined) return undefined;
-      return { state: { state: "waiting", asks: o.asks.filter((a): a is string => typeof a === "string"), expiresAt: o.expiresAt as number }, extra: {} };
+      if (!Array.isArray(o.asks) || num(o["expires-at"]) === undefined) return undefined;
+      return { state: { state: "waiting", asks: o.asks.filter((a): a is string => typeof a === "string"), expiresAt: o["expires-at"] as number }, extra: {} };
     case "paused":
+      if (o.until === undefined) return { state: { state: "paused" }, extra: {} };
       if (num(o.until) === undefined) return undefined;
       return { state: { state: "paused", until: o.until as number }, extra: {} };
     case "idle": {
@@ -99,13 +100,13 @@ function parseEntry(e: Rec): Msg {
       return call ? { t: "tool", i, call } : bad;
     }
     case "ask": {
-      const id = str(b.toolCallId);
-      const expiresAt = num(b.expiresAt);
-      if (id === undefined || expiresAt === undefined) return bad;
-      const ask: Ask = { toolCallId: id, input: b.input, expiresAt, ...(str(b.reach) !== undefined ? { reach: b.reach as string } : {}) };
+      const askId = str(b.id), id = str(b.toolCallId);
+      const expiresAt = num(b["expires-at"]);
+      if (askId === undefined || id === undefined || expiresAt === undefined || (b.kind !== "ask" && b.kind !== "check")) return bad;
+      const ask: Ask = { id: askId, kind: b.kind, toolCallId: id, input: b.input, expiresAt, ...(b.kind === "ask" && str(b.reach) !== undefined ? { reach: b.reach as string } : {}) };
       const d = b.decision;
       if (isRec(d)) {
-        if ((d.outcome !== "allow" && d.outcome !== "deny") || str(d.by) === undefined) return bad;
+        if ((d.outcome !== "allow" && d.outcome !== "deny" && d.outcome !== "none") || str(d.by) === undefined) return bad;
         ask.decision = { outcome: d.outcome, by: d.by as string, ...(d.for === "session" ? { for: "session" as const } : {}), ...(str(d.reason) !== undefined ? { reason: d.reason as string } : {}) };
       }
       // the tool call's own id is ignored: the ask's `toolCallId` names the row
@@ -119,9 +120,9 @@ function parseEntry(e: Rec): Msg {
     }
     case "verdict": {
       const id = str(b.toolCallId), outcome = str(b.outcome), by = str(b.by);
-      if (id === undefined || outcome === undefined || by === undefined) return bad;
+      if (outcome === undefined || by === undefined || (id === undefined && b.on !== "input")) return bad;
       const reasons = Array.isArray(b.reasons) ? b.reasons.filter((r): r is string => typeof r === "string") : [];
-      return { t: "verdict", i, toolCallId: id, outcome, reasons, by };
+      return { t: "verdict", i, ...(id !== undefined ? { toolCallId: id } : {}), outcome, reasons, by };
     }
     case "turn": {
       const t = parseTurn(b);

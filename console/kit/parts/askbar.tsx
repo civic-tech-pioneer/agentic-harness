@@ -4,10 +4,10 @@ import type { Actions, ToolCall } from "../model";
 
 const QUESTION: Record<string, string> = { edit: "Allow this edit?", execute: "Allow this command?" };
 
-export function AskBar({ call, reach, actions }: { call: ToolCall; reach?: string; actions: Actions }) {
+export function AskBar({ call, askId, reach, actions }: { call: ToolCall; askId: string; reach?: string; actions: Actions }) {
   const [denying, setDenying] = useState(false);
   const [reason, setReason] = useState("");
-  const id = call.id;
+  const id = askId;
   const denyBtn = useRef<HTMLButtonElement>(null);
   const closeDeny = () => { setDenying(false); queueMicrotask(() => denyBtn.current?.focus()); };
   return (

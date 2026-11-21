@@ -102,7 +102,7 @@ describe("rows", () => {
 
 const asking = () => feed(
   call("e2", "Edit src/sync.ts", "edit", { locations: [{ path: "src/sync.ts" }], content: diff("src/sync.ts", "a", "b") }),
-  entry(8, "ask", { toolCallId: "e2", reach: "edits in src", input: { file_path: "src/sync.ts", note: "hi" }, expiresAt: 9,
+  entry(8, "ask", { id: "a-e2", kind: "ask", toolCallId: "e2", reach: "edits in src", input: { file_path: "src/sync.ts", note: "hi" }, "expires-at": 9,
     toolCall: { toolCallId: "e2", title: "Edit src/sync.ts", kind: "edit", status: "pending", locations: [{ path: "src/sync.ts" }], content: diff("src/sync.ts", "a", "b") } }));
 
 describe("ask", () => {
@@ -114,23 +114,23 @@ describe("ask", () => {
     expect(screen.getByText("b").parentElement).toHaveAttribute("data-diff", "add");
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Allow once" }));
-    expect(actions.answer).toHaveBeenLastCalledWith("e2", { outcome: "allow" });
+    expect(actions.answer).toHaveBeenLastCalledWith("a-e2", { outcome: "allow" });
     await u.click(screen.getByRole("button", { name: "Allow edits in src this session" }));
-    expect(actions.answer).toHaveBeenLastCalledWith("e2", { outcome: "allow", for: "session" });
+    expect(actions.answer).toHaveBeenLastCalledWith("a-e2", { outcome: "allow", for: "session" });
     await u.click(screen.getByRole("button", { name: "Deny…" }));
     await u.type(screen.getByRole("textbox", { name: "Tell the agent why" }), "no thanks");
     await u.click(screen.getByRole("button", { name: "Deny" }));
-    expect(actions.answer).toHaveBeenLastCalledWith("e2", { outcome: "deny", reason: "no thanks" });
+    expect(actions.answer).toHaveBeenLastCalledWith("a-e2", { outcome: "deny", reason: "no thanks" });
   });
 
   it("ac5_non_edit_ask_without_diff_still_shows_its_input", () => {
-    show(feed(call("b1", "Run ls", "execute"), entry(9, "ask", { toolCallId: "b1", input: { command: "ls -la" }, expiresAt: 9 })));
+    show(feed(call("b1", "Run ls", "execute"), entry(9, "ask", { id: "a-b1", kind: "ask", toolCallId: "b1", input: { command: "ls -la" }, "expires-at": 9 })));
     expect(screen.getByText("command")).toBeInTheDocument();
-    expect(screen.getByText("ls -la")).toBeInTheDocument();
+    expect(within(document.querySelector(".wa-input")! as HTMLElement).getByText("ls -la")).toBeInTheDocument();
   });
 
   it("ac5_no_reach_no_session_allow_button", () => {
-    show(feed(call("e3", "Edit notes", "edit"), entry(9, "ask", { toolCallId: "e3", input: {}, expiresAt: 9 })));
+    show(feed(call("e3", "Edit notes", "edit"), entry(9, "ask", { id: "a-e3", kind: "ask", toolCallId: "e3", input: {}, "expires-at": 9 })));
     expect(screen.getByRole("button", { name: "Allow once" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /this session/ })).toBeNull();
   });
@@ -151,7 +151,7 @@ describe("ask", () => {
 
 describe("other rows", () => {
   it("ac6_decision_line_names_who_what_and_reason", () => {
-    show(feed(entry(3, "ask", { toolCallId: "t", input: {}, expiresAt: 1, decision: { outcome: "deny", reason: "too broad", by: "alice" } })));
+    show(feed(entry(3, "ask", { id: "a-t", kind: "ask", toolCallId: "t", input: {}, "expires-at": 1, decision: { outcome: "deny", reason: "too broad", by: "alice" } })));
     const el = document.querySelector(".wa-decision")!;
     expect(el.textContent).toContain("alice");
     expect(el.textContent).toContain("Denied");
@@ -205,6 +205,8 @@ describe("other rows", () => {
 
 describe("StatusLine", () => {
   const T = 1_700_000_000_000;
+  const askE = (i: number, id: string, title: string, kind: string, path?: string) =>
+    entry(i, "ask", { id: `a-${id}`, kind: "ask", toolCallId: id, input: {}, "expires-at": 9, toolCall: { toolCallId: id, title, kind, status: "pending", ...(path ? { locations: [{ path }] } : {}) } });
   const status = (turn: object | null, o: { stopping?: boolean; rows?: string[]; asks?: string[] } = {}) => {
     const view = { ...feed(...(o.rows ?? [])), turn: turn as SessionView["turn"], openAsks: o.asks ?? [] };
     const actions = mk(); const onNeedsYou = vi.fn();
@@ -272,8 +274,8 @@ describe("StatusLine", () => {
   });
 
   it("ac9_waiting_diamond_time_left_needs_you", async () => {
-    const rows = [call("a", "Edit file", "edit", { locations: [{ path: "src/sync.ts" }] }), call("b", "Edit other", "edit", { locations: [{ path: "x.ts" }] })];
-    status({ state: "waiting", asks: ["a", "b"], expiresAt: T + 72_000 }, { rows, asks: ["a", "b"] });
+    const rows = [call("a", "Edit file", "edit"), askE(1, "a", "Edit file", "edit", "src/sync.ts"), call("b", "Edit other", "edit"), askE(2, "b", "Edit other", "edit", "x.ts")];
+    status({ state: "waiting", asks: ["a-a", "a-b"], expiresAt: T + 72_000 }, { rows, asks: ["a-a", "a-b"] });
     expect(word()).toBe("Waiting for you · Edit src/sync.ts");
     expect(shape()).toBe("diamond");
     expect(screen.getByText("· denied in 1:00 if unanswered")).toHaveAttribute("aria-hidden", "true");
@@ -281,7 +283,7 @@ describe("StatusLine", () => {
   });
 
   it("ac9_waiting_subject_falls_back_to_the_title_and_the_clock_stops_at_zero", () => {
-    status({ state: "waiting", asks: ["t"], expiresAt: T + 5_000 }, { rows: [call("t", "Run npm test", "execute")], asks: ["t"] });
+    status({ state: "waiting", asks: ["a-t"], expiresAt: T + 5_000 }, { rows: [call("t", "Run npm test", "execute"), askE(1, "t", "Run npm test", "execute")], asks: ["a-t"] });
     expect(word()).toBe("Waiting for you · Execute Run npm test");
     expect(screen.getByText("· denied in 0:00 if unanswered")).toBeInTheDocument();
   });

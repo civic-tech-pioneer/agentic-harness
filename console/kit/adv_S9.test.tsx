@@ -19,7 +19,7 @@ const toolCall = (id: string, path: string, oldText: string, newText: string) =>
   ({ sessionUpdate: "tool_call", toolCallId: id, title: `Edit ${path}`, kind: "edit", status: "pending",
     locations: [{ path }], content: [{ type: "diff", path, oldText, newText }] });
 const ask = (i: number, id: string, input: object, call: object) =>
-  w({ type: "entry", entry: { v: 1, i, kind: "ask", at: 1000, body: { toolCallId: id, input, expiresAt: 9, toolCall: { ...call, toolCallId: id } } } });
+  w({ type: "entry", entry: { v: 1, i, kind: "ask", at: 1000, body: { id: `a-${id}`, kind: "ask", toolCallId: id, input, "expires-at": 9, toolCall: { ...call, toolCallId: id } } } });
 const card = () => screen.getByRole("region").textContent ?? "";
 
 describe("adversary S9: an edit ask hides part of the call that will run", () => {

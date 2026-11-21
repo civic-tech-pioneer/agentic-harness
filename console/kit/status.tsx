@@ -31,8 +31,7 @@ function askSubject(view: SessionView): string {
   const id = view.openAsks[0];
   let call: ToolCall | undefined;
   for (const r of view.rows) {
-    if (r.kind === "tool" && r.call.id === id) call = r.call;
-    else if (r.kind === "explored") call = r.calls.find((c) => c.id === id) ?? call;
+    if (r.kind === "tool" && r.ask?.id === id) call = r.call;
   }
   if (!call) return "";
   const kind = call.kind.charAt(0).toUpperCase() + call.kind.slice(1);
@@ -52,7 +51,7 @@ function spec(view: SessionView, now: number, onNeedsYou: () => void): Spec {
       return { word: runningWord(view.rows), shape: "dot", clock: clk, esc: true };
     }
     case "waiting": return { word: `Waiting for you${askSubject(view)}`, shape: "diamond", clock: `denied in ${clock(t.expiresAt - now)} if unanswered` };
-    case "paused": return { word: `Paused until ${hhmm(t.until)}`, shape: "bars", act: { label: "Resume now" } };
+    case "paused": return { word: t.until === undefined ? "Paused" : `Paused until ${hhmm(t.until)}`, shape: "bars", act: { label: "Resume now" } };
     case "idle":
       if (t.stop.kind === "stopped") return { word: `Stopped at the ${t.stop.limit}`, shape: "ring" };
       if (t.stop.kind === "failed") return { word: `Failed: ${t.stop.error}`, shape: "triangle", act: { label: "Try again" } };
