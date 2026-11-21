@@ -74,6 +74,21 @@ Outcomes:
    (S11 RISK); `read` with `max` 0 is refused `refused` until 2.3 says otherwise.
 Touches: `kernel/` only. Protects: *guard*.
 
+## Sketched
+
+### S12: the kernel catches up with the spec (in flight (cloud), routine trig_01Cphn1mCUbFd5BzkjqNq1fQ)
+
+Story: a kernel maker runs `cargo test` in `kernel/` and the code does what S6 and S11 left as
+"code to change".
+Outcomes:
+1. `RUNNERS` holds every refused first word and runtime prefix 4.1 names (S6); a test reads 4.1's
+   list from TECHNICAL and fails on a word the code lacks.
+2. Skill frontmatter continuation lines may not contain `:` (S6, 9.2).
+3. An `unreadable` line keeps the index of its place, never one it claims (S11 RISK).
+4. `append` takes only the adapters' entry kinds and refuses `part` and unknown kinds from callers
+   (S11 RISK); `read` with `max` 0 is refused `refused` until 2.3 says otherwise.
+Touches: `kernel/` only. Protects: *guard*.
+
 ### S13: spec debts from S11 (in flight (cloud), routine trig_01H5yP3RqsVZPNTjp2nzzTmX)
 
 Outcomes: 9.4 reads "`attach` with an `after` that falls inside a group starts at the group's
@@ -100,7 +115,8 @@ an item with a bad `tool_use_id` or `expires-at`, a `wrapped` item, and a `verdi
 item on a direct stream read as `unknown`; strict line reading (no lossy UTF-8); hook and progress
 lines give nothing; no `options` list; the ask entry with `toolCallId`, `toolCall`, `reach`; the
 ask pushed once as its entry; `ask-resolved` as a decision entry repeating the ask; `thought` on a
-message; `_meta.watane.at` on live updates. Each with a fixture.
+message; `_meta.watane.at` on live updates; S13: `read` with `max` 0 is refused with the field
+`max`. Each with a fixture.
 Touches: `kernel/` only. Protects: *guard* (asks) and *core*.
 
 ### S15: the console reads the wire S10 wrote (cloud, after S9 merges: same files)
@@ -192,6 +208,11 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   any watane item (or not one UTF-8 JSON object) goes out as `{"type":"wrapped"}`; 9.8 "Give
   nothing"; cases 60-65; AGENTS.md tests made true. User-sim ACCEPTED on run 2; adversary BREACHED
   4 then 1, fixed, HELD on pass 3. Implementer runs 1 each of 5 tasks. Gate 20 s.
+
+- **S13** S11's spec debts (PR #14, 5 min in flight). 9.4: only `attach` moves `after` to a
+  group's first part, `read` takes it as given (case 34); 2.3: `max` 1 to 256, 0 refused, over 256
+  read as 256; 7: "A call commits whole"; 9.4: `unreadable` keeps the `i` of its place, and "Who
+  makes entries". User-sim ACCEPTED (run 1); no adversary (no code, 14 unchanged). Gate 16 s.
 
 ## Deputy decisions
 
