@@ -27,20 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S1: the open probes of section 18 (in flight (local), session ca562ebb, sessionId ca562ebb-cc22-47f9-87b4-678d2159efcc)
-
-Story: a maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on the Mac and sees, for the
-current `claude`, (subagent-slash) whether a subagent prompt that starts with `/` runs a skill the profile
-denies, and (loopback) whether the shell grant's sandbox blocks a connection to loopback.
-Outcomes:
-1. `probes.py` runs each new probe by its name, alone, and prints a result line like the others.
-2. Proposal section 18 gains rows V26 and V27 with the result, the `claude` version and the
-   effect on the design; TECHNICAL 14's "not probed" line is not edited here (S2 owns it).
-3. A breach (either one runs or connects) is written as the design effect and flagged to the PO.
-Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` section 18 only.
-Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
-Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
-
 ### S34: scope keys for session allows, and `host-info.generation()` (in flight (cloud), routine trig_01VPZiRzn5SThNRtdbsqy9o8)
 
 Story: the human's answers of 2026-11-21 in the contract and the kernel.
@@ -333,6 +319,13 @@ it builds against S96's branch or the host 19 text).
   `allowUnsandboxedCommands: false`; the gate runs `cargo fmt --check`. User-sim ACCEPTED; adversary
   BREACHED 1 (an absolute Glob pattern escaped a workspace allow), fixed, HELD. Kernel 411 tests.
 
+- **S1** the open probes of section 18 (PR #37, local foreman, merged 2026-11-21 08:31 UTC,
+  1 h 39 min). A maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on
+  the Mac: V26 held (a leading `/` in a subagent prompt runs no skill; a `Skill` deny stops it);
+  V27 BREACH (an allowlisted `localhost` reaches loopback through the sandbox's proxy; LAN and
+  link-local behind any allowlisted name too), under Waiting. User-sim ACCEPTED; adversary
+  BREACHED 1 (recorded as the finding), HELD on the fix. Gate 247 s on the Mac.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -600,6 +593,9 @@ S2 writes each into the document that owns it.
   it needs, thinly" was read as "within this repository"; a story that needs another project
   should be one story with a half per project, started together. Worth a line in the po skill:
   a slice whose story names only a test run ("a kernel maker runs `cargo test`") is a layer slice.
+
+- 2026-11-21 S1 (local): `test:slow` not run on the Mac (no global playwright); `probes.py` exits 0
+  even when an expectation fails. Local foreman worked once the folder was trusted.
 
 ## Suite time
 
