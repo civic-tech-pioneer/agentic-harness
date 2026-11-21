@@ -1,6 +1,8 @@
 // TECHNICAL 18.5: the status line, one shape per state; only the word and its subject are live.
 import { useId } from "react";
 import { cardName, type Actions, Row, SessionView } from "./model";
+import { openAsk } from "./reduce";
+import { answeredWords } from "./parts/askbar";
 
 type Shape = "dot" | "square" | "diamond" | "bars" | "ring" | "dashed-ring" | "triangle" | "loading";
 const NAMES: Record<Shape, string> = { dot: "Running", square: "Checking", diamond: "Waiting for you", bars: "Paused", ring: "Idle", "dashed-ring": "Not running", triangle: "Failed", loading: "Loading" };
@@ -36,7 +38,7 @@ function askSubject(view: SessionView): string {
   return "";
 }
 
-function spec(view: SessionView, now: number, onNeedsYou: () => void): Spec {
+function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: number): Spec {
   const t = view.turn;
   if (!t) return view.loading ? { word: "Loading", shape: "loading" } : { word: "Idle", shape: "ring" };
   switch (t.state) {
@@ -48,7 +50,12 @@ function spec(view: SessionView, now: number, onNeedsYou: () => void): Spec {
       if (a?.kind === "consent") return { word: "Waiting for your answer in watane", shape: "diamond", act: { label: "Open the question", run: onNeedsYou } };
       return { word: runningWord(view.rows), shape: "dot", clock: clk, esc: true };
     }
-    case "waiting": return { word: `Waiting for you${askSubject(view)}`, shape: "diamond", clock: `denied in ${clock(t.expiresAt - now)} if unanswered` };
+    case "waiting": {
+      // every open ask answered by this console: the cards' own words, no countdown; else the next ask's own `expires-at`
+      if (answered > 0 && view.openAsks.length === 0) return { word: answeredWords(false), shape: "diamond" };
+      const next = view.openAsks[0] === undefined ? undefined : openAsk(view, view.openAsks[0]);
+      return { word: `Waiting for you${askSubject(view)}`, shape: "diamond", clock: `denied in ${clock((next?.expiresAt ?? t.expiresAt) - now)} if unanswered` };
+    }
     case "paused": return { word: t.until === undefined ? "Paused" : `Paused until ${hhmm(t.until)}`, shape: "bars", act: { label: "Resume now" } };
     case "idle":
       if (t.stop.kind === "stopped") return { word: `Stopped at the ${t.stop.limit}`, shape: "ring" };
@@ -59,12 +66,13 @@ function spec(view: SessionView, now: number, onNeedsYou: () => void): Spec {
   }
 }
 
-export function StatusLine(props: { view: SessionView; now: number; stopping: boolean; actions: Actions; onNeedsYou: () => void }) {
+export function StatusLine(props: { view: SessionView; now: number; stopping: boolean; actions: Actions; onNeedsYou: () => void;
+  /** How many open asks this console answered that `view` already leaves out of `openAsks` (App's `shown`). */ answered?: number }) {
   const { view, now, stopping } = props;
   const noKernel = useId();
   const s: Spec = stopping && view.turn?.state !== "idle"
     ? { word: "Stopping…", shape: "dot" }
-    : spec(view, now, props.onNeedsYou);
+    : spec(view, now, props.onNeedsYou, props.answered ?? 0);
   return (
     <div className="wa-status" data-state={view.turn?.state ?? "none"}>
       <span className="wa-shape" data-shape={s.shape} role="img" aria-label={NAMES[s.shape]} />

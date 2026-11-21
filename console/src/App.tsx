@@ -160,7 +160,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
           </div>
           <Dock view={shown} actions={actions} onNeedsYou={needsYou} needsHidden={needsHidden} behind={behind && !atEnd.current} onBehind={toTheEnd} session={{ model: info.model, mode: info.mode }} stopping={stopping}
-            status={<StatusLine view={shown} now={now} stopping={stopping} actions={actions} onNeedsYou={needsYou} />} />
+            status={<StatusLine view={shown} answered={view.openAsks.length - shown.openAsks.length} now={now} stopping={stopping} actions={actions} onNeedsYou={needsYou} />} />
         </ThreadProvider>
       </main>
     </div>
