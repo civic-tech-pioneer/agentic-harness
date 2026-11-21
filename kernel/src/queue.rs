@@ -39,6 +39,15 @@ pub fn check_input(input: &str) -> Result<(), KernelError> {
     Ok(())
 }
 
+/// The bytes an input takes in `queue/<id>` and the queue push: its JSON string form, escapes
+/// included (9.3 Sizes); the two surrounding quotes are framing, not counted.
+fn stored_len(input: &str) -> usize {
+    serde_json::to_string(input)
+        .expect("a string serializes")
+        .len()
+        - 2
+}
+
 impl Queue {
     pub fn key_of(id: &str) -> String {
         format!("queue/{id}")
@@ -67,8 +76,8 @@ impl Queue {
     }
 
     pub fn push(&mut self, input: String) -> Result<u64, KernelError> {
-        let total: usize = self.inputs.iter().map(|q| q.input.len()).sum();
-        if self.inputs.len() >= QUEUE_INPUTS || total + input.len() > QUEUE_BYTES {
+        let total: usize = self.inputs.iter().map(|q| stored_len(&q.input)).sum();
+        if self.inputs.len() >= QUEUE_INPUTS || total + stored_len(&input) > QUEUE_BYTES {
             return Err(KernelError::QueueFull);
         }
         let n = self.next;

@@ -42,15 +42,24 @@ fn adv_s21_queue_of_escaped_inputs_passes_the_host_value() {
     assert!(input.len() <= INPUT_BYTES);
     assert!(serde_json::from_str::<serde_json::Value>(&input).is_ok());
     assert!(8 * input.len() <= QUEUE_BYTES);
+    let mut full = false;
     for n in 1..=8u64 {
-        let r = k.say("alice", &id, &format!("q{n}"), &input);
-        assert_eq!(
-            r.map(|c| c.value),
-            Ok(n),
-            "input {n} of 8 (2 MiB in all) refused"
+        match k.say("alice", &id, &format!("q{n}"), &input) {
+            Ok(_) => {}
+            Err(KernelError::QueueFull) => full = true,
+            Err(e) => panic!("input {n}: {e:?}, not Ok or QueueFull"),
+        }
+        let stored = k.state.get(&format!("queue/{id}")).map_or(0, |b| b.len());
+        assert!(
+            stored <= QUEUE_BYTES + 65_536,
+            "stored queue {stored} bytes"
         );
+        let pushed = serde_json::to_vec(&Queue::load(&mut k.state, &id).push_value())
+            .unwrap()
+            .len();
+        assert!(pushed <= QUEUE_BYTES + 65_536, "queue push {pushed} bytes");
     }
-    assert_eq!(k.queued("alice", &id).unwrap().len(), 8);
+    assert!(full, "escape-heavy inputs never reached QueueFull");
 }
 
 /// 9.1 `access/<identity>`: "the profile names this client may use"; AGT-F-1: only the
@@ -77,4 +86,35 @@ fn adv_s21_start_uses_a_profile_the_client_has_no_access_to() {
         matches!(&r, Err(KernelError::Refused(_))),
         "a client with no access started a session: {r:?}"
     );
+}
+
+/// S21-fix1 AC2: the cap counts stored bytes. Control characters escape 6x (`\u0001`).
+#[test]
+fn ac2_queue_cap_counts_stored_bytes() {
+    let mut k = kernel();
+    let id = k.start("alice", "k0", "p", "{}", IN).unwrap().value;
+    // raw control characters: 256 KiB / 6 of them stored as 6 bytes each
+    let raw = format!("[\"{}\"]", "\u{1}".repeat(INPUT_BYTES - 4));
+    assert!(raw.len() <= INPUT_BYTES);
+    let mut res = Vec::new();
+    for n in 1..=3 {
+        res.push(k.say("alice", &id, &format!("c{n}"), &raw));
+    }
+    assert!(
+        res.iter().any(|r| matches!(r, Err(KernelError::QueueFull))),
+        "{res:?}"
+    );
+    let stored = k.state.get(&format!("queue/{id}")).unwrap().len();
+    assert!(stored <= QUEUE_BYTES + 65_536, "{stored}");
+    // plain text still fits 8 inputs
+    let mut k = kernel();
+    let id = k.start("alice", "k0", "p", "{}", IN).unwrap().value;
+    let plain = format!("[\"{}\"]", "a".repeat(INPUT_BYTES - 64 - 4));
+    for n in 1..=8u64 {
+        assert_eq!(
+            k.say("alice", &id, &format!("p{n}"), &plain)
+                .map(|c| c.value),
+            Ok(n)
+        );
+    }
 }
