@@ -822,7 +822,8 @@ repeats every field of the ask and adds:
 `by` is `owner`; `session-allow`; `checked` (the checked provider); `kernel`
 (a kernel ask's expiry, `timers`, no owner stream, `cancel`, `restart`); or `host` (a
 Claude ask the host resolved: `reason` is the host's `by`, `expired` or
-`cancelled`). Repeating the ask lets a page that starts at the decision show
+`cancelled`; an answer the kernel did not make on a `direct: true` stream has
+no `reason`, 9.8). Repeating the ask lets a page that starts at the decision show
 the card.
 
 - Indexes start at 1, increase by one, never change. Deltas are never
@@ -996,8 +997,9 @@ these places (S14 built the rest).
   `unreadable`.
 - Kernel, a later slice: an `ask-resolved` with `by: answered` closes the open
   ask or check with no entry when the kernel answered it itself, and
-  otherwise gives the decision entry with the item's `outcome` (S19 reads it
-  as `unknown`; 9.8).
+  otherwise gives the decision entry with the item's `outcome` (`by: checked`
+  on a `direct: false` stream, else `host`); a missing or bad `outcome`, or
+  `none` on an ask, is `unknown` (S19 reads every `answered` as `unknown`; 9.8).
 
 ### 9.5 The OpenAI loop
 
@@ -1154,7 +1156,7 @@ Give nothing (no update, no entry): Claude `system` `init`, `status`,
 `response.reasoning_summary_text.done`,
 `response.function_call_arguments.delta`/`.done`. Then: a `wrapped` item; an
 `ask` or `check` item whose `tool_use_id` is not a non-empty string, whose
-`expires-at` is not a whole number from 0 to 2^64 - 1, or whose `input` is not
+`tool` is not a string, whose `expires-at` is not a whole number from 0 to 2^64 - 1, or whose `input` is not
 a JSON object;
 an `ask` or `check` item whose `id` is that of an ask or check still open on
 the session (the open one is not changed); and, on a `direct: true` stream, a `verdict` or
