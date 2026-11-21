@@ -428,3 +428,197 @@ fn ac1_invalid_bytes_are_escaped_and_nothing_is_parsed() {
         assert!(!text.contains(concat!("from_utf8", "_lossy")));
     }
 }
+
+fn ask_line(kind: &str, id: &str, call: &str, tool: &str, input: Value) -> Value {
+    json!({"type": kind, "id": id, "tool": tool, "input": input, "tool_use_id": call, "expires-at": 9})
+}
+
+fn body_of(out: &[Out]) -> Value {
+    let e = out[0].entry.as_ref().expect("an entry");
+    serde_json::to_value(e).unwrap()["body"].clone()
+}
+
+fn kind_of(out: &[Out]) -> Value {
+    serde_json::to_value(out[0].entry.as_ref().unwrap()).unwrap()["kind"].clone()
+}
+
+#[test]
+fn ac1_toolcall_kind_by_tool() {
+    let rows = [
+        ("Read", "read"),
+        ("Edit", "edit"),
+        ("MultiEdit", "edit"),
+        ("Write", "edit"),
+        ("NotebookEdit", "edit"),
+        ("Bash", "execute"),
+        ("Grep", "search"),
+        ("Glob", "search"),
+        ("WebFetch", "fetch"),
+        ("WebSearch", "fetch"),
+        ("mcp__x__y", "other"),
+        ("Task", "other"),
+        ("ExitPlanMode", "other"),
+        ("Whatever", "other"),
+    ];
+    for (tool, kind) in rows {
+        for item in ["ask", "check"] {
+            let mut a = ClaudeAdapter::new();
+            let out = line(&mut a, ask_line(item, "i", "c", tool, json!({"a": 1})));
+            assert_eq!(body_of(&out)["toolCall"]["kind"], kind, "{item} {tool}");
+        }
+    }
+}
+
+#[test]
+fn ac2_edit_write_multiedit_diffs() {
+    let mut a = ClaudeAdapter::new();
+    let edit = json!({"file_path": "/w/a", "old_string": "x", "new_string": "y"});
+    let b = body_of(&line(
+        &mut a,
+        ask_line("ask", "1", "c1", "Edit", edit.clone()),
+    ));
+    assert_eq!(
+        b["toolCall"]["content"],
+        json!([{"type": "diff", "path": "/w/a", "oldText": "x", "newText": "y"}])
+    );
+    assert_eq!(b["toolCall"]["rawInput"], edit);
+    assert_eq!(b["input"], edit);
+
+    let w = json!({"file_path": "/w/b", "content": "hi"});
+    let b = body_of(&line(&mut a, ask_line("check", "2", "c2", "Write", w)));
+    assert_eq!(
+        b["toolCall"]["content"],
+        json!([{"type": "diff", "path": "/w/b", "newText": "hi"}])
+    );
+
+    let m = json!({"file_path": "/w/c", "edits": [
+        {"old_string": "a", "new_string": "b"}, {"old_string": "c", "new_string": "d"}]});
+    let b = body_of(&line(&mut a, ask_line("ask", "3", "c3", "MultiEdit", m)));
+    assert_eq!(
+        b["toolCall"]["content"],
+        json!([
+            {"type": "diff", "path": "/w/c", "oldText": "a", "newText": "b"},
+            {"type": "diff", "path": "/w/c", "oldText": "c", "newText": "d"}
+        ])
+    );
+
+    // no other tool gets content
+    let b = body_of(&line(&mut a, ask_line("ask", "4", "c4", "Bash", edit)));
+    assert!(b["toolCall"].get("content").is_none());
+}
+
+#[test]
+fn ac2_bad_fields_give_no_content_but_still_an_ask() {
+    let bad = [
+        ("Edit", json!({"file_path": "/w", "old_string": "x"})),
+        (
+            "Edit",
+            json!({"file_path": 1, "old_string": "x", "new_string": "y"}),
+        ),
+        (
+            "Edit",
+            json!({"file_path": "/w", "old_string": "x", "new_string": 2}),
+        ),
+        ("Write", json!({"file_path": "/w"})),
+        ("MultiEdit", json!({"file_path": "/w", "edits": "no"})),
+        (
+            "MultiEdit",
+            json!({"file_path": "/w", "edits": [{"old_string": "a"}]}),
+        ),
+    ];
+    for (i, (tool, input)) in bad.into_iter().enumerate() {
+        let mut a = ClaudeAdapter::new();
+        let b = body_of(&line(
+            &mut a,
+            ask_line("ask", "i", "c", tool, input.clone()),
+        ));
+        assert_eq!(b["kind"], "ask", "{i}");
+        assert!(b["toolCall"].get("content").is_none(), "{i}");
+        assert_eq!(b["toolCall"]["rawInput"], input);
+        assert_eq!(b["input"], input);
+    }
+}
+
+#[test]
+fn ac3_conflicting_ask_or_check_on_an_open_call_is_unknown() {
+    for second in ["ask", "check"] {
+        let mut a = ClaudeAdapter::new();
+        let first = ask_line(
+            "ask",
+            "1",
+            "c",
+            "Edit",
+            json!({"file_path": "/w", "old_string": "a", "new_string": "b"}),
+        );
+        assert_eq!(kind_of(&line(&mut a, first)), "ask");
+        let other = ask_line(
+            second,
+            "2",
+            "c",
+            "Edit",
+            json!({"file_path": "/w", "old_string": "a", "new_string": "z"}),
+        );
+        let out = line(&mut a, other.clone());
+        assert_eq!(kind_of(&out), "unknown");
+        assert_eq!(body_of(&out)["raw"], other);
+        // another tool, same input
+        let out = line(
+            &mut a,
+            ask_line(
+                second,
+                "3",
+                "c",
+                "Write",
+                json!({"file_path": "/w", "old_string": "a", "new_string": "b"}),
+            ),
+        );
+        assert_eq!(kind_of(&out), "unknown");
+        // the open one is unchanged: its id is still held open
+        let again = line(
+            &mut a,
+            ask_line(
+                "ask",
+                "1",
+                "c",
+                "Edit",
+                json!({"file_path": "/w", "old_string": "a", "new_string": "b"}),
+            ),
+        );
+        assert_eq!(kind_of(&again), "unknown");
+    }
+}
+
+#[test]
+fn ac3_same_call_check_then_ask_are_both_asks() {
+    let mut a = ClaudeAdapter::new();
+    let input = json!({"command": "ls"});
+    assert_eq!(
+        kind_of(&line(
+            &mut a,
+            ask_line("check", "1", "c", "Bash", input.clone())
+        )),
+        "ask"
+    );
+    assert_eq!(
+        kind_of(&line(&mut a, ask_line("ask", "2", "c", "Bash", input))),
+        "ask"
+    );
+}
+
+#[test]
+fn ac3_after_resolution_another_input_is_an_ask_again() {
+    let mut a = ClaudeAdapter::new();
+    line(
+        &mut a,
+        ask_line("ask", "1", "c", "Bash", json!({"command": "ls"})),
+    );
+    line(
+        &mut a,
+        json!({"type": "ask-resolved", "id": "1", "by": "cancelled"}),
+    );
+    let out = line(
+        &mut a,
+        ask_line("ask", "2", "c", "Bash", json!({"command": "pwd"})),
+    );
+    assert_eq!(kind_of(&out), "ask");
+}

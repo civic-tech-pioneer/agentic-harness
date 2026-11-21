@@ -284,6 +284,7 @@
             "toolCall": {
               "toolCallId": "toolu_01Bash",
               "title": "Bash",
+              "kind": "execute",
               "rawInput": {
                 "command": "rm -rf build"
               }
@@ -307,10 +308,18 @@
             "toolCall": {
               "toolCallId": "toolu_01Write",
               "title": "Write",
+              "kind": "edit",
               "rawInput": {
                 "file_path": "/work/x",
                 "content": "x"
-              }
+              },
+              "content": [
+                {
+                  "type": "diff",
+                  "path": "/work/x",
+                  "newText": "x"
+                }
+              ]
             },
             "input": {
               "file_path": "/work/x",
@@ -350,6 +359,7 @@
             "toolCall": {
               "toolCallId": "toolu_01Bash3",
               "title": "Bash",
+              "kind": "execute",
               "rawInput": {
                 "command": "rm -rf build"
               }

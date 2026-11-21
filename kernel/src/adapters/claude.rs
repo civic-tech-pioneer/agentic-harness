@@ -3,8 +3,9 @@
 use std::collections::HashMap;
 
 use agent_client_protocol_schema::v1::{
-    ContentBlock, ContentChunk, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus, SessionUpdate,
-    ToolCall, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
+    ContentBlock, ContentChunk, Diff, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus,
+    SessionUpdate, ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
+    ToolKind,
 };
 use claude_codes::io::ContentBlock as ClaudeBlock;
 use claude_codes::io::ToolResultContent;
@@ -358,9 +359,22 @@ impl ClaudeAdapter {
         if self.open.contains_key(&id.to_string()) {
             return vec![unknown(v.clone())];
         }
+        let conflicts = self.open.values().any(|b| {
+            str_of(b, "toolCallId") == Some(call_id)
+                && (str_of(&b["toolCall"], "title") != Some(tool) || b["input"] != input)
+        });
+        if conflicts {
+            return vec![unknown(v.clone())];
+        }
+        let mut tool_call = json!({
+            "toolCallId": call_id, "title": tool, "kind": tool_kind(tool), "rawInput": input,
+        });
+        if let Some(diffs) = diffs_of(tool, &input) {
+            tool_call["content"] = json!(diffs);
+        }
         let body = json!({
             "id": id, "kind": kind, "toolCallId": call_id,
-            "toolCall": {"toolCallId": call_id, "title": tool, "rawInput": input},
+            "toolCall": tool_call,
             "input": input, "expires-at": expires,
         });
         self.open.insert(id.to_string(), body.clone());
@@ -457,6 +471,47 @@ fn has_duplicate_key(text: &str) -> bool {
     serde_json::Deserializer::from_str(text)
         .deserialize_map(V)
         .unwrap_or(false)
+}
+
+/// The ACP `ToolKind` of a Claude tool name (9.8).
+fn tool_kind(tool: &str) -> ToolKind {
+    match tool {
+        "Read" => ToolKind::Read,
+        "Edit" | "MultiEdit" | "Write" | "NotebookEdit" => ToolKind::Edit,
+        "Bash" => ToolKind::Execute,
+        "Grep" | "Glob" => ToolKind::Search,
+        "WebFetch" | "WebSearch" => ToolKind::Fetch,
+        _ => ToolKind::Other,
+    }
+}
+
+/// The ACP diffs an `Edit`, `Write` or `MultiEdit` input describes; `None` for any other tool or a bad input (9.8).
+fn diffs_of(tool: &str, input: &Value) -> Option<Vec<ToolCallContent>> {
+    let path = str_of(input, "file_path")?;
+    let diff = |old: Option<&str>, new: &str| {
+        let mut d = Diff::new(path, new);
+        d.old_text = old.map(str::to_string);
+        ToolCallContent::Diff(d)
+    };
+    match tool {
+        "Edit" => Some(vec![diff(
+            Some(str_of(input, "old_string")?),
+            str_of(input, "new_string")?,
+        )]),
+        "Write" => Some(vec![diff(None, str_of(input, "content")?)]),
+        "MultiEdit" => input
+            .get("edits")?
+            .as_array()?
+            .iter()
+            .map(|e| {
+                Some(diff(
+                    Some(str_of(e, "old_string")?),
+                    str_of(e, "new_string")?,
+                ))
+            })
+            .collect(),
+        _ => None,
+    }
 }
 
 fn ask_entry(body: Value) -> Out {

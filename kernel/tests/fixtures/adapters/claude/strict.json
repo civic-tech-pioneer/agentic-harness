@@ -185,6 +185,7 @@
             "toolCall": {
               "toolCallId": "toolu_1",
               "title": "Bash",
+              "kind": "execute",
               "rawInput": {
                 "a": 2
               }
@@ -270,6 +271,7 @@
             "toolCall": {
               "toolCallId": "toolu_1",
               "title": "Bash",
+              "kind": "execute",
               "rawInput": {
                 "command": "ls"
               }
