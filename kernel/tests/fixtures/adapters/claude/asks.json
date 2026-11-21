@@ -551,28 +551,15 @@
     ],
     [
       {
-        "entry": {
-          "kind": "ask",
-          "body": {
+        "resolved": {
+          "id": "ask-1",
+          "by": "expired",
+          "outcome": null,
+          "direct": true,
+          "raw": {
+            "type": "ask-resolved",
             "id": "ask-1",
-            "kind": "ask",
-            "toolCallId": "toolu_01Bash",
-            "toolCall": {
-              "toolCallId": "toolu_01Bash",
-              "title": "Bash",
-              "rawInput": {
-                "command": "rm -rf build"
-              }
-            },
-            "input": {
-              "command": "rm -rf build"
-            },
-            "expires-at": 1763600060000,
-            "decision": {
-              "outcome": "deny",
-              "by": "host",
-              "reason": "expired"
-            }
+            "by": "expired"
           }
         }
       }
@@ -593,30 +580,15 @@
     ],
     [
       {
-        "entry": {
-          "kind": "ask",
-          "body": {
+        "resolved": {
+          "id": "chk-1",
+          "by": "cancelled",
+          "outcome": null,
+          "direct": true,
+          "raw": {
+            "type": "ask-resolved",
             "id": "chk-1",
-            "kind": "check",
-            "toolCallId": "toolu_01Write",
-            "toolCall": {
-              "toolCallId": "toolu_01Write",
-              "title": "Write",
-              "rawInput": {
-                "file_path": "/work/x",
-                "content": "x"
-              }
-            },
-            "input": {
-              "file_path": "/work/x",
-              "content": "x"
-            },
-            "expires-at": 1763600060000,
-            "decision": {
-              "outcome": "deny",
-              "by": "host",
-              "reason": "cancelled"
-            }
+            "by": "cancelled"
           }
         }
       }

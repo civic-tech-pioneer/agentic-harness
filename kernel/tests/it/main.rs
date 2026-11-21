@@ -6,6 +6,7 @@ mod adv_s11;
 mod adv_s14;
 mod adv_s21;
 mod adversary;
+mod asks;
 mod check;
 mod errors;
 mod example;

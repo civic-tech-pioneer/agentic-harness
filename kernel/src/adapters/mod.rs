@@ -33,6 +33,22 @@ pub struct Out {
     /// `idle {completed}`.
     #[serde(skip_serializing_if = "is_false")]
     pub idle: bool,
+    /// An `ask-resolved` the adapter checked; the kernel writes the decision (9.8 rule 4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved: Option<Resolved>,
+}
+
+/// A host `ask-resolved` item of good shape: what the adapter reports, the kernel decides.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Resolved {
+    pub id: String,
+    /// `answered`, `expired` or `cancelled`.
+    pub by: String,
+    /// Of `answered`: `allow`, `deny` or `none`.
+    pub outcome: Option<String>,
+    /// The stream is the host's own (`true`), or a checked provider's (`false`, 10).
+    pub direct: bool,
+    pub raw: Value,
 }
 
 /// An entry of 9.4 without `v`, `i`, `at`.

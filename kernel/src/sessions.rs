@@ -11,7 +11,10 @@ use crate::check::check;
 use crate::error::{KernelError, Refusal};
 use crate::profile::{parse_profile, Backend};
 use crate::queue::{check_input, Queue, Queued};
-use crate::record::{check_key, check_title, OpenAsk, Record, Stop, Turn, ID_BYTES};
+use crate::record::{
+    check_key, check_title, OpenAsk, PendingAnswer, Record, Stop, Turn, ALLOW_BYTES, ID_BYTES,
+    OPEN_ASKS,
+};
 use crate::state::State;
 use crate::transcript::{Joiner, NewEntry, Page, Transcript, MAX_CHUNKS};
 use serde::de::DeserializeOwned;
@@ -105,6 +108,8 @@ impl Host for FakeHost {
 pub enum ProviderEvent {
     Out(adapters::Out),
     Turn(Turn),
+    /// The provider's stream ended: every open or pending ask closes (9.8 rule 4).
+    Ended,
 }
 
 /// A call's result and the `_meta.watane` pushes it caused, in order.
@@ -349,26 +354,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         let stale_streams = std::mem::take(&mut rec.streams);
         let driven = rec.backend == "claude"
             && matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. });
+        // Every open or pending ask closes, whatever the turn state; a driven turn ends `unknown`.
+        if self.close_all_with(rec, "restart", now, work, !driven)? {
+            rec.updated = now;
+        }
         if driven {
-            for o in std::mem::take(&mut rec.open) {
-                rec.deadlines.retain(|d| d.what != format!("ask {}", o.id));
-                let Some(mut body) = self.ask_body(rec, o.i) else {
-                    continue;
-                };
-                let Some(obj) = body.as_object_mut() else {
-                    continue;
-                };
-                obj.insert(
-                    "decision".into(),
-                    json!({"outcome": "deny", "by": "kernel", "reason": "restart"}),
-                );
-                let entry = NewEntry {
-                    kind: "ask".into(),
-                    uuid: None,
-                    body,
-                };
-                self.append(rec, entry, now)?;
-            }
             self.turn_to(rec, Turn::Unknown, now, work)?;
             rec.updated = now;
             self.sync_active(rec, slots, true)?;
@@ -574,6 +564,122 @@ impl<S: State, H: Host> Kernel<S, H> {
             };
             self.turn_to(rec, t, now, work)?;
         }
+        Ok(())
+    }
+
+    /// Writes the one decision entry of the ask at `i`: its entry repeated, with `decision`.
+    fn write_decision(
+        &mut self,
+        rec: &mut Record,
+        i: u64,
+        decision: Value,
+        now: u64,
+    ) -> Result<(), KernelError> {
+        let Some(mut body) = self.ask_body(rec, i) else {
+            return Ok(());
+        };
+        let Some(obj) = body.as_object_mut() else {
+            return Ok(());
+        };
+        obj.insert("decision".into(), decision);
+        let entry = NewEntry {
+            kind: "ask".into(),
+            uuid: None,
+            body,
+        };
+        self.append(rec, entry, now)?;
+        Ok(())
+    }
+
+    /// The kernel's own closing step (`ended`, R4, `cancel`): each pending answer becomes its
+    /// decision, each open ask or check `deny, by: kernel, reason`; both end empty.
+    fn close_all(
+        &mut self,
+        rec: &mut Record,
+        reason: &str,
+        now: u64,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
+        self.close_all_with(rec, reason, now, work, true)
+            .map(|_| ())
+    }
+
+    /// `close_all`; `follow` lets a `waiting` turn follow (R4 sets its own turn). Whether any closed.
+    fn close_all_with(
+        &mut self,
+        rec: &mut Record,
+        reason: &str,
+        now: u64,
+        work: &mut Work,
+        follow: bool,
+    ) -> Result<bool, KernelError> {
+        let any = !rec.open.is_empty() || !rec.pending_answers.is_empty();
+        for o in std::mem::take(&mut rec.open) {
+            rec.deadlines.retain(|d| d.what != format!("ask {}", o.id));
+            let d = json!({"outcome": "deny", "by": "kernel", "reason": reason});
+            self.write_decision(rec, o.i, d, now)?;
+        }
+        for (_, p) in std::mem::take(&mut rec.pending_answers) {
+            self.write_decision(rec, p.i, p.decision(), now)?;
+        }
+        if any && follow && matches!(rec.turn, Turn::Waiting { .. }) {
+            let t = Turn::Running {
+                since: now,
+                activity: None,
+            };
+            self.turn_to(rec, t, now, work)?;
+        }
+        Ok(any)
+    }
+
+    /// An `ask-resolved` the adapter checked (9.8 rule 4): the ask's one decision entry.
+    fn resolve(
+        &mut self,
+        rec: &mut Record,
+        r: adapters::Resolved,
+        now: u64,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
+        let open = rec.open.iter().find(|o| o.id == r.id).cloned();
+        let pending = rec.pending_answers.get(&r.id).cloned();
+        let (i, kind) = match (&open, &pending) {
+            (Some(o), _) => (o.i, o.kind.clone()),
+            (None, Some(p)) => (p.i, p.kind.clone()),
+            (None, None) => return self.unknown_entry(rec, r.raw, now),
+        };
+        let outcome = r.outcome.as_deref();
+        let good = match r.by.as_str() {
+            "answered" => match outcome {
+                Some("deny") => true,
+                Some("none") => kind == "check",
+                Some("allow") => kind == "ask",
+                _ => false,
+            },
+            "expired" | "cancelled" => outcome.is_none(),
+            _ => false,
+        };
+        if !good {
+            return self.unknown_entry(rec, r.raw, now);
+        }
+        let decision = match (r.by.as_str(), outcome) {
+            ("answered", Some(o)) => match &pending {
+                Some(p) if p.outcome == o => p.decision(),
+                _ => json!({"outcome": o, "by": if r.direct { "host" } else { "checked" }}),
+            },
+            _ => json!({"outcome": "deny", "by": "host", "reason": r.by}),
+        };
+        self.write_decision(rec, i, decision, now)?;
+        if open.is_some() {
+            self.close_ask(rec, &r.id, now, work)
+        } else {
+            rec.pending_answers.remove(&r.id);
+            Ok(())
+        }
+    }
+
+    fn unknown_entry(&mut self, rec: &mut Record, raw: Value, now: u64) -> Result<(), KernelError> {
+        let e = adapters::unknown(raw).entry.expect("unknown has an entry");
+        self.append(rec, NewEntry::from(e), now)?;
         Ok(())
     }
 
@@ -816,32 +922,35 @@ impl<S: State, H: Host> Kernel<S, H> {
             .cloned()
             .ok_or_else(|| refused("ask", "no open ask with this id"))?;
         let unreadable = || refused("ask", "the ask entry is unreadable");
-        let mut body = self.ask_body(&rec, open.i).ok_or_else(unreadable)?;
-        let Some(obj) = body.as_object_mut() else {
-            return Err(unreadable());
+        let body = self.ask_body(&rec, open.i).ok_or_else(unreadable)?;
+        if rec.pending_answers.len() >= OPEN_ASKS {
+            return Err(KernelError::Busy(format!(
+                "{OPEN_ASKS} pending answers per session"
+            )));
+        }
+        let pending = PendingAnswer {
+            i: open.i,
+            kind: open.kind.clone(),
+            outcome: if d.allow { "allow" } else { "deny" }.to_string(),
+            by: "owner".to_string(),
+            for_: d.for_session.then(|| "session".to_string()),
+            reason: d.reason.clone(),
         };
+        let size = serde_json::to_vec(&pending)
+            .expect("an answer serializes")
+            .len();
+        if size > ALLOW_BYTES {
+            return Err(KernelError::TooLarge(ALLOW_BYTES as u64));
+        }
         if d.for_session {
-            let Some(reach) = obj.get("reach").and_then(Value::as_str) else {
+            let Some(reach) = body.get("reach").and_then(Value::as_str) else {
                 return Err(refused("decision", "this ask offers no session allow"));
             };
             rec.add_allow(Value::String(reach.to_string()))?;
         }
-        let mut dec = json!({"outcome": if d.allow { "allow" } else { "deny" }, "by": "owner"});
-        if d.for_session {
-            dec["for"] = json!("session");
-        }
-        if let Some(r) = &d.reason {
-            dec["reason"] = json!(r);
-        }
-        obj.insert("decision".into(), dec);
         let now = self.host.now();
-        let entry = NewEntry {
-            kind: "ask".into(),
-            uuid: None,
-            body,
-        };
-        self.append(&mut rec, entry, now)?;
         self.close_ask(&mut rec, ask, now, &mut work)?;
+        rec.pending_answers.insert(ask.to_string(), pending);
         work.requests.push(Request::Answer {
             session: rec.id.clone(),
             ask: ask.to_string(),
@@ -997,9 +1106,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut work = Work::default();
         match event {
             ProviderEvent::Turn(t) => self.change_turn(&mut rec, t, now, &mut work)?,
+            ProviderEvent::Ended => self.close_all(&mut rec, "ended", now, &mut work)?,
             ProviderEvent::Out(out) => {
                 if let Some(e) = out.entry {
                     self.out_entry(&mut rec, e, now, &mut work)?;
+                }
+                if let Some(r) = out.resolved {
+                    self.resolve(&mut rec, r, now, &mut work)?;
                 }
                 if out.idle {
                     let idle = Turn::Idle {
@@ -1051,6 +1164,17 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         }
         let kind = body.get("kind").and_then(Value::as_str).unwrap_or("ask");
+        if rec.open.len() + rec.pending_answers.len() >= OPEN_ASKS {
+            // Past the cap: denied at once, so a closing call writes at most 64 decisions.
+            let d = json!({"outcome": "deny", "by": "kernel", "reason": "busy"});
+            self.write_decision(rec, i, d, now)?;
+            work.requests.push(Request::Answer {
+                session: rec.id.clone(),
+                ask: id.to_string(),
+                decision: json!({"deny": true, "reason": "busy"}),
+            });
+            return Ok(());
+        }
         let mine = body.get("expires-at").and_then(Value::as_u64);
         rec.open.push(OpenAsk {
             id: id.to_string(),
@@ -1130,5 +1254,6 @@ fn may_activate(e: &ProviderEvent) -> bool {
     match e {
         ProviderEvent::Turn(t) => t.is_active(),
         ProviderEvent::Out(o) => o.entry.as_ref().is_some_and(|e| e.kind == Kind::Ask),
+        ProviderEvent::Ended => false,
     }
 }
