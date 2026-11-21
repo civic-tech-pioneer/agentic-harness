@@ -763,7 +763,7 @@ the card.
 - Reading an entry of an older `v` upgrades it in memory; an unknown `kind`
   or newer `v` reads as `{"kind": "unreadable", "raw": …}`. An `unreadable`
   entry is `{"v":<its v>,"i":<i>,"kind":"unreadable","at":<at>?,"raw":<the
-  stored JSON>}` and keeps its `i` (and `at` when it has one), so paging, replay from
+  stored JSON>}` and keeps the `i` of its place (below; and `at` when it has one), so paging, replay from
   `i + 1` and the drop of shown indexes (18.3) still hold. Nothing is
   migrated in bulk. The index is the one of the line's place: its chunk's
   first index (the record's `chunks`, 9.1) plus the line's position in the
@@ -901,7 +901,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 - Kernel, S12: live updates carry `_meta.watane.at`.
 
 **Code to change (S14).** The transcript rules above differ from the code in
-one place; S12 covers the rest (outcome 3: the `unreadable` index, R4;
+one place; S12 covers the rest (outcome 3: the `unreadable` index;
 outcome 4: `append` takes only the adapters' kinds, `read` with `max` 0 is
 refused). `read` with `max` over 256 already reads as 256, and `attach`'s
 group start and a call committing whole need no code.
