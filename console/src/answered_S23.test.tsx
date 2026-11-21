@@ -77,11 +77,16 @@ describe("S23-1 answered, waiting", () => {
   });
 
   it("ac4_a_refused_answer_gives_the_bar_back_with_one_line", async () => {
-    await open({ refuseAnswer: "busy" });
+    const { f } = await open({ refuseAnswer: "busy" });
     await userEvent.setup().click(screen.getByRole("button", { name: "Allow once" }));
     await waitFor(() => expect(within(card("e2")).getByRole("button", { name: "Allow once" })).toBeInTheDocument());
     expect(within(card("e2")).getByRole("alert")).toHaveTextContent("The answer was not taken");
     expect(card("e2")).toHaveAttribute("data-asking");
+    await screen.findByRole("button", { name: "Needs you (1)" });
+    // a kernel that throws before it returns a promise: the card and Needs you agree all the same
+    f.answer = (() => { throw new Error("busy"); }) as typeof f.answer;
+    await userEvent.setup().click(within(card("e2")).getByRole("button", { name: "Allow once" }));
+    await waitFor(() => expect(within(card("e2")).getByRole("button", { name: "Allow once" })).toBeInTheDocument());
     await screen.findByRole("button", { name: "Needs you (1)" });
   });
 
@@ -156,6 +161,18 @@ describe("S23-1 RISK (a) and the pill", () => {
       h.top = 900; fireEvent.scroll(scroller);
       await stream(f, h, 5, "two");
       expect(h.top).toBe(h.h - 300);
+    } finally { unrig(); }
+  });
+
+  it("ac6_the_hold_ends_once_focus_went_elsewhere_even_if_it_drops_to_the_body_again", async () => {
+    const { f, scroller, h } = await start();
+    try {
+      press(scroller);
+      act(() => screen.getByRole("textbox", { name: "Message" }).focus()); // she moved away from the card
+      act(() => (document.activeElement as HTMLElement).blur()); // then pressed on plain text: focus is on the body again
+      h.top = 600; fireEvent.scroll(scroller);
+      await stream(f, h, 4, "one");
+      expect(h.top).toBe(h.h - 300); // the follow resumed
     } finally { unrig(); }
   });
 

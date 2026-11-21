@@ -45,7 +45,9 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: (id, d) => {
       setAnswered((a) => new Set(a).add(id));
-      return kernel.answer(info.id, `c${Date.now()}-${sent++}`, id, decisionJson(d)).catch((e) => {
+      let p: Promise<void>;
+      try { p = kernel.answer(info.id, `c${Date.now()}-${sent++}`, id, decisionJson(d)); } catch (e) { p = Promise.reject(e); } // a throw before the promise is a refusal too: the set and the card agree
+      return p.catch((e) => {
         if (!isAskRefusal(e)) setAnswered((a) => { const n = new Set(a); n.delete(id); return n; }); // "already decided" keeps it: the decision entry is on its way
         throw e;
       });

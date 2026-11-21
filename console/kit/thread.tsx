@@ -158,13 +158,16 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
       if (t === e || (t.closest?.("[data-asking]") && !t.closest(FOCUSABLE))) held.set(e, a);
     };
     e.addEventListener("mousedown", onPress);
+    // focus that went to any element ends the hold, even if it drops to the body again later
+    const doc = e.ownerDocument, onAnyFocus = () => { held.delete(e); };
+    doc.addEventListener("focusin", onAnyFocus);
     const onFocusEnd = () => { focusEnd.current = true; nearEnd.current = true; tick(); };
     e.addEventListener(FOCUS_END, onFocusEnd);
     // the page's one resize observer (App) tells the scroller when the column changed size: a fold opened, a font came in
     const onResize = () => { if (measure()) tick(); };
     e.addEventListener(MEASURE, onResize);
     tick(); // the viewport is known now
-    return () => { e.removeEventListener("scroll", onScroll); e.removeEventListener("focusin", onFocus); e.removeEventListener("mousedown", onPress); e.removeEventListener(FOCUS_END, onFocusEnd); e.removeEventListener(MEASURE, onResize); scroller.current = null; };
+    return () => { e.removeEventListener("scroll", onScroll); e.removeEventListener("focusin", onFocus); e.removeEventListener("mousedown", onPress); doc.removeEventListener("focusin", onAnyFocus); e.removeEventListener(FOCUS_END, onFocusEnd); e.removeEventListener(MEASURE, onResize); scroller.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
