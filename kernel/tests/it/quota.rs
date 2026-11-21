@@ -356,6 +356,8 @@ fn ac4_delete_frees_without_reading_the_chunks_case_59() {
 #[test]
 fn ac5_an_owner_holds_at_most_64_sessions() {
     let mut k = kernel();
+    k.limits.provider = 4096;
+    k.limits.owner_provider = 4096;
     let ids: Vec<String> = (0..64)
         .map(|n| start(&mut k, "alice", &format!("k{n}")))
         .collect();
@@ -374,6 +376,8 @@ fn ac5_an_owner_holds_at_most_64_sessions() {
 #[test]
 fn ac5_a_cap_past_256_opens_more_owner_pages() {
     let mut k = kernel();
+    k.limits.provider = 4096;
+    k.limits.owner_provider = 4096;
     k.limits.owner_sessions = 300;
     let ids: Vec<String> = (0..300)
         .map(|n| start(&mut k, "alice", &format!("k{n}")))
@@ -751,7 +755,13 @@ fn ac11_the_bounds_hold() {
     k.provider(&s1, message("hello")).unwrap();
     assert_eq!(
         sorted(&k),
-        ["entries/s1/0", "quota", "quota/alice", "session/s1"]
+        [
+            "entries/s1/0",
+            "quota",
+            "quota/alice",
+            "session/s1",
+            "stream/t1"
+        ]
     );
     assert_eq!(k.state.counts().puts, 4);
     k.state.reset_counts();
@@ -850,6 +860,8 @@ fn cause<T: std::fmt::Debug>(r: Result<T, KernelError>) -> String {
 #[test]
 fn ac3_the_sessions_cap_is_named() {
     let mut k = kernel();
+    k.limits.provider = 4096;
+    k.limits.owner_provider = 4096;
     for n in 0..64 {
         start(&mut k, "alice", &format!("k{n}"));
     }

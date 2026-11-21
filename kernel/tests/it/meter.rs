@@ -29,6 +29,7 @@ fn ac2_usage_roundtrip_and_json() {
         bytes: 5,
         sessions: 2,
         pages: vec![],
+        ..Usage::default()
     };
     u.save(&mut st, "quota").unwrap();
     assert_eq!(st.get("quota").unwrap(), br#"{"bytes":5,"sessions":2}"#);
@@ -37,6 +38,7 @@ fn ac2_usage_roundtrip_and_json() {
         bytes: 1,
         sessions: 0,
         pages: vec![1, 2],
+        ..Usage::default()
     };
     p.save(&mut st, "quota/o").unwrap();
     assert_eq!(
