@@ -706,7 +706,6 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 | `allows` | at most 64 session allows and 64 KiB in all, each at most 1 KiB (its tool and key) | an answer `for: session` is refused `too-large(65536)`; the ask stays open |
 | `chunks` | 16 384 chunk starts, 8 bytes each (u64), so 128 KiB of the 512 KiB record | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
 | `streams` | 10 ids | – (the slots of 9.5 allow no more; an owner stream that `attach` replaces leaves `streams` in that `attach`, not at its `ended`) |
-| `hop` | absent, or when the session timer, armed short of a deadline over 30 days out, fires (2.1, 7): that firing finds nothing due and arms the rest | – |
 | `probe` | absent, or a probe session's `{n, count, every-ms}` (9.9) | – |
 | `live` | the id `live/<session>` holds (9.1), or absent: the session's live owner stream, kept in the record too so a call that has the record pushes without reading that key (an item call that only forwards a delta has no record and reads the key, 9.4). `attach` sets both, and the stream's end, `lagging`, `replaced`, R4 and `delete` clear both in the same call | – |
 | `deadlines` | 64 | – (an open ask past the 61st is denied `timers`, below) |

@@ -218,9 +218,6 @@ pub struct Record {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live: Option<String>,
     pub deadlines: Vec<Deadline>,
-    /// When the session timer, armed short of a deadline over 30 days out, fires (2.1, 7).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hop: Option<u64>,
     /// A probe session's run (9.9); `None` for every other session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub probe: Option<Probe>,
@@ -256,7 +253,6 @@ impl Default for Record {
             streams: Vec::new(),
             live: None,
             deadlines: Vec::new(),
-            hop: None,
             probe: None,
             open: Vec::new(),
             pending_answers: BTreeMap::new(),
