@@ -162,7 +162,7 @@ impl<'a, S: State> Transcript<'a, S> {
             Some(b) => b.saturating_sub(1).min(last),
             None => last,
         };
-        let lo = after + 1;
+        let lo = after.saturating_add(1);
         let mut out: Vec<String> = Vec::new();
         if lo > hi || self.meta.chunks.is_empty() {
             return Page { entries: out, last };
