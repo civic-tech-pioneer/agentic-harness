@@ -13,6 +13,13 @@ const IN: &str = r#"[{"type":"text","text":"hi"}]"#;
 fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
+    // The host is at boot 1 and the kernel has seen it: no restart pass starts (R1).
+    Slots {
+        boot: 1,
+        ..Slots::default()
+    }
+    .save(&mut st)
+    .unwrap();
     let host = FakeHost {
         boot: 1,
         now: 1000,
@@ -566,7 +573,7 @@ fn ac6_answer_shapes_and_effects() {
     );
     assert_eq!(
         c.pushes[0]["state"],
-        json!({"state": "waiting", "asks": ["a2"], "expires-at": 5000})
+        json!({"state": "waiting", "asks": ["a2"], "expires-at": 6000})
     );
     let es = entries(&mut k, "alice", &id);
     let dec = es.iter().rev().find(|e| e["kind"] == "ask").unwrap();
