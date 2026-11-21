@@ -39,9 +39,7 @@ per turn; the quota refusal says "this mod's agent sessions are at their limit" 
 kernel's shared account (14 "A session is private"); spec lines for each in 9.3.
 Touches: `kernel/`, `design/TECHNICAL.md` (9.3). Protects: *core* (*guard* for the S25 items).
 
-## Sketched
-
-### S23: the console after S7: answered asks, its risks and rough edges (cloud, after S7 and S27 merge: console/)
+### S23: the console after S7: answered asks, its risks and rough edges (in flight (cloud), routine trig_01YMS4jWtoufvUniEj7XkoYk)
 
 Outcomes:
 1. An ask with a pending answer (S22 D1) shows "Answered, waiting" in place of its bar until its
@@ -62,6 +60,8 @@ A UI slice: its PR opens without auto-merge; the PO compares and arms it. The S9
 adversaries' held cases are acceptance. Watch `npm test` time: 16.4 s on a loaded 4-core cloud
 machine at S27 against S7's 14.5 s budget; S23 sets the highlight budget per block (18.6).
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
+
+## Sketched
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -264,7 +264,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   BREACHED 2 (the stream carried a focused ask card out of view), fixed, HELD; earlier held cases
   kept. Implementer runs 1 each, fix5 2. Suite: long fixture in `npm test`; budget 14.5 s.
 
-- **S27** the console's rules after S7 in the contract (PR #30, ~8 min). 18.2: the reducer's view
+- **S27** the console's rules after S7 in the contract (PR #30, merged 2026-11-21 04:53 UTC, ~8 min). 18.2: the reducer's view
   is what the transcript draws, the runtime gets the newest 100 rows; 18.6 Place: no follow while
   focus is in an open ask's card, Needs you ends it, the pill resumes it, a pointer press on the
   scrollbar or the card's text does not count as leaving (S23 builds it); 18.6 "Long sessions":
