@@ -53,3 +53,9 @@ None.
 ## Out of scope
 
 Product code; the page-scroll fix (S7-fix4).
+
+## Decision (foreman, after round 2)
+
+AC1 is judged at 14.5 s (red test `BUDGET_S`) and AC2 at 4 s: no flake in `long_S7` came first (default
+workers, a settle wait before each sample: 0 failures in 25 full runs), which costs 0.9 s in that file. The
+growth (npm test ~1.5x main) is reported, so the next console slice moves tests down first.
