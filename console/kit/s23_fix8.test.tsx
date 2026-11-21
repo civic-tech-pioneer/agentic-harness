@@ -14,17 +14,18 @@ const ask = (i: number, id: string) =>
 const mk = (): Actions => ({ say: vi.fn(), answer: vi.fn(), stop: vi.fn(), takeBack: vi.fn() });
 
 describe("s23 fix8", () => {
-  it("ac2_a_shrinking_card_ends_in_a_bounded_number_of_renders", async () => {
-    // a scroller whose scrollTop clamps like a browser's: 0 .. scrollHeight - clientHeight
-    let sh = 1000, top = 0, sets = 0;
+  // slack: the browser's real maximum may sit below scrollHeight - clientHeight (rounding): a write that moves nothing must not render again
+  it.each([[350, 0], [450, 2]])("ac2_a_shrinking_card_ends_in_a_bounded_number_of_renders (to %i, slack %i)", async (shrunk, slack) => {
+    // a scroller whose scrollTop clamps like a browser's: 0 .. scrollHeight - clientHeight - slack
+    let sh = 1000, top = 0, sets = 0, asked = 0;
     const proto = HTMLElement.prototype;
     const desc = (n: string) => Object.getOwnPropertyDescriptor(proto, n);
     const saved = { sh: desc("scrollHeight"), ch: desc("clientHeight"), st: desc("scrollTop") };
     Object.defineProperty(proto, "scrollHeight", { configurable: true, get() { return this.classList.contains("wa-scroll") ? sh : 0; } });
     Object.defineProperty(proto, "clientHeight", { configurable: true, get() { return this.classList.contains("wa-scroll") ? 400 : 0; } });
     Object.defineProperty(proto, "scrollTop", { configurable: true,
-      get() { return this.classList.contains("wa-scroll") ? Math.min(top, Math.max(0, sh - 400)) : 0; },
-      set(v: number) { if (this.classList.contains("wa-scroll")) { sets++; top = Math.min(Math.max(0, v), Math.max(0, sh - 400)); } } });
+      get() { return this.classList.contains("wa-scroll") ? Math.min(top, Math.max(0, sh - 400 - slack)) : 0; },
+      set(v: number) { if (this.classList.contains("wa-scroll")) { sets++; asked = Math.max(asked, v); top = Math.min(Math.max(0, v), Math.max(0, sh - 400 - slack)); } } });
     try {
       let renders = 0;
       const Count = () => { renders++; return null; };
@@ -33,11 +34,12 @@ describe("s23 fix8", () => {
       const ui = <div className="wa-scroll"><ThreadProvider view={v} actions={a}><Transcript view={v} actions={a} /><Count /></ThreadProvider></div>;
       const r = render(ui);
       await act(async () => { top = 84; r.container.querySelector(".wa-scroll")!.dispatchEvent(new Event("scroll")); });
-      sh = 350; // the content shrinks below the anchor's place
-      renders = 0; sets = 0;
+      sh = shrunk; // the content shrinks below the anchor's place
+      renders = 0; sets = 0; asked = 0;
       await act(async () => { r.rerender(<div className="wa-scroll"><ThreadProvider view={v} actions={{ ...a }}><Transcript view={v} actions={{ ...a }} /><Count /></ThreadProvider></div>); });
       expect(renders).toBeLessThan(20);
       expect(sets).toBeLessThan(10);
+      expect(asked).toBeLessThanOrEqual(Math.max(0, sh - 400)); // never asks past what the content can reach
     } finally {
       for (const [n, d] of [["scrollHeight", saved.sh], ["clientHeight", saved.ch], ["scrollTop", saved.st]] as const) {
         if (d) Object.defineProperty(proto, n, d); else delete (proto as unknown as Record<string, unknown>)[n];
