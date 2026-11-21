@@ -1012,7 +1012,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut work = Work::default();
         if let Ok(mut slots) = self.begin() {
             if id == RESTART {
-                // A failed step leaves the pass where it is: the next call or firing retries it.
+                // A firing that still fails (its page or `slots` cannot be written) re-arms nothing.
                 let _ = self.restart_firing(&mut slots, &mut work);
             }
         }
@@ -1042,7 +1042,14 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             Some(mut rec) if rec.boot < slots.boot => {
                 rec.active_page = Some(page);
-                self.step(&mut rec, slots, work)?;
+                let mut done = Work::default();
+                if self.step(&mut rec, slots, &mut done).is_ok() {
+                    work.pushes.append(&mut done.pushes);
+                } else if rec.active_page.is_some() {
+                    // A step that fails must not stall the pass: its entry counts as current, and
+                    // the record, still of an older boot, does its step when a call reads it (R6).
+                    active::set_boot(&mut self.state, page, &entry.id, slots.boot)?;
+                }
                 saved = rec.active_page.is_none();
             }
             Some(_) => active::set_boot(&mut self.state, page, &entry.id, slots.boot)?,

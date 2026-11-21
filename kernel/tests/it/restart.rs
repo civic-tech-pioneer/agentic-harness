@@ -181,13 +181,17 @@ fn ac2_the_pass_steps_one_session_per_firing_case_68() {
         let before = k.host.calls.len();
         let c = k.timer("restart");
         firings += 1;
-        let pages = k
+        // the 4 pages at most, each read once by the search and once more by the step's removal
+        let mut pages: Vec<&String> = k
             .state
             .get_keys()
             .iter()
             .filter(|x| x.starts_with("active/"))
-            .count();
-        assert!(pages <= 6, "{pages}");
+            .collect();
+        assert!(pages.len() <= 5, "{pages:?}");
+        pages.sort();
+        pages.dedup();
+        assert!(pages.len() <= 4, "{pages:?}");
         assert!(k.state.counts().bytes_read < 96 * 1024 + 8 * 1024);
         let new = &k.host.calls[before..];
         if new.contains(&HostCall::TimerCancel {
@@ -245,6 +249,20 @@ fn ac2_a_second_boot_change_restarts_the_pass_from_page_zero() {
 fn ac3_the_step_settles_a_claude_turn_case_69() {
     let mut k = kernel();
     let id = busy(&mut k);
+    // an open check is denied too (fail closed), in the same decision shape
+    k.provider(
+        &id,
+        ProviderEvent::Out(Out {
+            entry: Some(Entry {
+                kind: Kind::Ask,
+                uuid: None,
+                body: json!({"id": "c1", "kind": "check", "toolCallId": "t2",
+                    "toolCall": {"toolCallId": "t2", "title": "Bash"}, "input": {}}),
+            }),
+            ..Out::default()
+        }),
+    )
+    .unwrap();
     restart_host(&mut k, 2);
     let c = k.timer("restart");
     assert_eq!(
@@ -265,12 +283,22 @@ fn ac3_the_step_settles_a_claude_turn_case_69() {
         .iter()
         .filter(|e| e["kind"] == "ask" && e["body"]["decision"].is_object())
         .collect();
-    assert_eq!(denied.len(), 2);
-    assert_eq!(
-        denied[0]["body"]["decision"],
-        json!({"outcome": "deny", "by": "kernel", "reason": "restart"})
-    );
+    assert_eq!(denied.len(), 3);
+    for d in &denied {
+        assert_eq!(
+            d["body"]["decision"],
+            json!({"outcome": "deny", "by": "kernel", "reason": "restart"})
+        );
+    }
     assert_eq!(denied[0]["body"]["reach"], "Edit(/w/**)");
+    assert_eq!(
+        (
+            denied[2]["body"]["id"].as_str(),
+            denied[2]["body"]["kind"].as_str()
+        ),
+        (Some("c1"), Some("check"))
+    );
+    assert!(es.iter().all(|e| e["kind"] != "tool"));
     let last = es.last().unwrap();
     assert_eq!(
         (last["kind"].as_str(), &last["body"]),
@@ -393,6 +421,8 @@ fn ac6_the_lazy_step_comes_first_in_read_and_answer_case_71() {
     };
     assert_eq!(rs.len(), 1);
     assert_eq!(rs[0].field, "ask");
+    // a stepped session is not stepped again: no second denial or `unknown` entry
+    assert_eq!(entries(&mut k, "alice", &id), es);
     // the pass finds the entry current
     k.host.calls.clear();
     let c = k.timer("restart");
@@ -486,4 +516,46 @@ fn ac7_expires_at_is_the_earliest_open_ask_after_one_is_answered() {
         expires_at: None,
     };
     assert!(!serde_json::to_string(&none).unwrap().contains("expires-at"));
+}
+
+#[test]
+fn ac2_a_failed_step_or_a_missing_record_does_not_stop_the_pass() {
+    let mut k = kernel();
+    let ids: Vec<String> = (0..4)
+        .map(|n| started(&mut k, "alice", &format!("k{n}")))
+        .collect();
+    // ids[0]: deleted while still listed; ids[1]: unreadable; ids[2]: its step fails (no room
+    // for the `turn` entry); ids[3]: an ordinary one after them
+    k.state.delete(&format!("session/{}", ids[0]));
+    k.state
+        .put(&format!("session/{}", ids[1]), b"not json".to_vec())
+        .unwrap();
+    let mut r = rec(&mut k, &ids[2]);
+    r.chunks = (1..=agent_kernel::transcript::MAX_CHUNKS as u64).collect();
+    r.save(&mut k.state).unwrap();
+    restart_host(&mut k, 2);
+    let mut firings = 0;
+    let mut pushes = 0;
+    while Slots::load(&mut k.state).restart.is_some() {
+        pushes += k.timer("restart").pushes.len();
+        firings += 1;
+        assert!(firings <= 5);
+    }
+    assert_eq!(firings, 5);
+    assert_eq!(pushes, 1);
+    assert!(k.host.calls.contains(&HostCall::TimerCancel {
+        id: "restart".into()
+    }));
+    assert_eq!(rec(&mut k, &ids[3]).turn, Turn::Unknown);
+    // the failed one stays listed, its entry current, its record stale for the lazy step (R6)
+    let page = active::read_page(&mut k.state, 0);
+    assert_eq!(
+        page.iter()
+            .map(|e| (e.id.as_str(), e.boot))
+            .collect::<Vec<_>>(),
+        [(ids[2].as_str(), 2)]
+    );
+    assert_eq!(Slots::load(&mut k.state).active, [1, 0, 0, 0]);
+    let r = rec(&mut k, &ids[2]);
+    assert!(r.boot == 1 && matches!(r.turn, Turn::Running { .. }));
 }
