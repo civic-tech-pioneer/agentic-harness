@@ -764,3 +764,45 @@ fn ac10_joiner_non_json_whole_is_unreadable() {
         json!({"v":1,"i":5,"kind":"unreadable","raw":"{x"})
     );
 }
+
+fn part_line(i: u32, n: u32, text: &str) -> String {
+    json!({"v":1,"i":i,"kind":"part","at":1,"body":{"n":n,"m":2,"text":text}}).to_string()
+}
+
+#[test]
+fn ac1_joiner_part_whole_is_unreadable() {
+    let whole = r#"{"v":1,"i":5,"kind":"part","at":1,"body":{"n":1,"m":1,"text":"x"}}"#;
+    let (a, b) = whole.split_at(20);
+    let mut j = Joiner::new();
+    assert!(j.push(&part_line(4, 1, a)).is_none());
+    assert_eq!(
+        j.push(&part_line(5, 2, b)).unwrap(),
+        json!({"v":1,"i":5,"kind":"unreadable","at":1,"raw":whole})
+    );
+}
+
+#[test]
+fn ac2_joiner_part_whole_other_or_no_i_is_unreadable_at_last_part() {
+    for whole in [
+        r#"{"v":1,"i":1,"kind":"part","at":1,"body":{}}"#,
+        r#"{"v":1,"kind":"part","at":1,"body":{}}"#,
+    ] {
+        let (a, b) = whole.split_at(20);
+        let mut j = Joiner::new();
+        assert!(j.push(&part_line(4, 1, a)).is_none());
+        assert_eq!(
+            j.push(&part_line(5, 2, b)).unwrap(),
+            json!({"v":1,"i":5,"kind":"unreadable","at":1,"raw":whole})
+        );
+    }
+}
+
+#[test]
+fn ac4_joiner_part_whole_without_last_i_is_as_before() {
+    let whole = r#"{"v":1,"kind":"part","at":1}"#;
+    let (a, b) = whole.split_at(10);
+    let no_i = json!({"v":1,"kind":"part","at":1,"body":{"n":2,"m":2,"text":b}}).to_string();
+    let mut j = Joiner::new();
+    assert!(j.push(&part_line(4, 1, a)).is_none());
+    assert_eq!(j.push(&no_i).unwrap(), json!({"v":1,"kind":"part","at":1}));
+}
