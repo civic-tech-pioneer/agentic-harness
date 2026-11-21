@@ -814,7 +814,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// (`next_due`). Whether `slots` changed.
     fn sync_timer(
         &mut self,
-        rec: &mut Record,
+        rec: &Record,
         slots: &mut Slots,
         a: &mut Acct,
         before: &[Deadline],
@@ -827,16 +827,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         let id = format!("s/{}", rec.id);
         let had = !before.is_empty();
         match next_due(&rec.deadlines, now) {
-            Some(at) => {
-                let delay = at.saturating_sub(now);
-                self.set_timer(&id, delay);
-                rec.hop = (delay > MAX_TIMER_MS).then_some(now + MAX_TIMER_MS);
-            }
-            None if had && !fired => {
-                self.clear_timer(&id);
-                rec.hop = None;
-            }
-            None => rec.hop = None,
+            Some(at) => self.set_timer(&id, at.saturating_sub(now)),
+            None if had && !fired => self.clear_timer(&id),
+            None => {}
         }
         match (had, rec.deadlines.is_empty()) {
             (false, false) => {
@@ -1638,7 +1631,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             }],
             ..Record::default()
         };
-        self.sync_timer(&mut rec, &mut slots, &mut acct, &[], now, false);
+        self.sync_timer(&rec, &mut slots, &mut acct, &[], now, false);
         slots.save(&mut self.state)?;
         page.push(id.clone());
         self.state
@@ -2188,7 +2181,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         // 9.3: no deadline outlives a cancel; its timer goes with them.
         let before = std::mem::take(&mut rec.deadlines);
-        freed |= self.sync_timer(&mut rec, &mut slots, &mut acct, &before, now, false);
+        freed |= self.sync_timer(&rec, &mut slots, &mut acct, &before, now, false);
         if !self.sync_active(&mut rec, &mut slots, was)? && freed {
             slots.save(&mut self.state)?;
         }
@@ -3235,7 +3228,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.probe_entry(&mut rec, past, now, work)?;
         }
         // Due deadlines of later stages stay (and keep the count); the timer follows the rest.
-        self.sync_timer(&mut rec, slots, &mut acct, &before, now, true);
+        self.sync_timer(&rec, slots, &mut acct, &before, now, true);
         slots.save(&mut self.state)?;
         // A restart step `settle` ran is charged as the early path does (9.3 "Past").
         let stepped = rec.boot != boot;

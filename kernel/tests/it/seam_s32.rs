@@ -494,8 +494,8 @@ fn ac7_a_batch_on_an_unknown_stream_changes_nothing() {
 
 #[test]
 fn validator_a_firing_that_arms_a_far_deadline_hops_then_arms_the_rest() {
-    // a firing whose next deadline is 50 days out arms 30 days and keeps the hop; the hop's
-    // firing finds 20 days left and arms them (the early-firing rule would arm nothing)
+    // a firing whose next deadline is 50 days out arms 30 days; that firing finds nothing due
+    // and arms the 20 days left (7: a nothing-due firing re-arms the rest)
     let mut k = kernel();
     let id = k.probe_start("alice", "p1", 1, 1000).unwrap().value;
     let day = 24 * 60 * 60 * 1000;
