@@ -40,6 +40,9 @@ export const OVERSCAN = 800;
 const NEAR_END = 40;
 /** The event the page sends its scroller when the column changed size: the rows' heights are read again. */
 export const MEASURE = "wa-measure";
+/** Where focus in an ask card paused the follow of the end, per scroller (18.6 Place): a scroll event that reports exactly this
+ *  position is late news of our own scroll, not the reader. One marker for the transcript and the page; the pill clears it. */
+export const followPause = new WeakMap<Element, number>();
 
 /** A row whose ask or check is open must stay in the DOM: its typed reason and its ask bar live there. */
 const holdsAsk = (r: Row) => r.kind === "tool" && !!r.ask && !r.ask.decision;
@@ -123,16 +126,16 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
     if (!r || !e) return;
     scroller.current = e;
     origin.current = r.getBoundingClientRect().top - e.getBoundingClientRect().top + e.scrollTop;
-    let pausedAt: number | null = null; // where focus in an ask card paused the follow: a scroll event that reports it is late news
     const onScroll = () => {
-      if (pausedAt !== null) { if (e.scrollTop === pausedAt) return; pausedAt = null; }
+      const p = followPause.get(e);
+      if (p !== undefined) { if (e.scrollTop === p) return; followPause.delete(e); }
       nearEnd.current = e.scrollHeight - e.clientHeight - e.scrollTop <= NEAR_END;
       pick();
       tick();
     };
     e.addEventListener("scroll", onScroll, { passive: true });
     // focus inside a card with an open ask ends the follow of the end (18.6 Place); scrolling back near the end resumes it
-    const onFocus = (ev: FocusEvent) => { if ((ev.target as Element).closest?.("[data-asking]")) { nearEnd.current = false; pausedAt = e.scrollTop; pick(); } };
+    const onFocus = (ev: FocusEvent) => { if ((ev.target as Element).closest?.("[data-asking]")) { nearEnd.current = false; followPause.set(e, e.scrollTop); pick(); } };
     e.addEventListener("focusin", onFocus);
     // the page's one resize observer (App) tells the scroller when the column changed size: a fold opened, a font came in
     const onResize = () => { if (measure()) tick(); };
