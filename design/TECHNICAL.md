@@ -896,17 +896,19 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 the code in these places (S12 built the rest).
 
 - Kernel, S14: every line a reader gets (`read`, replay) takes the `i` of its
-  place, readable or not, and ignores an `i` the stored line claims (R1).
+  place, readable or not, and ignores an `i` the stored line claims (today
+  only an `unreadable` line does).
 - Kernel, S14: an `ask` or `check` item without `input` is an `unknown`
-  entry, never an ask (R2, 9.8).
+  entry, never an ask (9.8).
 - Kernel, S14: an `ask` or `check` item whose `id` is that of an ask still
   open on the session is an `unknown` entry, and the open ask is not changed
-  (R3b, 9.8).
-- Kernel, S14: the host never reuses the `id` of an `ask` or `check` item on
-  a stream, also after its `ask-resolved` (R3a, 4.5).
+  (9.8).
+- Kernel, S14: the kernel relies on the host's unique `id` (4.5) and checks
+  only the open ask above; the `claude` fixtures (9.8) reuse no `id` of an
+  ask or check that opened, also after its `ask-resolved`.
 - Kernel, S14: a finished thinking block that repeats the deltas streamed for
-  it replaces them in `thought.text`, is not pushed live again and adds no
-  time to `seconds` (R5).
+  it is not pushed live again as an `AgentThoughtChunk` (it already replaces
+  them in `thought.text` and adds no time to `seconds`).
 
 ### 9.5 The OpenAI loop
 
@@ -1549,15 +1551,15 @@ of `spec/VISION.md`.
     and argument both come from A. An ask on a read is a card, not folded.
 66. (9.4, 4.5, 9.8) Kernel crate: a stored transcript with a readable line
     that claims `i` 7 in the place of index 3, and an unreadable one, read and
-    replayed: each comes back with the `i` of its place (R1). An `ask` item and
-    a `check` item without `input` are `unknown` entries, no ask (R2). A second
+    replayed: each comes back with the `i` of its place. An `ask` item and
+    a `check` item without `input` are `unknown` entries, no ask. A second
     `ask` item with the `id` of an ask still open is `unknown` and the open
-    ask is unchanged; the fake host never reuses an id, also after its
-    `ask-resolved` (R3). A thinking block streamed as deltas and then finished
-    with the same text leaves `thought.text` as the text once, one live
-    `AgentThoughtChunk` per delta and none for the finished block, and
-    `seconds` from the deltas only; a finished block with no deltas is pushed
-    once (R5).
+    ask is unchanged; the `claude` fixtures reuse no `id` of an ask that
+    opened, also after its `ask-resolved`. A thinking block streamed as
+    deltas and then finished with the same text leaves `thought.text` as the
+    text once, one live `AgentThoughtChunk` per delta and none for the
+    finished block, and `seconds` from the deltas only; a finished block with
+    no deltas is pushed once.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
