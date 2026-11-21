@@ -1207,8 +1207,11 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     path and the input's path lies under it with no empty, `.` or `..`
     segment (no `workspace` is set before stage B, so none is offered yet);
     for `Bash` `Bash(<command>)`, the exact command, only when that rule
-    passes the 4.1 allow grammar and the command has no `:` (the Waiting
-    item "session allow on `Bash`", option (a)); any other tool its name.
+    passes the 4.1 allow grammar, the command has no `:`, and the input has
+    no key but `command`, `description`, `timeout` and `run_in_background`
+    (so `dangerouslyDisableSandbox` always goes to the owner; S31-fix1) (the
+    Waiting item "session allow on `Bash`", option (a)); any other tool its
+    name.
   - An ask matches an allow when its `reach` equals the allow's, byte for
     byte (so a `Bash` allow holds only that exact command; widening to a
     `:*` prefix is one rule here).
