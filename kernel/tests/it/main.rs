@@ -1,6 +1,7 @@
 //! Integration tests of the kernel crate (TECHNICAL 16): one binary, one module per area.
 
 mod adapters;
+mod adv_s11;
 mod adversary;
 mod check;
 mod errors;
