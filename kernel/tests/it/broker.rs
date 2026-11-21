@@ -167,6 +167,13 @@ fn ac2_the_kernel_sets_the_reach_of_a_stored_ask() {
     .unwrap();
     assert_eq!(asked(&mut k, &id, "a1")["body"]["reach"], "Bash(npm test)");
     assert!(asked(&mut k, &id, "a2")["body"].get("reach").is_none());
+    // a reach the provider sends is replaced by the kernel's
+    k.provider(
+        &id,
+        ask("a3", "Bash", json!({"command": "npm test"}), Some("Bash")),
+    )
+    .unwrap();
+    assert_eq!(asked(&mut k, &id, "a3")["body"]["reach"], "Bash(npm test)");
 }
 
 fn allow_entries(k: &mut K, id: &str) -> Vec<Value> {
@@ -252,16 +259,28 @@ fn ac5_past_quota_take_back_still_works_and_answer_is_refused() {
     let id = started(&mut k);
     k.provider(&id, bash("a1", "npm test")).unwrap();
     k.provider(&id, bash("a2", "npm run-all")).unwrap();
+    k.provider(&id, bash("a3", "ls -la")).unwrap();
     k.answer("alice", &id, "k1", "a1", SESSION).unwrap();
-    let i = rec(&mut k, &id).allows[0].id.clone();
+    k.answer("alice", &id, "k3", "a3", SESSION).unwrap();
+    let held: Vec<String> = rec(&mut k, &id)
+        .allows
+        .iter()
+        .map(|a| a.id.clone())
+        .collect();
     k.limits.owner_bytes = Usage::load(&mut k.state, "quota/alice").bytes;
     assert!(matches!(
         k.answer("alice", &id, "k2", "a2", SESSION),
         Err(KernelError::Quota(_))
     ));
-    k.take_back("alice", &id, &i).unwrap();
+    k.take_back("alice", &id, &held[0]).unwrap();
+    assert_eq!(rec(&mut k, &id).allows.len(), 1);
+    assert_eq!(allow_entries(&mut k, &id).len(), 3);
+    // the account past its ceiling (no reserve left) does not refuse it either
+    k.limits.account_bytes = Usage::load(&mut k.state, "quota").bytes;
+    k.limits.reserve_bytes = 0;
+    k.take_back("alice", &id, &held[1]).unwrap();
     assert!(rec(&mut k, &id).allows.is_empty());
-    assert_eq!(allow_entries(&mut k, &id).len(), 2);
+    assert_eq!(allow_entries(&mut k, &id).len(), 4);
 }
 
 /// An `Edit` ask in a session whose workspace is `ws`, after `held` allows of `pad` bytes each.

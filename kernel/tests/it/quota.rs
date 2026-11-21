@@ -248,6 +248,9 @@ fn ac2_the_accounts_equal_the_bytes_of_the_keys() {
     k.answer("bob", &b1, "an1", "b1", r#"{"deny":true,"reason":"no"}"#)
         .unwrap();
     check(&k);
+    let held = rec(&mut k, &a1).allows[0].id.clone();
+    k.take_back("alice", &a1, &held).unwrap();
+    check(&k);
     k.rename("alice", &a1, "a title").unwrap();
     k.unqueue("bob", &b1, 1).unwrap();
     check(&k);
