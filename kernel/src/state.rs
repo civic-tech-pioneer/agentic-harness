@@ -55,6 +55,11 @@ impl MemState {
         &self.keys
     }
 
+    /// The stored pairs, uncounted.
+    pub fn entries(&self) -> impl Iterator<Item = (&String, &Vec<u8>)> {
+        self.map.iter()
+    }
+
     pub fn len(&self) -> usize {
         self.map.len()
     }

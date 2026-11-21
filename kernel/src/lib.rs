@@ -7,6 +7,7 @@ pub mod error;
 pub mod overlay;
 pub mod profile;
 pub mod queue;
+pub mod quota;
 pub mod record;
 pub mod refuse;
 pub mod sessions;
@@ -20,6 +21,10 @@ pub use profile::{
     grammar_problems, parse_profile, Backend, PreToolCheck, Profile, Skill, Subagent, SystemPrompt,
 };
 pub use queue::{check_input, Queue, Queued, INPUT_BYTES, QUEUE_BYTES, QUEUE_INPUTS};
+pub use quota::{
+    scope, segment, Change, Limits, Metered, Scope, Usage, ACCOUNT_BYTES, OWNER_BYTES,
+    OWNER_SESSIONS, RESERVE_BYTES,
+};
 pub use record::{
     check_key, check_title, Activity, Counters, Deadline, OpenAsk, Record, Stop, Turn, ALLOWS,
     ALLOWS_BYTES, ALLOW_BYTES, DEADLINES, ID_BYTES, KEY_BYTES, RECORD_BYTES, STREAMS, TITLE_BYTES,
