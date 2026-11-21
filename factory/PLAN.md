@@ -42,15 +42,15 @@ ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live b
 after the restart's `unknown` turn the console shows it as ended, not running.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-## Sketched
-
-### S25: quotas (cloud, after S20: kernel/)
+### S25: quotas (in flight (cloud), routine trig_01NLzmBugKHQZY7LxVeRB5dD)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and owners are held to 9.3 "Quota": 64
 sessions and 64 MiB per owner (kernel settings), the 224 MiB account and its 32 MiB reserve, more
 `owner/<owner>/<n>` pages, the writes allowed into the reserve, `quota` refusals and
 `stopped {limit: quota}`; kept keys stay charged. As 9.4 "Code to change (a later slice)" names.
 Touches: `kernel/`. Protects: *guard*.
+
+## Sketched
 
 ### S26: the kernel tracks its provider streams (cloud, after S25: kernel/)
 
@@ -241,7 +241,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   no `access/` entry; revoking access does not stop a running turn (14); case 74. User-sim
   ACCEPTED (run 1); adversary HELD twice, 7 RISKs settled in the text.
 
-- **S20** asks as the kernel records and shows them (PR #27, 37 min). One decision entry per
+- **S20** asks as the kernel records and shows them (PR #27, merged 2026-11-21 03:12 UTC, 37 min). One decision entry per
   Claude ask, written at close; pending answers in the record; `answered`, `expired`, `cancelled`
   decided against the record; `ended`, `cancel` and R4 close every open or pending ask, at most 64
   per session (a 65th denied `busy`); ask cards carry an ACP `kind` and, for edits, a diff from the
