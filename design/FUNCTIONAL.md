@@ -82,7 +82,7 @@ where it belongs.
 - **AGT-F-15** The first answer to an ask shall decide it. The kernel shall refuse a second answer and an answer after its turn ended, and tell the owner when an ask was decided by anyone else. Traces: F-AGENT-6.
 - **AGT-F-16** If nobody answers a Claude ask within 10 minutes, then the host shall deny it. Traces: F-AGENT-9.
 - **AGT-F-42** The kernel shall tell the owner, with each open ask, the tool call it is about, its full input, and when it will be denied unanswered. Traces: AGT-F-14, AGT-F-16.
-- **AGT-F-43** When the owner answers an ask with a session allow, the kernel shall name its reach (the tool and, where it applies, the folder), keep it only for that session, and let the owner take it back; after that, the same kind of call asks again. Traces: AGT-F-14, F-AGENT-8.
+- **AGT-F-43** When the owner answers an ask with a session allow, the kernel shall name its reach (the tool and its scope: the folder of a file tool, the exact command, the web host or the skill's name), keep it only for that session, allow later only calls with that same tool and scope, and let the owner take it back; after that, the same kind of call asks again. A tool or call whose scope cannot be named safely gets no session allow and always asks. Traces: AGT-F-14, F-AGENT-8.
 
 ### 3.4 Claude Code
 
