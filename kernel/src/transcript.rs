@@ -1,7 +1,7 @@
 //! A session's transcript in state chunks: TECHNICAL 9.1 (`entries/<id>/<n>`), 9.4 (entries, `part`, `read`, replay).
 
 use crate::adapters::Entry;
-use crate::error::KernelError;
+use crate::error::{KernelError, Refusal};
 use crate::state::State;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,6 +25,27 @@ const KINDS: [&str; 9] = [
     "unknown",
     "part",
 ];
+
+/// The kinds `append` takes: whole entries (9.4); `part` is made by `append` itself.
+const APPEND_KINDS: [&str; 8] = [
+    "message",
+    "tool",
+    "ask",
+    "allow",
+    "verdict",
+    "turn",
+    "compaction",
+    "unknown",
+];
+
+fn refused(field: &str, reason: &str) -> KernelError {
+    KernelError::Refused(vec![Refusal {
+        field: field.to_string(),
+        backend: String::new(),
+        model: String::new(),
+        reason: reason.to_string(),
+    }])
+}
 
 /// The transcript fields of the session record (9.3).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,6 +115,12 @@ impl<'a, S: State> Transcript<'a, S> {
 
     /// Stores the entry; returns the index of the whole entry (its last part's for a large one).
     pub fn append(&mut self, entry: &NewEntry, at: u64) -> Result<u64, KernelError> {
+        if !APPEND_KINDS.contains(&entry.kind.as_str()) {
+            return Err(refused(
+                "kind",
+                "kind must be one of message, tool, ask, allow, verdict, turn, compaction, unknown",
+            ));
+        }
         let first = self.meta.last + 1;
         let (lines, last) = build_lines(entry, at, first);
         let mut chunks = self.meta.chunks.clone();
@@ -154,8 +181,11 @@ impl<'a, S: State> Transcript<'a, S> {
     }
 
     /// A page of entries, ascending (9.4 `read`).
-    pub fn read(&mut self, after: u64, before: Option<u64>, max: u32) -> Page {
-        let max = max.clamp(1, PAGE_ENTRIES) as usize;
+    pub fn read(&mut self, after: u64, before: Option<u64>, max: u32) -> Result<Page, KernelError> {
+        if max == 0 {
+            return Err(refused("max", "max must be at least 1"));
+        }
+        let max = max.min(PAGE_ENTRIES) as usize;
         let last = self.meta.last;
         let mut cache: Cache = None;
         let hi = match before {
@@ -165,7 +195,7 @@ impl<'a, S: State> Transcript<'a, S> {
         let lo = after.saturating_add(1);
         let mut out: Vec<String> = Vec::new();
         if lo > hi || self.meta.chunks.is_empty() {
-            return Page { entries: out, last };
+            return Ok(Page { entries: out, last });
         }
         let mut bytes = 0usize;
         if before.is_none() {
@@ -225,7 +255,7 @@ impl<'a, S: State> Transcript<'a, S> {
             }
             out.reverse();
         }
-        Page { entries: out, last }
+        Ok(Page { entries: out, last })
     }
 
     /// The replay decision of `attach` (9.4): the entries after `after`, or `Behind`.
@@ -244,11 +274,9 @@ impl<'a, S: State> Transcript<'a, S> {
         if want > REPLAY_ENTRIES {
             return behind;
         }
-        let page = self.read(after, None, REPLAY_ENTRIES as u32);
-        if page.entries.len() as u64 == want {
-            Replay::Entries(page.entries)
-        } else {
-            behind
+        match self.read(after, None, REPLAY_ENTRIES as u32) {
+            Ok(page) if page.entries.len() as u64 == want => Replay::Entries(page.entries),
+            _ => behind,
         }
     }
 
@@ -322,13 +350,21 @@ fn render(line: &str, pos: u64) -> String {
             return line.to_string();
         }
     }
-    let i = parsed
+    let v = parsed
         .as_ref()
-        .and_then(|p| p.get("i"))
+        .and_then(|p| p.get("v"))
         .and_then(Value::as_u64)
-        .unwrap_or(pos);
+        .unwrap_or(1);
+    let at = match parsed
+        .as_ref()
+        .and_then(|p| p.get("at"))
+        .and_then(Value::as_u64)
+    {
+        Some(a) => format!(r#","at":{a}"#),
+        None => String::new(),
+    };
     let raw = serde_json::to_string(line).unwrap_or_else(|_| "\"\"".to_string());
-    format!(r#"{{"v":1,"i":{i},"kind":"unreadable","raw":{raw}}}"#)
+    format!(r#"{{"v":{v},"i":{pos},"kind":"unreadable"{at},"raw":{raw}}}"#)
 }
 
 fn entry_line(i: u64, e: &NewEntry, at: u64) -> String {
