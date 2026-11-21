@@ -557,12 +557,12 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | Key | Value |
 |---|---|
 | `profile/<name>` | a profile (9.2) |
-| `access/<identity>` | the profile names this client may use |
+| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed. `start` checks it before it reads `profile/<name>` and refuses a name not listed with the refusal of a profile that does not exist (`refused`, `{field: "profile"}`), so a client learns nothing about profiles it may not use. A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
 | `adopted/<offer id>` | `{content hash, content}` |
-| `key/<owner>/<key>` | the result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed |
+| `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
 | `session/<id>` | the session record (9.3) |
-| `owner/<owner>/<n>` | page n of the owner's session ids, 256 per page |
-| `queue/<id>` | the session's queued inputs (9.3), apart from the record |
+| `owner/<owner>/<n>` | page n of the owner's session ids, 256 per page; `<owner>` percent-encoded as in `key/` above. Only `owner/<owner>/0` exists: a session past its 256 entries (a 257th live session of one owner) is refused `quota`. More pages come with the quota slice that raises the per-owner session cap past 256 (the default cap is 64, 9.3 Quota, so the page is not reached by default) |
+| `queue/<id>` | `{next, inputs: [{n, input}]}`: the session's queued inputs (9.3), apart from the record; `input` is the input JSON as a string, `next` the number the next input takes. An emptied queue keeps `next`, so a number is never used twice in one session |
 | `entries/<id>/<n>` | chunk n of the transcript: at most 256 entries and at most 64 KiB, or exactly one entry when that entry is over 64 KiB (an entry is at most 256 KiB, 9.4); an append that would take the last chunk past 64 KiB starts a new chunk, so an append rewrites at most 64 KiB plus the entry and earlier chunks are never rewritten; the session record's `chunks` lists the first index of each, so a read starts at the right chunk without reading the ones before |
 | `wire/<id>/<n>` | chunk n of the OpenAI wire history; the loop state's `wire-chunks` (in `loop/<id>`) lists the first wire index of each, so a request finds the chunk holding `active` (9.5) and reads none before it |
 | `loop/<id>` | the OpenAI loop state (9.5), with `active` and `wire-chunks` |
@@ -570,7 +570,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `quota` | the kernel-wide account: bytes and sessions of all owners (9.3) |
 | `stream/<id>` | `{session, kind}` (`kind`: `provider`, `request`, `job`, `owner`), written in the call that opens or receives the stream, deleted on its `ended` (9.4) |
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
-| `active/<n>`, n 0..3 | A1: page n of the sessions whose turn is `running`, `waiting` or `paused`, each entry `{id, boot}` (`boot`: the boot number of the session's last restart step, or of the call that added it). At most 256 entries per page, so at most 1 024 listed sessions; a page is at most 24 KiB (a session id is at most 64 bytes, 9.3). The record's `active-page` names the page that holds the session while it is listed. Kept by every turn change that enters or leaves the index (9.3, A2); it is what the restart pass reads in place of a prefix scan |
+| `active/<n>`, n 0..3 | A1: page n of the sessions whose turn is `running`, `waiting` or `paused`, each entry the pair `[id, boot]` (not an object, so that 256 entries with 64-byte ids fit the 24 KiB page; `boot`: the boot number of the session's last restart step, or of the call that added it). At most 256 entries per page, so at most 1 024 listed sessions; a page is at most 24 KiB (a session id is at most 64 bytes, 9.3). The record's `active-page` names the page that holds the session while it is listed. Kept by every turn change that enters or leaves the index (9.3, A2); it is what the restart pass reads in place of a prefix scan |
 | `slots` | `{provider, request, job: counts; timers; boot; active: four page counts; restart: the pass's page cursor; head, tail}`: the stream slots in use, the live session timers (9.3), the boot number (9.3), the entries of each `active/` page, the page where the restart pass goes on, and the ends of the waiting FIFO (9.5) |
 | `slots/wait/<n>` | `{session, boot}`: a session waiting for a slot, with the boot number of the call that queued it; an entry of an older boot is skipped (9.5) |
 
@@ -608,7 +608,7 @@ No profile field reads workspace instructions (`AGENTS.md`, `CLAUDE.md`)
 (`FUNCTIONAL.md` section 5).
 
 Compilation: profile, then adopted offers it names, then the overlay; then the
-refuse table (11) for the backend and model. Every refusal is returned at
+refuse table (11) for the backend and model (a profile without `model` is checked with the model `"default"`, the backend's default model). Every refusal is returned at
 once; `check` runs only this step.
 
 ### 9.3 Sessions
@@ -618,12 +618,12 @@ Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `pr
 `boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
 (session allows, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {outcome, by, for?, reason?}}`, the pending answers of 9.8 rule 4; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
-`chunks` (the first index of each entry chunk, 9.1), `streams` (the ids of the session's open streams, at most 10: 1 provider or 1 request, 8 jobs, 1 owner; 9.4, 9.5), `deadlines` (each `{what, at}`, at most 64; below), `next-index`, `created`, `updated`. The queue is not in the record: it lives
+`chunks` (the first index of each entry chunk, 9.1), `streams` (the ids of the session's open streams, at most 10: 1 provider or 1 request, 8 jobs, 1 owner; 9.4, 9.5), `deadlines` (each `{what, at}`, at most 64; below), `open` (the open asks and checks, each `{id, kind, i, expires-at?}`: the ask id, `kind` `ask` or `check`, the index `i` of its ask entry (9.4), and that entry's `expires-at` when it has one; an open ask leaves `open` when it is decided or closed. A decision entry can repeat its ask (9.4) after the adapter's memory is gone (a restart), and `waiting.expires-at`, the earliest open ask's, is recomputed without reading entries), `next-index`, `created`, `updated`. The queue is not in the record: it lives
 in `queue/<id>` (9.1), at most 32 inputs, each numbered from 1 per session.
 
 **Sizes.** Every input (`start`, `say`, an `interrupt` replacement) is at
 most 256 KiB serialized, else `too-large(262144)`. The queue holds at most 32
-inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
+inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string the queue stores (escapes included, without its quotes); past either, `queue-full`. So `queue/<id>`, the `queue` push and
 `queued` carry at most 2 MiB of inputs, under the 4 MiB item (3). The record is at most 512 KiB; its variable fields:
 
 | Field | Cap | Past it |
@@ -635,6 +635,7 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
 | `chunks` | 16 384 chunk starts, 8 bytes each (u64), so 128 KiB of the 512 KiB record | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
 | `streams` | 10 ids | – (the slots of 9.5 allow no more; an owner stream that `attach` replaces leaves `streams` in that `attach`, not at its `ended`) |
 | `deadlines` | 64 | – (an open ask past the 61st is denied `timers`, below) |
+| `open` | one per open ask or check, so bounded as the asks are: at most 64 with `deadlines` (a 62nd open ask is denied `timers`) and `pending-answers` | – |
 | `pending-answers` | 64 (one per Claude ask the kernel answered that the host has not closed), each at most 1 KiB | the kernel sends no further answer to a Claude ask of the session until one closes: the owner's `answer` is refused `busy` (2.3), and a session allow or the "no owner stream" deny leaves the ask open for the host to close at its `expires-at` (4.5) |
 
 | Turn state | Meaning |
@@ -669,8 +670,8 @@ wall time, tool calls and tokens, for the footer of 18.3; each is optional.
 The body of a `turn` entry (9.4) and the `state` of a `turn` item (9.4, "The
 wire") are this JSON; the entry has no `activity`.
 
-- `start` and `say` and `answer` check `key/<owner>/<key>` first.
-- `say` while `running` or `waiting` queues; `queue-full` past 32 inputs or 2 MiB. `queued`
+- `start` and `say` and `answer` check `key/<owner>/<key>` first: the key kept for another call kind, owner or session is refused, one refusal `{field: "key"}`, and a kept result is never overwritten (9.1).
+- `say` while `running` or `waiting` queues; `queue-full` past 32 inputs or 2 MiB. On `paused` with no `until`, `say` resumes (starts the turn); on a timed pause it queues. `queued`
   lists the queue; `unqueue` removes one input not yet taken, and refuses
   (`unknown-input`) one that is gone. Each change pushes `{"type":"queue",
   "inputs":[…]}` under `_meta.watane`.
@@ -706,7 +707,7 @@ wire") are this JSON; the entry has no `activity`.
   records, turn states, `slots`, `quota`, `stream/`, `live/` and the entries
   that record a stop), so owners together hold at most 224 MiB of the rest. The reserve is headroom, not a second account: every write is still charged to the owner that causes it, and the 224 MiB account counts them all; the reserve only lets the writes named next go on past it.
   Past the kernel's 224 MiB account (or an owner's quota) only these writes go on, into the reserve: the entry and turn state that record a stop, ask decisions (including denials by expiry), `stream/` and `live/` keys of an `attach`, slot and timer counts, and every `delete`. `rename`, a session allow (`for: session`) and new input are refused `quota`; so is everything else past the account.
-  Past an owner's 64 sessions or 64 MiB (kernel settings by default), or past
+  Past an owner's 64 sessions or 64 MiB (kernel settings by default; the owner's session ids live on `owner/<owner>/0`, 256 at most, so a 257th is refused `quota` until the quota slice that raises the cap past 256 adds pages, 9.1), or past
   the kernel's 224 MiB: new sessions and inputs are refused `quota`, and a
   running turn ends `stopped {limit: quota}`, written from the reserve. Only a
   `delete` frees bytes (kept keys stay). The 64 MiB per owner stays a kernel
@@ -738,7 +739,7 @@ wire") are this JSON; the entry has no `activity`.
     `slots.restart` on (at most the 4 pages, 96 KiB) until it finds an entry
     whose `boot` is older, does that one session's restart step, keeps the
     cursor and sets `restart` again with delay 0; a firing that finds none
-    cancels it. So the pass takes at most `A + 1` calls for `A` listed
+    cancels it. A firing whose session step fails marks that page entry current and goes on; R6 does the session's step when a call next reads its record. So the pass takes at most `A + 1` calls for `A` listed
     sessions, each reading at most 96 KiB of pages plus one session's step,
     and it lists no keys: no prefix scan. With no call after a start, nothing
     runs until one comes (a client's call or a due timer).
@@ -760,7 +761,7 @@ wire") are this JSON; the entry has no `activity`.
     | OpenAI, `retrying` | stays `retrying`; its `retry` deadline and timer are kept (7) and the request goes when it fires (9.5); nothing is sent at once, so no request is sent twice |
     | OpenAI, `tools` | stays `tools`; its open jobs of `idempotent` tools start again under their keys (taking job slots or waiting, as 9.5 "Slots"), the others get `aborted`; `pending` calls stay pending and start in waves as before, the first at once up to the free job slots; when no call is left open or pending, it goes to `ready` as above (9.5) |
     | OpenAI, `waiting` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
-    | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, `restart` for an open one and its answer for a pending one; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` resumes with `session {resume}`, as after the idle release |
+    | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, `restart` for an open one and its answer for a pending one; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` resumes with `session {resume}` once the kernel tracks provider streams across a restart (owed, "Code to change (a later slice)" below), as after the idle release |
 
     AGT-F-27 applies to the tool jobs of 6 (the OpenAI loop, row `tools`),
     the only calls a mod marks safe to repeat. AGT-F-10: no stored turn is
@@ -770,8 +771,10 @@ wire") are this JSON; the entry has no `activity`.
   - **R5, Continue.** `say` on an `unknown` session starts a turn that resumes
     the Claude session with `session {resume}` (4.1); if `claude` refuses the
     resume, the turn becomes `resume-lost`. When inputs are queued, the `say`
-    input joins the end of the queue and the turn starts with the oldest one,
-    so order is kept. The console's Continue (18.5) is `say` with the text
+    input is still taken when the queue is full: the turn starts with the oldest
+    queued input, then the new one joins the end of the queue, so order is kept
+    and Continue is never refused `queue-full` for a queue that had room after
+    the oldest left. R5 reads `access/` again (9.7, "Revoking"). The console's Continue (18.5) is `say` with the text
     `Continue`.
   - **R6, the lazy step.** Any call that reads a session record whose `boot`
     is older than `slots.boot` does that session's restart step first, in the
@@ -1028,6 +1031,18 @@ this place (S14 and S19 built the rest).
   `resume-lost` too), with its pending answer or `deny, by: kernel`; at 64
   pending answers the owner's `answer` to a Claude ask is refused `busy` and
   no session allow or "no owner stream" deny is sent (9.3).
+- Kernel, S20 (S24, AC8 b): `say`, `interrupt` with a replacement, R5
+  Continue and the owner's `answer` with `allow` do not read `access/` again,
+  and a turn that ends starts the next queued input without reading it (9.7,
+  "Revoking"); only `start` checks it. The OpenAI `task` check comes with the
+  loop (9.5).
+
+**Code to change (a later slice).** Owed, and not the rule above.
+
+- Kernel, the slice that tracks provider streams across a restart: a Claude
+  session's next `say` after the idle release or a restart resumes with
+  `session {resume}` (R4, `idle` row); until then the kernel sends a fresh
+  session (`resume: false`).
 
 ### 9.5 The OpenAI loop
 
@@ -1142,6 +1157,23 @@ this place (S14 and S19 built the rest).
 - A child session needs its profile in the parent's `delegates`, narrows the
   parent, and counts against `subagent-limits {depth 1..3 (default 1), live
   1..20 (default 4)}`, taken from the session tree in state.
+- **Access.** A child session is allowed by the parent's `delegates` and the
+  narrowing above; its profile needs no entry in `access/` (9.1), because the
+  child cannot widen its parent. Claude subagents are launch fields of the
+  profile (4.1), not profiles, and need none either.
+- **Revoking.** `access/` (9.1) is read again by each call that would give a
+  session more work: `say` (whether it starts a turn or queues), `interrupt`
+  with a replacement, R5 Continue, the owner's `answer` with `allow`, and an
+  OpenAI `task` that starts a child (checked against the root session's
+  profile and owner). When `access/<owner>` no longer names the session's
+  profile (or is absent or unreadable), such a call is refused `refused`,
+  `{field: "profile"}` (a `task` call gets that refusal as its output), and a
+  queued input is not started when a turn ends: the turn ends as it would, the
+  queue is kept for `unqueue` or `delete`. Calls that only read or take power
+  away still work: `read`, `attach`, `list`, `queued`, `unqueue`, `rename`,
+  `answer` with `deny`, `interrupt` without a replacement, `cancel`,
+  `take-back`, `delete`. A turn already running is not stopped by the change
+  itself (a limit, 14).
 - OpenAI: `task(profile, input)` starts a child and returns its id at once;
   the child's final message arrives later as the call's output. A child's
   request has no `task` tool, and a `task` call from a child is refused.
@@ -1468,7 +1500,7 @@ stages B and E).
 | The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1) | `wit/world.wit`, `mod.toml`, `kernel/src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
 
-Not protected: the judge account reaches any `POST` path of the origin the
+Not protected: a revoked `access/` entry does not stop a turn already running: no call of 2.3 writes `access/` today, so the kernel learns of the change only when a call reads the key (9.7, "Revoking"); the slice that adds the call writing `access/` ends the turns of the sessions whose profile it removes (as `cancel`); the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose loopback reach is still to be probed (V27), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
 (spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; whether a subagent prompt that starts with `/` runs a skill (not
