@@ -27,21 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S7: the console stays fast on a long session (in flight (cloud), routine trig_01QKd2ZG4iQvqxnAxHagNAqc)
-
-Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
-presses Stop without lag (P14).
-Outcomes: first move tests down the pyramid (S9: `npm test` 230 tests 7.8 s, over the 20%
-budget; `test:slow` 23 s because each of 4 scripts runs its own `npm run build`: share one build);
-the transcript is virtualized; at most one render per animation frame; code is
-highlighted once its block is complete and visible; a large-transcript fixture with limits for
-input, Stop and scroll latency runs in `npm test`.
-Also (S15 user-sim): the status line repeats the kind before the title ("Edit Edit s.ts"); a
-check decided `none` with no tool entry shows "Pending"; an open check sharing a card with an
-ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live before a restart is never closed by an entry;
-after the restart's `unknown` turn the console shows it as ended, not running.
-Touches: `console/`, `ui/`. Protects: *core*.
-
 ### S26: the kernel tracks its provider streams (in flight (cloud), routine trig_01UPrShuM2hVaWsXaqncpSnh)
 
 Story: a kernel maker drives a Claude session through a fake provider stream on the in-memory
@@ -54,13 +39,38 @@ per turn; the quota refusal says "this mod's agent sessions are at their limit" 
 kernel's shared account (14 "A session is private"); spec lines for each in 9.3.
 Touches: `kernel/`, `design/TECHNICAL.md` (9.3). Protects: *core* (*guard* for the S25 items).
 
+### S27: the console's rules after S7, in the contract (in flight (cloud), routine trig_01637ot3dsC9PyaQ1KL5csJE)
+
+Outcomes (PR #29, "For the PO"): 18.6 Place: while focus is inside a card with an open ask the
+transcript does not follow the end, whatever the scroll position; Needs you ends the follow; the
+"New activity below" pill resumes it; and (S7 RISK a) a pointer press on the scrollbar or on the
+card's own text does not resume it either. 18.2: the reducer's view is what the transcript draws;
+the assistant-ui runtime holds the newest rows only (dropping it stays open for the human). 18.6
+or 18.7: P14's rules and numbers (at most about 120 rows mounted, focused and open-ask rows kept;
+one render per frame; code highlighted once complete and visible, off the main thread or within a
+time budget; the long fixture's limits). Touches: `design/TECHNICAL.md`. Protects: *guard* (asks).
+
 ## Sketched
 
-### S23: the console shows an answered ask as waiting (cloud, after S7 merges: same files)
+### S23: the console after S7: answered asks, its risks and rough edges (cloud, after S7 and S27 merge: console/)
 
-Outcomes: an ask with a pending answer (S22 D1: decided at `answer`, recorded at `ask-resolved`)
-shows "Answered, waiting" in place of its bar until its decision entry arrives, with no second
-click; in checked mode the wait shows "Checking with your judge" (18.5). A UI slice: PO-armed.
+Outcomes:
+1. An ask with a pending answer (S22 D1) shows "Answered, waiting" in place of its bar until its
+   decision entry arrives, with no second click; in checked mode "Checking with your judge" (18.5).
+2. S7 RISK (a), with S27's 18.6 rule: a mousedown on the scrollbar or on non-focusable text in an
+   open ask's card does not resume the follow; the card stays in view until the reader moves away.
+3. S7 RISK (b): code is highlighted off the main thread (a Worker) or with a time budget per
+   block; past it the block stays plain. A test feeds a known backtracking input.
+4. S7 RISK (c): a fixture with two open asks; Needs you, focus and the follow behave with both.
+5. S7 RISK (d): the read governor clamps `now - last` so a skewed clock never makes a read wait
+   longer than its own interval.
+6. Felt wrong (S7 user-sim and PO): a session paging in its history shows "Loading" for its turn,
+   not "Idle"; after the pill, focus lands on the newest row, not the body; "Needs you (n)" hides
+   while its card is in view and focused; the pill does not cover the last card; the sidebar's
+   group for the open session agrees with the pill (the PO saw a session under Running with
+   "Needs you (1)" in the long fixture).
+A UI slice: its PR opens without auto-merge; the PO compares and arms it. The S9, S15 and S7
+adversaries' held cases are acceptance.
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
@@ -253,6 +263,16 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   a key costs its name plus its value, metered per call; past quota a new ask is denied and the
   turn interrupted. User-sim ACCEPTED on run 2 (refusal text named the wrong cap); adversary HELD
   twice. Implementer runs 1/1/1. Kernel 262 tests in 3.67 s; gate 21 s.
+
+- **S7** the console stays fast on a long session (PR #29, compared and armed by the PO; ~3 h).
+  Alice opens a running 5 000-entry session and scrolls, types and stops without lag: about 35
+  rows mounted, one render per frame, keystroke p50 ~30 ms, Stop 27 ms, code highlighted (Shiki,
+  lazy chunks) once complete and visible; the reducer's cost per message is flat; `test:slow`
+  builds once; the transcript does not follow the end while focus is in an open ask's card, with a
+  "New activity below" pill. PO check: look unchanged from S15 at 1440 px; the long session in dark
+  renders right. User-sim ACCEPTED on run 2 (page scrolled; `npm test` over budget); adversary
+  BREACHED 2 (the stream carried a focused ask card out of view), fixed, HELD; earlier held cases
+  kept. Implementer runs 1 each, fix5 2. Suite: long fixture in `npm test`; budget 14.5 s.
 
 ## Deputy decisions
 
@@ -464,6 +484,10 @@ S2 writes each into the document that owns it.
   force-pushed it away. The validator's instructions (factory) or `.gitignore` should stop it.
   Parallel kernel tasks all edit `tests/it/main.rs` and `error.rs`: trivial rebase conflicts.
   User-sim and adversary red tests should pass clippy themselves.
+
+- 2026-11-21 S7: the `npm test` budget moved three times within the slice (8.6, 11, 12.5, 14.5 s);
+  a budget should be fixed at the slice's end, not per task. Parallel console tasks conflict in the
+  committed `ui/` every time (S9, S15, S7): a factory rule to build `ui/` once at integration.
 
 ## Suite time
 
