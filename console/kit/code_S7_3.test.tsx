@@ -17,7 +17,19 @@ vi.mock("shiki/core", async () => {
 });
 
 import { MessageText } from "./parts/code";
-import { CACHE_BYTES, CACHE_ENTRIES, highlight, peek } from "./parts/highlight";
+import { CACHE_BYTES, CACHE_ENTRIES, highlight, peek, setWorkerFactory, type WorkerLike } from "./parts/highlight";
+import { handle } from "./parts/highlight.worker";
+
+// S23-2 (AC7): Shiki runs in a Worker in the browser and there is none in jsdom. These tests depended on Shiki running on the main
+// thread, so they use the injected tokenizer: a Worker that answers with the real worker code (highlight.worker.ts) in this thread.
+const inProcess = (): WorkerLike => {
+  const w: WorkerLike = {
+    onmessage: null, onerror: null, terminate() {},
+    postMessage(m) { void handle(m).then((r) => w.onmessage?.({ data: r })); },
+  };
+  return w;
+};
+setWorkerFactory(inProcess);
 
 let io: { cb: (e: { isIntersecting: boolean }[]) => void; opts: IntersectionObserverInit }[] = [];
 beforeEach(async () => {
