@@ -1,9 +1,9 @@
 //! Quota pieces (TECHNICAL 9.3 "Quota", "As built (S25)"): the caps, the two accounts, and the metered state.
 
 use crate::error::KernelError;
-use crate::state::{State, TooLarge};
+use crate::state::{State, TooLarge, MAX_VALUE};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub const OWNER_SESSIONS: u64 = 64;
 pub const OWNER_BYTES: u64 = 64 << 20;
@@ -158,6 +158,8 @@ pub struct Metered<S: State> {
     /// Value size of each key seen since `open` (`None`: absent).
     seen: HashMap<String, Option<usize>>,
     change: Change,
+    /// While held, the writes wait here (`None`: a delete) until `commit` or `discard` (3, "Deferred batch").
+    held: Option<BTreeMap<String, Option<Vec<u8>>>>,
 }
 
 impl<S: State> Metered<S> {
@@ -167,6 +169,60 @@ impl<S: State> Metered<S> {
             open: false,
             seen: HashMap::new(),
             change: Change::default(),
+            held: None,
+        }
+    }
+
+    /// Holds every write that follows, so the call can still be dropped whole.
+    pub fn hold(&mut self) {
+        self.held = Some(BTreeMap::new());
+    }
+
+    /// Applies the held writes and goes on writing through.
+    pub fn commit(&mut self) {
+        for (k, v) in self.held.take().unwrap_or_default() {
+            match v {
+                Some(v) => {
+                    let _ = self.inner.put(&k, v);
+                }
+                None => self.inner.delete(&k),
+            }
+        }
+    }
+
+    /// Drops the held writes: the state is as it was when `hold` ran.
+    pub fn discard(&mut self) {
+        self.held = None;
+    }
+
+    /// A read that sees the held writes; the inner state is read as ever, so the reads are counted.
+    fn read(&mut self, key: &str) -> Option<Vec<u8>> {
+        let v = self.inner.get(key);
+        match self.held.as_ref().and_then(|h| h.get(key)) {
+            Some(w) => w.clone(),
+            None => v,
+        }
+    }
+
+    fn write(&mut self, key: &str, value: Vec<u8>) -> Result<(), TooLarge> {
+        match &mut self.held {
+            Some(h) => {
+                if value.len() > MAX_VALUE {
+                    return Err(TooLarge(MAX_VALUE));
+                }
+                h.insert(key.to_string(), Some(value));
+                Ok(())
+            }
+            None => self.inner.put(key, value),
+        }
+    }
+
+    fn remove(&mut self, key: &str) {
+        match &mut self.held {
+            Some(h) => {
+                h.insert(key.to_string(), None);
+            }
+            None => self.inner.delete(key),
         }
     }
 
@@ -198,14 +254,14 @@ impl<S: State> Metered<S> {
     /// Deletes without a read and without a charge.
     pub fn delete_uncharged(&mut self, key: &str) {
         self.seen.remove(key);
-        self.inner.delete(key);
+        self.remove(key);
     }
 
     fn old_size(&mut self, key: &str) -> Option<usize> {
         if let Some(s) = self.seen.get(key) {
             return *s;
         }
-        let old = self.inner.get(key).map(|v| v.len());
+        let old = self.read(key).map(|v| v.len());
         self.seen.insert(key.to_string(), old);
         old
     }
@@ -224,7 +280,7 @@ impl<S: State> Metered<S> {
 
 impl<S: State> State for Metered<S> {
     fn get(&mut self, key: &str) -> Option<Vec<u8>> {
-        let v = self.inner.get(key);
+        let v = self.read(key);
         if self.metered(key) {
             self.seen
                 .insert(key.to_string(), v.as_ref().map(|v| v.len()));
@@ -234,11 +290,11 @@ impl<S: State> State for Metered<S> {
 
     fn put(&mut self, key: &str, value: Vec<u8>) -> Result<(), TooLarge> {
         if !self.metered(key) {
-            return self.inner.put(key, value);
+            return self.write(key, value);
         }
         let old = self.old_size(key);
         let new = value.len();
-        self.inner.put(key, value)?;
+        self.write(key, value)?;
         let cost = |n: Option<usize>| n.map_or(0, |n| (key.len() + n) as i64);
         self.charge(key, cost(Some(new)) - cost(old));
         self.seen.insert(key.to_string(), Some(new));
@@ -252,7 +308,7 @@ impl<S: State> State for Metered<S> {
             }
             self.seen.insert(key.to_string(), None);
         }
-        self.inner.delete(key);
+        self.remove(key);
     }
 }
 
