@@ -5,11 +5,12 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); setWorkerFactory(undefined); });
 
 it("ac3_postmessage_that_throws_fails_the_block_at_once_and_the_next_starts", async () => {
-  let ended = 0;
+  let ended = 0, posts = 0;
   setWorkerFactory(() => {
     const w: WorkerLike = {
       onmessage: null, onerror: null, terminate() { ended++; },
       postMessage(m) {
+        posts++;
         if (m.op === "tokens" && m.code === "bad") throw new Error("DataCloneError");
         queueMicrotask(() => w.onmessage?.({ data: m.op === "load" ? { id: m.id } : { id: m.id, lines: [[{ t: m.code! }]] } }));
       },
@@ -23,4 +24,8 @@ it("ac3_postmessage_that_throws_fails_the_block_at_once_and_the_next_starts", as
   expect(ended).toBe(1);
   expect(await good).toEqual([[{ t: "good" }]]);
   expect(vi.getTimerCount()).toBe(0);
+  // Cached as plain: asking again posts nothing to a Worker.
+  const before = posts;
+  expect(await highlight("ts", "bad")).toBeNull();
+  expect(posts).toBe(before);
 });
