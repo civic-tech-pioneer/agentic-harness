@@ -1161,18 +1161,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// The kernel's own closing step (`ended`, R4, `cancel`): each pending answer becomes its
     /// decision, each open ask or check `deny, by: kernel, reason`; both end empty.
-    fn close_all(
-        &mut self,
-        rec: &mut Record,
-        reason: &str,
-        now: u64,
-        work: &mut Work,
-    ) -> Result<(), KernelError> {
-        self.close_all_with(rec, reason, now, work, true)
-            .map(|_| ())
-    }
-
-    /// `close_all`; `follow` lets a `waiting` turn follow (R4 sets its own turn). Whether any closed.
+    /// `follow` lets a `waiting` turn follow (R4 sets its own turn). Whether any closed.
     fn close_all_with(
         &mut self,
         rec: &mut Record,
@@ -2324,7 +2313,20 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut work = Work::default();
         match event {
             ProviderEvent::Turn(t) => self.change_turn(&mut rec, t, now, &mut work)?,
-            ProviderEvent::Ended => self.close_all(&mut rec, "ended", now, &mut work)?,
+            ProviderEvent::Ended => {
+                self.close_all_with(&mut rec, "ended", now, &mut work, false)?;
+                if rec.turn.is_active() {
+                    let failed = Turn::Idle {
+                        stop: Stop::Failed {
+                            error: "provider-ended".into(),
+                        },
+                        seconds: None,
+                        tools: None,
+                        tokens: None,
+                    };
+                    self.turn_to(&mut rec, failed, now, &mut work)?;
+                }
+            }
             ProviderEvent::Out(out) => {
                 if let Some(e) = out.entry {
                     self.out_entry(&mut rec, e, now, &mut work)?;

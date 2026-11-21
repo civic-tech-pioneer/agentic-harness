@@ -263,6 +263,7 @@ fn ac2_a_lagging_close_resumes_the_provider_stream_and_none_means_no_resume() {
         Some("t1".to_string())
     );
     // no live provider stream: the close resumes nothing
+    k.provider(&id, idle()).unwrap();
     k.provider_item("t1", ProviderEvent::Ended).unwrap();
     k.host.full.clear();
     let o2 = attach(&mut k, &id, 0);
@@ -270,12 +271,17 @@ fn ac2_a_lagging_close_resumes_the_provider_stream_and_none_means_no_resume() {
     let resumes = count_calls(&k, |c| matches!(c, HostCall::Resume { .. }));
     k.say("alice", &id, "q3", "again").unwrap();
     assert!(k.host.calls.contains(&HostCall::Close {
-        stream: o2,
+        stream: o2.clone(),
         outcome: "lagging".into()
     }));
+    // the ended stream is not resumed; the say's own new provider stream (t4) is
+    assert_eq!(
+        resume_after_close(&k, &o2, "lagging"),
+        Some("t4".to_string())
+    );
     assert_eq!(
         count_calls(&k, |c| matches!(c, HostCall::Resume { .. })),
-        resumes
+        resumes + 1
     );
 }
 
