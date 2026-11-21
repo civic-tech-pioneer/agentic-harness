@@ -1130,7 +1130,7 @@ these places (S14 built the rest).
 | `assistant` `tool_use` of `TodoWrite` | `Plan`, with its entries and their status; also a `tool` entry |
 | `assistant` `tool_use` | `ToolCall` (pending) |
 | `user` `tool_result` | `ToolCallUpdate` (completed or failed); a `tool` entry |
-| `ask`, `check`, `ask-resolved` items | an `ask` entry (9.4), pushed live as its `entry` item; its tool call id is the item's `tool_use_id`, its `expires-at` the item's |
+| `ask`, `check`, `ask-resolved` items | an `ask` entry (9.4), pushed live as its `entry` item; its tool call id is the item's `tool_use_id`, its `expires-at` the item's; an `ask-resolved` gives the decision entry or nothing; an item that breaks a rule below the table (1–6) is `unknown` |
 | `system/compact_boundary` | a `compaction` entry |
 | `result` | usage into the counters; `idle {completed}` only when `claude` is idle |
 | Responses `response.output_text.delta` | `AgentMessageChunk` |
@@ -1149,7 +1149,8 @@ Give nothing (no update, no entry): Claude `system` `init`, `status`,
 `response.reasoning_summary_text.done`,
 `response.function_call_arguments.delta`/`.done`. Then: a `wrapped` item; an
 `ask` or `check` item whose `tool_use_id` is not a non-empty string, whose
-`expires-at` is not a whole number from 0 to 2^64 - 1, or that has no `input`;
+`expires-at` is not a whole number from 0 to 2^64 - 1, or whose `input` is not
+a JSON object;
 an `ask` or `check` item whose `id` is that of an ask or check still open on
 the session (the open one is not changed); and, on a `direct: true` stream, a `verdict` or
 `checking` item, are each an `unknown` entry, never an ask (14). The kernel
