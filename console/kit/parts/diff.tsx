@@ -4,9 +4,10 @@ import { diffLines } from "diff";
 
 const CONTEXT = 3;
 type Mark = "add" | "del" | "same";
-type Line = { mark: Mark; text: string } | { gap: number };
+type Row = { mark: Mark; text: string; note?: boolean };
+type Line = Row | { gap: number };
 
-function fold(all: { mark: Mark; text: string }[]): Line[] {
+function fold(all: Row[]): Line[] {
   const near = all.map(() => false);
   all.forEach((l, n) => {
     if (l.mark === "same") return;
@@ -24,19 +25,31 @@ function fold(all: { mark: Mark; text: string }[]): Line[] {
 }
 
 export function DiffView({ path, oldText, newText }: { path: string; oldText: string | null; newText: string }) {
-  const all: { mark: Mark; text: string }[] = [];
-  const nl = (t: string) => (t === "" || t.endsWith("\n") ? t : t + "\n"); // compare lines, not a missing final newline
-  for (const p of diffLines(nl(oldText ?? ""), nl(newText))) {
+  const all: Row[] = [];
+  let o = oldText ?? "", n = newText;
+  const bare = (t: string) => t !== "" && !t.endsWith("\n");
+  const oldBare = bare(o), newBare = bare(n);
+  // both sides lack a final newline: compare lines, not the missing newline. Exactly one lacks it: that is a change.
+  if (oldBare && newBare) { o += "\n"; n += "\n"; }
+  let lastDel = -1, lastAdd = -1;
+  for (const p of diffLines(o, n)) {
     const mark: Mark = p.added ? "add" : p.removed ? "del" : "same";
     const body = p.value.endsWith("\n") ? p.value.slice(0, -1) : p.value;
-    for (const text of body.split("\n")) all.push({ mark, text });
+    for (const text of body.split("\n")) {
+      all.push({ mark, text });
+      if (mark === "del") lastDel = all.length; else if (mark === "add") lastAdd = all.length;
+    }
+  }
+  if (o !== "" && n !== "" && oldBare !== newBare) {
+    const at: [number, Mark][] = oldBare ? [[lastDel, "del"]] : [[lastAdd, "add"]];
+    all.splice(at[0][0], 0, { mark: at[0][1], text: "No newline at end of file", note: true });
   }
   return (
     <div className="wa-diff diff" role="group" aria-label={`Changes to ${path}`}>
       {fold(all).map((l, n) => "gap" in l ? (
         <div key={n} className="dl gap">{`⋯ ${l.gap} unchanged ${l.gap === 1 ? "line" : "lines"}`}</div>
       ) : (
-        <div key={n} className={`wa-diff-line dl ${l.mark}`} data-diff={l.mark}>
+        <div key={n} className={`wa-diff-line dl ${l.mark}${l.note ? " nonl" : ""}`} data-diff={l.mark}>
           <span className="wa-diff-mark sg" aria-hidden="true">{l.mark === "add" ? "+" : l.mark === "del" ? "-" : " "}</span>
           <span className="wa-sr">{l.mark === "add" ? "Added: " : l.mark === "del" ? "Removed: " : ""}</span>
           <span>{l.text}</span>

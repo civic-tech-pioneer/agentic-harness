@@ -43,6 +43,7 @@
 .dl.add .sg { color: var(--wa-ok); }
 .dl.del { background: var(--wa-del); }
 .dl.del .sg { color: var(--danger); }
+.dl.nonl { color: var(--muted); font-style: italic; }
 .dl.gap { color: var(--muted); font-style: italic; padding-left: 28px; }
 .wa-askbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; background: var(--amber-bg); }
 .askq { font-weight: 500; margin-right: auto; color: var(--ink); }
