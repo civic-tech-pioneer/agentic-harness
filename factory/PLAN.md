@@ -40,16 +40,6 @@ the open row stays under Recent while the pointer is over the sidebar at load; a
 bar wraps with Allow once mid-row; a story played only to a running step shows a huge clock.
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *core*. S7 follows S15.
 
-### S18: spec text for S14 and S19 (in flight (cloud), routine trig_01W3ftmEhuP1yP3kuWTaQ8Nm)
-
-Outcomes: 4.5, 9.4, 9.8 say what S14 built ahead of S16 (an `id` not a non-empty string is
-`unknown`; a non-UTF-8 `raw` in `\xNN` form; a duplicate top-level key is `unknown` in the kernel
-too; a joined group reads like a stored line at its last part's place) and what S19 builds (above);
-4.5 lists `ask-resolved`'s `by` values; 14 "Not protected" names the accepted limits (a first-key
-JSON reader; a nested duplicate key in `input` is read last-wins, safe only while the host
-serializes items itself); FUNCTIONAL AGT-F-10 reads "never as running when nothing drives it" (S17).
-Touches: `design/TECHNICAL.md`, `design/FUNCTIONAL.md`. Protects: *guard* and *core*.
-
 ### S21: sessions, turns and the active index on the in-memory state (in flight (cloud), routine trig_013z6HkuQwsoLGpkNY4ZQhno)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and drives sessions through 9.3 on the
@@ -71,14 +61,31 @@ Touches: `kernel/` only. Fakes: the host state (S11's), `caller.boot()`, timers 
 calls. Leaves out: streams and providers, the broker (9.6), quotas beyond counting, OpenAI (9.5).
 Protects: *core* (*guard* for keys and caps).
 
+### S22: one decision per ask in the record (in flight (cloud), routine trig_01Sr73hMqqx2emLN6jfBeSvR)
+
+Story: a maker of stage B or E reads 4.5, 9.6, 9.8 and 14 and finds exactly one decision entry per
+ask in every order of events. From S18's adversary RISKs (PR #22), each failing closed today:
+1. When the kernel's recorded decision and the host's `answered.outcome` differ (checked mode: an
+   owner's allow, then an unsafe verdict), what the record shows (a correcting entry, or the
+   decision written only at `ask-resolved`).
+2. An `expired` or `cancelled` for an ask the kernel already answered but the host has not closed:
+   no second decision; an `expired`/`cancelled` item carrying an `outcome` is `unknown`.
+3. A checked provider, a trusted holder, can push its own `ask-resolved` or a false `outcome`:
+   named in 14 "Not protected" (the record only; no tool runs because of it), or a rule closing it.
+4. A check whose hook times out on `claude`'s side gets no `ask-resolved` today: how the kernel
+   closes it (the host sends `expired` for checks too, or the kernel's own deadline).
+Touches: `design/TECHNICAL.md`. Not `kernel/` (S21), not `console/` (S15). Protects: *guard*.
+
 ## Sketched
 
-### S20: an answered ask leaves no noise (cloud, after S18 and S21 merge)
+### S20: an answered ask leaves no noise (cloud, after S21 and S22 merge: same files)
 
-Story: a kernel maker runs `cargo test` in `kernel/`: an `ask-resolved` after a person's or owner's
-answer, with a `by` S18 lists for answers, gives nothing (the kernel writes that decision itself
-when it answers), while an unlisted `by` stays `unknown` with the ask open (S19). Also the refusal
-text of a bad `append` kind reads `kind (, ): ...`: give it its field and reason (S19 polish).
+Story: a kernel maker runs `cargo test` in `kernel/` and `ask-resolved` behaves as 9.8 rule 4 says
+(S18, PR #22): no entry for the kernel's own answer (the ask counts as decided from `answer`);
+another caller's answer gives the decision from `outcome` (`by: checked` on a `direct: false`
+stream, `host` otherwise); a missing or bad `outcome`, `none` on an ask or `allow` on a check is
+`unknown` and the ask stays open; plus what S22 settles for races and checks. Also the refusal
+text of a bad `append` kind (`kind (, ): ...`) gets its field and reason (S19 polish).
 Touches: `kernel/` only. Protects: *guard* (asks) and *polish*.
 
 ### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
@@ -230,6 +237,13 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   ACCEPTED (run 1); adversary HELD twice (one RISK fixed in S19-fix1). Implementer runs 1/1/1.
   Kernel 116 tests in 1.63 s.
 
+- **S18** spec text for S14 and S19 (PR #22, 16 min). 4.5: `ask-resolved` `by` is `answered`
+  (with `outcome`), `expired` or `cancelled`; the host serializes every item itself. 9.8: strict
+  item rules 1-6. 14 "Not protected": a first-key JSON reader, a nested duplicate key in `input`.
+  AGT-F-10: "never show a turn as running when nothing drives it". Case 72. User-sim ACCEPTED
+  (run 1); adversary BREACHED 2 (`answered` closing a provider-denied ask with no decision;
+  `allow` on a check), fixed, HELD on pass 3. Gate 18 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -347,6 +361,11 @@ S2 writes each into the document that owns it.
   first call. Options: (a) `caller.boot() -> u64`, a pure read (as written); (b) a host export
   `started()` called once per start. Rec: (a), no new call into mods at start. Undo: one 2.1 line,
   one 15 row, rule R1. Blocks only stage B's host part.
+
+- **`answered` carries `outcome`** (S18, a small addition to watane's wire; on the H2 line in 15).
+  Without it the kernel cannot record what a checked provider decided. Alternative: leave the wire
+  as it is and design another way to learn the outcome at stage E. Undo: one field. Blocks only
+  stage B's host part.
 
 ## Friction
 
