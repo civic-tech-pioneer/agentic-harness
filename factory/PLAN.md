@@ -27,31 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S34: scope keys for session allows, and `host-info.generation()` (in flight (cloud), routine trig_01VPZiRzn5SThNRtdbsqy9o8)
-
-Story: the human's answers of 2026-11-21 in the contract and the kernel.
-Outcomes:
-1. 9.6 and 2.3: every tool may have a pure scope function from a call's input to a scope key (Bash:
-   the exact command, with S33's pinned keys; Edit/Write/MultiEdit/NotebookEdit: the workspace;
-   WebFetch: the URL's host after one parse; Skill: the skill's name); a tool without one, or an
-   input that cannot be scoped safely, gets no key and always asks. The kernel computes the key from
-   the input that will run and shows it on the ask (`reach`); "allow for this session" stores
-   (tool, key); a later call is allowed only when its fresh key equals a stored pair exactly. This
-   replaces S33's "no allow for Task/Skill/WebFetch/WebSearch" table: Task and WebSearch get no key
-   unless a safe one is named; `mcp__watane__*` gets none unless its tool names one (14 row).
-2. 2.1 and 9.3: restart detection is the interface `host-info` with `generation()`, in place of
-   `caller.boot()`; R1 and every mention renamed; 15's watane row says so.
-3. 4.5: `answered` carries `outcome`, and the host closes checks with `expired`: accepted (mark the
-   15 rows accepted, no longer waiting).
-5. From S33 (PR #36): an input with a key the tool's scope function does not know gets no key
-   (file tools too, e.g. `_host`), as Bash already does; the scope function names, for stage B's
-   host, that paths are resolved (symlinks) before a key is computed, and that `mcp__watane__*`
-   keys rely on the host's `--strict-mcp-config` admitting only the `watane` server (15 rows).
-4. From watane S95: the launch document (4.1) gains `profile` (used only for the consent words),
-   and the kernel's `timer-error` gains `bad-delay`.
-Touches: `kernel/`, `design/TECHNICAL.md`, `design/FUNCTIONAL.md` if a requirement changes.
-Protects: *guard* (asks).
-
 ### S32: stage A, end to end: Alice watches a real kernel stream in the console (in flight (cloud), routine trig_01QrwDoJCFh8Q6DGBbTcF7qA, with watane S96)
 
 Story: Alice runs `watane-dev serve` with the agent kernel installed, opens its console page, and
@@ -75,6 +50,17 @@ Starts when watane S96 starts (it fakes nothing it can call for real once S96 me
 it builds against S96's branch or the host 19 text).
 
 ## Sketched
+
+### Stage B carry list (folded into stage B's end-to-end slices, never a slice of its own)
+
+- S34 RISK 1: write keys for build and config files beyond the list (`Cargo.toml`, `conftest.py`,
+  `pyproject.toml`, `justfile`, `Dockerfile`, ...): decide with the first slice that sets a
+  `workspace` (rec: no write key outside a named source tree; else a longer list).
+- S34 RISK 3: `session_firing` returns before re-arming and charging when a restart step fails, and
+  a due firing with no step fails `quota` at the ceiling (`restart_firing` handles both).
+- S26 accepted limits and S28's: verify with the real host's rollback (7) once wired.
+- V27 (Waiting): the allowlist rule, before the shell grant (stage C).
+
 
 ## Done
 
@@ -325,6 +311,15 @@ it builds against S96's branch or the host 19 text).
   V27 BREACH (an allowlisted `localhost` reaches loopback through the sandbox's proxy; LAN and
   link-local behind any allowlisted name too), under Waiting. User-sim ACCEPTED; adversary
   BREACHED 1 (recorded as the finding), HELD on the fix. Gate 247 s on the Mac.
+
+- **S34** scope keys for session allows, and `host-info.generation()` (PR #39, merged 2026-11-21
+  09:25 UTC). The human's rule built: a session allow holds one (tool, scope key) computed afresh
+  from the input that will run (Bash: the exact command and its pins; file tools: the workspace;
+  WebFetch: `domain:<host>`; Skill: its name; every other tool and any unknown input key: no key,
+  always asks); writes to dot-files, non-ASCII paths and named build files get no key; restart
+  detection is `host-info.generation()`; `timer-error` gains `bad-delay` (30-day cap); 4.1 gains
+  `profile`; 15 gains the H2 rows. User-sim ACCEPTED; adversary HELD, BREACHED 2 (a Unicode
+  `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
 
