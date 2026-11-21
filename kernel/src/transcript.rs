@@ -170,7 +170,9 @@ impl<'a, S: State> Transcript<'a, S> {
                     writes.push((pos, v));
                 }
                 if chunks.len() >= limit {
-                    return Err(KernelError::Quota);
+                    return Err(KernelError::Quota(format!(
+                        "{MAX_CHUNKS} transcript chunks per session"
+                    )));
                 }
                 chunks.push(i);
                 cur = Some((chunks.len() - 1, line.clone(), 1));

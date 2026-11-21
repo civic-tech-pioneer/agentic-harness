@@ -42,7 +42,7 @@ fn regress_s25_quota_message_names_the_bytes_cap() {
     k.start("alice", "k1", "p", "{}", IN).unwrap();
     k.limits.owner_bytes = Usage::load(&mut k.state, "quota/alice").bytes;
     let e = k.start("alice", "k2", "p", "{}", IN).unwrap_err();
-    assert!(matches!(e, KernelError::Quota));
+    assert!(matches!(e, KernelError::Quota(_)));
     let text = e.to_string();
     assert!(
         !text.contains("session quota") && (text.contains("bytes") || text.contains("MiB")),
@@ -59,7 +59,7 @@ fn regress_s25_quota_message_names_the_account() {
     k.start("bob", "k1", "p", "{}", IN).unwrap();
     k.limits.account_bytes = Usage::load(&mut k.state, "quota").bytes;
     let e = k.start("bob", "k2", "p", "{}", IN).unwrap_err();
-    assert!(matches!(e, KernelError::Quota));
+    assert!(matches!(e, KernelError::Quota(_)));
     let text = e.to_string();
     assert!(
         !text.contains("the mod's session quota"),

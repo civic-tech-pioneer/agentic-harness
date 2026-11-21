@@ -44,7 +44,7 @@ pub enum KernelError {
     UnknownSession(String),
     Refused(Vec<Refusal>),
     QueueFull,
-    Quota,
+    Quota(String),
     Paused(u64),
     Backend(String),
     UnknownInput(u64),
@@ -61,7 +61,7 @@ impl KernelError {
             KernelError::UnknownSession(_) => "unknown-session",
             KernelError::Refused(_) => "refused",
             KernelError::QueueFull => "queue-full",
-            KernelError::Quota => "quota",
+            KernelError::Quota(_) => "quota",
             KernelError::Paused(_) => "paused",
             KernelError::Backend(_) => "backend",
             KernelError::UnknownInput(_) => "unknown-input",
@@ -95,7 +95,7 @@ impl fmt::Display for KernelError {
                 Ok(())
             }
             KernelError::QueueFull => write!(f, "queue-full: the session's input queue is full"),
-            KernelError::Quota => write!(f, "quota: the mod's session quota is used up"),
+            KernelError::Quota(cause) => write!(f, "quota: {cause}"),
             KernelError::Paused(t) => write!(f, "paused: the backend is paused until {t}"),
             KernelError::Backend(m) => write!(f, "backend: {m}"),
             KernelError::UnknownInput(n) => write!(f, "unknown-input: no input number {n}"),
