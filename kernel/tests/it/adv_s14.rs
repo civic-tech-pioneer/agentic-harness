@@ -94,3 +94,40 @@ fn adv_s14_part_group_whole_takes_another_index() {
         "the joined whole must carry the i of its last part"
     );
 }
+
+/// A stored part group whose joined text has no `i`: the whole a reader joins has no index at
+/// all, where 9.4 gives it the index of its last part (S14-fix2 Goal), as `render` does for a
+/// readable line without one.
+#[test]
+fn adv_s14_part_group_whole_without_i_has_no_index() {
+    let mut st = MemState::new();
+    let mut meta = Meta::default();
+    {
+        let mut t = Transcript::new(&mut st, "s", &mut meta);
+        for n in 0..5 {
+            t.append(&msg(n), 1).unwrap();
+        }
+    }
+    let raw = st.get(&chunk_key("s", 0)).unwrap();
+    let mut lines: Vec<String> = String::from_utf8(raw)
+        .unwrap()
+        .split('\n')
+        .map(String::from)
+        .collect();
+    let whole = r#"{"v":1,"kind":"message","at":1,"body":{"forged":true}}"#;
+    let (a, b) = whole.split_at(20);
+    let part = |i: u64, n: u64, text: &str| {
+        json!({"v":1,"i":i,"kind":"part","at":1,"body":{"n":n,"m":2,"text":text}}).to_string()
+    };
+    lines[3] = part(4, 1, a);
+    lines[4] = part(5, 2, b);
+    st.put(&chunk_key("s", 0), lines.join("\n").into_bytes())
+        .unwrap();
+    let mut t = Transcript::new(&mut st, "s", &mut meta);
+    let page = t.read(0, None, 256).unwrap();
+    let mut j = Joiner::new();
+    let got: Vec<Value> = page.entries.iter().filter_map(|l| j.push(l)).collect();
+    let ids: Vec<Value> = got.iter().map(|v| v["i"].clone()).collect();
+    assert_eq!(ids, vec![json!(1), json!(2), json!(3), json!(5)]);
+}
+
