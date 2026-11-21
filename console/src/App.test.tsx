@@ -52,7 +52,7 @@ describe("the page", () => {
     expect(document.activeElement).toBe(allow);
   });
 
-  it("ac2_needs_you_scrolls_a_card_shorter_than_the_area_to_nearest", async () => {
+  it("ac2_needs_you_scrolls_a_card_that_fits_to_start_and_a_taller_one_to_its_ask_bar", async () => {
     const scroll = vi.fn();
     Element.prototype.scrollIntoView = scroll;
     const { container } = render(<App kernel={played()} info={INFO} />);
@@ -62,10 +62,11 @@ describe("the page", () => {
     card.getBoundingClientRect = () => ({ height: 200 }) as DOMRect;
     await userEvent.setup().click(button);
     expect(scroll.mock.contexts[0]).toBe(card);
-    expect(scroll.mock.calls[0][0]).toEqual({ block: "nearest" });
+    expect(scroll.mock.calls[0][0]).toEqual({ block: "start" });
     card.getBoundingClientRect = () => ({ height: 900 }) as DOMRect;
     await userEvent.setup().click(button);
-    expect(scroll.mock.calls[1][0]).toEqual({ block: "start" });
+    expect(scroll.mock.contexts[1]).toBe(card.querySelector(".wa-askbar"));
+    expect(scroll.mock.calls[1][0]).toEqual({ block: "end" });
   });
 
   it("ac2_needs_you_focuses_allow_once_without_scrolling", async () => {

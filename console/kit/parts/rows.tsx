@@ -61,7 +61,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const name = path ? `${KIND(call.kind)} ${path}` : call.title;
   const diffs = call.content.filter((c) => c.type === "diff").length;
   const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : STATUS[call.status];
-  const body = (
+  const main = (
     <>
       {call.content.map((c, n) =>
         c.type === "diff" ? (
@@ -73,9 +73,14 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
         : null)}
       {!asking && typeof call.rawOutput === "string" && !call.content.some((c) => c.type === "content") ? <ProgramOutput text={call.rawOutput} /> : null}
       {asking ? <div className="wa-input"><div className="wa-input-label">Input</div><InputList input={ask.input} /></div> : null}
-      {asking ? <AskBar call={call} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} /> : null}
     </>
   );
+  const body = asking ? (
+    <>
+      <div className="wa-ask-scroll" tabIndex={0} role="group" aria-label="Changes and input">{main}</div>
+      <AskBar call={call} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} />
+    </>
+  ) : main;
   const head = (
     <>
       {call.kind === "edit" ? <Pencil /> : null}

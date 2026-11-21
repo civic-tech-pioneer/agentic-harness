@@ -48,6 +48,17 @@ describe("S9-1", () => {
     }
   });
 
+  it("ac2_asking_body_is_a_named_focusable_scroll_region_and_not_asking_has_none", () => {
+    const a = show(askOf("e", "edit", diff("a.ts", "x", "y"), { file_path: "a.ts" }));
+    const r = screen.getByRole("group", { name: "Changes and input" });
+    expect(r).toHaveAttribute("tabindex", "0");
+    expect(r).toHaveClass("wa-ask-scroll");
+    expect(r.nextElementSibling).toHaveClass("wa-askbar");
+    a.unmount();
+    show(feed(call("d", "Edit a.ts", "edit", { locations: [{ path: "a.ts" }], content: diff("a.ts", "x", "y"), status: "completed" })));
+    expect(screen.queryByRole("group", { name: "Changes and input" })).toBeNull();
+  });
+
   it("ac2_diff_ask_shows_diff_and_input_and_command_ask_keeps_it", () => {
     const a = show(askOf("e", "edit", diff("a.ts", "x", "y"), { file_path: "a.ts" }));
     expect(screen.getByRole("region").textContent).toContain("file_path");

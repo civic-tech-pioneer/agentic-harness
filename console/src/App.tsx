@@ -46,9 +46,11 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     const card = id === undefined ? null : scroller.current?.ownerDocument.querySelector<HTMLElement>(`[data-call="${CSS.escape(id)}"]`);
     const btn = card?.querySelector<HTMLElement>("[data-ask-first]");
     if (!card || !btn) return;
-    // The card's header says what asks, so it is what comes into view; focus must not scroll it away again.
-    const shorter = card.getBoundingClientRect().height < (scroller.current?.clientHeight ?? 0);
-    card.scrollIntoView?.({ block: shorter ? "nearest" : "start" });
+    // The header says what asks, so a card that fits starts at the top; a taller one scrolls so the ask bar (with the
+    // focused button) is fully in view. Focus must not scroll again.
+    const fits = card.getBoundingClientRect().height <= (scroller.current?.clientHeight ?? 0);
+    if (fits) card.scrollIntoView?.({ block: "start" });
+    else (card.querySelector<HTMLElement>(".wa-askbar") ?? card).scrollIntoView?.({ block: "end" });
     btn.focus({ preventScroll: true });
   }, [view.openAsks]);
 
