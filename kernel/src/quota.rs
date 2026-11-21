@@ -122,7 +122,12 @@ impl Usage {
 /// Quota). The field is private to this module and only `Past::load` sets it, from the two
 /// accounts it reads itself: no code can hold the flag without having read the accounts.
 #[derive(Clone, Copy)]
-pub(crate) struct Past(bool);
+pub(crate) struct Past {
+    past: bool,
+    /// The bytes the call may still write before the owner or the account reaches its cap (0 when
+    /// past), as read with the accounts.
+    room: u64,
+}
 
 impl Past {
     /// Reads the owner's account and the kernel's; past when the owner's bytes or the account's
@@ -135,11 +140,22 @@ impl Past {
         let owner = Usage::load(state, owner_key);
         let account = Usage::load(state, Usage::ACCOUNT);
         let past = owner.bytes >= limits.owner_bytes || account.bytes >= limits.account_bytes;
-        (Past(past), owner, account)
+        let room = limits
+            .owner_bytes
+            .saturating_sub(owner.bytes)
+            .min(limits.account_bytes.saturating_sub(account.bytes));
+        (Past { past, room }, owner, account)
     }
 
     pub(crate) fn is_past(self) -> bool {
-        self.0
+        self.past
+    }
+
+    /// Whether a decision written now is short (9.4 "The short decision"): past when the accounts
+    /// were read, or the call's own writes so far (`written`, the open meter's change for the
+    /// owner) have reached the room it had.
+    pub(crate) fn short(self, written: i64) -> bool {
+        self.past || written >= 0 && written as u64 >= self.room
     }
 }
 
