@@ -940,3 +940,230 @@ fn ac3_oldest_out_and_new_in_still_over_the_bytes_is_queue_full_and_writes_nothi
     k.say("alice", &id, "over", &"x".repeat(262_144)).unwrap();
     assert_eq!(requests(&k).len(), n0 + 1);
 }
+
+fn interrupted() -> Turn {
+    Turn::Idle {
+        stop: Stop::Interrupted,
+        seconds: None,
+        tools: None,
+        tokens: None,
+    }
+}
+
+fn page0(k: &mut K) -> Vec<String> {
+    active::read_page(&mut k.state, 0)
+        .into_iter()
+        .map(|e| e.id)
+        .collect()
+}
+
+#[test]
+fn ac1_interrupt_without_a_replacement_ends_an_active_turn() {
+    for t in [
+        None,
+        Some(Turn::Waiting {
+            asks: vec!["a1".into()],
+            expires_at: None,
+        }),
+        Some(Turn::Paused { until: Some(5000) }),
+    ] {
+        let mut k = kernel();
+        let id = started(&mut k, "alice", "k");
+        k.provider(&id, ask("a1", "ask", 0)).unwrap();
+        k.say("alice", &id, "q", "later").unwrap();
+        if let Some(t) = t {
+            let mut r = rec(&mut k, &id);
+            r.turn = t;
+            r.save(&mut k.state).unwrap();
+        }
+        let n = entries(&mut k, "alice", &id).len();
+        let sent = requests(&k).len();
+        let c = k.interrupt("alice", &id, None).unwrap();
+        let r = rec(&mut k, &id);
+        assert_eq!(r.turn, interrupted());
+        assert_eq!(r.open.len(), 1, "open asks are left to the host");
+        assert_eq!(r.active_page, None);
+        assert!(page0(&mut k).is_empty());
+        assert_eq!(k.queued("alice", &id).unwrap().len(), 1);
+        let es = entries(&mut k, "alice", &id);
+        assert_eq!(es.len(), n + 1);
+        assert_eq!(es[n]["kind"], "turn");
+        assert_eq!(
+            es[n]["body"],
+            json!({"state": "idle", "stop": {"kind": "interrupted"}})
+        );
+        assert_eq!(c.pushes.len(), 1);
+        assert_eq!(c.pushes[0].value["type"], "turn");
+        assert_eq!(
+            requests(&k)[sent..],
+            [Request::Interrupt {
+                session: id.clone()
+            }]
+        );
+    }
+}
+
+#[test]
+fn ac1_interrupt_on_an_inactive_session_changes_nothing() {
+    for t in [completed(), Turn::Unknown, Turn::ResumeLost] {
+        let mut k = kernel();
+        let id = started(&mut k, "alice", "k");
+        let mut r = rec(&mut k, &id);
+        r.turn = t;
+        r.save(&mut k.state).unwrap();
+        let before = k.state.get(&Record::key_of(&id));
+        let sent = requests(&k);
+        let c = k.interrupt("alice", &id, None).unwrap();
+        assert!(c.pushes.is_empty());
+        assert_eq!(k.state.get(&Record::key_of(&id)), before);
+        assert_eq!(requests(&k), sent);
+    }
+}
+
+#[test]
+fn ac1_interrupt_with_a_replacement_starts_it_and_the_session_stays_active() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    k.say("alice", &id, "q", "later").unwrap();
+    let sent = requests(&k).len();
+    let c = k.interrupt("alice", &id, Some("instead")).unwrap();
+    let r = rec(&mut k, &id);
+    assert!(matches!(r.turn, Turn::Running { .. }));
+    assert_eq!(r.active_page, Some(0));
+    assert_eq!(page0(&mut k), std::slice::from_ref(&id));
+    assert_eq!(k.queued("alice", &id).unwrap().len(), 1);
+    let kinds: Vec<(String, String)> = entries(&mut k, "alice", &id)
+        .iter()
+        .skip(2)
+        .map(|e| (e["kind"].to_string(), e["body"]["state"].to_string()))
+        .collect();
+    assert_eq!(kinds.len(), 3);
+    assert_eq!(kinds[0].1, "\"idle\"");
+    assert_eq!(kinds[1].0, "\"message\"");
+    assert_eq!(kinds[2].1, "\"running\"");
+    assert_eq!(c.pushes.len(), 2);
+    assert_eq!(
+        requests(&k)[sent..],
+        [
+            Request::Interrupt {
+                session: id.clone()
+            },
+            Request::Turn {
+                session: id.clone(),
+                input: "instead".into(),
+                resume: false
+            }
+        ]
+    );
+    // On an idle session the replacement starts a turn and the session joins `active/`.
+    k.provider(&id, ProviderEvent::Turn(completed())).unwrap();
+    let mut r = rec(&mut k, &id);
+    r.turn = completed();
+    r.save(&mut k.state).unwrap();
+    k.interrupt("alice", &id, Some("again")).unwrap();
+    assert_eq!(rec(&mut k, &id).active_page, Some(0));
+}
+
+#[test]
+fn ac1_interrupt_refusals_write_nothing() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let big = "x".repeat(262_145);
+    let before = snapshot(&mut k, &[&Record::key_of(&id), "active/0", "slots"]);
+    assert_eq!(
+        k.interrupt("alice", &id, Some(&big)).unwrap_err(),
+        KernelError::TooLarge(262_144)
+    );
+    assert_eq!(
+        k.interrupt("bob", &id, None).unwrap_err(),
+        KernelError::NotOwner
+    );
+    assert_eq!(
+        k.interrupt("alice", "nope", None).unwrap_err(),
+        KernelError::UnknownSession("nope".into())
+    );
+    assert_eq!(
+        snapshot(&mut k, &[&Record::key_of(&id), "active/0", "slots"]),
+        before
+    );
+}
+
+#[test]
+fn ac2_cancel_closes_asks_ends_the_turn_and_keeps_the_queue() {
+    for t in [
+        None,
+        Some(completed()),
+        Some(Turn::Unknown),
+        Some(Turn::ResumeLost),
+    ] {
+        let mut k = kernel();
+        let id = started(&mut k, "alice", "k");
+        k.provider(&id, ask("a1", "ask", 0)).unwrap();
+        k.provider(&id, ask("a2", "ask", 0)).unwrap();
+        k.answer("alice", &id, "ka", "a2", r#"{"allow":true}"#)
+            .unwrap();
+        k.say("alice", &id, "q", "later").unwrap();
+        let inactive = t.is_some();
+        if let Some(t) = t {
+            let mut r = rec(&mut k, &id);
+            r.turn = t.clone();
+            if inactive {
+                r.active_page = None;
+            }
+            r.save(&mut k.state).unwrap();
+        }
+        let sent = requests(&k).len();
+        k.cancel("alice", &id).unwrap();
+        let r = rec(&mut k, &id);
+        assert!(r.open.is_empty() && r.pending_answers.is_empty());
+        let es = entries(&mut k, "alice", &id);
+        let decided: Vec<&Value> = es
+            .iter()
+            .filter(|e| e["kind"] == "ask" && e["body"]["decision"].is_object())
+            .collect();
+        assert_eq!(decided.len(), 2);
+        assert_eq!(r.active_page, None);
+        assert_eq!(k.queued("alice", &id).unwrap().len(), 1);
+        assert_eq!(
+            requests(&k)[sent..],
+            [Request::Cancel {
+                session: id.clone()
+            }]
+        );
+        if inactive {
+            assert_ne!(r.turn, interrupted());
+        } else {
+            assert_eq!(r.turn, interrupted());
+            assert!(page0(&mut k).is_empty());
+        }
+    }
+}
+
+#[test]
+fn ac2_cancel_is_the_owners_and_not_refused_for_access() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    assert_eq!(k.cancel("bob", &id).unwrap_err(), KernelError::NotOwner);
+    k.state.delete("access/alice");
+    k.cancel("alice", &id).unwrap();
+}
+
+#[test]
+fn ac4_an_openai_profile_without_a_model_is_refused() {
+    let mut k = kernel();
+    k.state
+        .put("profile/o", br#"{"backend":"openai"}"#.to_vec())
+        .unwrap();
+    k.state
+        .put("access/alice", br#"["p","o"]"#.to_vec())
+        .unwrap();
+    let before = k.state.len();
+    let KernelError::Refused(rs) = k.start("alice", "k", "o", "{}", IN).unwrap_err() else {
+        panic!("not refused")
+    };
+    assert_eq!(rs.len(), 1);
+    assert_eq!(rs[0].field, "model");
+    assert_eq!(k.state.len(), before);
+    // A Claude profile without `model` still starts.
+    k.start("alice", "k2", "p", "{}", IN).unwrap();
+}

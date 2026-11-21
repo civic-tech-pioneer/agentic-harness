@@ -377,6 +377,27 @@ fn case73_g_the_restart_step_closes_every_ask_in_every_state() {
 }
 
 #[test]
+fn case73_g_cancel_closes_the_same_two_asks_in_every_state() {
+    for state in ["running", "idle", "unknown", "paused"] {
+        let mut k = kernel();
+        let id = two_asks(&mut k);
+        let turn = match state {
+            "running" => None,
+            "idle" => Some(Turn::default()),
+            "unknown" => Some(Turn::Unknown),
+            _ => Some(Turn::Paused { until: None }),
+        };
+        if let Some(t) = turn {
+            let mut r = rec(&mut k, &id);
+            r.turn = t;
+            r.save(&mut k.state).unwrap();
+        }
+        k.cancel("alice", &id).unwrap();
+        assert_two(&mut k, &id, "cancel");
+    }
+}
+
+#[test]
 fn case73_g_the_restart_step_leaves_an_openai_sessions_asks() {
     let mut k = kernel();
     let id = two_asks(&mut k);

@@ -45,3 +45,18 @@ fn ac2_twelve_codes_and_messages_name_the_cause() {
         let _: &dyn std::error::Error = &e;
     }
 }
+
+#[test]
+fn ac5_a_refusal_without_backend_and_model_prints_field_and_reason() {
+    let bare = |b: &str, m: &str| Refusal {
+        field: "profile".into(),
+        backend: b.into(),
+        model: m.into(),
+        reason: "no such profile".into(),
+    };
+    let e = KernelError::Refused(vec![bare("", ""), bare("claude", "")]);
+    assert_eq!(
+        e.to_string(),
+        "refused: 2 field(s) refused: profile: no such profile; profile (claude, ): no such profile"
+    );
+}

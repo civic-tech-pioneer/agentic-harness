@@ -977,24 +977,6 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 - `turn`: `state` is the turn JSON of 9.3. `queue`: `inputs` as `queued` gives
   them. `usage`: `compact-at` is optional.
 
-**Code to change (S20).** The rules above and in 9.8 differ from the code in
-this place (S14 and S19 built the rest).
-
-- Kernel, S20 (S22-fix1): `cancel` closes each open or pending Claude ask or
-  check in every turn state (`idle`, `unknown` and `resume-lost` too), with its
-  pending answer or `deny, by: kernel, reason: cancel` (9.3).
-- Kernel, S20 (S24, AC8 b): `say`, `interrupt` with a replacement, R5
-  Continue and the owner's `answer` with `allow` do not read `access/` again,
-  and a turn that ends starts the next queued input without reading it (9.7,
-  "Revoking"); only `start` checks it. The client call `check` (2.3), not
-  built yet, reads it first as `start` does (9.1). The child-session check,
-  the `resume` deadline's check and the OpenAI `task` check come with 9.7 and
-  the loop (9.5).
-- Kernel, S20 (S24): an OpenAI profile without `model` is refused
-  `{field: "model"}` (9.2); today `start` checks a profile of either backend
-  without `model` as `"default"`.
-- Kernel, S20 (S24): case 74, revoking `access/` (9.7).
-
 **Code to change (a later slice).** Owed, and not the rule above.
 
 - Kernel, the slice that tracks provider streams across a restart: a Claude
@@ -1848,7 +1830,7 @@ of `spec/VISION.md`.
     `interrupt` with a replacement, Continue on an `unknown` session and
     `answer` with `allow` are each refused `{field: "profile"}`; the turn's
     end starts no queued input and the queue stays; a `resume` deadline
-    leaves the turn `paused` with no time; `read`, `answer` with `deny`,
+    leaves the turn `paused` with no time (that half comes with the session timers, 9.5); `read`, `answer` with `deny`,
     `cancel` and `delete` still work. An unreadable `access/` value acts as
     an empty one.
 75. (9.8) Kernel crate, adapter: an `Edit` ask's `toolCall` has `kind: edit`

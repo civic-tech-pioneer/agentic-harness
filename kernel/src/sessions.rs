@@ -45,6 +45,10 @@ pub enum Request {
         input: String,
         resume: bool,
     },
+    /// The owner's `interrupt`: the host stops the turn the provider runs.
+    Interrupt { session: String },
+    /// The owner's `cancel`: the host ends the session's stream and handle.
+    Cancel { session: String },
     Answer {
         session: String,
         ask: String,
@@ -516,6 +520,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         let Some(next) = q.take_oldest() else {
             return Ok(());
         };
+        // 9.7, "Revoking": a revoked profile starts nothing; the queue is kept.
+        if !self.may_use(&rec.owner, &rec.profile) {
+            return Ok(());
+        }
         self.start_turn(rec, next.input, false, now, work)?;
         q.save(&mut self.state, &rec.id)?;
         work.pushes.push(Push::of(&rec.id, q.push_value()));
@@ -709,6 +717,18 @@ impl<S: State, H: Host> Kernel<S, H> {
         work.pushes
     }
 
+    /// 9.1, 9.7: whether `access/<owner>` names the profile; absent or unreadable allows none.
+    fn may_use(&mut self, owner: &str, profile: &str) -> bool {
+        self.state
+            .get(&format!("access/{owner}"))
+            .and_then(|b| serde_json::from_slice::<Vec<String>>(&b).ok())
+            .is_some_and(|names| names.iter().any(|n| n == profile))
+    }
+
+    fn revoked() -> KernelError {
+        refused("profile", "this client may not use this profile")
+    }
+
     fn room(rec: &Record) -> Result<(), KernelError> {
         if rec.chunks.len() + CHUNK_MARGIN > MAX_CHUNKS {
             return Err(KernelError::Quota);
@@ -734,13 +754,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         check_input(input)?;
         // 9.1: the profiles this caller may use; absent or unreadable allows none.
-        let allowed = self
-            .state
-            .get(&format!("access/{caller}"))
-            .and_then(|b| serde_json::from_slice::<Vec<String>>(&b).ok())
-            .is_some_and(|names| names.iter().any(|n| n == profile));
-        if !allowed {
-            return Err(refused("profile", "this client may not use this profile"));
+        if !self.may_use(caller, profile) {
+            return Err(Self::revoked());
         }
         let Some(bytes) = self.state.get(&format!("profile/{profile}")) else {
             return Err(refused("profile", "no such profile"));
@@ -751,7 +766,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             .backend
             .and_then(|b| b.parse::<Backend>().ok())
             .unwrap_or(Backend::Claude);
-        // A profile without a model runs the backend's default one.
+        // A Claude profile without a model runs the default one; an OpenAI one must name it (9.2).
+        if backend == Backend::Openai && parsed.model.is_none() {
+            return Err(refused("model", "an OpenAI profile needs a model"));
+        }
         let model = parsed.model.unwrap_or_else(|| "default".to_string());
         let refusals = check(&json, overlay, backend, &model, None);
         if !refusals.is_empty() {
@@ -820,6 +838,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         check_input(input)?;
         let mut rec = self.load_owned(caller, session)?;
+        if !self.may_use(caller, &rec.profile) {
+            return Err(Self::revoked());
+        }
         let mut work = Work::default();
         self.settle(&mut rec, &mut slots, &mut work)?;
         // A pause with no time ends with the next `say` (9.3); one with a time queues until it
@@ -913,6 +934,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let mut rec = self.load_owned(caller, session)?;
         let d = parse_decision(decision)?;
+        if d.allow && !self.may_use(caller, &rec.profile) {
+            return Err(Self::revoked());
+        }
         // The step comes after the refusals that do not depend on it; an ask it denies is refused.
         let mut work = Work::default();
         self.settle(&mut rec, &mut slots, &mut work)?;
@@ -960,6 +984,99 @@ impl<S: State, H: Host> Kernel<S, H> {
         rec.updated = now;
         rec.save(&mut self.state)?;
         self.key_put("answer", caller, key, Some(session), &())?;
+        Ok(Called {
+            value: (),
+            pushes: self.flush(work),
+        })
+    }
+
+    /// 2.3 `interrupt`: ends an active turn `idle {interrupted}` (open asks stay: the host closes
+    /// them, 9.3 R4), then starts the replacement, if given, as `say` on `idle` does.
+    pub fn interrupt(
+        &mut self,
+        caller: &str,
+        session: &str,
+        replacement: Option<&str>,
+    ) -> Result<Called<()>, KernelError> {
+        let mut slots = self.begin()?;
+        let mut rec = self.load_owned(caller, session)?;
+        if let Some(input) = replacement {
+            check_input(input)?;
+            if !self.may_use(caller, &rec.profile) {
+                return Err(Self::revoked());
+            }
+        }
+        let mut work = Work::default();
+        self.settle(&mut rec, &mut slots, &mut work)?;
+        let was = rec.turn.is_active();
+        if replacement.is_none() && !was {
+            return Ok(Called {
+                value: (),
+                pushes: work.pushes,
+            });
+        }
+        if replacement.is_some() {
+            Self::room(&rec)?;
+            if !was {
+                active::check_room(&slots)?;
+            }
+        }
+        let now = self.host.now();
+        if was {
+            self.end_interrupted(&mut rec, now, &mut work)?;
+            work.requests.push(Request::Interrupt {
+                session: rec.id.clone(),
+            });
+        }
+        if let Some(input) = replacement {
+            let resume = rec.turn == Turn::Unknown;
+            self.start_turn(&mut rec, input.to_string(), resume, now, &mut work)?;
+        }
+        self.sync_active(&mut rec, &mut slots, was)?;
+        rec.updated = now;
+        rec.save(&mut self.state)?;
+        Ok(Called {
+            value: (),
+            pushes: self.flush(work),
+        })
+    }
+
+    fn end_interrupted(
+        &mut self,
+        rec: &mut Record,
+        now: u64,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
+        let idle = Turn::Idle {
+            stop: Stop::Interrupted,
+            seconds: None,
+            tools: None,
+            tokens: None,
+        };
+        self.turn_to(rec, idle, now, work)
+    }
+
+    /// 2.3 `cancel`: every open or pending ask gets its one decision, an active turn ends
+    /// `idle {interrupted}`, the queue is kept, the host ends the stream.
+    // Children (9.3) are not built: nothing to cancel there yet.
+    pub fn cancel(&mut self, caller: &str, session: &str) -> Result<Called<()>, KernelError> {
+        let mut slots = self.begin()?;
+        let mut work = Work::default();
+        let mut rec = self.session(caller, session, &mut slots, &mut work)?;
+        let now = self.host.now();
+        let was = rec.turn.is_active();
+        let closed = self.close_all_with(&mut rec, "cancel", now, &mut work, false)?;
+        if was {
+            self.end_interrupted(&mut rec, now, &mut work)?;
+        }
+        self.sync_active(&mut rec, &mut slots, was)?;
+        work.requests.push(Request::Cancel {
+            session: rec.id.clone(),
+        });
+        if was || closed {
+            rec.updated = now;
+        }
+        rec.save(&mut self.state)?;
         Ok(Called {
             value: (),
             pushes: self.flush(work),
