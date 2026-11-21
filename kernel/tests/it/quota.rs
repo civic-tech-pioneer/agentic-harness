@@ -892,14 +892,17 @@ fn ac3_the_kernel_account_cap_is_named() {
     k.limits.account_bytes = used;
     assert_eq!(
         cause(k.start("bob", "k2", "p", "{}", IN)),
-        format!("the kernel's {used} bytes account")
+        "this mod's agent sessions are at their limit"
     );
     k.limits = Default::default();
     let mut a = usage(&mut k, "quota");
     a.bytes = 224 << 20;
     a.save(&mut k.state, "quota").unwrap();
     let e = k.start("bob", "k2", "p", "{}", IN).unwrap_err();
-    assert_eq!(e.to_string(), "quota: the kernel's 224 MiB account");
+    assert_eq!(
+        e.to_string(),
+        "quota: this mod's agent sessions are at their limit"
+    );
 }
 
 #[test]
@@ -911,7 +914,7 @@ fn ac3_the_reserve_ceiling_is_named() {
     k.limits.reserve_bytes = 0;
     assert_eq!(
         cause(k.say("alice", &s, "q1", "more")),
-        format!("the {} bytes state", used + 1)
+        "this mod's agent sessions are at their limit"
     );
     // a 256 MiB ceiling (the size of the default 224 + 32 MiB), the account just under it
     k.limits = Default::default();
@@ -921,5 +924,8 @@ fn ac3_the_reserve_ceiling_is_named() {
     k.limits.account_bytes = 256 << 20;
     k.limits.reserve_bytes = 0;
     let e = k.say("alice", &s, "q2", "more").unwrap_err();
-    assert_eq!(e.to_string(), "quota: the 256 MiB state");
+    assert_eq!(
+        e.to_string(),
+        "quota: this mod's agent sessions are at their limit"
+    );
 }

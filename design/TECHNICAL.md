@@ -681,8 +681,11 @@ wire") are this JSON; the entry has no `activity`.
   replacement if given (a replacement reads `access/` again, 9.7, "Revoking";
   on `unknown` the replacement starts first, queued inputs waiting, and resumes as R5 does). `cancel` ends the session's stream and handle, closes
   each open ask or check (one with a pending answer gets that answer as its decision,
-  9.8 rule 4; an open one is denied, `by: kernel`), cancels children. `delete` cancels, removes the entries,
-  the queue (`queue/<id>`) and wire history, keeps the keys.
+  9.8 rule 4; an open one is denied, `by: kernel`), cancels children. `delete` runs no restart step (R6), so a session can always be
+  deleted: it removes the entries, the queue (`queue/<id>`) and wire history,
+  keeps the keys, and sends `cancel` once after its last write (the host ends the
+  stream and handle and closes the open asks, 4.5; the kernel writes no decision
+  entry for them). A `delete` that fails sends nothing.
 - **Deadlines and the session timer.** The kernel holds one host timer per
   session, `s/<session id>` (7), due at the session's earliest deadline. A
   deadline is `{what, at}`, `what` one of `ask <ask id>` (9.6, `ask-expiry`),
@@ -739,9 +742,15 @@ wire") are this JSON; the entry has no `activity`.
     queues), an `interrupt` replacement, `rename`, an `answer` with `for:
     session`. Not refused: `answer` without `for: session`, `interrupt`
     without a replacement, `cancel`, `unqueue`, `delete`, `read`, `list`,
-    `queued`, the restart step, timers.
+    `queued`, the restart step, timers. The refusal's text names the cap for an
+    owner's own caps (`64 sessions per owner`, `64 MiB per owner`); when the cause is
+    the kernel's 224 MiB account or the state ceiling it reads "this mod's agent
+    sessions are at their limit", which tells an owner nothing of other owners (14).
   - *A provider item when past* (the owner or the account): an ask decision
-    and the host's `ask-resolved` are stored; a turn change is stored; a new
+    and the host's `ask-resolved` are stored; a turn change is stored only when it ends an active turn (so a turn gets at most
+    one `turn` entry past quota; any other change, to `running` or `waiting` from an
+    inactive turn or from one inactive state to another, writes no entry and leaves
+    the record's turn as it was); a new
     ask is not stored and is denied at once (`Request::Answer` deny, reason
     `quota`); any other entry is not stored. When the session's turn is
     active, the first such item ends it `stopped {limit: quota}` (its `turn`
@@ -815,7 +824,7 @@ wire") are this JSON; the entry has no `activity`.
     `Continue`.
   - **R6, the lazy step.** Any call that reads a session record whose `boot`
     is older than `slots.boot` does that session's restart step first, in the
-    same call (so `attach`, `read`, `say`, `answer` and `delete` never act on a
+    same call (so `attach`, `read`, `say` and `answer` never act on a
     stale turn; an `answer` to an ask that step just denied is refused with one
     refusal `{field: "ask"}`, as for a check (2.3), and as an answer after the
     turn ended (16, case 9): the spec gives no other result for an ask already
