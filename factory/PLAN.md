@@ -74,7 +74,7 @@ Outcomes:
    (S11 RISK); `read` with `max` 0 is refused `refused` until 2.3 says otherwise.
 Touches: `kernel/` only. Protects: *guard*.
 
-### S13: spec debts from S11 (cloud, after S10 merges: same files)
+### S13: spec debts from S11 (in flight (cloud), routine trig_01H5yP3RqsVZPNTjp2nzzTmX)
 
 Outcomes: 9.4 reads "`attach` with an `after` that falls inside a group starts at the group's
 first part; `read` takes `after` as given" (S11, deputy decision (a)); 2.3 says `max` is 1 to 256
@@ -185,7 +185,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   else `behind`); `unreadable` keeps its `i`; `Bash(yarn ls)` refused. User-sim ACCEPTED (run 1);
   adversary BREACHED 1 (`read(u64::MAX)` overflow), fixed, HELD.
 
-- **S10** the console's wire and S8's 4.5 rules in the contract (PR #13, armed by the PO; 24 min).
+- **S10** the console's wire and S8's 4.5 rules in the contract (PR #13, armed by the PO, merged 2026-11-21 00:14 UTC; 24 min).
   A stage B kernel maker builds every stream message and entry body the console reads as JSON:
   `answer` takes four decision shapes (others refused), the turn JSON per state, 9.4 "The wire";
   4.5: a `control_request` without a string `tool_use_id` is denied, and a stdout line typed like
