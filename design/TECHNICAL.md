@@ -366,7 +366,7 @@ and `.husky/**`. No launch can remove them.
 | `control_request` `hook_callback` (PreToolUse) | `{"type":"check","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
 | `control_cancel_request` | `{"type":"ask-resolved","id":…,"by":"cancelled"}` |
 | an `answer` the host accepted, whoever called it | `{"type":"ask-resolved","id":…,"by":"answered","outcome":"allow"\|"deny"\|"none"}`: `outcome` is the answer the host sent to `claude`, `none` only for a check (step 5) |
-| an ask the host denied at its `expires-at` | `{"type":"ask-resolved","id":…,"by":"expired"}` (step 5) |
+| an ask the host denied at its `expires-at`, or a check it has not answered at its `expires-at` | `{"type":"ask-resolved","id":…,"by":"expired"}` (step 5) |
 | a line whose top-level `type` is any watane item type that can share the stream: `ask`, `check`, `ask-resolved`, `initialized`, `wrapped`, `consent-pending`, and the checked provider's `verdict` and `checking` (10); a slice that adds an item type to any of these streams adds it here | never passed through: the host pushes `{"type":"wrapped","line":"<the line, as a JSON string>"}` instead |
 | a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item (a byte that is not UTF-8 becomes U+FFFD in `line`; the kernel keeps this `line` as it is; the `\xNN` form of 9.8 is only for bytes that reach the kernel without the host, as in its fixtures): the host decides on the parsed value, so the kernel and the host never read one line two ways |
 | any other line, known or not | the line unchanged |
@@ -397,7 +397,12 @@ and `.husky/**`. No launch can remove them.
    the ask item, at its `expires-at`; deny), the host
    pushes `ask-resolved {id, by}`: `by` is `answered` (with the `outcome` it sent) for an answer,
    `expired` for the expiry and `cancelled` for a `control_cancel_request`
-   (step 4). The host pushes no other `by`. A second answer is `unknown-ask`. Nothing
+   (step 4). The host pushes no other `by`. A second answer is `unknown-ask`.
+   The host closes checks too: at a check's `expires-at` (the push time plus
+   `timeout-s`, step 4) it pushes `ask-resolved {by: expired}` for a check it
+   has not answered and writes nothing to stdin for it (`claude`'s own hook
+   timeout, `onFailure: block`, already blocks the tool); an `answer` to it
+   after that is `unknown-ask`. Nothing
    else is ever written: no `apply_flag_settings`, `mcp_set_servers`,
    `set_permission_mode`, `updatedPermissions` or second `initialize`.
 6. A turn is over when `claude` reports itself idle, not at the first
@@ -612,7 +617,7 @@ Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `pr
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
 `boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
-(session allows, 9.6), `counters {turns, tool-errors-in-a-row, tokens}`,
+(session allows, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {outcome, by, for?, reason?}}`, the pending answers of 9.8 rule 4; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
 `chunks` (the first index of each entry chunk, 9.1), `streams` (the ids of the session's open streams, at most 10: 1 provider or 1 request, 8 jobs, 1 owner; 9.4, 9.5), `deadlines` (each `{what, at}`, at most 64; below), `next-index`, `created`, `updated`. The queue is not in the record: it lives
 in `queue/<id>` (9.1), at most 32 inputs, each numbered from 1 per session.
 
@@ -630,6 +635,7 @@ inputs and 2 MiB in all; past either, `queue-full`. So the `queue` update and
 | `chunks` | 16 384 chunk starts, 8 bytes each (u64), so 128 KiB of the 512 KiB record | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
 | `streams` | 10 ids | – (the slots of 9.5 allow no more; an owner stream that `attach` replaces leaves `streams` in that `attach`, not at its `ended`) |
 | `deadlines` | 64 | – (an open ask past the 61st is denied `timers`, below) |
+| `pending-answers` | one per open Claude ask, so at most 64 (an ask past that is denied `timers`, as above), each at most 1 KiB | – |
 
 | Turn state | Meaning |
 |---|---|
@@ -669,8 +675,9 @@ wire") are this JSON; the entry has no `activity`.
   (`unknown-input`) one that is gone. Each change pushes `{"type":"queue",
   "inputs":[…]}` under `_meta.watane`.
 - `interrupt` ends the turn (`idle {interrupted}`), then starts the
-  replacement if given. `cancel` ends the session's stream and handle, denies
-  open asks, cancels children. `delete` cancels, removes the entries,
+  replacement if given. `cancel` ends the session's stream and handle, closes
+  each open ask (one with a pending answer gets that answer as its decision,
+  9.8 rule 4; an open one is denied, `by: kernel`), cancels children. `delete` cancels, removes the entries,
   the queue (`queue/<id>`) and wire history, keeps the keys.
 - **Deadlines and the session timer.** The kernel holds one host timer per
   session, `s/<session id>` (7), due at the session's earliest deadline. A
@@ -747,7 +754,7 @@ wire") are this JSON; the entry has no `activity`.
 
     | Backend, state | Becomes |
     |---|---|
-    | Claude, `running` or `waiting` | each open ask is decided `deny`, `by: kernel`, reason `restart`, its deadline dropped; the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
+    | Claude, `running` or `waiting` | each open ask is decided `deny`, `by: kernel`, reason `restart`, its deadline dropped, and each ask with a pending answer is decided with that answer (9.8 rule 4); the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
     | `paused`, either backend | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` (9.5); 9.8 gives nothing for a Claude rate limit, so a slice that adds one adds its row here |
     | OpenAI, `requesting` or `ready` (waiting in the FIFO or not) | goes to `ready`, takes a request slot or waits in the FIFO under this boot (9.5); the turn stays `running` |
     | OpenAI, `retrying` | stays `retrying`; its `retry` deadline and timer are kept (7) and the request goes when it fires (9.5); nothing is sent at once, so no request is sent twice |
@@ -819,8 +826,17 @@ repeats every field of the ask and adds:
 "decision":{"outcome":"allow"|"deny"|"none","by":"<who>","for":"session"?,"reason":"<text>"?}
 ```
 
+A Claude ask or check gets exactly one decision entry, written when it
+closes (9.8 rule 4), never at the kernel's own `answer`: the kernel's answer
+is kept as a pending answer (9.3) and becomes the entry when the host's
+`ask-resolved` arrives. When that item is `answered` with an `outcome` that
+differs from the pending answer's, the entry has the item's `outcome` and `by`
+`checked` on a `direct: false` stream, else `host`. A kernel ask's decision is
+written at its answer.
+
 `by` is `owner`; `session-allow`; `checked` (the checked provider); `kernel`
-(a kernel ask's expiry, `timers`, no owner stream, `cancel`, `restart`); or `host` (a
+(a kernel ask's expiry, `timers`, no owner stream, `cancel`, `restart`, and for
+an open Claude ask the provider stream's `ended`, 9.8 rule 4); or `host` (a
 Claude ask the host resolved: `reason` is the host's `by`, `expired` or
 `cancelled`; an answer the kernel did not make on a `direct: true` stream has
 no `reason`, 9.8). Repeating the ask lets a page that starts at the decision show
@@ -991,10 +1007,22 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 this place (S14 and S19 built the rest).
 
 - Kernel, S20: an `ask-resolved` with `by: answered` closes the open
-  ask or check with no entry when the kernel answered it itself, and
-  otherwise gives the decision entry with the item's `outcome` (`by: checked`
-  on a `direct: false` stream, else `host`); a missing or bad `outcome`, `none` on
+  ask or check: with the pending answer as the decision when the item's
+  `outcome` equals it, and otherwise with the item's `outcome` (`by: checked`
+  on a `direct: false` stream, else `host`), the pending answer dropped; a missing or bad `outcome`, `none` on
   an ask or `allow` on a check is `unknown` (S19 reads every `answered` as `unknown`; 9.8).
+- Kernel, S20 (S22, D1): the kernel's own answer to a Claude ask (the owner's
+  `answer`, a session allow, the "no owner stream" deny) writes no decision entry yet; it
+  keeps the pending answer in the record (`pending-answers`, 9.3) and the ask
+  counts as decided. The decision entry is written when the ask closes (9.8
+  rule 4).
+- Kernel, S20 (S22, D2): `expired` or `cancelled` on an ask with a pending
+  answer gives the one decision `deny, by: host, reason` and drops the pending
+  answer; an `expired` or `cancelled` item that carries an `outcome` key is
+  `unknown`.
+- Kernel, S20 (S22, D5): the provider stream's `ended` closes each open or
+  pending Claude ask or check in the same call: a pending answer becomes the
+  decision, an open one `deny, by: kernel, reason: ended`.
 
 ### 9.5 The OpenAI loop
 
@@ -1094,7 +1122,7 @@ this place (S14 and S19 built the rest).
 - An ask goes to the owner when it has an attached stream; otherwise, and for
   an `agent:` owner, it is denied. Kernel asks expire after `ask-expiry`
   (an `ask` deadline of the session's timer, 9.3; at the timer cap the ask is denied `timers`); Claude asks after 10 minutes (the host). A kernel ask that reaches its `ask-expiry` is denied, reason `expired`, as the host denies a Claude ask at its 10 minutes (4.5); an `ask-expiry` of 0 denies at once. The session is not allowed anything by it.
-- For Claude, rules went in as flags; the broker sees only asks.
+- For Claude, rules went in as flags; the broker sees only asks. The kernel's own answer to a Claude ask (the owner's, a session allow, the "no owner stream" deny above) is kept as a pending answer; its decision entry is written when the ask closes (9.8 rule 4).
 - **Session allows.** An answer `{allow, for: session}` adds a rule to the
   session's `allows`: the tool's name, and for a file tool the workspace it
   is in (`Edit(<workspace>/**)`). The rule names that reach for the page. The
@@ -1170,27 +1198,50 @@ below is an `unknown` entry, never an ask or a decision.
 3. `expires-at` is a JSON integer from 0 to 2^64 - 1. A negative or
    fractional value, `5.0`, `1e3`, a value past 2^64 - 1, a string and `null`
    are `unknown` (S19).
-4. `ask-resolved` reads its `by`. `expired` or `cancelled` on an open ask or
-   check gives the decision entry with outcome `deny`, `by: host` and
-   `reason` = the `by` (9.4). `answered` on an ask or check the kernel
-   answered itself (its own `answer`, 9.6) closes it and writes no entry,
-   because that answer wrote the decision. `answered` on one the kernel did
-   not answer (the checked provider's `deny` or its answer to a check, 10)
-   gives the decision entry with the item's `outcome`; its `by` is `checked`
-   on a checked provider's stream (`direct: false`, 10) and `host`
-   otherwise. An `answered` whose `outcome` is missing or not `allow`, `deny`
-   or `none`, or is `none` on an ask or `allow` on a check, is `unknown`
-   (a check is answered only `none` or `deny`, 4.5). An ask or check the
-   kernel answered itself stays open until the host's `ask-resolved` for
-   it arrives; the kernel's `answer` does not close it. Until then it
-   counts as decided: a second `answer` is refused `{field: "ask"}` (case
-   9), and no session allow, `ask-expiry` or restart step answers it again,
-   and it is not counted as open for the owner. Any other or missing
-   `by`, or one that is not a string, is `unknown`. An `unknown` item leaves
-   the ask open, so a later `expired` or `cancelled` still gives its decision
-   (S19; until S20 builds the code to change of 9.4, `answered` is `unknown`
-   too). An `ask-resolved` whose `id` is not open is `unknown`. Stage E
-   builds only the provider's side (10).
+4. `ask-resolved` reads its `by`. A Claude ask or check gets **one**
+   decision entry, written **once, when it closes**, never at the kernel's
+   `answer`. When the kernel answers a Claude ask itself (the owner's
+   `answer`, a session allow, the "no owner stream" deny of 9.6), it keeps
+   that answer as the ask's **pending answer** (`{outcome, by, for?, reason?}`,
+   in the session record, so it survives a restart, 9.3) and writes no decision entry yet.
+   While an ask has a pending answer it counts as decided: a second `answer`
+   is refused `{field: "ask"}` (case 9), no session allow, `ask-expiry` or
+   restart step answers it again, and it is not counted as open for the
+   owner. The ask closes:
+   - at `answered` with an `outcome`: when it equals the pending answer's
+     outcome, the decision entry is the pending answer (its `by`, `for`,
+     `reason`); when it differs, the entry has the item's `outcome`, `by:
+     checked` on a `direct: false` stream (10) and `host` otherwise, no
+     `reason`, and the pending answer is dropped (a session allow it added
+     stays; a later matching ask is still judged by the checked provider,
+     10). Example: checked mode, the owner's allow while the verdict is
+     pending, then an unsafe verdict: the provider denies, the host pushes
+     `answered`/`deny`, and the one decision is `deny, by: checked`;
+   - at `expired` or `cancelled` (an ask, or a check the host did not answer):
+     the decision `deny`, `by: host`, `reason` = the `by` (9.4); the pending
+     answer is dropped, since what the kernel sent never took effect (the
+     host denied it, or `claude` cancelled it); so `expired` after a pending
+     answer gives this one decision, never a second;
+   - at the kernel's own closing steps: `cancel` and the restart step R4
+     (9.3) and the provider stream's `ended` (3). The entry is the pending
+     answer, since it is what the kernel sent; an open ask or check with no
+     pending answer gets `deny`, `by: kernel`, reason `cancel`, `restart` or
+     `ended`. The `ended` closes every open or pending ask or check of the
+     session in the same call, so no Claude ask stays without a decision.
+
+   An ask or check with no pending answer that the host closes with
+   `answered` gives the decision entry from `outcome` (`by: checked` on a
+   `direct: false` stream, else `host`). An `answered` whose `outcome` is
+   missing or not `allow`, `deny` or `none`, or is `none` on an ask or
+   `allow` on a check, is `unknown` (a check is answered only `none` or
+   `deny`, 4.5), and so is an `expired` or `cancelled` item that carries an
+   `outcome` key; the ask stays as it was, open or pending. Any other or
+   missing `by`, or one that is not a string, is `unknown`. An `unknown`
+   item leaves the ask open, so a later `expired` or `cancelled` still gives
+   its decision (S19; until S20 builds the code to change of 9.4, `answered`
+   is `unknown` too). An `ask-resolved` whose `id` is not open or pending is
+   `unknown`. A kernel ask (OpenAI) is unchanged: its decision is written at
+   its answer. Stage E builds only the provider's side (10).
 5. A line that is not valid UTF-8 is `unknown`. Its `raw` is the line as a
    JSON string: each byte that is not UTF-8 is written as the four characters
    `\xNN` (lowercase hex), and white space is trimmed from both ends. A
@@ -1279,8 +1330,12 @@ when `claude-codes` cannot parse it.
      the kernel records as a `by: checked` decision, as it did not answer
      itself (9.8). So "safe"
      never widens the mode. An owner's `allow` to an ask whose verdict is
-     pending is forwarded only after a safe verdict; after an unsafe one the
-     ask is already denied and the answer is `unknown-ask`. Claude's own hook
+     pending is forwarded only after a safe verdict; the kernel keeps it as a
+     pending answer, and it is recorded by the host's `answered` (the one
+     decision, 9.8 rule 4), not at the kernel's `answer`. After an unsafe
+     verdict the provider's `deny` goes first: the host pushes `answered`/
+     `deny`, and the one decision is `deny, by: checked`; a later answer is
+     `unknown-ask`. Claude's own hook
      timeout (`timeout-s`, `onFailure: block`) still stops the tool if the
      provider never answers.
   7. When its own stream to the kernel is full, it defers the item call and
@@ -1409,7 +1464,7 @@ stages B and E).
 Not protected: the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose loopback reach is still to be probed (V27), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
-(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); whether a subagent prompt that starts with `/` runs a skill (not
+(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); whether a subagent prompt that starts with `/` runs a skill (not
 probed; probe V26, slice S1); whether the shell grant's sandbox blocks
 loopback (probe V27, slice S1; table in 16).
 
@@ -1436,7 +1491,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` `caller.boot()`: the start number, raised once per host start, kept in host state, a pure read (2.1, 9.3; B1).
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
 - [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended`; a lag clock from a failed `full` push to `ready` that reaches 10 s ends the stream `lagging`, except a stream its consumer has deferred (2.1, 3; P03).
-- [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7); the host builds each `ask`, `check` and `ask-resolved` item itself and never copies bytes of a `claude` line into one, and `ask-resolved {by: answered}` carries the `outcome` (4.5).
+- [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7); the host builds each `ask`, `check` and `ask-resolved` item itself and never copies bytes of a `claude` line into one, and `ask-resolved {by: answered}` carries the `outcome` (4.5); the host pushes `ask-resolved {by: expired}` for a check it has not answered at its `expires-at` and writes nothing to stdin for it (4.5; S22).
 - [ ] `host/TECHNICAL.md` H1: byte budgets for queued items (512 MiB host, 128 MiB per origin client, 16 MiB per page connection; `full`; a page connection past its budget ends `lagging`) (3; P11).
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
 - [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
@@ -1749,12 +1804,25 @@ of `spec/VISION.md`.
     duplicate top-level key is `unknown`. An `ask-resolved` with an unknown or
     missing `by` is `unknown` and the ask stays open, so a later `expired`
     gives its `by: host` decision; with `by: answered` it closes the ask
-    with no entry when the kernel answered it itself, and gives the decision
+    with the pending answer as its entry when the kernel answered it itself
+    with that outcome, and gives the decision
     entry from `outcome` otherwise (`by: checked` on a `direct: false`
     stream, else `host`); a missing or bad `outcome`, `none` on an ask or
     `allow` on a check is `unknown` (S19 reads every `answered` as `unknown`, 9.4). An `ask` or
     `check` whose `tool` is not a string is `unknown`. A part group whose joined
     whole is of kind `part` reads as `unreadable`.
+73. (9.3, 9.4, 9.8 rule 4, 4.5) Kernel crate, with the fake `claude` or
+    fixtures: in each, exactly one decision entry per ask id. (a) Direct
+    mode: the owner's allow, then `answered allow`: one `allow, by: owner`
+    entry. (b) Checked mode: the owner's allow, then `answered deny`: one
+    `deny, by: checked` entry. (c) A pending answer, then `expired`: one
+    `deny, by: host, reason: expired`. (d) `expired` carrying an `outcome` is
+    `unknown`, the ask stays. (e) A check, no answer, host `expired`: one
+    decision, and a later `answer` is `unknown-ask`. (f) The provider
+    stream's `ended` with one open ask and one with a pending answer: two
+    decisions, `deny, by: kernel, reason: ended` and the pending answer. (g)
+    `cancel` and the restart step with the same two asks give the same two
+    kinds.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
@@ -1780,7 +1848,7 @@ length. A long session cannot hold the slot.
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
 | A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; cases 36 and 51 for the host part (3); case 58 (host part); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `caller.boot` (2.1, B1), dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72; the budgets of stage B |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `caller.boot` (2.1, B1), dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72, 73; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts), 70; the budgets of stage D |
 | E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
