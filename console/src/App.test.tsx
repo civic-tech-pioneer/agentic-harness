@@ -52,6 +52,22 @@ describe("the page", () => {
     expect(document.activeElement).toBe(allow);
   });
 
+  it("ac2_needs_you_scrolls_a_card_shorter_than_the_area_to_nearest", async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    const { container } = render(<App kernel={played()} info={INFO} />);
+    const button = await ready();
+    Object.defineProperty(container.querySelector(".wa-scroll")!, "clientHeight", { configurable: true, value: 600 });
+    const card = document.querySelector<HTMLElement>('[data-call="e2"]')!;
+    card.getBoundingClientRect = () => ({ height: 200 }) as DOMRect;
+    await userEvent.setup().click(button);
+    expect(scroll.mock.contexts[0]).toBe(card);
+    expect(scroll.mock.calls[0][0]).toEqual({ block: "nearest" });
+    card.getBoundingClientRect = () => ({ height: 900 }) as DOMRect;
+    await userEvent.setup().click(button);
+    expect(scroll.mock.calls[1][0]).toEqual({ block: "start" });
+  });
+
   it("ac2_needs_you_focuses_allow_once_without_scrolling", async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const focus = vi.spyOn(HTMLElement.prototype, "focus");
