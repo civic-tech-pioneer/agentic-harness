@@ -477,7 +477,13 @@ impl Joiner {
         };
         group.2.push_str(text);
         if n == m {
-            return serde_json::from_str(&group.2).ok();
+            let mut whole: Value = serde_json::from_str(&group.2).ok()?;
+            // 9.4: the whole carries the index of its last part, never one it claims.
+            if let (Some(slot), Some(i)) = (whole.get_mut("i"), v.get("i").and_then(Value::as_u64))
+            {
+                *slot = i.into();
+            }
+            return Some(whole);
         }
         self.open = Some((n + 1, m, group.2));
         None
