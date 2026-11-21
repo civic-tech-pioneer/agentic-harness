@@ -52,11 +52,14 @@ try {
     if (width >= 1280) assert.ok(m.bar.height < 70 && m.btns.every((b) => Math.abs(b.top - last.top) < 4), `${width}: the bar is one row`);
     assert.ok(m.sw <= m.iw, `${width}: no horizontal scroll`);
     // The pill itself, focused after a pointer click, draws no ring; reached by Tab, it does (:focus-visible).
+    // S23-1 AC8: Needs you hides while its card holds focus; focus goes to the composer first, which shows it again (the assertions below are unchanged)
+    await page.getByRole("textbox", { name: "Message" }).focus();
     await pill.evaluate((e) => e.focus());
     const mouse = await pill.evaluate((e) => [e.matches(":focus"), e.matches(":focus-visible"), getComputedStyle(e).outlineStyle, getComputedStyle(e).boxShadow]);
     assert.deepEqual(mouse, [true, false, "none", "none"], `${width}: pill focused after a click draws no ring`);
-    await page.keyboard.press("Shift+Tab");
+    // (S23-1: away from the pill and back by keys inside the dock; Shift+Tab from the pill would reach Allow once, whose card hides the pill)
     await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
     const key = await pill.evaluate((e) => [e.matches(":focus-visible"), getComputedStyle(e).outlineStyle]);
     assert.deepEqual(key, [true, "solid"], `${width}: pill reached by Tab shows its ring`);
     console.log(`ok ${width}x${height}`, JSON.stringify(m.btns.map((b) => [b.t, Math.round(b.left), Math.round(b.top)])));

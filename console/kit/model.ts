@@ -57,7 +57,14 @@ export const emptyView: SessionView = {
 };
 export interface Actions {
   say(text: string): void;
-  answer(ask: string, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void;
+  answer(ask: string, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void | Promise<void>;
   stop(): void;
   takeBack(allowId: string): void;
 }
+/** 2.3: did the kernel refuse an `answer` because the ask is already decided (a refusal whose field is `ask`, case 9)? */
+export function isAskRefusal(e: unknown): boolean {
+  const o = e as { field?: unknown; refusals?: { field?: unknown }[]; refusal?: { field?: unknown } } | null;
+  return o?.field === "ask" || !!o?.refusals?.some((r) => r?.field === "ask") || o?.refusal?.field === "ask";
+}
+/** The event the page sends its scroller when the column changed size, or a card changed what holds focus: what is measured is read again. */
+export const MEASURE = "wa-measure";

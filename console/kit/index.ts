@@ -3,5 +3,5 @@ export * from "./model";
 export { reduce } from "./reduce";
 export { decisionJson, openSession } from "./kernel";
 export type { Kernel } from "./kernel";
-export { MEASURE, focusInOpenAsk, ThreadProvider, Transcript } from "./thread";
+export { FOCUS_END, focusInOpenAsk, releaseOpenAsk, ThreadProvider, Transcript } from "./thread";
 export { StatusLine } from "./status";

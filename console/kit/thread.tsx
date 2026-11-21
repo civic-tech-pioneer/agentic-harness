@@ -2,9 +2,9 @@
 // rows near the viewport are in the DOM (the transcript is windowed), so a long session costs what a short one does.
 import { memo, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime, type ThreadMessageLike } from "@assistant-ui/react";
-import type { Actions, Row, SessionView } from "./model";
+import { MEASURE, type Actions, type Row, type SessionView } from "./model";
 import { FoldStore } from "./parts/disclosure";
-import { RowView } from "./parts/rows";
+import { JudgeContext, RowView } from "./parts/rows";
 
 function convert(row: Row): ThreadMessageLike {
   const text = row.kind === "user" || row.kind === "agent" || row.kind === "thought" ? row.text : "";
@@ -38,14 +38,26 @@ export const ROW_GAP = 8;
 export const WINDOW_CAP = 100;
 export const OVERSCAN = 800;
 const NEAR_END = 40;
-/** The event the page sends its scroller when the column changed size: the rows' heights are read again. */
-export const MEASURE = "wa-measure";
-/** 18.6 Place: is focus inside a card with an open ask, within this scroller? Then nothing follows the end, whatever the
- *  scroll position; read at each decision to follow, by the transcript and the page alike. */
+export { MEASURE };
+/** 18.6 Place: a pointer press on the scroller's own scrollbar, or on non-focusable text inside an open ask's card, drops focus to the
+ *  page body without the reader leaving the card; the element that had focus is held until focus goes to another element, or its ask is decided. */
+const held = new WeakMap<Element, Element>();
+const FOCUSABLE = "a[href],button,input,select,textarea,summary,[tabindex],[contenteditable]";
+/** Is focus inside a card with an open ask, within this scroller (or held there by a pointer press)? Then nothing follows the end,
+ *  whatever the scroll position; read at each decision to follow, by the transcript and the page alike. */
 export const focusInOpenAsk = (scroller: Element) => {
-  const a = scroller.ownerDocument.activeElement;
-  return !!a && scroller.contains(a) && !!a.closest("[data-asking]");
+  const doc = scroller.ownerDocument, a = doc.activeElement;
+  if (a && scroller.contains(a) && a.closest("[data-asking]")) return true;
+  const h = held.get(scroller);
+  if (!h) return false;
+  if (h.isConnected && h.closest("[data-asking]") && (!a || a === doc.body)) return true;
+  held.delete(scroller);
+  return false;
 };
+/** The reader chose to follow again (the pill): nothing is held. */
+export const releaseOpenAsk = (scroller: Element) => { held.delete(scroller); };
+/** The page asks the transcript to follow the end and put focus on its newest row (the pill). */
+export const FOCUS_END = "wa-focus-end";
 
 /** A row whose ask or check is open must stay in the DOM: its typed reason and its ask bar live there. */
 const holdsAsk = (r: Row) => r.kind === "tool" && !!r.ask && !r.ask.decision;
@@ -67,6 +79,8 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
   const nearEnd = useRef(true);
   /** The row the reader looks at and where it sits in the view: held still while heights above it change. */
   const anchor = useRef<{ key: string; rel: number } | null>(null);
+  const focusEnd = useRef(false);
+  const judge = props.view.turn?.state === "running" && props.view.turn.activity?.kind === "checking";
 
   // offs[i] is the top of row i inside the transcript; a row never measured stands for the estimate.
   const offs = useMemo(() => {
@@ -138,11 +152,19 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
     // focus inside a card with an open ask ends the follow of the end (18.6 Place); once focus has left such a card, a scroll near the end resumes it
     const onFocus = (ev: FocusEvent) => { if ((ev.target as Element).closest?.("[data-asking]")) { nearEnd.current = false; pick(); } };
     e.addEventListener("focusin", onFocus);
+    const onPress = (ev: MouseEvent) => {
+      const t = ev.target as Element, a = e.ownerDocument.activeElement;
+      if (!a || !e.contains(a) || !a.closest("[data-asking]")) return;
+      if (t === e || (t.closest?.("[data-asking]") && !t.closest(FOCUSABLE))) held.set(e, a);
+    };
+    e.addEventListener("mousedown", onPress);
+    const onFocusEnd = () => { focusEnd.current = true; nearEnd.current = true; tick(); };
+    e.addEventListener(FOCUS_END, onFocusEnd);
     // the page's one resize observer (App) tells the scroller when the column changed size: a fold opened, a font came in
     const onResize = () => { if (measure()) tick(); };
     e.addEventListener(MEASURE, onResize);
     tick(); // the viewport is known now
-    return () => { e.removeEventListener("scroll", onScroll); e.removeEventListener("focusin", onFocus); e.removeEventListener(MEASURE, onResize); scroller.current = null; };
+    return () => { e.removeEventListener("scroll", onScroll); e.removeEventListener("focusin", onFocus); e.removeEventListener("mousedown", onPress); e.removeEventListener(FOCUS_END, onFocusEnd); e.removeEventListener(MEASURE, onResize); scroller.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -151,6 +173,7 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
     const e = scroller.current;
     if (!e) return;
     if (measure()) { tick(); return; }
+    if (focusEnd.current) { focusEnd.current = false; const last = rowEls(); const n = last[last.length - 1]; if (n) { n.tabIndex = -1; n.focus({ preventScroll: true }); } }
     if (focusInOpenAsk(e)) nearEnd.current = false; // an ask may open on the card that already has focus (no focus event)
     if (nearEnd.current) { // following the end: stay on it as measured heights change the content (App keeps it on as rows arrive)
       if (e.scrollHeight - e.clientHeight - e.scrollTop > 0.5) e.scrollTop = e.scrollHeight;
@@ -177,9 +200,11 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
 
   return (
     <FoldStore.Provider value={folds}>
-      <ThreadPrimitive.Root ref={root} className="wa-transcript" data-total={total}>
-        {out}
-      </ThreadPrimitive.Root>
+      <JudgeContext.Provider value={judge}>
+        <ThreadPrimitive.Root ref={root} className="wa-transcript" data-total={total}>
+          {out}
+        </ThreadPrimitive.Root>
+      </JudgeContext.Provider>
     </FoldStore.Provider>
   );
 }

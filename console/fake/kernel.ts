@@ -21,8 +21,8 @@ export function partsOf(entry: object, size: number): string[] {
   return texts.map((text, k) => JSON.stringify({ v: 1, i: e.i - m + 1 + k, kind: "part", ...(e.at !== undefined ? { at: e.at } : {}), body: { n: k + 1, m, text } }));
 }
 
-/** `script` is steps of stream messages; `opts.preload` are entries (JSON) already stored. */
-export function fakeKernel(script: string[][], opts?: { preload?: string[] }): FakeKernel {
+/** `script` is steps of stream messages; `opts.preload` are entries (JSON) already stored; `opts.refuseAnswer` makes `answer` reject the way a kernel refusal does (`busy`, or a refusal whose field is `ask`: already decided). */
+export function fakeKernel(script: string[][], opts?: { preload?: string[]; refuseAnswer?: "busy" | "ask" }): FakeKernel {
   const store: Rec[] = (opts?.preload ?? []).map((s) => JSON.parse(s));
   const calls: FakeKernel["calls"] = [];
   let stream: { onMessage: (j: string) => void; onEnd: (r: string) => void } | null = null;
@@ -90,7 +90,11 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[] }): F
       return store.filter((e) => e.i > after).slice(0, Math.min(max, 256)).map((e) => JSON.stringify(e));
     },
     async say(session, key, input) { calls.push({ name: "say", args: [session, key, input] }); return 0; },
-    async answer(session, key, ask, decision) { calls.push({ name: "answer", args: [session, key, ask, decision] }); },
+    async answer(session, key, ask, decision) {
+      calls.push({ name: "answer", args: [session, key, ask, decision] });
+      if (opts?.refuseAnswer === "busy") throw Object.assign(new Error("busy: the session's provider stream is not free"), { kind: "busy" });
+      if (opts?.refuseAnswer === "ask") throw Object.assign(new Error("refused"), { kind: "refused", refusals: [{ field: "ask", reason: "the ask is already decided" }] });
+    },
     async interrupt(session, replacement) { calls.push({ name: "interrupt", args: [session, replacement] }); },
     async takeBack(session, allow) { calls.push({ name: "takeBack", args: [session, allow] }); },
     drop() { const s = stream; stream = null; s?.onEnd("dropped"); },
