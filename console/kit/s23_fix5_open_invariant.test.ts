@@ -4,7 +4,7 @@
 // exactly the open entry for its own call (TECHNICAL 18.3, 9.8).
 import { expect, it } from "vitest";
 import { emptyView, type Row, type SessionView } from "./model";
-import { reduce } from "./reduce";
+import { openAsk, reduce } from "./reduce";
 
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -18,8 +18,11 @@ function check(v: SessionView, log: string[]) {
   const tools = v.rows.filter((r): r is Extract<Row, { kind: "tool" }> => r.kind === "tool");
   for (const r of tools) {
     if (!r.ask) continue;
+    // validator: the card draws only its own call's ask (its input) and call (title), never another call's
+    if ((r.ask.input as { n?: unknown }).n !== r.call.id || ![`t${r.call.id}`, "other", "read", r.call.id].includes(r.call.title)) fail(`(f) row ${r.key} of ${r.call.id} shows ${J(r.ask.input)} ${r.call.title}`);
     if (r.ask.decision) { if (r.call.id !== r.ask.toolCallId) fail(`(d) decided card of ${r.ask.toolCallId} shows call ${r.call.id}`); continue; }
     if (!open.some((o) => o.ask === r.ask && o.ask.toolCallId === r.call.id)) fail(`(a) row ${r.key} shows ask ${r.ask.id} that is not open on its call`);
+    if (r.ask.kind === "ask" && openAsk(v, r.ask.id) !== r.ask) fail(`(e) openAsk(${r.ask.id}) is not the row's ask`);
   }
   for (const o of open) {
     if (o.ask.kind !== "ask") continue;
@@ -44,13 +47,14 @@ it("ac3_open_ask_invariant_holds_after_every_message", () => {
     const log: string[] = [];
     for (let k = 0; k < 10; k++) {
       const call = pick(["e1", "e2", "e3"]), id = pick(["a1", "a2", "a3"]), kind = pick(["ask", "ask", "check"]);
-      const x = r();
+      const x = r(), callKind = r() < 0.2 ? { kind: "read" } : {}; // validator: a read call sits in an explored row until an ask splits it
       let m: string;
-      if (x < 0.2) m = J({ sessionUpdate: pick(["tool_call", "tool_call_update"]), toolCallId: call, title: `t${call}`, status: pick(["pending", "in_progress", "completed"]), ...(r() < 0.3 ? { content: [{ type: "content", content: { type: "text", text: "o" } }] } : {}) });
+      if (x < 0.2) m = J({ sessionUpdate: pick(["tool_call", "tool_call_update"]), toolCallId: call, title: `t${call}`, ...callKind, status: pick(["pending", "in_progress", "completed"]), ...(r() < 0.3 ? { content: [{ type: "content", content: { type: "text", text: "o" } }] } : {}) });
       else {
         const decision = x < 0.5 ? { decision: { outcome: pick(["allow", "deny"]), by: "you" } } : {};
-        const withCall = r() < 0.7 && !decision.decision ? { toolCall: { toolCallId: call, title: `t${call}` } } : {};
-        m = J({ _meta: { watane: { type: "entry", entry: { v: 1, i: n++, kind: "ask", at: n, body: { id, kind, toolCallId: call, input: { n: call }, "expires-at": 9, ...withCall, ...decision } } } } });
+        const withCall = r() < 0.6 ? { toolCall: { toolCallId: call, title: `t${call}`, ...callKind } } : {};
+        const i = r() < 0.9 ? n++ : Math.max(1, n - 2); // validator: sometimes an index already seen (replay), which the reducer drops
+        m = J({ _meta: { watane: { type: "entry", entry: { v: 1, i, kind: "ask", at: i, body: { id, kind, toolCallId: call, input: { n: call }, "expires-at": 9, ...withCall, ...decision } } } } });
       }
       log.push(m);
       v = reduce(v, m);
