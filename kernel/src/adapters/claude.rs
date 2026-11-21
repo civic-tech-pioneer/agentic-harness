@@ -13,15 +13,50 @@ use serde_json::{json, Map, Value};
 
 use super::{cut_output, unknown, Entry, Kind, Out};
 
-/// A Claude ask lives 10 minutes in the host (9.6).
-const ASK_TTL_MS: u64 = 600_000;
-
 /// Turns one Claude stream item into `Out`s. Its only state is in memory.
 #[derive(Debug, Default)]
 pub struct ClaudeAdapter {
     tools: HashMap<String, (String, Value)>,
     result_seen: bool,
     idle_seen: bool,
+    /// Asks and checks the host has not resolved yet, by id, as their entry body.
+    open: HashMap<String, Value>,
+    /// Thinking of the step so far (9.4 `thought`).
+    thinking: Thinking,
+}
+
+#[derive(Debug, Default)]
+struct Thinking {
+    /// Texts of finished `thinking` blocks.
+    blocks: Vec<String>,
+    /// Deltas since the last block (a block repeats what its deltas streamed).
+    deltas: String,
+    first_at: u64,
+    last_at: u64,
+    any: bool,
+}
+
+impl Thinking {
+    fn touch(&mut self, at: u64) {
+        if !self.any {
+            self.first_at = at;
+            self.any = true;
+        }
+        self.last_at = at;
+    }
+
+    fn take(&mut self) -> Option<Value> {
+        let t = std::mem::take(self);
+        if !t.any {
+            return None;
+        }
+        let mut parts = t.blocks;
+        if !t.deltas.is_empty() {
+            parts.push(t.deltas);
+        }
+        let ms = t.last_at.saturating_sub(t.first_at);
+        Some(json!({"text": parts.join("\n\n"), "seconds": (ms + 500) / 1000}))
+    }
 }
 
 fn update(u: SessionUpdate) -> Option<Value> {
@@ -55,7 +90,29 @@ impl ClaudeAdapter {
 
     /// Adapt one line (a stdout line, or a host item as JSON) seen at `at` ms since the epoch.
     pub fn line(&mut self, line: &[u8], at: u64) -> Vec<Out> {
-        let text = String::from_utf8_lossy(line);
+        let mut outs = self.item(line, at);
+        for out in &mut outs {
+            if let Some(Value::Object(u)) = out.update.as_mut() {
+                let meta = u.entry("_meta").or_insert_with(|| json!({}));
+                if let Some(m) = meta.as_object_mut() {
+                    let w = m.entry("watane").or_insert_with(|| json!({}));
+                    if let Some(w) = w.as_object_mut() {
+                        w.insert("at".into(), json!(at));
+                    }
+                }
+            }
+        }
+        outs
+    }
+
+    fn item(&mut self, line: &[u8], at: u64) -> Vec<Out> {
+        let text = match std::str::from_utf8(line) {
+            Ok(t) => t,
+            Err(_) => {
+                let lossy = String::from_utf8_lossy(line);
+                return vec![unknown(Value::String(lossy.trim().to_string()))];
+            }
+        };
         let trimmed = text.trim();
         if trimmed.is_empty() {
             return vec![];
@@ -63,27 +120,37 @@ impl ClaudeAdapter {
         let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
             return vec![unknown(Value::String(trimmed.to_string()))];
         };
-        match str_of(&value, "type") {
-            Some("initialized") => return vec![],
-            Some("ask") => return self.ask(&value, "ask", at),
-            Some("check") => return self.ask(&value, "check", at),
+        let ty = str_of(&value, "type");
+        match ty {
+            Some("initialized") | Some("tool_progress") | Some("task_progress") => return vec![],
+            Some("ask") => return self.ask(&value, "ask"),
+            Some("check") => return self.ask(&value, "check"),
             Some("ask-resolved") => return self.resolved(&value),
+            Some("wrapped") | Some("verdict") | Some("checking") => return vec![unknown(value)],
+            Some("system")
+                if matches!(
+                    str_of(&value, "subtype"),
+                    Some("hook_started" | "hook_response" | "tool_progress" | "task_progress")
+                ) =>
+            {
+                return vec![]
+            }
             _ => {}
         }
         match serde_json::from_value::<ClaudeOutput>(value.clone()) {
-            Ok(output) => self.output(output, &value),
+            Ok(output) => self.output(output, &value, at),
             Err(_) => vec![unknown(value)],
         }
     }
 
-    fn output(&mut self, output: ClaudeOutput, raw: &Value) -> Vec<Out> {
+    fn output(&mut self, output: ClaudeOutput, raw: &Value, at: u64) -> Vec<Out> {
         match output {
             ClaudeOutput::Assistant(a) => {
                 let uuid = a.uuid;
                 a.message
                     .content
                     .into_iter()
-                    .filter_map(|b| self.block(b, uuid.as_deref()))
+                    .filter_map(|b| self.block(b, uuid.as_deref(), at))
                     .collect()
             }
             ClaudeOutput::User(u) => u
@@ -95,7 +162,7 @@ impl ClaudeAdapter {
                     _ => None,
                 })
                 .collect(),
-            ClaudeOutput::StreamEvent(s) => stream_event(&s.event).into_iter().collect(),
+            ClaudeOutput::StreamEvent(s) => self.stream_event(&s.event, at).into_iter().collect(),
             ClaudeOutput::System(s) => self.system(&s.data, raw),
             ClaudeOutput::Result(_) => self.result(raw),
             ClaudeOutput::RateLimitEvent(_) => vec![],
@@ -103,19 +170,32 @@ impl ClaudeAdapter {
         }
     }
 
-    fn block(&mut self, block: ClaudeBlock, uuid: Option<&str>) -> Option<Out> {
+    fn block(&mut self, block: ClaudeBlock, uuid: Option<&str>, at: u64) -> Option<Out> {
         match block {
-            ClaudeBlock::Text(t) if !t.text.is_empty() => Some(Out {
-                update: chunk(&t.text, false),
-                entry: Some(Entry {
-                    kind: Kind::Message,
-                    uuid: uuid.map(str::to_string),
-                    body: json!({"role": "agent", "content": [{"type": "text", "text": t.text}]}),
-                }),
-                ..Out::default()
-            }),
+            ClaudeBlock::Text(t) if !t.text.is_empty() => {
+                let mut body =
+                    json!({"role": "agent", "content": [{"type": "text", "text": t.text}]});
+                if let Some(thought) = self.thinking.take() {
+                    body["thought"] = thought;
+                }
+                Some(Out {
+                    update: chunk(&t.text, false),
+                    entry: Some(Entry {
+                        kind: Kind::Message,
+                        uuid: uuid.map(str::to_string),
+                        body,
+                    }),
+                    ..Out::default()
+                })
+            }
             ClaudeBlock::Text(_) => None,
             ClaudeBlock::Thinking(t) if !t.thinking.is_empty() => {
+                // A block repeats what its deltas streamed: it adds no time then.
+                if self.thinking.deltas.is_empty() {
+                    self.thinking.touch(at);
+                }
+                self.thinking.deltas.clear();
+                self.thinking.blocks.push(t.thinking.clone());
                 Some(only(chunk(&t.thinking, true)))
             }
             ClaudeBlock::Thinking(_) => None,
@@ -241,6 +321,7 @@ impl ClaudeAdapter {
 
     fn result(&mut self, raw: &Value) -> Vec<Out> {
         self.result_seen = true;
+        self.thinking = Thinking::default();
         vec![Out {
             usage: raw.get("usage").cloned(),
             idle: self.take_idle(),
@@ -248,74 +329,65 @@ impl ClaudeAdapter {
         }]
     }
 
-    fn ask(&mut self, v: &Value, kind: &str, at: u64) -> Vec<Out> {
-        let (Some(id), Some(tool)) = (v.get("id").filter(|i| !i.is_null()), str_of(v, "tool"))
+    fn ask(&mut self, v: &Value, kind: &str) -> Vec<Out> {
+        let call_id = str_of(v, "tool_use_id").filter(|s| !s.is_empty());
+        let id = v.get("id").filter(|i| !i.is_null());
+        let tool = str_of(v, "tool");
+        let expires = v.get("expires-at").filter(|e| e.is_number());
+        let (Some(call_id), Some(id), Some(tool), Some(expires)) = (call_id, id, tool, expires)
         else {
             return vec![unknown(v.clone())];
         };
         let input = v.get("input").cloned().unwrap_or(Value::Null);
-        let call_id = v.get("tool_use_id").cloned().unwrap_or(Value::Null);
-        let is_ask = kind == "ask";
-        let options = if is_ask {
-            json!([
-                {"optionId": "allow", "name": "Allow", "kind": "allow_once"},
-                {"optionId": "allow-session", "name": "Allow for this session", "kind": "allow_always"},
-                {"optionId": "deny", "name": "Deny", "kind": "reject_once"}
-            ])
-        } else {
-            json!([
-                {"optionId": "none", "name": "No objection", "kind": "allow_once"},
-                {"optionId": "deny", "name": "Deny", "kind": "reject_once"}
-            ])
-        };
-        let mut item = json!({
-            "type": "ask", "id": id, "kind": kind,
+        let body = json!({
+            "id": id, "kind": kind, "toolCallId": call_id,
             "toolCall": {"toolCallId": call_id, "title": tool, "rawInput": input},
-            "options": options,
+            "input": input, "expires-at": expires,
         });
-        let mut body = json!({
-            "id": id, "kind": kind, "tool-call-id": call_id, "tool": tool, "input": input,
-        });
-        if is_ask {
-            item["expires-at"] = json!(at.saturating_add(ASK_TTL_MS));
-            body["expires-at"] = json!(at.saturating_add(ASK_TTL_MS));
-        }
-        vec![Out {
-            watane: Some(item),
-            entry: Some(Entry {
-                kind: Kind::Ask,
-                uuid: None,
-                body,
-            }),
-            ..Out::default()
-        }]
+        self.open.insert(id.to_string(), body.clone());
+        vec![ask_entry(body)]
     }
 
     fn resolved(&mut self, v: &Value) -> Vec<Out> {
-        let (Some(id), Some(by)) = (v.get("id").filter(|i| !i.is_null()), v.get("by")) else {
+        let (Some(id), Some(by)) = (v.get("id").filter(|i| !i.is_null()), str_of(v, "by")) else {
             return vec![unknown(v.clone())];
         };
-        vec![Out {
-            watane: Some(json!({"type": "ask-resolved", "id": id, "by": by})),
-            entry: Some(Entry {
-                kind: Kind::Ask,
-                uuid: None,
-                body: json!({"id": id, "by": by}),
-            }),
-            ..Out::default()
-        }]
+        let Some(mut body) = self.open.remove(&id.to_string()) else {
+            return vec![unknown(v.clone())];
+        };
+        if by != "expired" && by != "cancelled" {
+            return vec![];
+        }
+        body["decision"] = json!({"outcome": "deny", "by": "host", "reason": by});
+        vec![ask_entry(body)]
+    }
+
+    fn stream_event(&mut self, event: &Value, at: u64) -> Option<Out> {
+        if str_of(event, "type") != Some("content_block_delta") {
+            return None;
+        }
+        let delta = event.get("delta")?;
+        match str_of(delta, "type")? {
+            "text_delta" => Some(only(chunk(str_of(delta, "text")?, false))),
+            "thinking_delta" => {
+                let t = str_of(delta, "thinking")?;
+                self.thinking.touch(at);
+                self.thinking.deltas.push_str(t);
+                Some(only(chunk(t, true)))
+            }
+            _ => None,
+        }
     }
 }
 
-fn stream_event(event: &Value) -> Option<Out> {
-    if str_of(event, "type") != Some("content_block_delta") {
-        return None;
-    }
-    let delta = event.get("delta")?;
-    match str_of(delta, "type")? {
-        "text_delta" => Some(only(chunk(str_of(delta, "text")?, false))),
-        "thinking_delta" => Some(only(chunk(str_of(delta, "thinking")?, true))),
-        _ => None,
+fn ask_entry(body: Value) -> Out {
+    Out {
+        entry: Some(Entry {
+            kind: Kind::Ask,
+            uuid: None,
+            body,
+        }),
+        ..Out::default()
     }
 }
 

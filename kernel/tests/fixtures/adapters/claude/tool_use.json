@@ -47,7 +47,12 @@
             "command": "ls -la",
             "description": "List files"
           },
-          "status": "pending"
+          "status": "pending",
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
+          }
         }
       }
     ]

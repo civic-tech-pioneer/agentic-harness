@@ -19,7 +19,7 @@
       }
     },
     {
-      "at": 1763600000000,
+      "at": 1763600002600,
       "line": {
         "type": "stream_event",
         "event": {
@@ -110,6 +110,46 @@
         "session_id": "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11",
         "uuid": "a3000000-0000-4000-8000-000000000002"
       }
+    },
+    {
+      "at": 1763600003000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "id": "m",
+          "type": "message",
+          "role": "assistant",
+          "model": "x",
+          "content": [
+            {
+              "type": "text",
+              "text": "Done."
+            }
+          ]
+        },
+        "session_id": "s",
+        "uuid": "a3000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "at": 1763600004000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "id": "m",
+          "type": "message",
+          "role": "assistant",
+          "model": "x",
+          "content": [
+            {
+              "type": "text",
+              "text": "Again."
+            }
+          ]
+        },
+        "session_id": "s",
+        "uuid": "a3000000-0000-4000-8000-000000000004"
+      }
     }
   ],
   "expected": [
@@ -120,6 +160,11 @@
           "content": {
             "type": "text",
             "text": "Let me "
+          },
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
           }
         }
       }
@@ -131,6 +176,11 @@
           "content": {
             "type": "text",
             "text": "think."
+          },
+          "_meta": {
+            "watane": {
+              "at": 1763600002600
+            }
           }
         }
       }
@@ -143,10 +193,77 @@
           "content": {
             "type": "text",
             "text": "Let me think."
+          },
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
+            }
           }
         }
       }
     ],
-    []
+    [],
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "Done."
+          },
+          "_meta": {
+            "watane": {
+              "at": 1763600003000
+            }
+          }
+        },
+        "entry": {
+          "kind": "message",
+          "uuid": "a3000000-0000-4000-8000-000000000003",
+          "body": {
+            "role": "agent",
+            "content": [
+              {
+                "type": "text",
+                "text": "Done."
+              }
+            ],
+            "thought": {
+              "text": "Let me think.",
+              "seconds": 3
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "Again."
+          },
+          "_meta": {
+            "watane": {
+              "at": 1763600004000
+            }
+          }
+        },
+        "entry": {
+          "kind": "message",
+          "uuid": "a3000000-0000-4000-8000-000000000004",
+          "body": {
+            "role": "agent",
+            "content": [
+              {
+                "type": "text",
+                "text": "Again."
+              }
+            ]
+          }
+        }
+      }
+    ]
   ]
 }

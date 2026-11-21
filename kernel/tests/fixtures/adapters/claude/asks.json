@@ -16,7 +16,8 @@
         "input": {
           "command": "rm -rf build"
         },
-        "tool_use_id": "toolu_01BashFFFFFFFFFFFFFFFF"
+        "tool_use_id": "toolu_01Bash",
+        "expires-at": 1763600060000
       }
     },
     {
@@ -24,23 +25,177 @@
       "line": {
         "type": "check",
         "id": "chk-1",
+        "tool_use_id": "toolu_01Write",
         "tool": "Write",
         "input": {
           "file_path": "/work/x",
           "content": "x"
         },
-        "tool_use_id": "toolu_01WriteGGGGGGGGGGGGGG"
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "assistant",
+        "message": {
+          "id": "m1",
+          "type": "message",
+          "role": "assistant",
+          "model": "x",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "toolu_01Bash3",
+              "name": "Bash",
+              "input": {
+                "command": "ls"
+              }
+            }
+          ]
+        },
+        "session_id": "s",
+        "uuid": "u1"
       }
     },
     {
       "at": 1763600000000,
       "line": {
         "type": "ask",
-        "id": "ask-2",
-        "tool": "WebFetch",
+        "id": "ask-3",
+        "tool": "Bash",
         "input": {
-          "url": "https://example.com"
-        }
+          "command": "rm -rf build"
+        },
+        "tool_use_id": "toolu_01Bash3",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "ask-x",
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "ask-x",
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "expires-at": 1763600060000,
+        "tool_use_id": null
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "ask-x",
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "tool_use_id": 7,
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "ask-x",
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "tool_use_id": "",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "tool_use_id": "toolu_01Bash",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": null,
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "tool_use_id": "toolu_01Bash",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "ask-x",
+        "tool": 5,
+        "input": {
+          "command": "rm -rf build"
+        },
+        "tool_use_id": "toolu_01Bash",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "ask-x",
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "tool_use_id": "toolu_01Bash"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "ask-x",
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "tool_use_id": "toolu_01Bash",
+        "expires-at": "soon"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "chk-x",
+        "tool": "Bash",
+        "input": {
+          "command": "rm -rf build"
+        },
+        "tool_use_id": "",
+        "expires-at": 1763600060000
       }
     },
     {
@@ -48,7 +203,71 @@
       "line": {
         "type": "ask-resolved",
         "id": "ask-1",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "ask-1",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "chk-1",
+        "by": "cancelled"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "ask-3",
         "by": "user"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "ask-3",
+        "by": "user"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "nope",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "wrapped",
+        "id": "ask-9",
+        "line": "x"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "verdict",
+        "id": "ask-9",
+        "line": "x"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "checking",
+        "id": "ask-9",
+        "line": "x"
       }
     }
   ],
@@ -56,88 +275,65 @@
     [],
     [
       {
-        "watane": {
-          "type": "ask",
-          "id": "ask-1",
-          "kind": "ask",
-          "toolCall": {
-            "toolCallId": "toolu_01BashFFFFFFFFFFFFFFFF",
-            "title": "Bash",
-            "rawInput": {
-              "command": "rm -rf build"
-            }
-          },
-          "options": [
-            {
-              "optionId": "allow",
-              "name": "Allow",
-              "kind": "allow_once"
-            },
-            {
-              "optionId": "allow-session",
-              "name": "Allow for this session",
-              "kind": "allow_always"
-            },
-            {
-              "optionId": "deny",
-              "name": "Deny",
-              "kind": "reject_once"
-            }
-          ],
-          "expires-at": 1763600600000
-        },
         "entry": {
           "kind": "ask",
           "body": {
             "id": "ask-1",
             "kind": "ask",
-            "tool-call-id": "toolu_01BashFFFFFFFFFFFFFFFF",
-            "tool": "Bash",
+            "toolCallId": "toolu_01Bash",
+            "toolCall": {
+              "toolCallId": "toolu_01Bash",
+              "title": "Bash",
+              "rawInput": {
+                "command": "rm -rf build"
+              }
+            },
             "input": {
               "command": "rm -rf build"
             },
-            "expires-at": 1763600600000
+            "expires-at": 1763600060000
           }
         }
       }
     ],
     [
       {
-        "watane": {
-          "type": "ask",
-          "id": "chk-1",
-          "kind": "check",
-          "toolCall": {
-            "toolCallId": "toolu_01WriteGGGGGGGGGGGGGG",
-            "title": "Write",
-            "rawInput": {
-              "file_path": "/work/x",
-              "content": "x"
-            }
-          },
-          "options": [
-            {
-              "optionId": "none",
-              "name": "No objection",
-              "kind": "allow_once"
-            },
-            {
-              "optionId": "deny",
-              "name": "Deny",
-              "kind": "reject_once"
-            }
-          ]
-        },
         "entry": {
           "kind": "ask",
           "body": {
             "id": "chk-1",
             "kind": "check",
-            "tool-call-id": "toolu_01WriteGGGGGGGGGGGGGG",
-            "tool": "Write",
+            "toolCallId": "toolu_01Write",
+            "toolCall": {
+              "toolCallId": "toolu_01Write",
+              "title": "Write",
+              "rawInput": {
+                "file_path": "/work/x",
+                "content": "x"
+              }
+            },
             "input": {
               "file_path": "/work/x",
               "content": "x"
+            },
+            "expires-at": 1763600060000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "update": {
+          "sessionUpdate": "tool_call",
+          "toolCallId": "toolu_01Bash3",
+          "title": "Bash",
+          "rawInput": {
+            "command": "ls"
+          },
+          "status": "pending",
+          "_meta": {
+            "watane": {
+              "at": 1763600000000
             }
           }
         }
@@ -145,63 +341,353 @@
     ],
     [
       {
-        "watane": {
-          "type": "ask",
-          "id": "ask-2",
-          "kind": "ask",
-          "toolCall": {
-            "toolCallId": null,
-            "title": "WebFetch",
-            "rawInput": {
-              "url": "https://example.com"
-            }
-          },
-          "options": [
-            {
-              "optionId": "allow",
-              "name": "Allow",
-              "kind": "allow_once"
-            },
-            {
-              "optionId": "allow-session",
-              "name": "Allow for this session",
-              "kind": "allow_always"
-            },
-            {
-              "optionId": "deny",
-              "name": "Deny",
-              "kind": "reject_once"
-            }
-          ],
-          "expires-at": 1763600600000
-        },
         "entry": {
           "kind": "ask",
           "body": {
-            "id": "ask-2",
+            "id": "ask-3",
             "kind": "ask",
-            "tool-call-id": null,
-            "tool": "WebFetch",
-            "input": {
-              "url": "https://example.com"
+            "toolCallId": "toolu_01Bash3",
+            "toolCall": {
+              "toolCallId": "toolu_01Bash3",
+              "title": "Bash",
+              "rawInput": {
+                "command": "rm -rf build"
+              }
             },
-            "expires-at": 1763600600000
+            "input": {
+              "command": "rm -rf build"
+            },
+            "expires-at": 1763600060000
           }
         }
       }
     ],
     [
       {
-        "watane": {
-          "type": "ask-resolved",
-          "id": "ask-1",
-          "by": "user"
-        },
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "ask-x",
+              "tool": "Bash",
+              "input": {
+                "command": "rm -rf build"
+              },
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "ask-x",
+              "tool": "Bash",
+              "input": {
+                "command": "rm -rf build"
+              },
+              "expires-at": 1763600060000,
+              "tool_use_id": null
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "ask-x",
+              "tool": "Bash",
+              "input": {
+                "command": "rm -rf build"
+              },
+              "tool_use_id": 7,
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "ask-x",
+              "tool": "Bash",
+              "input": {
+                "command": "rm -rf build"
+              },
+              "tool_use_id": "",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "tool": "Bash",
+              "input": {
+                "command": "rm -rf build"
+              },
+              "tool_use_id": "toolu_01Bash",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": null,
+              "tool": "Bash",
+              "input": {
+                "command": "rm -rf build"
+              },
+              "tool_use_id": "toolu_01Bash",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "ask-x",
+              "tool": 5,
+              "input": {
+                "command": "rm -rf build"
+              },
+              "tool_use_id": "toolu_01Bash",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "ask-x",
+              "tool": "Bash",
+              "input": {
+                "command": "rm -rf build"
+              },
+              "tool_use_id": "toolu_01Bash"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "ask-x",
+              "tool": "Bash",
+              "input": {
+                "command": "rm -rf build"
+              },
+              "tool_use_id": "toolu_01Bash",
+              "expires-at": "soon"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "chk-x",
+              "tool": "Bash",
+              "input": {
+                "command": "rm -rf build"
+              },
+              "tool_use_id": "",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
         "entry": {
           "kind": "ask",
           "body": {
             "id": "ask-1",
-            "by": "user"
+            "kind": "ask",
+            "toolCallId": "toolu_01Bash",
+            "toolCall": {
+              "toolCallId": "toolu_01Bash",
+              "title": "Bash",
+              "rawInput": {
+                "command": "rm -rf build"
+              }
+            },
+            "input": {
+              "command": "rm -rf build"
+            },
+            "expires-at": 1763600060000,
+            "decision": {
+              "outcome": "deny",
+              "by": "host",
+              "reason": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "ask-1",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "chk-1",
+            "kind": "check",
+            "toolCallId": "toolu_01Write",
+            "toolCall": {
+              "toolCallId": "toolu_01Write",
+              "title": "Write",
+              "rawInput": {
+                "file_path": "/work/x",
+                "content": "x"
+              }
+            },
+            "input": {
+              "file_path": "/work/x",
+              "content": "x"
+            },
+            "expires-at": 1763600060000,
+            "decision": {
+              "outcome": "deny",
+              "by": "host",
+              "reason": "cancelled"
+            }
+          }
+        }
+      }
+    ],
+    [],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "ask-3",
+              "by": "user"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "nope",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "wrapped",
+              "id": "ask-9",
+              "line": "x"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "verdict",
+              "id": "ask-9",
+              "line": "x"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "checking",
+              "id": "ask-9",
+              "line": "x"
+            }
           }
         }
       }
