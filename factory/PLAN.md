@@ -248,7 +248,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   sequences; S9's held cases kept. Implementer runs 1 each of 5. Suite: `npm test` 280 tests
   10.0 s (+19%), `test:slow` 30 s, gate 21 s.
 
-- **S22** one decision per ask in the record (PR #24, 14 min). A Claude ask's decision is written
+- **S22** one decision per ask in the record (PR #24, merged 2026-11-21 01:51 UTC, 14 min). A Claude ask's decision is written
   once, when it closes: the kernel's own answer is a pending answer until `answered`, and an
   outcome that differs (an unsafe verdict after an owner's allow) gives one `deny, by: checked`;
   the host closes a check with `expired` too (watane, 15); `ended` closes every open or pending
