@@ -41,8 +41,7 @@ export function DiffView({ path, oldText, newText }: { path: string; oldText: st
     }
   }
   if (o !== "" && n !== "" && oldBare !== newBare) {
-    const at: [number, Mark][] = oldBare ? [[lastDel, "del"]] : [[lastAdd, "add"]];
-    all.splice(at[0][0], 0, { mark: at[0][1], text: "No newline at end of file", note: true });
+    all.splice(oldBare ? lastDel : lastAdd, 0, { mark: oldBare ? "del" : "add", text: "No newline at end of file", note: true });
   }
   return (
     <div className="wa-diff diff" role="group" aria-label={`Changes to ${path}`}>

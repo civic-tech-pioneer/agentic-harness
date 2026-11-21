@@ -196,9 +196,14 @@ describe("S9-fix5: a missing final newline", () => {
   it("ac2_no_newline_marker_under_the_side_that_lacks_it", () => {
     expect(rows("#x", "#x\n")).toEqual(["del #x", "del No newline at end of file", "add #x"]);
     expect(rows("safe #\n", "safe #")).toEqual(["del safe #", "add safe #", "add No newline at end of file"]);
+    const long = Array.from({ length: 12 }, (_, k) => `l${k}`).join("\n");
+    expect(rows(long, `${long}\n`).slice(-3)).toEqual(["del l11", "del No newline at end of file", "add l11"]);
+    const note = render(<DiffView path="a" oldText="x" newText={"x\n"} />).container.querySelector(".nonl")!;
+    expect([note.className, note.textContent]).toEqual(["wa-diff-line dl del nonl", "-Removed: No newline at end of file"]);
   });
   it("ac2_both_lacking_is_unchanged_and_ac3_empty_sides_have_no_marker", () => {
     expect(rows("a\nb", "a\nc")).toEqual(["same a", "del b", "add c"]);
     expect(rows("", "p\nq")).toEqual(["add p", "add q"]);
+    expect(rows("p\nq", "")).toEqual(["del p", "del q"]);
   });
 });
