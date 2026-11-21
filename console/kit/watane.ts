@@ -58,9 +58,9 @@ export function wataneKernel(w: Watane): Kernel {
     if (m.type === "stream") {
       if (!Array.isArray(m.items)) return;
       if (s) deliver(id, s, m.items);
-      else hold(id, (h) => { for (const it of m.items) if (h.items.length < HOLD_MAX) h.items.push(it); });
+      else hold(id, (h) => { if (h.end === undefined) for (const it of m.items) if (h.items.length < HOLD_MAX) h.items.push(it); });
     } else if (s) finish(id, s, outcomeOf(m.outcome));
-    else hold(id, (h) => { h.end = outcomeOf(m.outcome); });
+    else hold(id, (h) => { h.end ??= outcomeOf(m.outcome); });
   });
 
   /** The `{ok}` payload of a call, or an `Error` whose `kind` is the case name. */

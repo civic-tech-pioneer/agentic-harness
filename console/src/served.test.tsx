@@ -26,6 +26,14 @@ describe("S32-3 AC4", () => {
     expect(f.calls[1]).toEqual({ fn: "probe.start", args: { key: "console-probe", count: 1000, "every-ms": 1000 } });
     expect(x.info.id).toBe("new");
   });
+  it("ac4_a_started_probe_takes_its_title_from_list_and_shows_in_the_sidebar", async () => {
+    let started = false;
+    const probe = { id: "new", title: "Numbered items", profile: "", backend: "probe", turn: "idle", updated: 1 };
+    const f = fakeWatane({ "sessions.list": () => ({ ok: started ? [probe] : [] }), "probe.start": () => { started = true; return { ok: "new" }; } });
+    const x = await served(f.w);
+    expect(x.info).toMatchObject({ id: "new", title: "Numbered items", provider: "Stage A probe" });
+    expect(x.sessions.map((s) => s.id)).toEqual(["new"]);
+  });
 });
 
 describe("S32-3 failure", () => {

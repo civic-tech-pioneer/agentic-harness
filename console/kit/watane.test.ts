@@ -99,6 +99,20 @@ describe("S32-3 AC2", () => {
       expect(got2).toEqual([]);
     } finally { vi.useRealTimers(); }
   });
+  it("ac2_ac3_a_stream_end_before_the_attach_answers_ends_it_after_its_held_items", async () => {
+    let answer!: (v: unknown) => void;
+    const f = fakeWatane({ "sessions.attach": () => new Promise((r) => { answer = r; }) });
+    const got: string[] = [], ends: string[] = [];
+    const p = wataneKernel(f.w).attach("s", 0, (j) => got.push(j), (r) => ends.push(r));
+    f.push({ ...items([1, "a"]), stream: "st" });
+    f.push({ type: "stream-end", stream: "st", outcome: "lagging" });
+    f.push({ ...items([2, "b"]), stream: "st" });
+    f.push({ type: "stream-end", stream: "st", outcome: { failed: "late" } });
+    answer({ ok: "st" });
+    await p;
+    expect(got).toEqual(["a"]);
+    expect(ends).toEqual(["lagging"]);
+  });
   it("ac2_items_of_unknown_streams_are_ignored", async () => {
     const f = fakeWatane({ "sessions.attach": () => ({ ok: "st" }) });
     const got: string[] = [];

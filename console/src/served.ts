@@ -15,11 +15,13 @@ async function ok(w: Watane, fn: string, args: object): Promise<any> {
 
 export async function served(w: Watane): Promise<Served> {
   const kernel = wataneKernel(w);
-  const list: Listed[] = await ok(w, "sessions.list", { after: null, max: 256 });
+  const listed = (): Promise<Listed[]> => ok(w, "sessions.list", { after: null, max: 256 });
+  let list = await listed();
   const probes = list.filter((s) => s.backend === "probe").sort((a, b) => b.updated - a.updated);
   let cur = probes[0] as Listed | undefined;
   if (!cur) {
     const id: string = await ok(w, "probe.start", { key: "console-probe", count: 1000, "every-ms": 1000 });
+    list = await listed(); // the new session's own title, and the sidebar shows it
     cur = list.find((s) => s.id === id) ?? { id, title: "Stage A probe", profile: "", backend: "probe", updated: 0 };
   }
   const info: SessionInfo = { id: cur.id, title: cur.title, profile: cur.profile, provider: "Stage A probe", workspace: "" };
