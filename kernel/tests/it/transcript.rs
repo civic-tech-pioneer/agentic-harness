@@ -314,11 +314,17 @@ fn ac6_paging_both_ways() {
         seen = ids;
     }
     assert_eq!(seen, (1..=10_000).collect::<Vec<_>>());
-    // max 0 is refused, over 256 is 256; empty transcript has last 0.
+    // max 0 is refused and reads no chunk, over 256 is 256; empty transcript has last 0.
+    drop(t);
+    st.reset_counts();
+    let mut t = Transcript::new(&mut st, "s", &mut meta);
     let Err(KernelError::Refused(r)) = t.read(0, None, 0) else {
         panic!("max 0 must be refused")
     };
     assert_eq!(r[0].field, "max");
+    drop(t);
+    assert_eq!(st.counts().gets, 0, "max 0 reads no chunk");
+    let mut t = Transcript::new(&mut st, "s", &mut meta);
     assert_eq!(t.read(0, None, 1).unwrap().entries.len(), 1);
     assert_eq!(t.read(0, None, 9999).unwrap().entries.len(), 256);
     let mut st = MemState::new();
@@ -650,6 +656,7 @@ fn ac2_append_takes_only_whole_entry_kinds() {
             .unwrap();
     }
     let before = (meta.clone(), st.get(&chunk_key("s", 0)));
+    let puts = st.counts().puts;
     for k in ["part", "unreadable", "", "Message", "bogus"] {
         let mut e = text_entry(3);
         e.kind = k.into();
@@ -659,5 +666,6 @@ fn ac2_append_takes_only_whole_entry_kinds() {
         };
         assert_eq!((r[0].field.as_str(), r.len()), ("kind", 1));
         assert_eq!((meta.clone(), st.get(&chunk_key("s", 0))), before, "{k:?}");
+        assert_eq!(st.counts().puts, puts, "{k:?} writes no state");
     }
 }
