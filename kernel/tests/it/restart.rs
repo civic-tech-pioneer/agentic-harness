@@ -276,6 +276,7 @@ fn ac3_the_step_settles_a_claude_turn_case_69() {
         c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
         [json!({"type": "turn", "state": {"state": "unknown"}})]
     );
+    assert_eq!(c.pushes[0].session, id);
     let r = rec(&mut k, &id);
     assert_eq!((r.boot, r.turn.clone()), (2, Turn::Unknown));
     assert!(r.open.is_empty() && r.streams.is_empty() && r.deadlines.is_empty());
