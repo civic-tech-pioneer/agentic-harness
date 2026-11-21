@@ -1770,7 +1770,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             slots.save(&mut self.state)?;
         }
         rec.updated = now;
-        self.finish(Some(&mut rec), &mut acct)?;
+        // 9.3 "Past": an interrupt without a replacement only ends the turn.
+        self.finish_as(Some(&mut rec), &mut acct, replacement.is_none())?;
         Ok(Called {
             value: (),
             pushes: self.flush(work, rec.live.as_deref()),
@@ -1826,7 +1827,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if was || closed {
             rec.updated = now;
         }
-        self.finish(Some(&mut rec), &mut acct)?;
+        // 9.3 "Past": a cancel closes the session's work, so it cannot fail on quota.
+        self.finish_as(Some(&mut rec), &mut acct, true)?;
         Ok(Called {
             value: (),
             pushes: self.flush(work, rec.live.as_deref()),
@@ -2418,8 +2420,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         if changed {
             rec.updated = now;
         }
-        // A stream's `ended` cannot fail on quota (9.3 "Past"): its writes are bounded (R4).
-        self.finish_as(changed.then_some(&mut rec), &mut acct, ended.is_some())?;
+        // A stream's `ended`, and an item while past, cannot fail on quota (9.3 "Past"): their
+        // writes are bounded (R4).
+        self.finish_as(
+            changed.then_some(&mut rec),
+            &mut acct,
+            ended.is_some() || past.is_past(),
+        )?;
         work.live = rec.live.clone();
         Ok(work)
     }
