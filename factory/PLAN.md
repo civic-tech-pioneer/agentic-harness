@@ -49,6 +49,20 @@ adversaries' held cases are acceptance. Watch `npm test` time: 16.4 s on a loade
 machine at S27 against S7's 14.5 s budget; S23 sets the highlight budget per block (18.6).
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
+### S1: the open probes of section 18 (in flight (local), session LOCAL_S1)
+
+Story: a maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on the Mac and sees, for the
+current `claude`, (subagent-slash) whether a subagent prompt that starts with `/` runs a skill the profile
+denies, and (loopback) whether the shell grant's sandbox blocks a connection to loopback.
+Outcomes:
+1. `probes.py` runs each new probe by its name, alone, and prints a result line like the others.
+2. Proposal section 18 gains rows V26 and V27 with the result, the `claude` version and the
+   effect on the design; TECHNICAL 14's "not probed" line is not edited here (S2 owns it).
+3. A breach (either one runs or connects) is written as the design effect and flagged to the PO.
+Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` section 18 only.
+Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
+Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
+
 ## Sketched
 
 ### S31: the broker: session allows and rule matching (cloud, after S29 merges: kernel/)
@@ -79,20 +93,6 @@ p95 timing checks fail the default gate under parallel load (S29 saw it twice at
 move the timing limits to `test:slow` or measure them in a way load cannot fail, keeping a
 functional check in `npm test`. A UI slice: PO-armed. Touches: `console/`, `ui/`.
 Protects: *guard* (asks).
-
-### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
-
-Story: a maker runs `python3 -I proto/claude-probes/probes.py subagent-slash loopback` on the Mac and sees, for the
-current `claude`, (subagent-slash) whether a subagent prompt that starts with `/` runs a skill the profile
-denies, and (loopback) whether the shell grant's sandbox blocks a connection to loopback.
-Outcomes:
-1. `probes.py` runs each new probe by its name, alone, and prints a result line like the others.
-2. Proposal section 18 gains rows V26 and V27 with the result, the `claude` version and the
-   effect on the design; TECHNICAL 14's "not probed" line is not edited here (S2 owns it).
-3. A breach (either one runs or connects) is written as the design effect and flagged to the PO.
-Touches: `proto/claude-probes/probes.py`, `design/ARCHITECTURE-PROPOSAL.md` section 18 only.
-Leaves out: V7 (judge account), V8 (stage A), V13 (unit test of host code).
-Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 
 ## Done
 
@@ -421,6 +421,9 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   can escape to ~1.5 KiB; an adapter-made decided ask below quota is stored as given (no adapter
   makes one; build it from the record when one does).
 
+- 2026-11-21 The human trusted the agentic-harness folder (via the parent session); S1 goes to a
+  local foreman.
+
 ## Human answers (2026-11-20, through the PO)
 
 S2 writes each into the document that owns it.
@@ -437,12 +440,6 @@ S2 writes each into the document that owns it.
 - **R1** This repository is the kernel `mods:agent`; each provider has its own repository.
 
 ## Waiting on the human
-
-- **S1 cannot start a local foreman.** `claude --bg` in a new worktree refuses: "Workspace not
-  trusted. Run `claude` in <worktree> once and accept the trust prompt". Accepting it is yours;
-  the PO does not bypass a trust prompt. Options: (a) trust `watane-mods/agentic-harness` so its
-  worktrees inherit it, then the PO starts S1; (b) run S1's probes by hand; (c) drop S1 (it is
-  *guard*, two probes). Rec: (a). Undo: none needed.
 
 - **N5 The factory's implementer needs a shell.** The human chose to decide at stage F. Options:
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
