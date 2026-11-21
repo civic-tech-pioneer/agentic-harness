@@ -782,7 +782,7 @@ wire") are this JSON; the entry has no `activity`.
     `waiting` turn's asks shrink, then it is `running`) and the `turn` push goes out); a new
     ask is not stored and is denied at once (`Request::Answer` deny, reason
     `quota`); any other entry is not stored. When the session's turn is
-    active, the first such item ends it `stopped {limit: quota}` (its `turn`
+    active, the first item not stored ends it `stopped {limit: quota}` (its `turn`
     entry from the reserve) and sends `Request::Interrupt`; queued inputs stay
     queued and no queued input starts while past. The same holds at the
     chunk cap (16 384, 9.3 Sizes): an entry that would take the session past
