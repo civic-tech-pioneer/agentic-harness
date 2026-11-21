@@ -558,7 +558,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `quota` | the kernel-wide account: bytes and sessions of all owners (9.3) |
 | `stream/<id>` | `{session, kind}` (`kind`: `provider`, `request`, `job`, `owner`), written in the call that opens or receives the stream, deleted on its `ended` (9.4) |
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
-| `active/<n>`, n 0..3 | A1: page n of the sessions whose turn is `running`, `waiting` or `paused`, each entry `{id, boot}` (`boot`: the boot number of the session's last restart step, or of the call that added it). At most 256 entries per page, so at most 1 024 listed sessions; a page is at most 24 KiB (a session id is at most 64 bytes). The record's `active-page` names the page that holds the session while it is listed. Kept by every turn change that enters or leaves the index (9.3, A2); it is what the restart pass reads in place of a prefix scan |
+| `active/<n>`, n 0..3 | A1: page n of the sessions whose turn is `running`, `waiting` or `paused`, each entry `{id, boot}` (`boot`: the boot number of the session's last restart step, or of the call that added it). At most 256 entries per page, so at most 1 024 listed sessions; a page is at most 24 KiB (a session id is at most 64 bytes, 9.3). The record's `active-page` names the page that holds the session while it is listed. Kept by every turn change that enters or leaves the index (9.3, A2); it is what the restart pass reads in place of a prefix scan |
 | `slots` | `{provider, request, job: counts; timers; boot; active: four page counts; restart: the pass's page cursor; head, tail}`: the stream slots in use, the live session timers (9.3), the boot number (9.3), the entries of each `active/` page, the page where the restart pass goes on, and the ends of the waiting FIFO (9.5) |
 | `slots/wait/<n>` | `{session, boot}`: a session waiting for a slot, with the boot number of the call that queued it; an entry of an older boot is skipped (9.5) |
 
@@ -601,7 +601,7 @@ once; `check` runs only this step.
 
 ### 9.3 Sessions
 
-Session record: `id`, `owner`, `key`, `profile`, `backend`, `title`,
+Session record: `id` (made by the kernel, at most 64 bytes; the only place this is stated), `owner`, `key`, `profile`, `backend`, `title`,
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
 `boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
@@ -707,8 +707,8 @@ wire") are this JSON; the entry has no `activity`.
   or a turn that ends and starts the next queued input in the same call,
   writes no page. `delete` removes the session if listed. A3: at 1 024 listed
   sessions, a `start` or `say` that would add one is refused `busy` (2.3, 12;
-  its message names the cap); it never waits. One owner holds at most 64
-  sessions, so 16 owners fill it: an accepted limit, as the slots of 9.5.
+  its message names the cap); it never waits. At the default 64 sessions
+  per owner (below), 16 owners fill it: an accepted limit, as the slots of 9.5.
 - **Restart.** Streams are memory only (3), so a restart leaves turns that no
   process drives. The kernel finds them without a prefix scan: it lists
   nothing, it reads `active/` pages.
@@ -729,7 +729,8 @@ wire") are this JSON; the entry has no `activity`.
     and it lists no keys: no prefix scan. With no call after a start, nothing
     runs until one comes (a client's call or a due timer).
   - **R3, the step's bound.** A session's restart step reads and writes no
-    more than an `interrupt` of that session would, plus its page. A second
+    more than an `interrupt` of that session or one step of 9.5 (the one-call
+    bound of 17), whichever applies, plus its page. A second
     restart during the pass starts a new pass from page 0; entries of any older
     boot are stepped then.
   - **R4, the restart step.** It deletes the session's `stream/` keys and
@@ -739,11 +740,19 @@ wire") are this JSON; the entry has no `activity`.
 
     | Backend, state | Becomes |
     |---|---|
-    | Claude, `running` or `waiting` | each open ask is decided `deny`, `by: kernel`, reason `restart`, its deadline dropped; the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept |
-    | Claude, `paused` | stays `paused`; its `resume` deadline and timer are kept (7); when it fires the turn resumes with `session {resume}` (4.1), as after the idle release (9.5) |
-    | OpenAI, `running` (loop `requesting`, `retrying` or `ready`) | the loop goes to `ready` and takes a request slot or waits in the FIFO under this boot (9.5); `retrying` keeps its `retry` deadline; in `tools`, idempotent jobs start again under their keys, the others get `aborted` (9.5, AGT-F-27); the turn stays `running` |
-    | OpenAI, `waiting` or `paused` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
+    | Claude, `running` or `waiting` | each open ask is decided `deny`, `by: kernel`, reason `restart`, its deadline dropped; the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
+    | `paused`, either backend | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` today (9.5; 9.8 gives nothing for a Claude rate limit) |
+    | OpenAI, `requesting` or `ready` (waiting in the FIFO or not) | goes to `ready`, takes a request slot or waits in the FIFO under this boot (9.5); the turn stays `running` |
+    | OpenAI, `retrying` | stays `retrying`; its `retry` deadline and timer are kept (7) and the request goes when it fires (9.5); nothing is sent at once, so no request is sent twice |
+    | OpenAI, `tools` | stays `tools`; its open jobs of `idempotent` tools start again under their keys (taking job slots or waiting, as 9.5 "Slots"), the others get `aborted`; `pending` calls stay pending and start in waves as before |
+    | OpenAI, `waiting` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
     | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` resumes with `session {resume}`, as after the idle release |
+
+    AGT-F-27 applies to the tool jobs of 6 (the OpenAI loop, row `tools`),
+    the only calls a mod marks safe to repeat. AGT-F-10: no stored turn is
+    shown as `running` unless something drives it: a Claude turn becomes
+    `unknown`; an OpenAI turn is `running` because its step starts it again;
+    `list` reports the turn the step will give (R6).
   - **R5, Continue.** `say` on an `unknown` session starts a turn that resumes
     the Claude session with `session {resume}` (4.1); if `claude` refuses the
     resume, the turn becomes `resume-lost`. When inputs are queued, the `say`
@@ -753,7 +762,9 @@ wire") are this JSON; the entry has no `activity`.
   - **R6, the lazy step.** Any call that reads a session record whose `boot`
     is older than `slots.boot` does that session's restart step first, in the
     same call (so `attach`, `read`, `say`, `answer` and `delete` never act on a
-    stale turn); the pass then finds the entry current and skips it. `list`
+    stale turn; an `answer` to an ask that step just denied is refused with one
+    refusal `{field: "ask"}`, as for a check (2.3): the spec gives no other result for
+    an ask already decided); the pass then finds the entry current and skips it. `list`
     reads no extra record for this: for a record of an older boot it reports
     the turn its restart step will give (`unknown` for a Claude `running` or
     `waiting`), without writing.
@@ -801,7 +812,7 @@ repeats every field of the ask and adds:
 ```
 
 `by` is `owner`; `session-allow`; `checked` (the checked provider); `kernel`
-(a kernel ask's expiry, `timers`, no owner stream, `cancel`); or `host` (a
+(a kernel ask's expiry, `timers`, no owner stream, `cancel`, `restart`); or `host` (a
 Claude ask the host resolved: `reason` is the host's `by`, `expired` or
 `cancelled`). Repeating the ask lets a page that starts at the decision show
 the card.
@@ -1056,10 +1067,13 @@ the code in these places (S12 built the rest).
   R1; streams are memory only, 3).
 - **Parallel:** the jobs of a step start together, up to the free job slots,
   only when every tool is `parallel`; else one after another, in call order.
-- **After a restart:** the session's restart step (9.3, R4) re-queues a
-  `requesting`, `retrying` or FIFO-waiting `ready` loop under the new boot: it
-  takes a request slot or waits in the FIFO; in `tools`, jobs of `idempotent`
-  tools start again under their keys, the others get `aborted`.
+- **After a restart:** the session's restart step (9.3, R4) gives each loop
+  state one outcome: `requesting` and `ready` go to `ready` and take a request
+  slot or wait in the FIFO under the new boot; `retrying` stays, its `retry`
+  deadline and timer kept, and the request goes when it fires; `tools` stays,
+  its open jobs of `idempotent` tools start again under their keys (job slots
+  as above), the others get `aborted`, `pending` calls start in waves as
+  before; `waiting` and `paused` are unchanged.
 
 ### 9.6 The broker
 
@@ -1634,37 +1648,39 @@ of `spec/VISION.md`.
     writes `slots` and one page of at most 24 KiB; a change among `running`,
     `waiting` and `paused`, and a turn that ends and starts the next queued
     input, write no page; `delete` removes a listed session. With 1 024 listed
-    sessions (16 owners), a `start` or `say` that would add one is refused
+    sessions (16 owners; seeded into the crate test's host state, since stage B's
+    calls cannot list that many: provider slots, 9.5), a `start` or `say` that would add one is refused
     `busy`, its message names the cap, and it does not wait; a leaving session
     frees room for the next.
 68. (2.1, 9.3, B1, R1–R3) Kernel crate: after the host's `boot` changes, the
     first call (not an item call on a stream) zeroes the stream slot counts,
-    keeps `timers`, sets `restart`; with 1 024 listed sessions, firings of
+    keeps `timers`, sets `restart`; with 1 024 listed sessions (seeded into the crate test's host state, as in 67), firings of
     `restart` step one session each, in at most `A + 1` calls for `A` stale
     sessions, each reading at most 96 KiB of pages plus that session's step
     (count calls and state gets); no call lists keys. A second boot change
     during the pass starts again from page 0. With no call after a start, no
     session changes; a step reads and writes no more than `interrupt` of that
-    session plus its page.
+    session or one step of 9.5 (17), whichever applies, plus its page.
 69. (9.3, 9.4, 18.5, R4 Claude part, R5) Kernel crate with the fake `claude`:
     after a restart a `running` or `waiting` Claude session becomes `unknown`
     (a `turn` entry, pushed), its open asks are denied `by: kernel`, reason
     `restart`, it leaves `active/`, the queue is kept, and no `stream/` or
-    `live/` key of that session from before the restart remains; a `paused`
-    one stays `paused` and its `resume` timer resumes it with `session
-    {resume}`. `say` on an `unknown` session starts a resumed turn; a refused
+    `live/` key of that session from before the restart remains. A tool call streamed without a `tool` entry gets none. `say` on an `unknown` session starts a resumed turn; a refused
     resume gives `resume-lost`; with inputs queued, the new input joins the end
     and the oldest starts.
 70. (9.5, R4 OpenAI part) Kernel crate with the scripted Responses server:
-    after a restart an OpenAI session `running` in `requesting`, `retrying` or
-    `ready` goes on under the new boot, taking a request slot or waiting in
-    the FIFO (FIFO entries of an older boot are skipped); `retrying` keeps its
-    `retry` deadline; idempotent jobs run again under their keys and the others
-    get `aborted`; `waiting` and `paused` sessions are unchanged, their
-    deadlines and timer kept; the turn stays `running`.
+    after a restart an OpenAI session `running` in `requesting` or
+    `ready` goes to `ready` under the new boot, taking a request slot or
+    waiting in the FIFO (FIFO entries of an older boot are skipped); a
+    `retrying` one stays, keeps its `retry` deadline and timer, and sends its
+    request once, when it fires; in `tools`, open idempotent jobs run again
+    under their keys, the others get `aborted`, `pending` calls stay pending;
+    `waiting` and `paused` sessions (either backend) are unchanged, their
+    deadlines and timer kept; the turn stays `running` where it was.
 71. (9.3, R6) After a restart, each of `attach`, `read`, `say`, `answer` and
     `delete` on a session of an older boot does its restart step first, in the
-    same call, and acts on the new state; the pass then skips that session.
+    same call, and acts on the new state (an `answer` to an ask the step denied
+    is refused `{field: "ask"}`); the pass then skips that session.
     `list` over such sessions reads no extra record, reports `unknown` for a
     Claude `running` or `waiting` one, and writes nothing.
 
