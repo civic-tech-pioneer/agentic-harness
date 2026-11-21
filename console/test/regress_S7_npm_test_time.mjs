@@ -8,9 +8,9 @@ import { fileURLToPath } from "node:url";
 
 // Foreman decision (S7-fix5): the sketch requires the large-transcript fixture with its limits in `npm test`, so the budget is 20% over main
 // measured the same way (README "Time and value"): 9.2 s x 1.2 = 11.0 s, not the 8.6 s of the first red.
-// Raised to 12.5 s after S7-fix5 (foreman, Time and value): the suite is CPU-bound at ~1.3x main (8.4-8.9 s here) after the cuts it could make
+// Raised to 14.5 s after S7-fix5 round 2 (foreman, Time and value): no flake in long_S7 comes first (default workers, a settle wait per sample), so the suite is ~1.5x main (8.4-9.4 s here) after the cuts it could make
 // without weakening a test; the growth over 20% is reported, so the next console slice moves tests down first (README "Time and value").
-const BUDGET_S = 12.5;
+const BUDGET_S = 14.5;
 const root = fileURLToPath(new URL("..", import.meta.url));
 const t = Date.now();
 const r = spawnSync(process.execPath, [root + "node_modules/vitest/vitest.mjs", "run"], { cwd: root, encoding: "utf8" });
