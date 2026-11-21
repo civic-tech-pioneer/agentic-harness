@@ -312,7 +312,7 @@ fn ac3_queue_limits() {
     let id = started(&mut k, "alice", "k");
     let big = "x".repeat(262_144);
     assert_eq!(
-        k.say("alice", &id, "k", &"x".repeat(262_145)).unwrap_err(),
+        k.say("alice", &id, "k8", &"x".repeat(262_145)).unwrap_err(),
         KernelError::TooLarge(262_144)
     );
     assert_eq!(
@@ -727,7 +727,7 @@ fn ac8_say_reads_no_more_on_a_long_transcript_than_on_a_fresh_one() {
         let id = started(&mut k, "alice", "k");
         k.provider(&id, ProviderEvent::Turn(completed())).unwrap();
         if long {
-            for _ in 0..5000 {
+            for _ in 0..10_000 {
                 let mut r = rec(&mut k, &id);
                 let mut m = r.meta();
                 let e = NewEntry {
@@ -756,4 +756,92 @@ fn ac8_say_reads_no_more_on_a_long_transcript_than_on_a_fresh_one() {
     let (long, chunks_read) = gets(true);
     assert_eq!(chunks_read, 1, "only the last chunk is read");
     assert!(long <= fresh + 1, "{long} vs {fresh}");
+}
+
+#[test]
+fn ac2_a_key_of_another_call_kind_or_owner_is_refused_and_kept() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    k.say("alice", &id, "s", "x").unwrap();
+    k.provider(&id, ask("a1", "ask", 5000)).unwrap();
+    k.answer("alice", &id, "a", "a1", r#"{"allow":true}"#)
+        .unwrap();
+    let keys = [
+        "slots",
+        "session/s1",
+        "owner/alice/0",
+        "queue/s1",
+        "active/0",
+        "key/alice/k",
+        "key/alice/s",
+        "key/alice/a",
+        "entries/s1/0",
+    ];
+    let before = snapshot(&mut k, &keys);
+    let n = requests(&k).len();
+    let is_key = |e: KernelError| matches!(e, KernelError::Refused(r) if r.len() == 1 && r[0].field == "key");
+    assert!(is_key(k.say("alice", &id, "k", "y").unwrap_err()));
+    assert!(is_key(k.say("alice", &id, "a", "y").unwrap_err()));
+    assert!(is_key(k.start("alice", "s", "p", "{}", IN).unwrap_err()));
+    assert!(is_key(k.start("alice", "a", "p", "{}", IN).unwrap_err()));
+    k.provider(&id, ask("a2", "ask", 5000)).unwrap();
+    let before2 = snapshot(&mut k, &keys);
+    assert!(is_key(
+        k.answer("alice", &id, "k", "a2", r#"{"allow":true}"#)
+            .unwrap_err()
+    ));
+    assert!(is_key(
+        k.answer("alice", &id, "s", "a2", r#"{"allow":true}"#)
+            .unwrap_err()
+    ));
+    assert_eq!(snapshot(&mut k, &keys), before2);
+    assert_eq!(before[5..8], before2[5..8]);
+    assert_eq!(requests(&k).len(), n);
+    assert_eq!(k.host.next_id, 1);
+    // the first results still replay
+    assert_eq!(k.start("alice", "k", "p", "{}", IN).unwrap().value, id);
+    assert_eq!(k.say("alice", &id, "s", "x").unwrap().value, 1);
+    // owner "a" key "b/c" and owner "a/b" key "c" share one state key: no replay of another's
+    let x = started(&mut k, "a", "b/c");
+    let e = k.start("a/b", "c", "p", "{}", IN).unwrap_err();
+    assert!(is_key(e));
+    assert_eq!(k.start("a", "b/c", "p", "{}", IN).unwrap().value, x);
+}
+
+#[test]
+fn ac3_say_resumes_a_pause_with_no_time_and_queues_on_a_timed_one() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let mut r = rec(&mut k, &id);
+    r.turn = Turn::Paused { until: None };
+    r.save(&mut k.state).unwrap();
+    let listed = snapshot(&mut k, &["slots", "active/0"]);
+    let n0 = requests(&k).len();
+    k.host.now = 2000;
+    k.state.reset_counts();
+    let c = k.say("alice", &id, "s1", "go").unwrap();
+    assert!(k.state.get_keys().iter().all(|x| !x.starts_with("active/")));
+    assert_eq!(snapshot(&mut k, &["slots", "active/0"]), listed);
+    assert_eq!(c.value, rec(&mut k, &id).next_index - 2);
+    assert_eq!(
+        rec(&mut k, &id).turn,
+        Turn::Running {
+            since: 2000,
+            activity: None
+        }
+    );
+    assert_eq!(requests(&k).len(), n0 + 1);
+    assert!(k.queued("alice", &id).unwrap().is_empty());
+    // paused until a time: the input waits in the queue
+    let mut r = rec(&mut k, &id);
+    r.turn = Turn::Paused { until: Some(9000) };
+    r.save(&mut k.state).unwrap();
+    let c = k.say("alice", &id, "s2", "later").unwrap();
+    assert_eq!(c.value, 1);
+    assert_eq!(
+        c.pushes,
+        [json!({"type": "queue", "inputs": [{"n": 1, "input": "later"}]})]
+    );
+    assert_eq!(rec(&mut k, &id).turn, Turn::Paused { until: Some(9000) });
+    assert_eq!(requests(&k).len(), n0 + 1);
 }
