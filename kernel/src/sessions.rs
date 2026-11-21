@@ -32,7 +32,6 @@ fn next_due(deadlines: &[Deadline], now: u64) -> Option<u64> {
     deadlines.iter().filter(|d| d.at > now).map(|d| d.at).min()
 }
 
-
 /// The kernel's own timer for the restart pass (R2).
 const RESTART: &str = "restart";
 /// The deadline of the 10-minute provider release (9.3, 9.5), and its delay.
