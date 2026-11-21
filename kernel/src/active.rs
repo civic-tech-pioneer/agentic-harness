@@ -77,6 +77,18 @@ pub fn read_page(state: &mut impl State, n: u8) -> Vec<PageEntry> {
         .unwrap_or_default()
 }
 
+/// The first page with room, or `busy`: lets a caller refuse before its first write (A3).
+pub fn check_room(slots: &Slots) -> Result<u8, KernelError> {
+    slots
+        .active
+        .iter()
+        .position(|&c| c < PAGE_SESSIONS)
+        .map(|p| p as u8)
+        .ok_or_else(|| {
+            KernelError::Busy(format!("the active index is full ({ACTIVE_MAX} sessions)"))
+        })
+}
+
 /// Adds `{id, boot}` to the first page with room; returns that page.
 pub fn add(
     state: &mut impl State,
@@ -84,13 +96,7 @@ pub fn add(
     id: &str,
     boot: u64,
 ) -> Result<u8, KernelError> {
-    let page = slots
-        .active
-        .iter()
-        .position(|&c| c < PAGE_SESSIONS)
-        .ok_or_else(|| {
-            KernelError::Busy(format!("the active index is full ({ACTIVE_MAX} sessions)"))
-        })? as u8;
+    let page = check_room(slots)?;
     let mut entries = read_page(state, page);
     entries.push(PageEntry {
         id: id.to_string(),
