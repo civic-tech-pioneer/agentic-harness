@@ -15,6 +15,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const setAt = useRef(-1);
   const [behind, setBehind] = useState(false); // output arrived below while the reader is not following
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set()); // asks this console answered that have no decision entry yet (9.4 rule 4)
+  useEffect(() => { setAnswered(new Set()); }, [info.id]); // ask ids repeat across sessions: what this console answered is per session
   const [needsHidden, setNeedsHidden] = useState(false);
   const lastAsk = useRef<string | null>(null); // the ask whose card last took focus
 
@@ -107,7 +108,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
 
   return (
     <div className="wa-app">
-      <Sidebar info={info} turn={view.turn?.state} needs={view.openAsks.length > 0} sessions={sessions} />
+      <Sidebar info={info} turn={view.turn?.state} needs={shown.openAsks.length > 0} sessions={sessions} />
       <main className="wa-main">
         <Header info={info} view={view} actions={actions} />
         <ThreadProvider view={view} actions={actions}>
