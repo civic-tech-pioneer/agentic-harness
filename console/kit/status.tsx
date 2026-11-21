@@ -2,8 +2,8 @@
 import { useId } from "react";
 import { cardName, type Actions, Row, SessionView } from "./model";
 
-type Shape = "dot" | "square" | "diamond" | "bars" | "ring" | "dashed-ring" | "triangle";
-const NAMES: Record<Shape, string> = { dot: "Running", square: "Checking", diamond: "Waiting for you", bars: "Paused", ring: "Idle", "dashed-ring": "Not running", triangle: "Failed" };
+type Shape = "dot" | "square" | "diamond" | "bars" | "ring" | "dashed-ring" | "triangle" | "loading";
+const NAMES: Record<Shape, string> = { dot: "Running", square: "Checking", diamond: "Waiting for you", bars: "Paused", ring: "Idle", "dashed-ring": "Not running", triangle: "Failed", loading: "Loading" };
 /** An act with no `run` has no kernel call yet: it shows disabled, with a description saying so. */
 interface Spec { word: string; shape: Shape; clock?: string; esc?: boolean; act?: { label: string; key?: string; run?: () => void } }
 
@@ -37,7 +37,7 @@ function askSubject(view: SessionView): string {
 
 function spec(view: SessionView, now: number, onNeedsYou: () => void): Spec {
   const t = view.turn;
-  if (!t) return { word: "Idle", shape: "ring" };
+  if (!t) return view.loading ? { word: "Loading", shape: "loading" } : { word: "Idle", shape: "ring" };
   switch (t.state) {
     case "running": {
       const clk = elapsed(now - t.since);

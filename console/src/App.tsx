@@ -71,7 +71,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
 
   return (
     <div className="wa-app">
-      <Sidebar info={info} turn={view.turn?.state} sessions={sessions} />
+      <Sidebar info={info} turn={view.turn?.state} needs={view.openAsks.length > 0} sessions={sessions} />
       <main className="wa-main">
         <Header info={info} view={view} actions={actions} />
         <ThreadProvider view={view} actions={actions}>

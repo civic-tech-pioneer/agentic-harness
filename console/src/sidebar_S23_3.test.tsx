@@ -1,0 +1,26 @@
+// S23-3 AC3: the open session sits under "Needs you" whenever an ask is open, whatever the turn says.
+import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { storyInfo } from "../fake/page";
+import { Sidebar } from "./Sidebar";
+
+afterEach(cleanup);
+const group = () => [...document.querySelectorAll(".wa-group")].find((g) => g.querySelector("[aria-current]"))!.querySelector(".wa-glabel")!.textContent;
+
+describe("S23-3 sidebar", () => {
+  it("ac3_a_running_turn_with_an_open_ask_is_under_Needs_you", () => {
+    render(<Sidebar info={storyInfo} turn="running" needs sessions={[]} />);
+    expect(group()).toBe("Needs you");
+    expect(document.querySelector("[aria-current] .g-ask")).not.toBeNull();
+  });
+  it("ac3_without_needs_it_is_as_before", () => {
+    render(<Sidebar info={storyInfo} turn="running" sessions={[]} />);
+    expect(group()).toBe("Running");
+  });
+  it("ac3_the_hold_under_the_pointer_still_holds", () => {
+    const { rerender } = render(<Sidebar info={storyInfo} turn="running" needs sessions={[]} />);
+    fireEvent.mouseEnter(screen.getByRole("navigation"));
+    rerender(<Sidebar info={storyInfo} turn="running" needs={false} sessions={[]} />);
+    expect(group()).toBe("Needs you");
+  });
+});
