@@ -1274,7 +1274,13 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
       with no empty, `.` or `..` segment after it; a `Glob` also needs a
       `pattern` that is a string not starting with `/` or `~`, with no `\`
       and no `..` segment (split on `/`), since `claude` searches an absolute
-      pattern's own folder and ignores `path` (adversary, S33-fix1). Key
+      pattern's own folder and ignores `path` (adversary, S33-fix1). For
+      `Write`, `Edit`, `MultiEdit` and `NotebookEdit` no segment after the
+      workspace starts with `.` (`.git/config`, `.claude/`, `.mcp.json`,
+      `.vscode/`, `.husky/`: a write there can make code run later) and the
+      last segment is none of `CLAUDE.md`, `AGENTS.md`, `build.rs`,
+      `package.json`, `Makefile` in any case (4.3); such a write always asks,
+      on top of the host's protected paths (adversary RISK 1, S34). Key
       `<ws>/**`, so reach `Edit(<ws>/**)` as before.
     - *Bash.* `command` is a string with no `:`, and `Bash(<command>)`
       passes the 4.1 allow grammar (so it has no `;` or `)`); then
@@ -1285,7 +1291,11 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
       timeout=5; run_in_background=true)`. An absent key and a key with
       Claude's default value are different keys; `description` is never
       part of it. So `dangerouslyDisableSandbox` (an unknown key) always goes
-      to the owner (S31-fix1).
+      to the owner (S31-fix1). The key is the text of the command, not what
+      it reads: the same command can reach other files after an allowed
+      `cd` moved `claude`'s shell folder, or after the agent changed files
+      it reads (`git status` and `.git/config`); the sandbox is the boundary
+      (the human, 2026-11-21, (4); named in 14).
     - *WebFetch.* `url` is a string of 1 to 2 048 bytes, printable ASCII
       only (no space, no control character, no `\`), parsed once as a
       WHATWG URL (the `url` crate, as Node's `URL` that `claude` runs); the
@@ -1296,7 +1306,10 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
       the parser writes it (lowercase; a non-ASCII name as its `xn--` form):
       reach `WebFetch(domain:example.com)`. Path, query and scheme are not
       part of it: an allow holds that host only, never another one, a
-      subdomain or a parent.
+      subdomain or a parent; except that `claude` itself follows a redirect
+      from the allowed host to the same host with or without a leading
+      `www.` (same scheme and port), so the allowed server, never the model,
+      can lead one fetch there (adversary RISK 2, S34; named in 14).
     - *Skill.* `skill` is a name `[a-z0-9-]{1,64}`, or two such names joined
       by one `:` (a plugin's skill). Key the name: reach `Skill(pdf)`.
       `args` is not part of it.
@@ -1687,7 +1700,7 @@ stages B and E).
 Not protected: a revoked `access/` entry does not stop a turn already running: no call of 2.3 writes `access/` today, so the kernel learns of the change only when a call reads the key (9.7, "Revoking"); the slice that adds the call writing `access/` ends the turns of the sessions whose profile it removes (as `cancel`); the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose loopback reach is still to be probed (V27), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
-(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; whether a subagent prompt that starts with `/` runs a skill (not
+(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6); whether a subagent prompt that starts with `/` runs a skill (not
 probed; probe V26, slice S1); whether the shell grant's sandbox blocks
 loopback (probe V27, slice S1; table in 16).
 
