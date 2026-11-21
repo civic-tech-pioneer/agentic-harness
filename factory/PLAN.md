@@ -42,18 +42,6 @@ ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live b
 after the restart's `unknown` turn the console shows it as ended, not running.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-### S24: spec debts from S21 (in flight (cloud), routine trig_01JAvSsKP7Wum47AMVVYG2nR)
-
-Outcomes (PR #25, "Decisions" and "For the PO"): 9.3's field list gains `open: [{id, kind, i,
-expires-at?}]`; 9.1 says `active/<n>` is a JSON array of `[id, boot]` pairs and `access/<identity>`
-a JSON array of profile names (absent or unreadable allows none); 9.3 Sizes: the queue's 2 MiB
-counts stored bytes (the input as a JSON string), and an emptied queue keeps its `next`; one
-`owner/<owner>/0` page until quotas (a 257th session of one owner is `quota`), or more pages named;
-a profile without `model` is checked as `"default"`; `access/` beyond `start`: subagent profiles
-(9.7) and revoking access while a session runs (fail closed); R4's idle Claude row and its resume
-owed to the streams slice. Touches: `design/TECHNICAL.md`. Not `kernel/` (S20). Protects: *guard*
-(access) and *core*.
-
 ## Sketched
 
 ### S20: asks as the kernel records and shows them (cloud, after S21 and S24 merge: kernel/ and TECHNICAL)
@@ -77,11 +65,29 @@ Outcomes:
    open asks at restart only for `running` and `waiting`; S22's D1-D5 replace both. `.gitignore`
    gains `kernel/target*` (a validator committed a 550 MB `kernel/target-base`).
    Polish: the refusal text of a bad `append` kind (`kind (, ): ...`) gets its field and reason.
+7. S24's 9.4 "Code to change (S20)": reread `access/` in `say`, `interrupt` (replacement), R5,
+   `answer allow` and at a turn's end; refuse an OpenAI profile without `model`; case 74.
 6. S22 RISK 1 (PO decision): at most 64 open Claude asks and checks per session; one past that is
    denied at once (`by: kernel`, reason `busy`), so `cancel`, R4 and `ended` write at most 64
    decisions in one call; spec in 9.3/9.6 with a case. Also S22's wording: R4's Claude row and
    9.8 rule 4 no longer name a kernel deadline or `ask-expiry` for Claude asks.
 Touches: `kernel/`, `design/TECHNICAL.md` (after S22 merges). Protects: *guard* (asks).
+
+### S25: quotas (cloud, after S20: kernel/)
+
+Story: a kernel maker runs `cargo test` in `kernel/` and owners are held to 9.3 "Quota": 64
+sessions and 64 MiB per owner (kernel settings), the 224 MiB account and its 32 MiB reserve, more
+`owner/<owner>/<n>` pages, the writes allowed into the reserve, `quota` refusals and
+`stopped {limit: quota}`; kept keys stay charged. As 9.4 "Code to change (a later slice)" names.
+Touches: `kernel/`. Protects: *guard*.
+
+### S26: the kernel tracks its provider streams (cloud, after S25: kernel/)
+
+Story: a kernel maker drives a Claude session through a fake provider stream on the in-memory
+state: open, items, `ended`, the 10-minute idle release and the resume after it (case 52), R4's
+idle row resuming with `resume` (not `resume: false`), `stream/<id>` and `live/<session>` keys
+(P09), and the deferral rules of 9.4 with a fake owner stream. As 9.4 "Code to change (a later
+slice)" names. Touches: `kernel/`. Protects: *core*.
 
 ### S23: the console shows an answered ask as waiting (cloud, after S7 merges: same files)
 
@@ -256,6 +262,13 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   checks `access/<identity>`, failing closed. User-sim ACCEPTED on run 2 (Continue with a full
   queue); adversary BREACHED 2 (queue bytes counted before escaping; `start` ignored `access/`),
   fixed, HELD twice. Implementer runs 1 each of 7. Kernel 179 tests in 3.18 s; gate 22 s.
+
+- **S24** S21's spec debts (PR #26, armed by the PO; 12 min). 9.3 gains `open`; 9.1 the formats of
+  `active/`, `queue/`, `access/`, `key/` and `owner/`; `access/` is reread beyond `start` (say,
+  interrupt, R5, answer allow, a turn's end), failing closed, with an unlisted name refused the
+  same whether or not the profile exists; an OpenAI profile needs `model`; a child session needs
+  no `access/` entry; revoking access does not stop a running turn (14); case 74. User-sim
+  ACCEPTED (run 1); adversary HELD twice, 7 RISKs settled in the text.
 
 ## Deputy decisions
 
