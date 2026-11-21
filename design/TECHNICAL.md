@@ -179,7 +179,9 @@ interface offers {                                   // a collect (W34)
 `input`, `overlay`, `decision` and `caps` are JSON: ACP content blocks, an
 overlay document (9.2), a decision (below), and ACP client capabilities.
 
-`decision` has exactly one of `allow`, `deny`, `none`, its value `true`:
+`decision` has exactly one of `allow`, `deny`, `none`, its value `true`; the
+`answer` of this interface takes four shapes (`none` is the checked provider's,
+below):
 
 | Decision | Meaning |
 |---|---|
@@ -187,10 +189,11 @@ overlay document (9.2), a decision (below), and ACP client capabilities.
 | `{"allow":true,"for":"session"}` | allow it and add its `reach` (9.4, 9.6) to the session's allows |
 | `{"allow":true,"input":{…}}` | allow with a changed input; only for `AskUserQuestion` and `ExitPlanMode` (4.5) |
 | `{"deny":true,"reason":"<text>"}` | deny; `reason` is optional, empty when absent |
-| `{"none":true}` | no verdict: a check only (4.5) |
 
-Any other shape, or `for`, `input` or `reason` with the wrong outcome, is
-`refused` with one refusal `{field: "decision", reason}`. `answer`'s `ask` is
+Any other shape, `{"none":true}` among them, or `for`, `input` or `reason`
+with the wrong outcome, is `refused` with one refusal `{field: "decision", reason}`. A
+check's `none` exists only in the checked provider's `claude-session.answer`
+(2.2, 4.5), never in a client's `answer`. `answer`'s `ask` is
 the `id` of the ask entry (9.4; the ask id of the deadlines in 9.3), never the
 tool call id. A check (`kind: "check"`, 9.4) is answered only by the checked
 provider (10); the owner's `answer` to it is refused, `{field: "ask"}`.
@@ -357,14 +360,15 @@ and `.husky/**`. No launch can remove them.
 | `control_request` `can_use_tool` | `{"type":"ask","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
 | `control_request` `hook_callback` (PreToolUse) | `{"type":"check","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
 | `control_cancel_request` | `{"type":"ask-resolved","id":…,"by":"cancelled"}` |
-| a line whose top-level `type` is one of the host's item types (`ask`, `check`, `ask-resolved`, `initialized`, `wrapped`, and any item type the host adds) | never passed through: the host pushes `{"type":"wrapped","line":"<the line, as a JSON string>"}` instead |
+| a line whose top-level `type` is any watane item type that can share the stream: `ask`, `check`, `ask-resolved`, `initialized`, `wrapped`, `consent-pending`, and the checked provider's `verdict` and `checking` (10); a slice that adds an item type to any of these streams adds it here | never passed through: the host pushes `{"type":"wrapped","line":"<the line, as a JSON string>"}` instead |
+| a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item: the host decides on the parsed value, so the kernel and the host never read one line two ways |
 | any other line, known or not | the line unchanged |
 
    `expires-at` is on the host's clock: for an ask, the time the host pushed
    the item plus 10 minutes, the same instant at which it denies the ask
    (step 5); for a check, the push time plus the hook's `timeout-s`. A
-   `control_request` without a `tool_use_id` is not passed as an ask or
-   check: the host answers it deny (ask) or `deny` (check) at once and pushes
+   `control_request` whose `tool_use_id` is missing, not a string, or empty is
+   not passed as an ask or check: the host answers it deny (ask) or `deny` (check) at once and pushes
    nothing for it. So no `claude` stdout line can pass as a host item.
 
 5. Writes to stdin are only these:
@@ -638,8 +642,8 @@ The turn state is this JSON, one line per state:
 ```
 
 `activity` is optional and live only; `checking` has `on` the ask id, or
-`"input"` for a check of the input. `expires-at` of `waiting` is the earliest
-open ask's. `until` of `paused` is absent for a pause with no time. `stop.kind`
+`"input"` for a check of the input. `asks` and `expires-at` of `waiting` count asks
+(`kind: "ask"`) only, not checks; `expires-at` is the earliest open ask's. `until` of `paused` is absent for a pause with no time. `stop.kind`
 `interrupted` is as `completed`. `seconds`, `tools` and `tokens` are the turn's
 wall time, tool calls and tokens, for the footer of 18.3; each is optional.
 The body of a `turn` entry (9.4) and the `state` of a `turn` item (9.4, "The
@@ -854,6 +858,10 @@ the card.
 - Console, a console slice after S9: accept a decision entry `by` value it
   does not know, and show it as text.
 - Console, a console slice after S9: draw a `check` with no Allow button.
+- Console, a console slice after S9: `console/kit/reduce.ts` does not merge an
+  ask's call into an earlier tool row of the same id (it reads `m.call` only
+  when no row exists); the ask's `toolCall` and `input` replace the row's
+  call, so the card shows what the ask says will run (9.8).
 - Kernel, S12: the ask entry body `tool-call-id` becomes `toolCallId`, and it
   gains `toolCall` and `reach`.
 - Kernel, S12: the `ask` `_meta.watane` item becomes the `entry` item (no
@@ -1009,9 +1017,18 @@ Give nothing (no update, no entry): Claude `system` `init`, `status`,
 9.5), `response.output_item.added`, `response.content_part.added`/`.done`,
 `response.output_text.done`, `response.reasoning_summary_part.added`/`.done`,
 `response.reasoning_summary_text.done`,
-`response.function_call_arguments.delta`/`.done`. Then: a `wrapped` item, and
-an `ask` or `check` item without a string `tool_use_id`, is an `unknown`
-entry, never an ask (14).
+`response.function_call_arguments.delta`/`.done`. Then: a `wrapped` item; an
+`ask` or `check` item whose `tool_use_id` is not a non-empty string or whose
+`expires-at` is not a number; and, on a `direct: true` stream, a `verdict` or
+`checking` item, are each an `unknown` entry, never an ask (14). The kernel
+takes `verdict` and `checking` only from a checked provider's stream
+(`direct: false`, 10). It reads items strictly (no lossy UTF-8 decoding): an
+item it cannot parse is `unknown`, never an ask.
+
+When an ask's input differs from the input of the pending `ToolCall` of the
+same id, the ask's is the one that runs and the one shown: the ask entry's
+`toolCall` and `input` are the truth, and a client draws the card from them
+(18.3).
 
 A `check` is the checked provider's to answer (10); its `none` means "no
 objection", never an allow. A client shows a check as a pending check or a
@@ -1020,9 +1037,12 @@ it.
 
 Code to change (S12):
 - take `expires-at` from the item (no `at + 600 000`);
-- an ask or check item without `tool_use_id` becomes `unknown` (today it is
-  an ask with a null id);
-- a `wrapped` item becomes `unknown`;
+- an ask or check item whose `tool_use_id` is not a non-empty string, or
+  whose `expires-at` is not a number, becomes `unknown` (today it is an ask
+  with a null id);
+- a `wrapped` item becomes `unknown`; so does a `verdict` or `checking` item
+  on a `direct: true` stream;
+- read lines strictly: no `from_utf8_lossy`; an unparsable line is `unknown`;
 - `hook_started`, `hook_response`, `tool_progress`, `task_progress` give
   nothing (today `unknown` entries);
 - drop the `options` list whose check option `none` has ACP kind
@@ -1114,7 +1134,9 @@ when `claude-codes` cannot parse it.
   verdict item that says why. Every verdict item carries `denials-in-a-row`.
 - **Checking:** before each judge call the provider pushes
   `{"type":"checking","on":<on>}`; the kernel shows it as the
-  activity `checking` (9.3) until the verdict.
+  activity `checking` (9.3) until the verdict. The kernel takes `verdict` and
+  `checking` only from a checked provider's stream (`direct: false`); on a
+  `direct: true` stream they are `unknown` entries (9.8).
 - **Settings** (judge URL, thresholds) only from its own page, in its state.
   The provider holds no key: the host keeps it as the account `judge`, entered
   in the app (5; N10, the human, 2026-11-20).
@@ -1469,9 +1491,9 @@ of `spec/VISION.md`.
     `delete`; owners together stop at 224 MiB with `quota`; a turn running
     when the account fills ends `stopped {limit: quota}` and that entry is
     written; the reserve is never used by a turn's other entries.
-60. (2.3) Each of the five decision shapes is accepted as its outcome; each of
-    `{}`, `{"allow":true,"deny":true}`, `{"deny":true,"for":"session"}` and
-    `{"allow":"yes"}` is refused `{field: "decision"}`; the owner's answer to a
+60. (2.3) The four decision shapes are accepted as their outcomes; each of
+    `{}`, `{"none":true}`, `{"allow":true,"deny":true}`,
+    `{"deny":true,"for":"session"}` and `{"allow":"yes"}` is refused `{field: "decision"}`; the owner's answer to a
     check is refused `{field: "ask"}`.
 61. (9.4) A stored entry of a newer `v` reads as `unreadable` with its own `i`;
     attach after it replays from `i + 1`, and a client that showed it drops it
@@ -1586,7 +1608,7 @@ attach shows "Writing…" until its entry arrives.
 | `AgentThoughtChunk` | "Thinking…", open while it streams; then folded to "Thought for n s" |
 | `ToolCall` of reads and searches in a row | one folded line, "Explored · n reads, m searches" |
 | `ToolCall` of an edit, a program run, or any failed call | a card: name, argument, diff or output, status; a failed one open |
-| `ask` (unanswered) | the card of its tool call with the ask bar (a `check` has no Allow button); "Needs you (n)" above the input |
+| `ask` (unanswered) | the card of its tool call with the ask bar, drawn from the ask entry's `toolCall` and `input` only, never from an earlier `ToolCall` update or `tool` entry with the same `toolCallId` (a `check` has no Allow button); "Needs you (n)" above the input |
 | `ask` (decided), `allow`, `verdict` | a decision line: who, what, the reason |
 | `Plan` | the plan above the input, "n of m done" |
 | `turn` | the status line (18.5); at a turn's end, a footer line of time, tools and tokens |
