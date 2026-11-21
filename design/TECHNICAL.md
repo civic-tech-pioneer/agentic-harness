@@ -560,7 +560,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
 | `active/<n>`, n 0..3 | A1: page n of the sessions whose turn is `running`, `waiting` or `paused`, each entry `{id, boot}` (`boot`: the boot number of the session's last restart step, or of the call that added it). At most 256 entries per page, so at most 1 024 listed sessions; a page is at most 24 KiB (a session id is at most 64 bytes). The record's `active-page` names the page that holds the session while it is listed. Kept by every turn change that enters or leaves the index (9.3, A2); it is what the restart pass reads in place of a prefix scan |
 | `slots` | `{provider, request, job: counts; timers; boot; active: four page counts; restart: the pass's page cursor; head, tail}`: the stream slots in use, the live session timers (9.3), the boot number (9.3), the entries of each `active/` page, the page where the restart pass goes on, and the ends of the waiting FIFO (9.5) |
-| `slots/wait/<n>` | a session id waiting for a slot (9.5) |
+| `slots/wait/<n>` | `{session, boot}`: a session waiting for a slot, with the boot number of the call that queued it; an entry of an older boot is skipped (9.5) |
 
 ### 9.2 Profiles and overlays
 
