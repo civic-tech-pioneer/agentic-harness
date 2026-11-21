@@ -26,7 +26,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -363,7 +363,7 @@ fn ac2_interrupt_without_replacement_after_a_restart_at_the_ceiling() {
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
     k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a1")).unwrap();
-    k.host.boot = 2;
+    k.host.generation = 2;
     ceiling(&mut k);
     let b = before(&mut k, "alice", &id);
     k.interrupt("alice", &id, None).unwrap();

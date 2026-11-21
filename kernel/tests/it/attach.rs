@@ -24,7 +24,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -561,7 +561,7 @@ fn ac9_after_a_restart_the_old_keys_go_and_attach_works() {
     let mut k = kernel();
     let id = started(&mut k);
     let o = attach(&mut k, &id, 0);
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.timer("restart");
     k.timer("restart");
     assert!(live(&mut k, &id).is_none());

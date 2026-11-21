@@ -25,7 +25,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -266,7 +266,7 @@ fn ac2_the_accounts_equal_the_bytes_of_the_keys() {
     forge(&mut k, "alice", &a1, "stream/x1", 3);
     // (the live key is the one alice's attach left)
     check(&k);
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.list("bob", None, 1).unwrap();
     k.timer("restart");
     k.timer("restart");
@@ -285,7 +285,7 @@ fn ac2_a_stale_session_read_steps_and_charges() {
     k.attach("alice", &a1, 0).unwrap();
     k.provider(&a1, ask("a1")).unwrap();
     forge(&mut k, "alice", &a1, "stream/x1", 3);
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.read("alice", &a1, 0, None, 10).unwrap();
     check(&k);
     assert_eq!(usage(&mut k, "quota").sessions, 1);
@@ -841,7 +841,7 @@ fn validator_a_failed_step_in_a_firing_keeps_the_accounts_exact() {
     let lines = vec!["{}"; agent_kernel::transcript::CHUNK_ENTRIES - 1].join("\n");
     forge_value(&mut k, "alice", &s1, &last, lines.clone().into_bytes());
     check(&k);
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.list("alice", None, 1).unwrap();
     k.timer("restart");
     assert!(
@@ -858,7 +858,7 @@ fn validator_a_firing_past_the_reserve_still_charges_its_step() {
     let s1 = start(&mut k, "alice", "k1");
     k.limits.account_bytes = usage(&mut k, "quota").bytes;
     k.limits.reserve_bytes = 0;
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.list("alice", None, 1).unwrap();
     k.timer("restart");
     assert_eq!(rec(&mut k, &s1).turn, Turn::Unknown);

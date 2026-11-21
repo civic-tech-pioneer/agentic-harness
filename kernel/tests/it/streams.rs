@@ -25,7 +25,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -346,7 +346,7 @@ fn ac6_a_say_after_ended_cancel_and_restart_resumes() {
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
     k.provider(&id, idle(Stop::Completed)).unwrap();
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.say("alice", &id, "s1", "x").unwrap();
     assert!(last_resume(&k));
     let r = rec(&mut k, &id);
@@ -377,13 +377,13 @@ fn ac6_persist_false_and_resume_lost_start_fresh_and_unknown_resumes() {
     // unknown (R5)
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.say("alice", &id, "s1", "x").unwrap();
     assert!(last_resume(&k));
     // unknown with `persist: false`: nothing to resume, a fresh session
     let mut k = kernel();
     let id = k.start("alice", "k1", "np", "{}", IN).unwrap().value;
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.say("alice", &id, "s1", "x").unwrap();
     assert_eq!(rec(&mut k, &id).streams, ["t2"]);
     assert!(!last_resume(&k));
@@ -409,7 +409,7 @@ fn ac7_a_restart_decrements_no_count() {
     let mut k = kernel();
     let a = start(&mut k, "alice", "k1");
     let b = start(&mut k, "alice", "k2");
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.list("alice", None, 10).unwrap();
     assert_eq!(Slots::load(&mut k.state).provider, 0);
     // the owner's count is of the older boot, so it reads zero, and is stored as it was
@@ -482,7 +482,7 @@ fn ac8_start_and_an_opening_say_write_slots_and_the_owner_account_once() {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };

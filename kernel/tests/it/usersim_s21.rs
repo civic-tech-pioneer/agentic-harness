@@ -14,7 +14,7 @@ fn kernel() -> K {
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
     st.put("access/ann", br#"["p"]"#.to_vec()).unwrap();
     let host = FakeHost {
-        boot: 7,
+        generation: 7,
         now: 5000,
         ..FakeHost::default()
     };
@@ -133,7 +133,7 @@ fn usersim_s21_story() {
         .sum();
     assert_eq!(listed, 2);
 
-    k.host.boot = 8;
+    k.host.generation = 8;
     k.host.calls.clear();
     // list reports unknown for s1 without writing.
     k.state.reset_counts();
@@ -311,7 +311,7 @@ fn usersim_s21_lazy() {
             .unwrap();
         ids.push(s);
     }
-    k.host.boot = 8;
+    k.host.generation = 8;
     // read
     let es = entries(&mut k, &ids[0]);
     assert!(
@@ -409,7 +409,7 @@ fn usersim_s21_pass_bounds() {
         slots.active[p as usize] = 256;
     }
     slots.save(&mut k.state).unwrap();
-    k.host.boot = 9;
+    k.host.generation = 9;
     // No call: nothing changes. First call: list for someone with nothing.
     k.list("nobody", None, 5).unwrap();
     let s = Slots::load(&mut k.state);
@@ -427,7 +427,7 @@ fn usersim_s21_pass_bounds() {
         max_read = max_read.max(k.state.counts().bytes_read);
         if firings == 300 {
             // A second boot change mid-pass.
-            k.host.boot = 10;
+            k.host.generation = 10;
             k.list("nobody", None, 5).unwrap();
             assert_eq!(Slots::load(&mut k.state).restart, Some(0));
         }
@@ -459,7 +459,7 @@ fn usersim_s21_pass_bounds() {
 fn usersim_s21_list_no_write() {
     let mut k = kernel();
     let s = k.start("ann", "a", "p", "{}", "hi").unwrap().value;
-    k.host.boot = 8;
+    k.host.generation = 8;
     k.list("ann", None, 5).unwrap();
     k.state.reset_counts();
     let l = k.list("ann", None, 5).unwrap();
@@ -478,7 +478,7 @@ fn regress_s21_continue_full_queue() {
     for i in 0..32 {
         k.say("ann", &s, &format!("q{i}"), "more").unwrap();
     }
-    k.host.boot = 8;
+    k.host.generation = 8;
     let r = k.say("ann", &s, "cont", "Continue");
     assert!(r.is_ok(), "Continue after a restart with 32 queued: {r:?}");
     assert_eq!(k.queued("ann", &s).unwrap().len(), 32);

@@ -25,7 +25,7 @@ fn kernel() -> K {
     .save(&mut st)
     .unwrap();
     let host = FakeHost {
-        boot: 1,
+        generation: 1,
         now: 1000,
         ..FakeHost::default()
     };
@@ -202,7 +202,7 @@ fn ac2_the_restart_step_past_writes_short_decisions() {
     let id = waiting(&mut k);
     let n = entries(&mut k, &id).len();
     past_owner(&mut k);
-    k.host.boot = 2;
+    k.host.generation = 2;
     k.timer("restart");
     assert!(rec(&mut k, &id).open.is_empty());
     check_short(&mut k, &id, n, "restart");
