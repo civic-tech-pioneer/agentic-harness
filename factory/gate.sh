@@ -1,6 +1,7 @@
 #!/bin/sh
 # The project gate (factory/config.toml `gate`): run from the project root, stops at the first failure.
-# Runs, in order: .claude/factory/check-mod.sh (Markdown links; watane-dev when wit/world.wit exists);
+# Runs, in order: when kernel/wasm exists, its build to kernel/wasm/logic.wasm (cargo build --release --target wasm32-wasip2);
+# .claude/factory/check-mod.sh (Markdown links; watane-dev when wit/world.wit exists);
 # kernel/ `cargo fmt --check`, `cargo test`, then `cargo clippy --all-targets -- -D warnings` when kernel/Cargo.toml exists;
 # console/ `npm ci` then `npm test` when console/package.json exists.
 # See factory/PLAN.md, slice S3, outcome 5 and the decision "One gate script".
@@ -8,12 +9,19 @@ set -e
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 
+# The prebuilt logic (watane dev 7.1): the kernel's component, built before check-mod.sh needs it.
+if [ -f kernel/wasm/Cargo.toml ]; then
+  echo "gate: kernel/wasm build (logic.wasm)"
+  (cd kernel && cargo build --release --target wasm32-wasip2 -p agent-mod)
+  cp kernel/target/wasm32-wasip2/release/agent_mod.wasm kernel/wasm/logic.wasm
+fi
+
 echo "gate: check-mod.sh"
 .claude/factory/check-mod.sh
 
 if [ -f kernel/Cargo.toml ]; then
   echo "gate: kernel cargo fmt --check"
-  (cd kernel && cargo fmt --check)
+  (cd kernel && cargo fmt --all --check)
   echo "gate: kernel cargo test"
   (cd kernel && cargo test)
   echo "gate: kernel cargo clippy"

@@ -50,7 +50,8 @@ Each behaviour is proven at the lowest level that shows it
 | Level | Command |
 |---|---|
 | Gate (links, mod contract, kernel, console) | `factory/gate.sh` (runs `.claude/factory/check-mod.sh`, then each part below that exists) |
-| Kernel crate | `cargo test` in `kernel/` (until the WASM wrapper exists; then `watane-dev test --json`) |
+| Kernel crate | `cargo test` in `kernel/` (a workspace: the crate and `kernel/wasm`, the mod's wrapper, whose host-independent mappings it tests natively) |
+| Kernel component | `cargo build --release --target wasm32-wasip2 -p agent-mod` in `kernel/`, copied to `kernel/wasm/logic.wasm` (prebuilt logic, watane dev 7.1; git-ignored); the gate does both. `watane-dev test --json` in `kernel/wasm/` needs `ui/` copied there and a watane-dev that links host 19 (not before watane S96) |
 | Console views | `npm test` in `console/` (in the gate) |
 | Console page (slow) | `npm run test:slow` in `console/`: Chromium layout and open-at-the-end checks; run before a console slice delivers |
 | Probes of the real programs | `proto/claude-probes/probes.py`, `proto/agent-spike/chatgpt-probes.py` (by hand, after a `claude` update) |
