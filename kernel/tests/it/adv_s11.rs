@@ -40,7 +40,13 @@ fn adv_s11_read_empty_ranges_return_nothing() {
     let mut meta = Meta::default();
     filled(8, &mut st, &mut meta);
     let mut t = Transcript::new(&mut st, "s", &mut meta);
-    for (a, b) in [(0, Some(0)), (0, Some(1)), (5, Some(3))] {
+    for (a, b) in [
+        (0, Some(0)),
+        (0, Some(1)),
+        (5, Some(3)),
+        (u64::MAX, None),
+        (u64::MAX, Some(u64::MAX)),
+    ] {
         let p = t.read(a, b, 256);
         assert!(p.entries.is_empty(), "{a} {b:?}: {:?}", p.entries);
         assert_eq!(p.last, 8);
