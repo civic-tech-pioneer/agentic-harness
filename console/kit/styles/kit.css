@@ -72,6 +72,7 @@
 .wa-shape[data-shape="bars"] { background: linear-gradient(90deg, var(--ink) 0 35%, transparent 35% 65%, var(--ink) 65%); border-radius: 0; }
 .wa-shape[data-shape="ring"] { background: transparent; border: 2px solid var(--muted); }
 .wa-shape[data-shape="dashed-ring"] { background: transparent; border: 2px dashed var(--muted); }
+.wa-shape[data-shape="loading"] { background: transparent; border: 2px dotted var(--muted); border-top-style: solid; }
 .wa-shape[data-shape="triangle"] { background: var(--danger); border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 
 /* Code blocks in an agent row (TECHNICAL 18.2, 18.4): the same size plain or highlighted, so nothing jumps when colours arrive. */

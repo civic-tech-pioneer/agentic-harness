@@ -39,12 +39,13 @@ function Row({ s, on }: { s: SidebarSession; on?: boolean }) {
   );
 }
 
-export function Sidebar({ info, turn, sessions = [] }: { info: SessionInfo; turn?: TurnState["state"]; sessions?: SidebarSession[] }) {
+export function Sidebar({ info, turn, needs, sessions = [] }: { info: SessionInfo; turn?: TurnState["state"]; needs?: boolean; sessions?: SidebarSession[] }) {
   const [held, setHeld] = useState<Group | null>(null);
   const [over, setOver] = useState(false);
-  const live = shapeOf(turn);
+  // an open ask puts the row under Needs you, except once the turn has ended (idle): then the ask can no longer be answered
+  const live = needs && turn !== "idle" ? "needs" : shapeOf(turn);
   // The hold begins once the state is known: a pointer already over the list before the first turn holds nothing.
-  useEffect(() => { if (over && turn !== undefined) setHeld((h) => h ?? groupOf(live)); }, [over, turn]);
+  useEffect(() => { if (over && turn !== undefined) setHeld((h) => h ?? groupOf(live)); }, [over, turn, needs]);
   const group = held ?? groupOf(live);
   const cur: SidebarSession = { id: info.id, title: info.title, place: info.place ?? info.workspace, meta: `${info.place ?? info.workspace} · ${info.provider}`, state: live };
   const others = sessions.filter((s) => s.id !== info.id);

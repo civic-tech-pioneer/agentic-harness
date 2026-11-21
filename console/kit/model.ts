@@ -47,11 +47,13 @@ export interface SessionView {
   queue: { n: number; input: string }[]; plan: PlanItem[] | null;
   usage: { used: number; window: number; compactAt?: number } | null;
   allows: { id: string; reach: string }[]; lastIndex: number; synced: boolean;
+  /** Paging in the history behind the attach: the turn is not known yet. */
+  loading: boolean;
   x?: Internal;
 }
 export const emptyView: SessionView = {
   rows: [], openAsks: [], turn: null, queue: [], plan: null, usage: null,
-  allows: [], lastIndex: 0, synced: false,
+  allows: [], lastIndex: 0, synced: false, loading: false,
 };
 export interface Actions {
   say(text: string): void;

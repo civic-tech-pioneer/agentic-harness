@@ -50,7 +50,9 @@ export function governor() {
   const drain = () => {
     timer = undefined;
     const now = Date.now();
-    tokens = Math.min(BURST, tokens + ((now - last) / 1000) * REFILL_PER_S);
+    // a skewed clock adds no tokens going back, and at most a full bucket going forward
+    const dt = Math.min(Math.max(now - last, 0), (BURST / REFILL_PER_S) * 1000);
+    tokens = Math.min(BURST, tokens + (dt / 1000) * REFILL_PER_S);
     last = now;
     while (queue.length && tokens >= 1) { tokens--; queue.shift()!(); }
     if (queue.length) timer = setTimeout(drain, Math.ceil(((1 - tokens) / REFILL_PER_S) * 1000));
@@ -208,10 +210,16 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
             if (reached && !quick) { quick = true; void connect(); }
             else fail(g, `the stream ended (${reason}) ${reached ? "again right after it synced" : "before it synced"}`);
           });
-        if (closed || g !== gen || !("behind" in r)) return;
-        const cause = await pageIn(g, r.behind);
+        if (closed || g !== gen) return;
+        if (!("behind" in r)) { if (view.loading) show({ ...view, loading: false }); return; }
+        show({ ...view, loading: true }, true);
+        // the turn comes with the next attach, so a page-in that worked stays loading until that attach answers
+        let cause: string | undefined;
+        try { cause = await pageIn(g, r.behind); }
+        catch (e) { if (!closed && g === gen) show({ ...view, loading: false }, true); throw e; }
         if (closed || g !== gen) return;
         if (cause) {
+          view = { ...view, loading: false };
           show(withUnknown(view, cause));
           fail(g, cause, true);
           return;
