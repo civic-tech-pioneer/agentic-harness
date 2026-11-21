@@ -1,5 +1,5 @@
 // TECHNICAL 18.3 (the table), 18.6: one component per row kind.
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { Actions, Row, ToolCall } from "../model";
 import { AskBar } from "./askbar";
 import { DiffView } from "./diff";
@@ -63,6 +63,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const [tag, tagCls] = asking ? ["Waiting for you", "b-wait"] : STATUS[call.status];
   const main = (
     <>
+      {asking ? <div className="wa-input"><div className="wa-input-label">Input</div><InputList input={ask.input} /></div> : null}
       {call.content.map((c, n) =>
         c.type === "diff" ? (
           <React.Fragment key={n}>
@@ -72,12 +73,11 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
         : c.type === "content" && !asking ? <ProgramOutput key={n} text={c.content.text} />
         : null)}
       {!asking && typeof call.rawOutput === "string" && !call.content.some((c) => c.type === "content") ? <ProgramOutput text={call.rawOutput} /> : null}
-      {asking ? <div className="wa-input"><div className="wa-input-label">Input</div><InputList input={ask.input} /></div> : null}
     </>
   );
   const body = asking ? (
     <>
-      <div className="wa-ask-scroll" tabIndex={0} role="group" aria-label="Changes and input">{main}</div>
+      <AskScroll>{main}</AskScroll>
       <AskBar call={call} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} />
     </>
   ) : main;
@@ -93,6 +93,27 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
     <section className={`wa-tool card${asking ? " ask" : ""}`} data-call={call.id} data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
       <ToolCard head={head} open={call.status === "failed" || asking}>{body}</ToolCard>
     </section>
+  );
+}
+
+function AskScroll({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setMore(el.scrollHeight > el.clientHeight + 1 && el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+  }, []);
+  useEffect(measure);
+  useEffect(() => {
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [measure]);
+  return (
+    <div ref={ref} className="wa-ask-scroll" tabIndex={0} role="group" aria-label="Changes and input" onScroll={measure}>
+      {children}
+      {more ? <div className="wa-more">More below ↓</div> : null}
+    </div>
   );
 }
 

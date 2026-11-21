@@ -1,6 +1,6 @@
 // S9-1: the transcript rows look and read like the frame (Main-2): card header, diff with folds, ask bar, chevrons.
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emptyView, type Actions, type SessionView } from "./model";
 import { reduce } from "./reduce";
@@ -69,14 +69,45 @@ describe("S9-1", () => {
     expect(screen.getByText("git status")).toBeInTheDocument();
   });
 
-  it("ac2_input_block_is_labelled_and_below_the_diff", () => {
+  it("ac2_input_block_is_labelled_and_above_the_diff", () => {
     show(askOf("e", "edit", diff("a.ts", "x", "y"), { file_path: "a.ts", note: "n" }));
     const label = screen.getByText("Input");
     expect(label).toHaveClass("wa-input-label");
     const block = label.closest(".wa-input")!;
     expect(block.textContent).toContain("file_path");
     expect(block.textContent).toContain("note");
-    expect(screen.getByText("y").compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("y").compareDocumentPosition(block) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(block.parentElement).toHaveClass("wa-ask-scroll");
+  });
+
+  it("ac3_more_below_cue_shows_while_the_box_overflows_and_is_not_at_its_end", () => {
+    let dims = { sh: 100, ch: 100, st: 0 };
+    const ds = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight");
+    const dc = Object.getOwnPropertyDescriptor(Element.prototype, "clientHeight");
+    const dt = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop");
+    Object.defineProperty(Element.prototype, "scrollHeight", { configurable: true, get: () => dims.sh });
+    Object.defineProperty(Element.prototype, "clientHeight", { configurable: true, get: () => dims.ch });
+    Object.defineProperty(Element.prototype, "scrollTop", { configurable: true, get: () => dims.st, set() {} });
+    try {
+      show(askOf("e", "edit", diff("a.ts", "x", "y"), { file_path: "a.ts" }));
+      const box = screen.getByRole("group", { name: "Changes and input" });
+      expect(screen.queryByText("More below ↓")).toBeNull();
+      dims = { sh: 300, ch: 100, st: 0 };
+      fireEvent.scroll(box);
+      const cue = screen.getByText("More below ↓");
+      expect(box).toContainElement(cue);
+      expect(cue).not.toHaveAttribute("aria-hidden");
+      dims = { sh: 300, ch: 100, st: 200 };
+      fireEvent.scroll(box);
+      expect(screen.queryByText("More below ↓")).toBeNull();
+      dims = { sh: 100, ch: 100, st: 0 };
+      fireEvent.scroll(box);
+      expect(screen.queryByText("More below ↓")).toBeNull();
+    } finally {
+      for (const [k, d] of [["scrollHeight", ds], ["clientHeight", dc], ["scrollTop", dt]] as const) {
+        if (d) Object.defineProperty(Element.prototype, k, d); else delete (Element.prototype as any)[k];
+      }
+    }
   });
 
   it("ac4_one_diff_shows_its_path_only_when_it_differs_from_the_header", () => {
