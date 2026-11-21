@@ -732,10 +732,10 @@ fn ac10_a_session_at_the_chunk_cap_ends_its_turn_case_53() {
     assert!(requests(&k).contains(&Request::Interrupt {
         session: s1.clone()
     }));
-    assert!(matches!(
-        k.say("alice", &s1, "x", "more"),
-        Err(KernelError::Quota(_))
-    ));
+    assert_eq!(
+        cause(k.say("alice", &s1, "x", "more")),
+        "16384 transcript chunks per session"
+    );
 }
 
 #[test]
@@ -868,14 +868,19 @@ fn ac3_the_sessions_cap_is_named() {
 fn ac3_the_owner_bytes_cap_is_named() {
     let mut k = kernel();
     start(&mut k, "alice", "k1");
-    k.limits.owner_bytes = usage(&mut k, "quota/alice").bytes;
+    let used = usage(&mut k, "quota/alice").bytes;
+    k.limits.owner_bytes = used;
     assert_eq!(
         cause(k.start("alice", "k2", "p", "{}", IN)),
-        "0 MiB per owner"
+        format!("{used} bytes per owner")
     );
-    k.limits.owner_bytes = 64 << 20;
-    k.limits.account_bytes = 1 << 40;
-    start(&mut k, "alice", "k2");
+    // the default cap, as a whole MiB
+    k.limits = Default::default();
+    let mut a = usage(&mut k, "quota/alice");
+    a.bytes = 64 << 20;
+    a.save(&mut k.state, "quota/alice").unwrap();
+    let e = k.start("alice", "k2", "p", "{}", IN).unwrap_err();
+    assert_eq!(e.to_string(), "quota: 64 MiB per owner");
 }
 
 #[test]
@@ -883,11 +888,18 @@ fn ac3_the_kernel_account_cap_is_named() {
     let mut k = kernel();
     start(&mut k, "alice", "k1");
     start(&mut k, "bob", "k1");
-    k.limits.account_bytes = usage(&mut k, "quota").bytes;
+    let used = usage(&mut k, "quota").bytes;
+    k.limits.account_bytes = used;
     assert_eq!(
         cause(k.start("bob", "k2", "p", "{}", IN)),
-        "the kernel's 0 MiB account"
+        format!("the kernel's {used} bytes account")
     );
+    k.limits = Default::default();
+    let mut a = usage(&mut k, "quota");
+    a.bytes = 224 << 20;
+    a.save(&mut k.state, "quota").unwrap();
+    let e = k.start("bob", "k2", "p", "{}", IN).unwrap_err();
+    assert_eq!(e.to_string(), "quota: the kernel's 224 MiB account");
 }
 
 #[test]
@@ -897,5 +909,17 @@ fn ac3_the_reserve_ceiling_is_named() {
     let used = usage(&mut k, "quota").bytes;
     k.limits.account_bytes = used + 1;
     k.limits.reserve_bytes = 0;
-    assert_eq!(cause(k.say("alice", &s, "q1", "more")), "the 0 MiB state");
+    assert_eq!(
+        cause(k.say("alice", &s, "q1", "more")),
+        format!("the {} bytes state", used + 1)
+    );
+    // a 256 MiB ceiling (the size of the default 224 + 32 MiB), the account just under it
+    k.limits = Default::default();
+    let mut a = usage(&mut k, "quota");
+    a.bytes = (256 << 20) - 1;
+    a.save(&mut k.state, "quota").unwrap();
+    k.limits.account_bytes = 256 << 20;
+    k.limits.reserve_bytes = 0;
+    let e = k.say("alice", &s, "q2", "more").unwrap_err();
+    assert_eq!(e.to_string(), "quota: the 256 MiB state");
 }
