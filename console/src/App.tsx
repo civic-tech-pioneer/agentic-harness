@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { decisionJson, emptyView, followPause, MEASURE, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Kernel, type SessionView } from "../kit";
+import { decisionJson, emptyView, focusInOpenAsk, MEASURE, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
@@ -22,7 +22,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   // 18.6 Place: follow the end while the reader is within 40 px of it (and on open).
   const toEnd = useCallback(() => {
     const el = scroller.current;
-    if (el && atEnd.current) { el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop; }
+    if (el && atEnd.current && !focusInOpenAsk(el)) { el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop; }
   }, []);
   useLayoutEffect(toEnd, [view, toEnd]);
   const first = useRef(true);
@@ -47,7 +47,8 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const toTheEnd = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
-    atEnd.current = true; followPause.delete(el); // the transcript resumes too
+    (el.ownerDocument.activeElement as HTMLElement | null)?.blur?.(); // the pill takes focus (Safari does not give it on click)
+    atEnd.current = true; // the transcript resumes too
     el.scrollTop = el.scrollHeight; setAt.current = el.scrollTop;
     el.dispatchEvent(new Event("scroll"));
     setBehind(false);
@@ -80,8 +81,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
               // Our own scroll to the end may land after the column grew; that one does not stop the follow.
               const el = e.currentTarget, gap = el.scrollHeight - el.clientHeight - el.scrollTop;
               if (gap > 40 && el.scrollTop === setAt.current) return;
-              if (followPause.get(el) === el.scrollTop) return; // the transcript sets the marker on focus and clears it on a scroll elsewhere
-              atEnd.current = gap <= 40;
+              atEnd.current = !focusInOpenAsk(el) && gap <= 40;
               if (atEnd.current) setBehind(false);
             }}>
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
