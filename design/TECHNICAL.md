@@ -1160,7 +1160,7 @@ this place (S14 and S19 built the rest).
 | `assistant` `tool_use` of `TodoWrite` | `Plan`, with its entries and their status; also a `tool` entry |
 | `assistant` `tool_use` | `ToolCall` (pending) |
 | `user` `tool_result` | `ToolCallUpdate` (completed or failed); a `tool` entry |
-| `ask`, `check`, `ask-resolved` items | an `ask` entry (9.4), pushed live as its `entry` item; its tool call id is the item's `tool_use_id`, its `expires-at` the item's; an `ask-resolved` gives the decision entry or nothing; an item that breaks a rule below the table (1–6) is `unknown` |
+| `ask`, `check`, `ask-resolved` items | an `ask` entry (9.4), pushed live as its `entry` item; its tool call id is the item's `tool_use_id`, its `expires-at` the item's; an `ask-resolved` that closes an ask or check gives its one decision entry (9.8 rule 4); an item that breaks a rule below the table (1–6) is `unknown` |
 | `system/compact_boundary` | a `compaction` entry |
 | `result` | usage into the counters; `idle {completed}` only when `claude` is idle |
 | Responses `response.output_text.delta` | `AgentMessageChunk` |
@@ -1237,8 +1237,8 @@ below is an `unknown` entry, never an ask or a decision.
    `deny`, 4.5), and so is an `expired` or `cancelled` item that carries an
    `outcome` key; the ask stays as it was, open or pending. Any other or
    missing `by`, or one that is not a string, is `unknown`. An `unknown`
-   item leaves the ask open, so a later `expired` or `cancelled` still gives
-   its decision (S19; until S20 builds the code to change of 9.4, `answered`
+   item leaves the ask as it was, open or pending, so a later `expired` or
+   `cancelled` still gives its decision (S19; until S20 builds the code to change of 9.4, `answered`
    is `unknown` too). An `ask-resolved` whose `id` is not open or pending is
    `unknown`. A kernel ask (OpenAI) is unchanged: its decision is written at
    its answer. Stage E builds only the provider's side (10).
