@@ -12,6 +12,7 @@ mod adv_s29;
 mod adversary;
 mod asks;
 mod attach;
+mod broker;
 mod check;
 mod errors;
 mod example;

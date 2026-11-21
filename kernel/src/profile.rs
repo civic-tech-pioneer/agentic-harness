@@ -648,7 +648,7 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
     None
 }
 
-fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
+pub(crate) fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
     if rule.chars().any(char::is_control) {
         return Some(format!("rule {rule:?} has a control character"));
     }

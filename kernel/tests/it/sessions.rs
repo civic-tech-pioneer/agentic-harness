@@ -39,6 +39,13 @@ fn started(k: &mut K, owner: &str, key: &str) -> String {
     k.start(owner, key, "p", "{}", IN).unwrap().value
 }
 
+/// The session's workspace is `/w`, so an `Edit` of `/w/a.rs` has a reach (9.6).
+fn in_workspace(k: &mut K, id: &str) {
+    let mut r = Record::load(&mut k.state, id).unwrap();
+    r.workspace = Some("/w".into());
+    r.save(&mut k.state).unwrap();
+}
+
 fn rec(k: &mut K, id: &str) -> Record {
     Record::load(&mut k.state, id).unwrap()
 }
@@ -73,7 +80,7 @@ fn ask(id: &str, kind: &str, expires: u64) -> ProviderEvent {
             kind: Kind::Ask,
             uuid: None,
             body: json!({"id": id, "kind": kind, "toolCallId": "t", "toolCall": {"toolCallId": "t", "title": "Edit"},
-                "input": {}, "expires-at": expires, "reach": "Edit(/w/**)"}),
+                "input": {"file_path": "/w/a.rs"}, "expires-at": expires}),
         }),
         ..Out::default()
     })
@@ -536,6 +543,7 @@ fn ac5_full_index_is_busy_and_writes_nothing() {
 fn ac6_answer_shapes_and_effects() {
     let mut k = kernel();
     let id = started(&mut k, "alice", "k");
+    in_workspace(&mut k, &id);
     k.provider(&id, ask("a1", "ask", 5000)).unwrap();
     k.provider(&id, ask("a2", "ask", 6000)).unwrap();
     k.provider(&id, ask("c1", "check", 6000)).unwrap();
@@ -582,11 +590,24 @@ fn ac6_answer_shapes_and_effects() {
         &Request::Answer {
             session: id.clone(),
             ask: "a1".into(),
-            decision: json!({"allow": true, "for": "session"})
+            decision: json!({"allow": true})
         }
     );
     let r = rec(&mut k, &id);
-    assert_eq!(r.allows, [json!("Edit(/w/**)")]);
+    let es = entries(&mut k, "alice", &id);
+    let at = es.iter().find(|e| e["kind"] == "allow").unwrap();
+    let i = at["i"].as_u64().unwrap().to_string();
+    assert_eq!(
+        at["body"],
+        json!({"id": i, "reach": "Edit(/w/**)", "given": true, "by": "owner"})
+    );
+    assert_eq!(
+        r.allows,
+        [Allow {
+            id: i,
+            reach: "Edit(/w/**)".into()
+        }]
+    );
     assert_eq!(
         r.open.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
         ["a2", "c1"]
@@ -645,10 +666,15 @@ fn ac6_answer_shapes_and_effects() {
 fn ac6_allows_over_the_limit_refuse_and_keep_the_ask_open() {
     let mut k = kernel();
     let id = started(&mut k, "alice", "k");
+    in_workspace(&mut k, &id);
     k.provider(&id, ask("a1", "ask", 5000)).unwrap();
     let mut r = rec(&mut k, &id);
     for i in 0..64 {
-        r.add_allow(json!(format!("Edit(/w{i}/**)"))).unwrap();
+        r.add_allow(Allow {
+            id: i.to_string(),
+            reach: format!("Edit(/w{i}/**)"),
+        })
+        .unwrap();
     }
     r.save(&mut k.state).unwrap();
     let keys = ["session/s1", "entries/s1/0", "key/alice/k1"];

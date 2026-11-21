@@ -7,14 +7,15 @@
 
 use crate::active::{self, Slots};
 use crate::adapters::{self, Kind};
+use crate::broker;
 use crate::check::check;
 use crate::error::{KernelError, Refusal};
 use crate::profile::{parse_profile, Backend};
 use crate::queue::{check_input, Queue, Queued};
 use crate::quota::{segment, Change, Limits, Metered, Past, Usage};
 use crate::record::{
-    check_key, check_title, Deadline, OpenAsk, PendingAnswer, Record, Stop, Turn, ALLOW_BYTES,
-    ID_BYTES, OPEN_ASKS,
+    check_key, check_title, Allow, Deadline, OpenAsk, PendingAnswer, Record, Stop, Turn,
+    ALLOW_BYTES, ID_BYTES, OPEN_ASKS,
 };
 use crate::state::State;
 use crate::transcript::{Joiner, NewEntry, Page, Replay, Transcript, MAX_CHUNKS};
@@ -1702,24 +1703,91 @@ impl<S: State, H: Host> Kernel<S, H> {
             input: d.value.get("input").cloned(),
             ..pending
         };
+        let now = self.host.now();
+        let mut allow_push = None;
         if d.for_session {
             let Some(reach) = body.get("reach").and_then(Value::as_str) else {
                 return Err(refused("decision", "this ask offers no session allow"));
             };
-            rec.add_allow(Value::String(reach.to_string()))?;
+            if !rec.allows.iter().any(|a| a.reach == reach) {
+                // The allow's id is the index of its entry, written before the ask closes.
+                let id = rec.next_index.to_string();
+                rec.add_allow(Allow {
+                    id: id.clone(),
+                    reach: reach.to_string(),
+                })?;
+                allow_push = Some(self.write_allow(&mut rec, &id, reach, true, now)?);
+            }
         }
-        let now = self.host.now();
         self.close_ask(&mut rec, past, ask, now, &mut work)?;
+        work.pushes.extend(allow_push);
         rec.pending_answers.insert(ask.to_string(), pending);
+        let mut decision = d.value;
+        if let Some(o) = decision.as_object_mut() {
+            // The host never gets `for`: `claude` would keep a rule the kernel cannot take back.
+            o.remove("for");
+        }
         work.requests.push(Request::Answer {
             session: rec.id.clone(),
             ask: ask.to_string(),
-            decision: d.value,
+            decision,
         });
         rec.updated = now;
         self.seal(&mut rec)?;
         self.key_put("answer", caller, key, Some(session), &())?;
         self.finish(None, &mut acct)?;
+        Ok(Called {
+            value: (),
+            pushes: self.flush(work, rec.live.as_deref()),
+        })
+    }
+
+    /// Writes the `allow` entry of a session allow given or taken back (9.4); its live push.
+    fn write_allow(
+        &mut self,
+        rec: &mut Record,
+        id: &str,
+        reach: &str,
+        given: bool,
+        now: u64,
+    ) -> Result<Push, KernelError> {
+        let body = json!({"id": id, "reach": reach, "given": given, "by": "owner"});
+        let entry = NewEntry {
+            kind: "allow".into(),
+            uuid: None,
+            body: body.clone(),
+        };
+        let i = self.append(rec, entry, now)?;
+        let entry = json!({"v": 1, "i": i, "kind": "allow", "at": now, "body": body});
+        Ok(Push::of(&rec.id, json!({"type": "entry", "entry": entry})))
+    }
+
+    /// 2.3 `take-back`: removes a session allow and writes its `allow` entry (9.6). It only
+    /// narrows, so it reads no `access/` and is never refused `quota` (9.3 "Past").
+    pub fn take_back(
+        &mut self,
+        caller: &str,
+        session: &str,
+        allow: &str,
+    ) -> Result<Called<()>, KernelError> {
+        let mut slots = self.begin()?;
+        let mut rec = self.load_owned(caller, session)?;
+        let at = rec
+            .allows
+            .iter()
+            .position(|a| a.id == allow)
+            .ok_or_else(|| KernelError::UnknownAllow(allow.to_string()))?;
+        let mut acct = self.accounts(caller);
+        let past = acct.past;
+        let mut work = Work::default();
+        self.settle(&mut rec, past, &mut slots, &mut work)?;
+        let taken = rec.allows.remove(at);
+        let now = self.host.now();
+        let push = self.write_allow(&mut rec, &taken.id, &taken.reach, false, now)?;
+        work.pushes.push(push);
+        rec.updated = now;
+        self.seal(&mut rec)?;
+        self.finish_as(None, &mut acct, true)?;
         Ok(Called {
             value: (),
             pushes: self.flush(work, rec.live.as_deref()),
@@ -2486,17 +2554,36 @@ impl<S: State, H: Host> Kernel<S, H> {
             || other.get("input") != body.get("input")
     }
 
+    /// 9.6: the kernel sets the reach of a new ask, replacing or removing the one it came with.
+    fn set_reach(&self, rec: &Record, body: &mut Value) {
+        let kind = body.get("kind").and_then(Value::as_str).unwrap_or("ask");
+        let tool = body.pointer("/toolCall/title").and_then(Value::as_str);
+        let reach = tool.and_then(|t| {
+            let input = body.get("input").unwrap_or(&Value::Null);
+            broker::reach(&rec.owner, rec.workspace.as_deref(), kind, t, input)
+        });
+        if let Some(o) = body.as_object_mut() {
+            match reach {
+                Some(r) => o.insert("reach".into(), Value::String(r)),
+                None => o.remove("reach"),
+            };
+        }
+    }
+
     /// An entry from the provider; an `ask` opens (or, with a decision, closes) an ask.
     fn out_entry(
         &mut self,
         rec: &mut Record,
         past: Past,
-        e: adapters::Entry,
+        mut e: adapters::Entry,
         now: u64,
         work: &mut Work,
     ) -> Result<(), KernelError> {
         let kind = e.kind;
         let is_ask = kind == Kind::Ask;
+        if is_ask && !e.body.get("decision").is_some_and(|d| !d.is_null()) {
+            self.set_reach(rec, &mut e.body);
+        }
         let body = e.body.clone();
         let decided = is_ask && body.get("decision").is_some_and(|d| !d.is_null());
         if is_ask && !decided && self.reused(rec, &body) {
