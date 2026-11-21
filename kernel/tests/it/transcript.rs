@@ -674,7 +674,10 @@ fn ac2_append_takes_only_whole_entry_kinds() {
 fn ac1_readable_line_takes_the_i_of_its_place() {
     let (mut st, mut meta) = many(10, 5);
     let mut lines = chunk_lines(&mut st, 0);
+    // Spaced, so a re-serialization of a line whose i is right would show.
+    lines[3] = r#"{"v":1, "i":4, "kind":"message", "at":3, "body":{}}"#.into();
     let good = lines[3].clone();
+    lines[7] = r#"{"v":1,"i":3,"kind":"part","at":8,"body":{"n":1,"m":2,"text":"w"}}"#.into();
     lines[0] = r#"{"v":1,"i":7,"kind":"message","at":4,"uuid":"u","body":{"a":[1,2]}}"#.into();
     lines[4] = r#"{"v":1,"i":99999,"kind":"message","at":5,"body":{}}"#.into();
     lines[5] = r#"{"v":1,"i":"x","kind":"tool","at":6,"body":{}}"#.into();
@@ -705,6 +708,7 @@ fn ac1_readable_line_takes_the_i_of_its_place() {
     assert_eq!(v, want);
     assert_eq!(idx(&all[4]), 5);
     assert_eq!(idx(&all[5]), 6);
+    assert_eq!(idx(&all[7]), 8);
     assert_eq!(idx(&all[9]), 10);
     let p: Value = serde_json::from_str(&all[9]).unwrap();
     assert_eq!(p["body"]["text"], "t");
