@@ -219,14 +219,14 @@ fn ac2_a_new_attach_replaces_the_old_stream_in_that_call() {
     assert_ne!(p, q);
     assert!(k.host.calls.contains(&HostCall::Close {
         stream: p.clone(),
-        outcome: "replaced".into()
+        outcome: Outcome::Replaced
     }));
     assert!(k.state.get(&format!("stream/{p}")).is_none());
     assert_eq!(live(&mut k, &id).as_deref(), Some(q.as_str()));
     assert_eq!(rec(&mut k, &id).streams, ["t1", q.as_str()]);
     // the kernel resumed the provider stream right after the close (3, "Forwarding")
     assert_eq!(
-        resume_after_close(&k, &p, "replaced"),
+        resume_after_close(&k, &p, Outcome::Replaced),
         Some("t1".to_string())
     );
     // the old stream's `ended` changes nothing
@@ -238,11 +238,11 @@ fn ac2_a_new_attach_replaces_the_old_stream_in_that_call() {
 }
 
 /// The stream resumed by the host call that directly follows the `Close` of `stream`.
-fn resume_after_close(k: &K, stream: &str, outcome: &str) -> Option<String> {
+fn resume_after_close(k: &K, stream: &str, outcome: Outcome) -> Option<String> {
     let at = k.host.calls.iter().position(|c| {
         *c == HostCall::Close {
             stream: stream.into(),
-            outcome: outcome.into(),
+            outcome,
         }
     })?;
     match k.host.calls.get(at + 1) {
@@ -259,7 +259,7 @@ fn ac2_a_lagging_close_resumes_the_provider_stream_and_none_means_no_resume() {
     k.host.full.insert(o.clone());
     k.say("alice", &id, "q2", "next").unwrap();
     assert_eq!(
-        resume_after_close(&k, &o, "lagging"),
+        resume_after_close(&k, &o, Outcome::Lagging),
         Some("t1".to_string())
     );
     // no live provider stream: the close resumes nothing. A queued input stays after the
@@ -274,7 +274,7 @@ fn ac2_a_lagging_close_resumes_the_provider_stream_and_none_means_no_resume() {
     k.unqueue("alice", &id, n).unwrap();
     assert!(k.host.calls.contains(&HostCall::Close {
         stream: o2,
-        outcome: "lagging".into()
+        outcome: Outcome::Lagging
     }));
     assert_eq!(
         count_calls(&k, |c| matches!(c, HostCall::Resume { .. })),
@@ -335,7 +335,7 @@ fn ac4_a_delta_reads_the_two_keys_and_writes_nothing() {
     let c = k
         .provider_item("t1", ProviderEvent::Out(delta("a")))
         .unwrap();
-    assert_eq!(c.value, Item::Done);
+    assert_eq!(c.value, SinkOutcome::Taken);
     assert_eq!(k.state.get_keys(), ["stream/t1", &format!("live/{id}")]);
     let n = k.state.counts();
     assert_eq!((n.puts, n.deletes), (0, 0));
@@ -375,7 +375,7 @@ fn ac5_full_in_an_item_call_defers_and_rolls_back_whole() {
     // an entry with a request-free write, then a turn that would set the idle timer
     for ev in [ProviderEvent::Out(whole("a")), idle()] {
         let c = k.provider_item("t1", ev).unwrap();
-        assert_eq!(c.value, Item::Defer);
+        assert_eq!(c.value, SinkOutcome::Defer);
         assert!(c.pushes.is_empty());
         assert_eq!(dump(&k), before);
         assert_eq!(
@@ -390,7 +390,7 @@ fn ac5_full_in_an_item_call_defers_and_rolls_back_whole() {
         k.provider_item("t1", ProviderEvent::Out(delta("d")))
             .unwrap()
             .value,
-        Item::Defer
+        SinkOutcome::Defer
     );
     // the same item again, after `ready`, is applied once
     k.host.full.clear();
@@ -398,7 +398,7 @@ fn ac5_full_in_an_item_call_defers_and_rolls_back_whole() {
     let c = k
         .provider_item("t1", ProviderEvent::Out(whole("a")))
         .unwrap();
-    assert_eq!(c.value, Item::Done);
+    assert_eq!(c.value, SinkOutcome::Taken);
     let texts = k
         .read("alice", &id, 0, None, 256)
         .unwrap()
@@ -409,7 +409,7 @@ fn ac5_full_in_an_item_call_defers_and_rolls_back_whole() {
     assert_eq!(texts, 1);
     // an idle that applies sets the timer as before
     let c = k.provider_item("t1", idle()).unwrap();
-    assert_eq!(c.value, Item::Done);
+    assert_eq!(c.value, SinkOutcome::Taken);
     assert!(count_calls(&k, |c| matches!(c, HostCall::TimerAfter { .. })) >= 1);
 }
 
@@ -424,7 +424,7 @@ fn ac5_a_deferred_ask_opens_nothing_and_asks_nothing_of_the_host() {
     let c = k
         .provider_item("t1", ProviderEvent::Out(ask("a1")))
         .unwrap();
-    assert_eq!(c.value, Item::Defer);
+    assert_eq!(c.value, SinkOutcome::Defer);
     assert_eq!(dump(&k), before);
     assert_eq!(k.host.calls.len(), calls);
     assert!(rec(&mut k, &id).open.is_empty());
@@ -450,7 +450,7 @@ fn ac6_full_outside_an_item_call_closes_the_stream_lagging() {
     assert!(rec(&mut k, &id).turn.is_active());
     assert!(k.host.calls.contains(&HostCall::Close {
         stream: o.clone(),
-        outcome: "lagging".into()
+        outcome: Outcome::Lagging
     }));
     assert!(k.state.get(&format!("stream/{o}")).is_none());
     assert!(live(&mut k, &id).is_none());
@@ -494,7 +494,7 @@ fn ac6_each_other_call_closes_a_full_stream_too() {
         }
         let closed = k.host.calls.contains(&HostCall::Close {
             stream: o.clone(),
-            outcome: "lagging".into(),
+            outcome: Outcome::Lagging,
         });
         // rename pushes nothing, so it has no full stream to find
         assert_eq!(closed, which != 3, "call {which}");
@@ -584,7 +584,7 @@ fn ac10_delete_closes_the_live_owner_stream() {
     k.delete("alice", &id).unwrap();
     assert!(k.host.calls.contains(&HostCall::Close {
         stream: o.clone(),
-        outcome: "closed".into()
+        outcome: Outcome::Closed
     }));
     assert!(k.state.get(&format!("stream/{o}")).is_none());
     assert!(live(&mut k, &id).is_none());
@@ -646,9 +646,9 @@ fn ac3_owner_stream_id_is_not_a_provider_item() {
     let before = dump(&k);
     let calls = k.host.calls.len();
     let a = k.provider_item(&o, ProviderEvent::Ended).unwrap();
-    assert!(matches!(a.value, Item::Done) && a.pushes.is_empty());
+    assert!(matches!(a.value, SinkOutcome::Taken) && a.pushes.is_empty());
     let b = k.provider_item(&o, ProviderEvent::Out(delta("x"))).unwrap();
-    assert!(matches!(b.value, Item::Done) && b.pushes.is_empty());
+    assert!(matches!(b.value, SinkOutcome::Taken) && b.pushes.is_empty());
     assert_eq!(dump(&k), before);
     assert_eq!(Slots::load(&mut k.state).provider, slots);
     let after = Usage::load(&mut k.state, &Usage::owner_key("alice")).provider_at(1);

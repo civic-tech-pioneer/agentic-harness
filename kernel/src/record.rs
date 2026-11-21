@@ -109,6 +109,15 @@ pub struct Deadline {
     pub at: u64,
 }
 
+/// The state of a probe session (9.9): entries written so far, entries in all, the delay between.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Probe {
+    pub n: u64,
+    pub count: u64,
+    pub every_ms: u32,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Counters {
@@ -209,6 +218,12 @@ pub struct Record {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live: Option<String>,
     pub deadlines: Vec<Deadline>,
+    /// When the session timer, armed short of a deadline over 30 days out, fires (2.1, 7).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hop: Option<u64>,
+    /// A probe session's run (9.9); `None` for every other session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub probe: Option<Probe>,
     pub open: Vec<OpenAsk>,
     pub pending_answers: BTreeMap<String, PendingAnswer>,
     pub next_index: u64,
@@ -241,6 +256,8 @@ impl Default for Record {
             streams: Vec::new(),
             live: None,
             deadlines: Vec::new(),
+            hop: None,
+            probe: None,
             open: Vec::new(),
             pending_answers: BTreeMap::new(),
             next_index: 1,

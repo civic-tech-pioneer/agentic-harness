@@ -58,15 +58,22 @@ fn requests(k: &K) -> Vec<Request> {
         .collect()
 }
 
+/// The provider streams the kernel got from `start_provider`, by the ids `FakeHost` gave them
+/// (one counter for every stream it opens, `t1`, `t2`, ...).
 fn opens(k: &K) -> Vec<String> {
-    k.host
-        .calls
-        .iter()
-        .filter_map(|c| match c {
-            HostCall::Open { stream } => Some(stream.clone()),
-            _ => None,
-        })
-        .collect()
+    let mut n = 0;
+    let mut out = Vec::new();
+    for c in &k.host.calls {
+        match c {
+            HostCall::Open { .. } => n += 1,
+            HostCall::StartProvider { .. } => {
+                n += 1;
+                out.push(format!("t{n}"));
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 fn last_resume(k: &K) -> bool {
