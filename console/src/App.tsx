@@ -55,19 +55,24 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   }, [answered, view]);
   useEffect(() => { if (live !== answered) setAnswered((s) => (s === answered ? live : s)); }, [live, answered]);
   const answeredAsks = useMemo(() => new Map([...live].flatMap((id) => { const a = openAsk(view, id); return a ? [[id, a] as const] : []; })), [live, view]);
+  const send = (id: string, d: Parameters<Actions["answer"]>[1], mine: Ask): Promise<void> => {
+    answeredAsk.current.set(id, mine);
+    setAnswered((a) => new Set(a).add(id));
+    let p: Promise<void>;
+    try { p = kernel.answer(info.id, `c${Date.now()}-${sent++}`, id, decisionJson(d)); } catch (e) { p = Promise.reject(e); } // a throw before the promise is a refusal too: the set and the card agree
+    return p.catch((e) => {
+      if (!isAskRefusal(e) && answeredAsk.current.get(id) === mine) { answeredAsk.current.delete(id); setAnswered((a) => { const n = new Set(a); n.delete(id); return n; }); } // "already decided" keeps it: the decision entry is on its way
+      throw e;
+    });
+  };
   const actions: Actions = useMemo(() => ({
     answeredAsks,
     say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
-    answer: (id, d) => {
-      const mine = openAsk(viewRef.current, id);
-      answeredAsk.current.set(id, mine);
-      setAnswered((a) => new Set(a).add(id));
-      let p: Promise<void>;
-      try { p = kernel.answer(info.id, `c${Date.now()}-${sent++}`, id, decisionJson(d)); } catch (e) { p = Promise.reject(e); } // a throw before the promise is a refusal too: the set and the card agree
-      return p.catch((e) => {
-        if (!isAskRefusal(e) && answeredAsk.current.get(id) === mine) { answeredAsk.current.delete(id); setAnswered((a) => { const n = new Set(a); n.delete(id); return n; }); } // "already decided" keeps it: the decision entry is on its way
-        throw e;
-      });
+    answer: (id, d) => { const mine = openAsk(viewRef.current, id); return mine ? send(id, d, mine) : Promise.reject(new Error("no open ask")); },
+    answerDrawn: (drawn, d) => {
+      const mine = openAsk(viewRef.current, drawn.id);
+      // fail closed: an answer for an ask that is not the open one of its id sends and records nothing
+      return mine === drawn ? send(drawn.id, d, mine) : Promise.reject(new Error("the ask is no longer the one the card drew"));
     },
     stop: () => { setStopping(true); void kernel.interrupt(info.id); },
     takeBack: (id) => void kernel.takeBack(info.id, id),
