@@ -51,9 +51,7 @@ S12"), or mark what S14 still owns; 9.8 says an ask or check item without `input
 block that repeats its deltas is treated (once, not twice); 9.4 every rendered line takes the `i`
 of its place. Touches: `design/TECHNICAL.md` only. Protects: *guard* (asks) and *core*.
 
-## Sketched
-
-### S15: the console reads the wire S10 wrote (cloud, after S9 merges: same files)
+### S15: the console reads the wire S10 wrote (in flight (cloud), routine trig_019YCYegVuKusDaBroYa4EoT)
 
 Story: Alice's console works against the kernel JSON of S10 unchanged.
 Outcomes: S10's console list (PR #13): read `expires-at`; answer with the ask's `id` and key open
@@ -65,6 +63,8 @@ diff (adversary RISK a); the user-sim's "felt wrong" list: the Needs you pill ke
 the open row stays under Recent while the pointer is over the sidebar at load; at 760 px the ask
 bar wraps with Allow once mid-row; a story played only to a running step shows a huge clock.
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *core*. S7 follows S15.
+
+## Sketched
 
 ### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
 
@@ -172,7 +172,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   boundaries, with RISKs folded into S14 and S16. Implementer runs 1/1/1. Kernel 102 tests; gate
   26 s.
 
-- **S9** the console matches the frames (PR #16, compared and armed by the PO; ~1.2 h). Alice's
+- **S9** the console matches the frames (PR #16, compared and armed by the PO, merged 2026-11-21 00:45 UTC; ~1.2 h). Alice's
   console now reads like canvas Revision 2: the edit ask as one card (pencil, path, "Waiting for
   you", Input, a tinted folded diff, "Allow this edit?" with Deny… / Allow edits in `<reach>` this
   session / Allow once), the status line with subject and "denied in m:ss if unanswered", the
