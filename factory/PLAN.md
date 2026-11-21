@@ -237,7 +237,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   ACCEPTED (run 1); adversary HELD twice (one RISK fixed in S19-fix1). Implementer runs 1/1/1.
   Kernel 116 tests in 1.63 s.
 
-- **S18** spec text for S14 and S19 (PR #22, 16 min). 4.5: `ask-resolved` `by` is `answered`
+- **S18** spec text for S14 and S19 (PR #22, merged 2026-11-21 01:30 UTC, 16 min). 4.5: `ask-resolved` `by` is `answered`
   (with `outcome`), `expired` or `cancelled`; the host serializes every item itself. 9.8: strict
   item rules 1-6. 14 "Not protected": a first-key JSON reader, a nested duplicate key in `input`.
   AGT-F-10: "never show a turn as running when nothing drives it". Case 72. User-sim ACCEPTED
