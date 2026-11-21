@@ -186,22 +186,7 @@
       }
     ],
     [],
-    [
-      {
-        "update": {
-          "sessionUpdate": "agent_thought_chunk",
-          "content": {
-            "type": "text",
-            "text": "Let me think."
-          },
-          "_meta": {
-            "watane": {
-              "at": 1763600000000
-            }
-          }
-        }
-      }
-    ],
+    [],
     [],
     [
       {
