@@ -20,9 +20,10 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const answeredAsk = useRef(new Map<string, Ask | undefined>()); // the ask object each answered id stood for when it was answered
   const viewRef = useRef(view); viewRef.current = view;
   const heldRef = useRef(held); heldRef.current = held;
-  useEffect(() => { setAnswered(new Set()); answeredAsk.current.clear(); }, [info.id]); // ask ids repeat across sessions: what this console answered is per session
   const [needsHidden, setNeedsHidden] = useState(false);
   const lastAsk = useRef<string | null>(null); // the ask whose card last took focus
+  // ask ids repeat across sessions: what this console answered is per session; a new session opens at its end, not stopping
+  useEffect(() => { setAnswered(new Set()); answeredAsk.current.clear(); setStopping(false); atEnd.current = true; setBehind(false); lastAsk.current = null; }, [info.id]);
 
   useEffect(() => {
     const id = info.id;
