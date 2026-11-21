@@ -590,18 +590,19 @@ fn ac3_owner_stream_id_is_not_a_provider_item() {
     let mut k = kernel();
     let s = started(&mut k);
     let o = attach(&mut k, &s, 0);
-    let keys = [
-        "slots".to_string(),
-        format!("session/{s}"),
-        format!("live/{s}"),
-        format!("stream/{o}"),
-    ];
-    let snap =
-        |k: &mut K| -> Vec<Option<Vec<u8>>> { keys.iter().map(|x| k.state.get(x)).collect() };
-    let before = snap(&mut k);
+    let slots = Slots::load(&mut k.state).provider;
+    let owner = Usage::load(&mut k.state, &Usage::owner_key("alice")).provider_at(1);
+    assert_eq!((slots, owner), (1, 1));
+    let before = dump(&k);
+    let calls = k.host.calls.len();
     let a = k.provider_item(&o, ProviderEvent::Ended).unwrap();
     assert!(matches!(a.value, Item::Done) && a.pushes.is_empty());
     let b = k.provider_item(&o, ProviderEvent::Out(delta("x"))).unwrap();
     assert!(matches!(b.value, Item::Done) && b.pushes.is_empty());
-    assert_eq!(snap(&mut k), before);
+    assert_eq!(dump(&k), before);
+    assert_eq!(Slots::load(&mut k.state).provider, slots);
+    let after = Usage::load(&mut k.state, &Usage::owner_key("alice")).provider_at(1);
+    assert_eq!(after, owner);
+    // nothing sent: no push on the owner stream, no request, no stream closed
+    assert_eq!(k.host.calls.len(), calls);
 }
