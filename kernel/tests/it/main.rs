@@ -18,6 +18,7 @@ mod restart;
 mod runners;
 mod sessions;
 mod transcript;
+mod usersim_s21;
 
 use agent_kernel::{parse_profile, Problem, Profile};
 
