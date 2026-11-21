@@ -186,8 +186,13 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
     const { rows: rs, offs: o } = layout.current;
     const i = a ? rs.findIndex((x) => x.key === a.key) : -1;
     if (!a || i < 0) { pick(); return; }
-    const want = o[i]! + origin.current - a.rel;
-    if (Math.abs(want - e.scrollTop) >= 1) { e.scrollTop = want; tick(); }
+    // the browser clamps scrollTop to what the content can reach: ask for no more, and render again only if the position moved
+    const want = Math.min(Math.max(0, e.scrollHeight - e.clientHeight), Math.max(0, o[i]! + origin.current - a.rel));
+    if (Math.abs(want - e.scrollTop) >= 1) {
+      const before = e.scrollTop;
+      e.scrollTop = want;
+      if (e.scrollTop !== before) tick();
+    }
   });
 
   const out: ReactNode[] = [];

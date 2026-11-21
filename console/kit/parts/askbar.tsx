@@ -12,11 +12,17 @@ export function AskBar({ call, askId, reach, actions, sent = false, judge = fals
   const id = askId;
   const denyBtn = useRef<HTMLButtonElement>(null);
   const closeDeny = () => { setDenying(false); queueMicrotask(() => denyBtn.current?.focus()); };
+  const once = useRef<HTMLButtonElement>(null);
   const line = useRef<HTMLParagraphElement>(null);
   // the button that was pressed is gone: focus stays in the card, on the line, never on another card's button
   useLayoutEffect(() => { if (sent) line.current?.focus({ preventScroll: true }); }, [sent]);
   // the line that held focus is gone: the page reads what holds focus again
-  useLayoutEffect(() => { if (refused) denyBtn.current?.dispatchEvent(new Event(MEASURE, { bubbles: true })); }, [refused]);
+  // and it goes to Allow once, the card's first button, without scrolling
+  useLayoutEffect(() => {
+    if (!refused) return;
+    once.current?.focus({ preventScroll: true });
+    once.current?.dispatchEvent(new Event(MEASURE, { bubbles: true }));
+  }, [refused]);
   if (sent) {
     return <p key="line" ref={line} className="wa-answered askbar" role="status" tabIndex={-1}>{judge ? "Checking with your judge" : "Answered, waiting"}</p>;
   }
@@ -27,7 +33,7 @@ export function AskBar({ call, askId, reach, actions, sent = false, judge = fals
         <span className="askq">{QUESTION[call.kind] ?? "Allow this call?"}</span>
         <button type="button" ref={denyBtn} className="btn quiet danger" onClick={() => (denying ? closeDeny() : setDenying(true))}>Deny…</button>
         {reach ? <button type="button" className="btn" onClick={() => actions.answer(id, { outcome: "allow", for: "session" })}>Allow {reach} this session</button> : null}
-        <button type="button" className="btn primary wa-primary" data-ask-first onClick={() => actions.answer(id, { outcome: "allow" })}>Allow once</button>
+        <button type="button" ref={once} className="btn primary wa-primary" data-ask-first onClick={() => actions.answer(id, { outcome: "allow" })}>Allow once</button>
       </div>
       {denying ? (
         <form className="wa-deny denyrow" onSubmit={(e) => { e.preventDefault(); const r = reason.trim(); actions.answer(id, r ? { outcome: "deny", reason: r } : { outcome: "deny" }); }}>
