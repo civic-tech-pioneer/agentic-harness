@@ -49,7 +49,9 @@ in the same commit):
 - built: `mod.toml` at the root
 - planned: `wit/world.wit` (2.3, the imports of 2.1), at the root
 - planned: `kernel/src/sessions.rs` (9.3: records, keys, queue, quota) and
-  `kernel/src/transcript.rs` (9.4: entries, attach, `synced`)
+  `kernel/src/transcript.rs` (9.4: entries, attach, `synced`); built:
+  `kernel/src/quota.rs` (9.3 Quota: the limits, the accounts, the metered
+  state that charges each write)
 - planned: `kernel/src/broker.rs` (9.6, session allows) and
   `kernel/src/delegation.rs` (9.7: delegates, limits, counters)
 - planned: `kernel/src/openai/` (9.5: loop, repair, errors) and
@@ -561,13 +563,13 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `adopted/<offer id>` | `{content hash, content}` |
 | `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
 | `session/<id>` | the session record (9.3) |
-| `owner/<owner>/<n>` | page n of the owner's session ids, 256 per page; `<owner>` percent-encoded as in `key/` above. Only `owner/<owner>/0` exists: a session past its 256 entries (a 257th live session of one owner) is refused `quota`. More pages come with the quota slice that raises the per-owner session cap past 256 (the default cap is 64, 9.3 Quota, so the page is not reached by default) |
+| `owner/<owner>/<n>` | page n of the owner's session ids, a JSON array of at most 256; `<owner>` percent-encoded as in `key/` above. `start` adds the id to the first page with room (by the page counts of `quota/<owner>`), opening page `pages.len()` when none has room; the record's `owner-page` names its page, so `delete` reads only that page; an emptied page is deleted and its count stays 0. `list` reads the pages in order. The per-owner session cap (9.3 Quota, default 64) bounds the pages: one page by default |
 | `queue/<id>` | `{next, inputs: [{n, input}]}`: the session's queued inputs (9.3), apart from the record; `input` is the input JSON as a string, `next` the number the next input takes. An emptied queue keeps `next`, so a number is never used twice in one session |
 | `entries/<id>/<n>` | chunk n of the transcript: at most 256 entries and at most 64 KiB, or exactly one entry when that entry is over 64 KiB (an entry is at most 256 KiB, 9.4); an append that would take the last chunk past 64 KiB starts a new chunk, so an append rewrites at most 64 KiB plus the entry and earlier chunks are never rewritten; the session record's `chunks` lists the first index of each, so a read starts at the right chunk without reading the ones before |
 | `wire/<id>/<n>` | chunk n of the OpenAI wire history; the loop state's `wire-chunks` (in `loop/<id>`) lists the first wire index of each, so a request finds the chunk holding `active` (9.5) and reads none before it |
 | `loop/<id>` | the OpenAI loop state (9.5), with `active` and `wire-chunks` |
-| `quota/<owner>` | the owner's bytes and session count, the bytes counting every key the owner causes (9.3); its live session timers (9.3) and its slot counts per kind (9.5), the slot counts tagged with the boot number of `slots` (9.3): counts of an older boot read as zero, so the restart pass need not find every owner |
-| `quota` | the kernel-wide account: bytes and sessions of all owners (9.3) |
+| `quota/<owner>` | `{bytes, sessions, pages}`: the owner's bytes and live session count, the bytes counting every key the owner causes (9.3, Quota), and `pages` the entry count of each `owner/<owner>/<n>` page; later its live session timers (9.3) and its slot counts per kind (9.5), the slot counts tagged with the boot number of `slots` (9.3): counts of an older boot read as zero, so the restart pass need not find every owner. Absent reads as all zero |
+| `quota` | `{bytes, sessions}`: the kernel-wide account, bytes and sessions of all owners (9.3); absent reads as zero |
 | `stream/<id>` | `{session, kind}` (`kind`: `provider`, `request`, `job`, `owner`), written in the call that opens or receives the stream, deleted on its `ended` (9.4) |
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
 | `active/<n>`, n 0..3 | A1: page n of the sessions whose turn is `running`, `waiting` or `paused`, each entry the pair `[id, boot]` (not an object, so that 256 entries with 64-byte ids fit the 24 KiB page; `boot`: the boot number of the session's last restart step, or of the call that added it). At most 256 entries per page, so at most 1 024 listed sessions; a page is at most 24 KiB (a session id is at most 64 bytes, 9.3). The record's `active-page` names the page that holds the session while it is listed. Kept by every turn change that enters or leaves the index (9.3, A2); it is what the restart pass reads in place of a prefix scan |
@@ -615,7 +617,7 @@ once; `check` runs only this step.
 
 Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `profile`, `backend`, `title`,
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
-`boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
+`boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `owner-page` (the `owner/<owner>/<n>` page that lists it, 9.1), `bytes` (the bytes of the session's keys other than its record, 9.3 Quota, so `delete` frees them without reading them), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
 (session allows, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {i, toolCallId, kind, outcome, by, for?, reason?, input?}}`, the pending answers of 9.8 rule 4; `toolCallId` is the ask's call, kept so a later ask on the call is compared without reading every ask (9.8); `input` is the changed input an `allow` carried (2.3), shown in the decision entry and not counted in the 1 KiB; `i` and `kind` are the ask entry's index and its `ask` or `check`, so the decision entry can repeat the ask, and follow the kind rules of 9.8 rule 4, after a restart without the adapter; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
 `chunks` (the first index of each entry chunk, 9.1), `streams` (the ids of the session's open streams, at most 10: 1 provider or 1 request, 8 jobs, 1 owner; 9.4, 9.5), `deadlines` (each `{what, at}`, at most 64; below), `open` (the open asks and checks, each `{id, kind, i, expires-at?}`: the ask id, `kind` `ask` or `check`, the index `i` of its ask entry (9.4), and that entry's `expires-at` when it has one; an open ask leaves `open` when it is decided or closed. A decision entry can repeat its ask (9.4) after the adapter's memory is gone (a restart), and `waiting.expires-at`, the earliest open ask's, is recomputed without reading entries), `next-index`, `created`, `updated`. The queue is not in the record: it lives
@@ -708,12 +710,44 @@ wire") are this JSON; the entry has no `activity`.
   records, turn states, `slots`, `quota`, `stream/`, `live/` and the entries
   that record a stop), so owners together hold at most 224 MiB of the rest. The reserve is headroom, not a second account: every write is still charged to the owner that causes it, and the 224 MiB account counts them all; the reserve only lets the writes named next go on past it.
   Past the kernel's 224 MiB account (or an owner's quota) only these writes go on, into the reserve: the entry and turn state that record a stop, ask decisions (including denials by expiry), `stream/` and `live/` keys of an `attach`, slot and timer counts, and every `delete`. `rename`, a session allow (`for: session`) and new input are refused `quota`; so is everything else past the account.
-  Past an owner's 64 sessions or 64 MiB (kernel settings by default; the owner's session ids live on `owner/<owner>/0`, 256 at most, so a 257th is refused `quota` until the quota slice that raises the cap past 256 adds pages, 9.1), or past
+  Past an owner's 64 sessions or 64 MiB (kernel settings by default; the owner's session ids live on as many `owner/<owner>/<n>` pages as the cap needs, 9.1), or past
   the kernel's 224 MiB: new sessions and inputs are refused `quota`, and a
   running turn ends `stopped {limit: quota}`, written from the reserve. Only a
   `delete` frees bytes (kept keys stay). The 64 MiB per owner stays a kernel
   setting; with the 224 MiB account it can be set higher without one owner
-  taking the reserve.
+  taking the reserve. As built (S25):
+  - *Bytes.* A key costs its name's bytes plus its value's. Charged to the
+    owner of the session a call acts on (the caller for `start`): `session/`,
+    `queue/`, `entries/`, `wire/`, `loop/`, `stream/`, `live/` of its sessions,
+    its `key/<owner>/` results and its `owner/<owner>/` pages. Not charged
+    (the kernel's own): `slots`, `slots/wait/`, `active/`, `quota`,
+    `quota/<owner>`, `profile/`, `access/`, `adopted/`. A call adds the change
+    in bytes of each charged key it writes or deletes to `quota/<owner>` and
+    `quota`, and that of a session key other than the record to the record's
+    `bytes`; a call that changes no charged byte writes neither account. A
+    `delete` frees the record and its `bytes` without reading the chunks.
+  - *Past.* An owner is past its quota when its sessions are at the cap (for a
+    new session) or its bytes are at or over its cap; the account is past when
+    its bytes are at or over 224 MiB. Each is read before the call writes, so
+    a call that starts below a cap may end over it by its own writes (at most
+    one input and what it records); the next call finds it past. No call
+    takes the account past 256 MiB: one that would fails `quota` and, as
+    every failed call, commits nothing (7).
+  - *Refused `quota` when past:* `start`, `say` (whether it starts a turn or
+    queues), an `interrupt` replacement, `rename`, an `answer` with `for:
+    session`. Not refused: `answer` without `for: session`, `interrupt`
+    without a replacement, `cancel`, `unqueue`, `delete`, `read`, `list`,
+    `queued`, the restart step, timers.
+  - *A provider item when past* (the owner or the account): an ask decision
+    and the host's `ask-resolved` are stored; a turn change is stored; a new
+    ask is not stored and is denied at once (`Request::Answer` deny, reason
+    `quota`); any other entry is not stored. When the session's turn is
+    active, the first such item ends it `stopped {limit: quota}` (its `turn`
+    entry from the reserve) and sends `Request::Interrupt`; queued inputs stay
+    queued and no queued input starts while past. The same holds at the
+    chunk cap (16 384, 9.3 Sizes): an entry that would take the session past
+    it ends the turn `stopped {limit: quota}`, the room for that `turn` entry
+    kept.
 - **The active index.** A2: a call whose end state moves a session from
   `idle`, `unknown` or `resume-lost` (or a new session) into `running`,
   `waiting` or `paused` adds it to the first `active/` page with room (9.1); a
@@ -984,9 +1018,6 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   session's next `say` after the idle release or a restart resumes with
   `session {resume}` (R4, `idle` row); until then the kernel sends a fresh
   session (`resume: false`).
-- Kernel, the quota slice: the per-owner caps of 9.3 Quota (64 sessions,
-  64 MiB) and the kernel's accounts are not built; today one owner holds up
-  to the 256 ids of `owner/<owner>/0`.
 
 ### 9.5 The OpenAI loop
 
