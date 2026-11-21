@@ -14,6 +14,7 @@ mod example;
 mod grammar;
 mod meter;
 mod overlay;
+mod quota;
 mod record;
 mod refuse;
 mod regress_s14;

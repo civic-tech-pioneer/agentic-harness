@@ -161,6 +161,7 @@ fn ac1_every_call_reads_the_boot_and_a_change_starts_the_pass() {
 #[test]
 fn ac2_the_pass_steps_one_session_per_firing_case_68() {
     let mut k = kernel();
+    k.limits.owner_sessions = 256;
     let mut ids = Vec::new();
     for o in 0..4 {
         for n in 0..256 {
@@ -226,6 +227,7 @@ fn ac2_the_pass_steps_one_session_per_firing_case_68() {
 #[test]
 fn ac2_a_second_boot_change_restarts_the_pass_from_page_zero() {
     let mut k = kernel();
+    k.limits.owner_sessions = 256;
     let ids: Vec<String> = (0..300)
         .map(|n| started(&mut k, &format!("o{}", n / 200), &format!("k{n}")))
         .collect();
@@ -364,8 +366,8 @@ fn ac4_a_step_writes_no_more_than_the_bound() {
     k.state.reset_counts();
     k.read("alice", &id, 0, None, 1).unwrap();
     let c = k.state.counts();
-    // record, slots, page, two decisions and the turn entry
-    assert!(c.puts <= 6, "{c:?}");
+    // record, slots, page, two decisions and the turn entry, and the two accounts
+    assert!(c.puts <= 8, "{c:?}");
     assert_eq!(c.deletes, 2);
 }
 
@@ -486,8 +488,8 @@ fn ac6_list_reports_unknown_for_a_stale_turn_and_writes_nothing() {
     assert_eq!(l[0].turn, r#"{"state":"unknown"}"#);
     let c = k.state.counts();
     assert_eq!((c.puts, c.deletes), (0, 0));
-    // slots, the owner page and the one record it lists
-    assert_eq!(c.gets, 3, "{:?}", k.state.get_keys());
+    // slots, `quota/<owner>`, the owner page and the one record it lists
+    assert_eq!(c.gets, 4, "{:?}", k.state.get_keys());
     assert_eq!(rec(&mut k, &id).boot, 1);
     assert_eq!(rec(&mut k, &other).boot, 1);
 }

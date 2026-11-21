@@ -115,6 +115,17 @@ impl<'a, S: State> Transcript<'a, S> {
 
     /// Stores the entry; returns the index of the whole entry (its last part's for a large one).
     pub fn append(&mut self, entry: &NewEntry, at: u64) -> Result<u64, KernelError> {
+        self.append_within(entry, at, MAX_CHUNKS)
+    }
+
+    /// `append`, but a new chunk may not take the session past `limit` chunk starts (`quota`): an
+    /// entry the provider sends keeps the room for the `turn` entry that ends a stopped turn (9.3).
+    pub fn append_within(
+        &mut self,
+        entry: &NewEntry,
+        at: u64,
+        limit: usize,
+    ) -> Result<u64, KernelError> {
         if !APPEND_KINDS.contains(&entry.kind.as_str()) {
             return Err(refused(
                 "kind",
@@ -158,7 +169,7 @@ impl<'a, S: State> Transcript<'a, S> {
                 if let Some((pos, v, _)) = cur.take() {
                     writes.push((pos, v));
                 }
-                if chunks.len() >= MAX_CHUNKS {
+                if chunks.len() >= limit {
                     return Err(KernelError::Quota);
                 }
                 chunks.push(i);

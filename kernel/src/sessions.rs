@@ -11,6 +11,7 @@ use crate::check::check;
 use crate::error::{KernelError, Refusal};
 use crate::profile::{parse_profile, Backend};
 use crate::queue::{check_input, Queue, Queued};
+use crate::quota::{segment, Change, Limits, Metered, Usage};
 use crate::record::{
     check_key, check_title, OpenAsk, PendingAnswer, Record, Stop, Turn, ALLOW_BYTES, ID_BYTES,
     OPEN_ASKS,
@@ -151,8 +152,12 @@ pub struct SessionInfo {
 }
 
 pub struct Kernel<S: State, H: Host> {
-    pub state: S,
+    pub state: Metered<S>,
     pub host: H,
+    /// The kernel's quota settings (9.3 Quota).
+    pub limits: Limits,
+    /// What of the call's change in session bytes the record in hand already holds (`seal`).
+    sealed: i64,
 }
 
 /// Pushes and provider requests a call collects; requests leave only after the last write.
@@ -160,6 +165,25 @@ pub struct Kernel<S: State, H: Host> {
 struct Work {
     pushes: Vec<Push>,
     requests: Vec<Request>,
+    /// The owner or the account was past its quota when the call began (9.3 Quota).
+    past: bool,
+}
+
+/// The owner's account and the kernel's, as read for a call and kept for its one write (9.3 Quota).
+struct Acct {
+    owner_key: String,
+    owner: Usage,
+    account: Usage,
+    owner0: Usage,
+    account0: Usage,
+}
+
+fn add_signed(v: u64, d: i64) -> u64 {
+    if d >= 0 {
+        v.saturating_add(d as u64)
+    } else {
+        v.saturating_sub(d.unsigned_abs())
+    }
 }
 
 /// The owner's first page of session ids holds at most this many (9.1).
@@ -189,17 +213,12 @@ struct Kept {
     value: Value,
 }
 
-/// The owner as one path segment: `%` and `/` escaped, so (owner, key) maps to one state key only.
-fn segment(owner: &str) -> String {
-    owner.replace('%', "%25").replace('/', "%2F")
-}
-
 fn key_of(owner: &str, key: &str) -> String {
     format!("key/{}/{key}", segment(owner))
 }
 
-fn owner_page_key(owner: &str) -> String {
-    format!("owner/{}/0", segment(owner))
+fn owner_page_key(owner: &str, n: u32) -> String {
+    format!("owner/{}/{n}", segment(owner))
 }
 
 fn turn_push(t: &Turn) -> Value {
@@ -284,13 +303,19 @@ fn waiting(asks: Vec<String>, expires_at: Option<u64>) -> Turn {
 
 impl<S: State, H: Host> Kernel<S, H> {
     pub fn new(state: S, host: H) -> Self {
-        Kernel { state, host }
+        Kernel {
+            state: Metered::new(state),
+            host,
+            limits: Limits::default(),
+            sealed: 0,
+        }
     }
 
     /// Starts a top-level call: reads `slots` and the host's boot number (R1). When they differ,
     /// this call starts the restart pass: the new boot, the stream slot counts zeroed (`timers`
     /// stays), the cursor at page 0, and the timer `restart` with delay 0. It steps no session.
     fn begin(&mut self) -> Result<Slots, KernelError> {
+        self.open_meter();
         let mut slots = Slots::load(&mut self.state);
         let boot = self.host.boot();
         if boot != slots.boot {
@@ -303,6 +328,71 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.host.timer_after(RESTART, 0);
         }
         Ok(slots)
+    }
+
+    fn open_meter(&mut self) {
+        self.state.open();
+        self.sealed = 0;
+    }
+
+    /// Saves the record with `bytes` taking the change in its session keys so far.
+    fn seal(&mut self, rec: &mut Record) -> Result<(), KernelError> {
+        let c = self.state.change().session;
+        rec.bytes = add_signed(rec.bytes, c - self.sealed);
+        self.sealed = c;
+        rec.save(&mut self.state)
+    }
+
+    /// Reads the owner's account and the kernel's (9.1).
+    fn accounts(&mut self, owner: &str) -> Acct {
+        let owner_key = Usage::owner_key(owner);
+        let owner = Usage::load(&mut self.state, &owner_key);
+        let account = Usage::load(&mut self.state, Usage::ACCOUNT);
+        Acct {
+            owner_key,
+            owner0: owner.clone(),
+            account0: account.clone(),
+            owner,
+            account,
+        }
+    }
+
+    /// 9.3 "Past": the owner's bytes or the kernel's account at or over their caps.
+    fn past(&self, a: &Acct) -> bool {
+        a.owner.bytes >= self.limits.owner_bytes || a.account.bytes >= self.limits.account_bytes
+    }
+
+    fn refuse_past(&self, a: &Acct) -> Result<(), KernelError> {
+        if self.past(a) {
+            return Err(KernelError::Quota);
+        }
+        Ok(())
+    }
+
+    /// The end of a call that writes: the record (when given) takes the change in its session keys,
+    /// both accounts take the change in the charged bytes, each written once and only when it changed.
+    /// A call that would take the account past the reserve fails `quota` (the host commits nothing, 7).
+    fn finish(&mut self, rec: Option<&mut Record>, a: &mut Acct) -> Result<(), KernelError> {
+        if let Some(rec) = rec {
+            self.seal(rec)?;
+        }
+        let c = self.state.close();
+        a.owner.add(c.owner);
+        a.account.add(c.owner);
+        let ceiling = self
+            .limits
+            .account_bytes
+            .saturating_add(self.limits.reserve_bytes);
+        if c.owner > 0 && a.account.bytes > ceiling {
+            return Err(KernelError::Quota);
+        }
+        if a.owner != a.owner0 {
+            a.owner.save(&mut self.state, &a.owner_key)?;
+        }
+        if a.account != a.account0 {
+            a.account.save(&mut self.state, Usage::ACCOUNT)?;
+        }
+        Ok(())
     }
 
     /// Loads a session record for the caller: unknown, or another owner's, is an error. It does not
@@ -343,7 +433,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// The restart step of one session (R4): its stale `stream/` and `live/` keys go, its boot
     /// (and its page entry's) becomes the current one, a Claude session's open and pending asks
-    /// close in every turn state, and a Claude turn nothing drives becomes `unknown`. Writes: at most the record, its page (or `slots` and
+    /// close in every turn state, and a Claude turn nothing drives becomes `unknown`. Writes: at most its page (or `slots` and
     /// the page when it leaves the index), a decision entry per open ask and a `turn` entry (R3).
     // An OpenAI `running` or `waiting` session only gets the stale keys and the boot here: its rows
     // of the step table (9.5: requests, retries, tool jobs) come with stage D.
@@ -370,12 +460,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         } else if let Some(p) = rec.active_page {
             active::set_boot(&mut self.state, p, &rec.id, slots.boot)?;
         }
-        rec.save(&mut self.state)?;
         for s in stale_streams {
             self.state.delete(&format!("stream/{s}"));
         }
         self.state.delete(&format!("live/{}", rec.id));
-        Ok(())
+        self.seal(rec)
     }
 
     /// The kept result of `call` for this key; a key kept by another call or owner is refused
@@ -448,6 +537,49 @@ impl<S: State, H: Host> Kernel<S, H> {
         let i = Transcript::new(&mut self.state, &rec.id, &mut meta).append(&e, at)?;
         rec.set_meta(&meta);
         Ok(i)
+    }
+
+    /// An entry the provider sends: stored unless the owner or the account is past its quota or the
+    /// session is at its chunk cap, keeping the room for one `turn` entry (9.3 Quota, case 53). Not
+    /// stored, the active turn ends `stopped {limit: quota}` (`None`).
+    fn append_loose(
+        &mut self,
+        rec: &mut Record,
+        e: NewEntry,
+        at: u64,
+        work: &mut Work,
+    ) -> Result<Option<u64>, KernelError> {
+        if !work.past {
+            let mut meta = rec.meta();
+            let stored = Transcript::new(&mut self.state, &rec.id, &mut meta).append_within(
+                &e,
+                at,
+                MAX_CHUNKS - 1,
+            );
+            match stored {
+                Ok(i) => {
+                    rec.set_meta(&meta);
+                    return Ok(Some(i));
+                }
+                Err(KernelError::Quota) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        if matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. }) {
+            let stopped = Turn::Idle {
+                stop: Stop::Stopped {
+                    limit: "quota".to_string(),
+                },
+                seconds: None,
+                tools: None,
+                tokens: None,
+            };
+            self.turn_to(rec, stopped, at, work)?;
+            work.requests.push(Request::Interrupt {
+                session: rec.id.clone(),
+            });
+        }
+        Ok(None)
     }
 
     /// Stores a turn change: the record's turn and a `turn` entry, and pushes the turn. `activity`
@@ -540,7 +672,9 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<(), KernelError> {
         let before = rec.turn.is_active();
         self.turn_to(rec, t, now, work)?;
-        if before && matches!(rec.turn, Turn::Idle { .. }) {
+        // Past its quota, or at the chunk cap, a session starts no queued input (9.3 Quota).
+        if before && matches!(rec.turn, Turn::Idle { .. }) && !work.past && Self::room(rec).is_ok()
+        {
             self.next_queued(rec, now, work)?;
         }
         Ok(())
@@ -654,7 +788,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let (i, kind) = match (&open, &pending) {
             (Some(o), _) => (o.i, o.kind.clone()),
             (None, Some(p)) => (p.i, p.kind.clone()),
-            (None, None) => return self.unknown_entry(rec, r.raw, now),
+            (None, None) => return self.unknown_entry(rec, r.raw, now, work),
         };
         let outcome = r.outcome.as_deref();
         let good = match r.by.as_str() {
@@ -668,7 +802,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             _ => false,
         };
         if !good {
-            return self.unknown_entry(rec, r.raw, now);
+            return self.unknown_entry(rec, r.raw, now, work);
         }
         let decision = match (r.by.as_str(), outcome) {
             ("answered", Some(o)) => match &pending {
@@ -686,9 +820,15 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
     }
 
-    fn unknown_entry(&mut self, rec: &mut Record, raw: Value, now: u64) -> Result<(), KernelError> {
+    fn unknown_entry(
+        &mut self,
+        rec: &mut Record,
+        raw: Value,
+        now: u64,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
         let e = adapters::unknown(raw).entry.expect("unknown has an entry");
-        self.append(rec, NewEntry::from(e), now)?;
+        self.append_loose(rec, NewEntry::from(e), now, work)?;
         Ok(())
     }
 
@@ -776,15 +916,26 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Err(KernelError::Refused(refusals));
         }
         active::check_room(&slots)?;
-        let mut page = self
-            .state
-            .get(&owner_page_key(caller))
-            .map_or_else(Vec::<String>::new, |b| {
-                serde_json::from_slice(&b).unwrap_or_default()
-            });
-        if page.len() >= OWNER_PAGE {
+        let mut acct = self.accounts(caller);
+        if acct.owner.sessions >= self.limits.owner_sessions || self.past(&acct) {
             return Err(KernelError::Quota);
         }
+        // 9.1: the first page with room, or the next one.
+        let n = acct
+            .owner
+            .pages
+            .iter()
+            .position(|&c| (c as usize) < OWNER_PAGE)
+            .unwrap_or(acct.owner.pages.len());
+        let page_key = owner_page_key(caller, n as u32);
+        let mut page: Vec<String> = if acct.owner.pages.get(n).is_some_and(|&c| c > 0) {
+            self.state
+                .get(&page_key)
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let id = self.host.new_id();
         if id.len() > ID_BYTES {
             return Err(KernelError::Backend(
@@ -801,6 +952,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             boot: slots.boot,
             created: now,
             updated: now,
+            owner_page: n as u32,
             ..Record::default()
         };
         let mut work = Work::default();
@@ -809,12 +961,19 @@ impl<S: State, H: Host> Kernel<S, H> {
         page.push(id.clone());
         self.state
             .put(
-                &owner_page_key(caller),
+                &page_key,
                 serde_json::to_vec(&page).expect("a page serializes"),
             )
             .map_err(|t| KernelError::TooLarge(t.0 as u64))?;
-        rec.save(&mut self.state)?;
+        self.seal(&mut rec)?;
         self.key_put("start", caller, key, None, &id)?;
+        if acct.owner.pages.len() <= n {
+            acct.owner.pages.resize(n + 1, 0);
+        }
+        acct.owner.pages[n] += 1;
+        acct.owner.sessions += 1;
+        acct.account.sessions += 1;
+        self.finish(None, &mut acct)?;
         Ok(Called {
             value: id,
             pushes: self.flush(work),
@@ -841,6 +1000,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if !self.may_use(caller, &rec.profile) {
             return Err(Self::revoked());
         }
+        let mut acct = self.accounts(caller);
+        self.refuse_past(&acct)?;
         let mut work = Work::default();
         self.settle(&mut rec, &mut slots, &mut work)?;
         // A pause with no time ends with the next `say` (9.3); one with a time queues until it
@@ -875,7 +1036,6 @@ impl<S: State, H: Host> Kernel<S, H> {
                 };
                 self.sync_active(&mut rec, &mut slots, was)?;
                 rec.updated = now;
-                rec.save(&mut self.state)?;
                 n
             }
             _ => {
@@ -886,7 +1046,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 n
             }
         };
+        self.seal(&mut rec)?;
         self.key_put("say", caller, key, Some(session), &n)?;
+        self.finish(None, &mut acct)?;
         Ok(Called {
             value: n,
             pushes: self.flush(work),
@@ -936,6 +1098,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         let d = parse_decision(decision)?;
         if d.allow && !self.may_use(caller, &rec.profile) {
             return Err(Self::revoked());
+        }
+        let mut acct = self.accounts(caller);
+        if d.for_session {
+            self.refuse_past(&acct)?;
         }
         // The step comes after the refusals that do not depend on it; an ask it denies is refused.
         let mut work = Work::default();
@@ -988,8 +1154,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             decision: d.value,
         });
         rec.updated = now;
-        rec.save(&mut self.state)?;
+        self.seal(&mut rec)?;
         self.key_put("answer", caller, key, Some(session), &())?;
+        self.finish(None, &mut acct)?;
         Ok(Called {
             value: (),
             pushes: self.flush(work),
@@ -1006,16 +1173,19 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut rec = self.load_owned(caller, session)?;
+        let mut acct = self.accounts(caller);
         if let Some(input) = replacement {
             check_input(input)?;
             if !self.may_use(caller, &rec.profile) {
                 return Err(Self::revoked());
             }
+            self.refuse_past(&acct)?;
         }
         let mut work = Work::default();
         self.settle(&mut rec, &mut slots, &mut work)?;
         let was = rec.turn.is_active();
         if replacement.is_none() && !was {
+            self.finish(None, &mut acct)?;
             return Ok(Called {
                 value: (),
                 pushes: work.pushes,
@@ -1040,7 +1210,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         self.sync_active(&mut rec, &mut slots, was)?;
         rec.updated = now;
-        rec.save(&mut self.state)?;
+        self.finish(Some(&mut rec), &mut acct)?;
         Ok(Called {
             value: (),
             pushes: self.flush(work),
@@ -1067,6 +1237,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     // Children (9.3) are not built: nothing to cancel there yet.
     pub fn cancel(&mut self, caller: &str, session: &str) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
+        let mut acct = self.accounts(caller);
         let mut work = Work::default();
         let mut rec = self.session(caller, session, &mut slots, &mut work)?;
         let now = self.host.now();
@@ -1082,16 +1253,32 @@ impl<S: State, H: Host> Kernel<S, H> {
         if was || closed {
             rec.updated = now;
         }
-        rec.save(&mut self.state)?;
+        self.finish(Some(&mut rec), &mut acct)?;
         Ok(Called {
             value: (),
             pushes: self.flush(work),
         })
     }
 
+    /// `session` for a call that writes only when the restart step runs (R6): the step is charged.
+    fn read_session(
+        &mut self,
+        caller: &str,
+        id: &str,
+        slots: &mut Slots,
+    ) -> Result<Record, KernelError> {
+        let mut rec = self.load_owned(caller, id)?;
+        if rec.boot < slots.boot {
+            let mut acct = self.accounts(caller);
+            self.settle(&mut rec, slots, &mut Work::default())?;
+            self.finish(None, &mut acct)?;
+        }
+        Ok(rec)
+    }
+
     pub fn queued(&mut self, caller: &str, session: &str) -> Result<Vec<Queued>, KernelError> {
         let mut slots = self.begin()?;
-        let rec = self.session(caller, session, &mut slots, &mut Work::default())?;
+        let rec = self.read_session(caller, session, &mut slots)?;
         Ok(Queue::load(&mut self.state, &rec.id).inputs)
     }
 
@@ -1102,12 +1289,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         n: u64,
     ) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
+        let mut acct = self.accounts(caller);
         let mut work = Work::default();
-        let rec = self.session(caller, session, &mut slots, &mut work)?;
+        let mut rec = self.session(caller, session, &mut slots, &mut work)?;
         let mut q = Queue::load(&mut self.state, &rec.id);
         q.remove(n)?;
         q.save(&mut self.state, &rec.id)?;
         work.pushes.push(Push::of(&rec.id, q.push_value()));
+        self.finish(Some(&mut rec), &mut acct)?;
         Ok(Called {
             value: (),
             pushes: work.pushes,
@@ -1123,7 +1312,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         max: u32,
     ) -> Result<Page, KernelError> {
         let mut slots = self.begin()?;
-        let rec = self.session(caller, session, &mut slots, &mut Work::default())?;
+        let rec = self.read_session(caller, session, &mut slots)?;
         let mut meta = rec.meta();
         Transcript::new(&mut self.state, &rec.id, &mut meta).read(after, before, max)
     }
@@ -1131,15 +1320,23 @@ impl<S: State, H: Host> Kernel<S, H> {
     pub fn rename(&mut self, caller: &str, session: &str, title: &str) -> Result<(), KernelError> {
         check_title(title)?;
         let mut slots = self.begin()?;
-        let mut rec = self.session(caller, session, &mut slots, &mut Work::default())?;
+        let mut acct = self.accounts(caller);
+        let mut rec = self.load_owned(caller, session)?;
+        self.refuse_past(&acct)?;
+        self.settle(&mut rec, &mut slots, &mut Work::default())?;
         rec.title = title.to_string();
-        rec.save(&mut self.state)
+        self.finish(Some(&mut rec), &mut acct)
     }
 
+    /// 2.3 `delete`: frees the session's bytes, as its record holds them, without reading its
+    /// chunks; the kept `key/` results stay charged (9.3 Quota).
     pub fn delete(&mut self, caller: &str, session: &str) -> Result<(), KernelError> {
         let mut slots = self.begin()?;
+        let mut acct = self.accounts(caller);
         let rec = self.session(caller, session, &mut slots, &mut Work::default())?;
-        let page_key = owner_page_key(caller);
+        // The record's bytes, and what the restart step of `session` just changed in them.
+        let freed = rec.bytes as i64 + self.state.change().session - self.sealed;
+        let page_key = owner_page_key(caller, rec.owner_page);
         let page: Vec<String> = self
             .state
             .get(&page_key)
@@ -1149,9 +1346,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             active::remove(&mut self.state, &mut slots, &rec.id, p)?;
         }
         for n in 0..rec.chunks.len() {
-            self.state.delete(&crate::transcript::chunk_key(&rec.id, n));
+            self.state
+                .delete_uncharged(&crate::transcript::chunk_key(&rec.id, n));
         }
-        self.state.delete(&Queue::key_of(&rec.id));
+        self.state.delete_uncharged(&Queue::key_of(&rec.id));
         let page: Vec<String> = page.into_iter().filter(|i| *i != rec.id).collect();
         if page.is_empty() {
             self.state.delete(&page_key);
@@ -1164,7 +1362,16 @@ impl<S: State, H: Host> Kernel<S, H> {
                 .map_err(|t| KernelError::TooLarge(t.0 as u64))?;
         }
         self.state.delete(&Record::key_of(&rec.id));
-        Ok(())
+        self.state.adjust(Change {
+            owner: -freed,
+            session: 0,
+        });
+        acct.owner.sessions = acct.owner.sessions.saturating_sub(1);
+        acct.account.sessions = acct.account.sessions.saturating_sub(1);
+        if let Some(c) = acct.owner.pages.get_mut(rec.owner_page as usize) {
+            *c = c.saturating_sub(1);
+        }
+        self.finish(None, &mut acct)
     }
 
     pub fn list(
@@ -1177,17 +1384,32 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Err(refused("max", "max must be at least 1"));
         }
         let slots = self.begin()?;
-        let ids: Vec<String> = self
-            .state
-            .get(&owner_page_key(caller))
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
-        let from = match after {
-            None => 0,
-            Some(a) => ids.iter().position(|i| i == a).map_or(ids.len(), |p| p + 1),
-        };
+        let pages = Usage::load(&mut self.state, &Usage::owner_key(caller)).pages;
+        let mut ids: Vec<String> = Vec::new();
+        let mut found = after.is_none();
+        // The pages in order; one that cannot hold the `after` id or what follows is read only to look for it.
+        for (n, _) in pages.iter().enumerate().filter(|(_, c)| **c > 0) {
+            if found && ids.len() >= max.min(256) as usize {
+                break;
+            }
+            let mut page: Vec<String> = self
+                .state
+                .get(&owner_page_key(caller, n as u32))
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_default();
+            if !found {
+                match page.iter().position(|i| Some(i.as_str()) == after) {
+                    Some(p) => {
+                        found = true;
+                        page.drain(..=p);
+                    }
+                    None => continue,
+                }
+            }
+            ids.extend(page);
+        }
         let mut out = Vec::new();
-        for id in ids.iter().skip(from) {
+        for id in ids.iter() {
             if out.len() >= max.min(256) as usize {
                 break;
             }
@@ -1216,8 +1438,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         session: &str,
         event: ProviderEvent,
     ) -> Result<Called<()>, KernelError> {
+        self.open_meter();
         let mut rec = Record::load(&mut self.state, session)
             .ok_or_else(|| KernelError::UnknownSession(session.to_string()))?;
+        let mut acct = self.accounts(&rec.owner);
         let before = rec.clone();
         let was = rec.turn.is_active();
         let mut slots = None;
@@ -1227,7 +1451,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             slots = Some(s);
         }
         let now = self.host.now();
-        let mut work = Work::default();
+        let mut work = Work {
+            past: self.past(&acct),
+            ..Work::default()
+        };
         match event {
             ProviderEvent::Turn(t) => self.change_turn(&mut rec, t, now, &mut work)?,
             ProviderEvent::Ended => self.close_all(&mut rec, "ended", now, &mut work)?,
@@ -1256,10 +1483,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             };
             self.sync_active(&mut rec, &mut s, was)?;
         }
-        if rec != before {
+        let changed = rec != before;
+        if changed {
             rec.updated = now;
-            rec.save(&mut self.state)?;
         }
+        self.finish(changed.then_some(&mut rec), &mut acct)?;
         Ok(Called {
             value: (),
             pushes: self.flush(work),
@@ -1308,12 +1536,28 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<(), KernelError> {
         let is_ask = e.kind == Kind::Ask;
         let body = e.body.clone();
-        if is_ask && !body.get("decision").is_some_and(|d| !d.is_null()) && self.reused(rec, &body)
-        {
-            return self.unknown_entry(rec, body, now);
+        let decided = is_ask && body.get("decision").is_some_and(|d| !d.is_null());
+        if is_ask && !decided && self.reused(rec, &body) {
+            return self.unknown_entry(rec, body, now, work);
         }
-        let i = self.append(rec, NewEntry::from(e), now)?;
         let id = body.get("id").and_then(Value::as_str);
+        // An ask decision is stored as ever; any other entry is not past the quota (9.3).
+        let stored = if decided {
+            Some(self.append(rec, NewEntry::from(e), now)?)
+        } else {
+            self.append_loose(rec, NewEntry::from(e), now, work)?
+        };
+        let Some(i) = stored else {
+            // A new ask that is not stored is denied at once.
+            if let (true, Some(id)) = (is_ask, id) {
+                work.requests.push(Request::Answer {
+                    session: rec.id.clone(),
+                    ask: id.to_string(),
+                    decision: json!({"deny": true, "reason": "quota"}),
+                });
+            }
+            return Ok(());
+        };
         let (true, Some(id)) = (is_ask, id) else {
             return Ok(());
         };
@@ -1392,9 +1636,15 @@ impl<S: State, H: Host> Kernel<S, H> {
             Some(mut rec) if rec.boot < slots.boot => {
                 rec.active_page = Some(page);
                 let mut done = Work::default();
-                if self.step(&mut rec, slots, &mut done).is_ok() {
+                let mut acct = self.accounts(&rec.owner);
+                let stepped = self.step(&mut rec, slots, &mut done).is_ok();
+                if stepped {
                     work.pushes.append(&mut done.pushes);
-                } else if rec.active_page.is_some() {
+                }
+                // A failure of `finish` (the reserve) leaves the pass going: R6 retries at the next
+                // read. What a failed step wrote stays charged to the owner.
+                let _ = self.finish(None, &mut acct);
+                if !stepped && rec.active_page.is_some() {
                     // A step that fails must not stall the pass: its entry counts as current, and
                     // the record, still of an older boot, does its step when a call reads it (R6).
                     active::set_boot(&mut self.state, page, &entry.id, slots.boot)?;
