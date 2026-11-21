@@ -272,7 +272,7 @@ The allow grammar for `Bash` (deny rules are not held to it). An allow
   names such as `python3.12`, `nodejs`, `perl5.36.0`, `luajit`), and none of these, because each runs, wraps or schedules
   another command: `.`, `ash`, `at`, `awk`, `bash`, `batch`, `builtin`, `bun`, `bunx`, `busybox`, `byobu`, `capsh`, `chroot`, `chrt`, `command`, `coproc`, `corepack`, `crontab`, `csh`, `dash`, `deno`, `doas`, `dtach`, `elixir`, `enable`, `env`, `eval`, `exec`, `expect`, `fakeroot`, `fc`, `fish`, `flock`, `gawk`, `gdb`, `ionice`, `irb`, `julia`, `ksh`, `lldb`, `ltrace`, `lua`, `mawk`, `mksh`, `nawk`, `nice`, `node`, `nohup`, `npx`, `nsenter`, `numactl`, `osascript`, `parallel`, `perl`, `php`, `pipx`, `pkexec`, `pnpx`, `prlimit`, `pwsh`, `r`, `rbash`, `rscript`, `ruby`, `run0`, `runuser`, `screen`, `script`, `sem`, `setpriv`, `setsid`, `sg`, `sh`, `source`, `ssh`, `stdbuf`, `strace`, `su`, `sudo`, `systemd-run`, `taskset`, `tclsh`, `tcsh`, `time`, `timeout`, `tmux`, `toybox`, `trap`, `ts-node`, `tsx`, `unshare`, `uvx`, `valgrind`, `watch`, `xargs`, `yarnpkg`, `zellij`, `zsh`.
   This list is the rule; the list in `kernel/src/profile.rs` (`RUNNERS`) must
-  equal it (9.2, Code to change). A list of this kind cannot be complete, so a word not on it
+  equal it (a test reads this list). A list of this kind cannot be complete, so a word not on it
   is not thereby safe: the shell grant's sandbox (4.2) is the limit (14, Not
   protected). `find` is
   allowed only with no `*` and no `-exec`, `-execdir`, `-ok` or `-okdir`.
@@ -367,7 +367,9 @@ and `.husky/**`. No launch can remove them.
    (step 5); for a check, the push time plus the hook's `timeout-s`. A
    `control_request` whose `tool_use_id` is missing, not a string, or empty is
    not passed as an ask or check: the host answers it deny (ask) or `deny` (check) at once and pushes
-   nothing for it. So no `claude` stdout line can pass as a host item.
+   nothing for it. So no `claude` stdout line can pass as a host item. The
+   host's `id` of an `ask` or `check` item is unique on its stream: it is never
+   reused, also after its `ask-resolved`.
 
 5. Writes to stdin are only these:
 
@@ -589,12 +591,6 @@ Compilation: profile, then adopted offers it names, then the overlay; then the
 refuse table (11) for the backend and model. Every refusal is returned at
 once; `check` runs only this step.
 
-Code to change (next kernel slice), where `kernel/` differs from this text:
-
-- `yarn ls` is in `PACKAGE_RUNNERS` (`kernel/src/profile.rs`); drop it.
-- `RUNNERS` lacks the names of 4.1 added to it: `tsx`, `ts-node`, `tmux`, `screen`, `runuser`, `pkexec`, `chroot`, `nsenter`, `systemd-run`, `script`, `strace`, `ltrace`, `gdb`, `parallel`, `fakeroot`, `sg`, `tclsh`, `rscript`, `julia`, `expect`, `irb`, `elixir`, `at`, `crontab`, `r`, `rbash`, `trap`, `fc`, `coproc`, `enable`, `sem`, `batch`, `run0`, `pipx`, `lldb`, `valgrind`, `capsh`, `setpriv`, `prlimit`, `numactl`, `ssh`, `dtach`, `zellij`, `byobu`, and the prefixes `pypy`, `node`, `perl`, `ruby`, `php`, `lua` beside `python`; add them.
-- `frontmatter_problem` accepts a `:` in an indented (continuation) line; refuse it (4.1).
-
 ### 9.3 Sessions
 
 Session record: `id`, `owner`, `key`, `profile`, `backend`, `title`,
@@ -704,7 +700,7 @@ An entry is JSON:
 
 | Kind | Body |
 |---|---|
-| `message` | `{"role":"user"\|"agent","content":[<ACP content blocks>],"thought":{"text":"<text>","seconds":<n>}?}`; `thought` on an agent message is the thinking of that step joined, `seconds` from its first to its last thought chunk's `at`, rounded |
+| `message` | `{"role":"user"\|"agent","content":[<ACP content blocks>],"thought":{"text":"<text>","seconds":<n>}?}`; `thought` on an agent message is the thinking of that step joined, `seconds` from its first to its last thought chunk's `at`, rounded; a finished thinking block that repeats the deltas streamed for it counts once: it replaces those deltas in `text`, is not pushed live again and adds no time to `seconds`; a finished block with no streamed deltas is pushed once |
 | `tool` | an ACP ToolCall with its final status: `{"toolCallId","title","kind"?,"status","content"?,"locations"?,"rawInput"?,"rawOutput"?}`; output cut to 64 KiB, marked |
 | `ask` | the ask, below; later a decision entry that repeats it |
 | `allow` | `{"id":"<allow id>","reach":"<rule>","given":true\|false,"by":"<who>"}`: a session allow given or taken back (9.6) |
@@ -763,9 +759,10 @@ the card.
 - Reading an entry of an older `v` upgrades it in memory; an unknown `kind`
   or newer `v` reads as `{"kind": "unreadable", "raw": …}`. An `unreadable`
   entry is `{"v":<its v>,"i":<i>,"kind":"unreadable","at":<at>?,"raw":<the
-  stored JSON>}`. It keeps the `i` of its place (and `at` when it has one),
+  stored line as a JSON string>}`. It keeps the `i` of its place (and `at` when it has one),
   so paging, replay from `i + 1` and the drop of shown indexes (18.3) still
-  hold. The `i` of a line's place is its chunk's first index (the record's
+  hold. Every line a reader gets (`read`, replay) carries the `i` of its
+  place, readable or not. The `i` of a line's place is its chunk's first index (the record's
   `chunks`, 9.1) plus the line's position counted from 0, so the chunk's
   first line has the chunk's first index. An `i` the stored line claims is
   ignored, so a corrupt line cannot take another entry's index. Nothing is
@@ -894,22 +891,22 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 - Console, a console slice after S9: open asks are keyed by the ask entry's
   `id` (2.3), not by `toolCallId`, so a check's decision never clears an ask
   bar of the same call.
-- Kernel, S12: the ask entry body `tool-call-id` becomes `toolCallId`, and it
-  gains `toolCall` and `reach`.
-- Kernel, S12: the `ask` `_meta.watane` item becomes the `entry` item (no
-  separate ask update, no `options`).
-- Kernel, S12: `ask-resolved` becomes a decision entry that repeats the ask.
-- Kernel, S12: a finished agent message carries `thought`.
-- Kernel, S12: live updates carry `_meta.watane.at`.
 
-**Code to change (S14).** The transcript rules above differ from the code in
-one place; S12 covers the rest (outcome 3: the `unreadable` index;
-outcome 4: `append` takes only the adapters' kinds, `read` with `max` 0 is
-refused). `read` with `max` over 256 already reads as 256, and `attach`'s
-group start and a call committing whole need no code.
+**Code to change (S14).** The transcript and adapter rules above differ from
+the code in these places (S12 built the rest).
 
-- Kernel, S14: check that `read` with `max` 0 is refused with the field
-  `max` (S12 outcome 4 refuses it).
+- Kernel, S14: every line a reader gets (`read`, replay) takes the `i` of its
+  place, readable or not, and ignores an `i` the stored line claims (R1).
+- Kernel, S14: an `ask` or `check` item without `input` is an `unknown`
+  entry, never an ask (R2, 9.8).
+- Kernel, S14: an `ask` or `check` item whose `id` is that of an ask still
+  open on the session is an `unknown` entry, and the open ask is not changed
+  (R3b, 9.8).
+- Kernel, S14: the host never reuses the `id` of an `ask` or `check` item on
+  a stream, also after its `ask-resolved` (R3a, 4.5).
+- Kernel, S14: a finished thinking block that repeats the deltas streamed for
+  it replaces them in `thought.text`, is not pushed live again and adds no
+  time to `seconds` (R5).
 
 ### 9.5 The OpenAI loop
 
@@ -1037,7 +1034,7 @@ group start and a call committing whole need no code.
 | From | To |
 |---|---|
 | `assistant` text, `stream_event` deltas | `AgentMessageChunk`; a finished message is a `message` entry |
-| `assistant` `thinking` blocks and deltas | `AgentThoughtChunk` |
+| `assistant` `thinking` blocks and deltas | `AgentThoughtChunk`; a finished block that repeats its streamed deltas counts once (9.4, `thought`) |
 | `assistant` `tool_use` of `TodoWrite` | `Plan`, with its entries and their status; also a `tool` entry |
 | `assistant` `tool_use` | `ToolCall` (pending) |
 | `user` `tool_result` | `ToolCallUpdate` (completed or failed); a `tool` entry |
@@ -1059,8 +1056,10 @@ Give nothing (no update, no entry): Claude `system` `init`, `status`,
 `response.output_text.done`, `response.reasoning_summary_part.added`/`.done`,
 `response.reasoning_summary_text.done`,
 `response.function_call_arguments.delta`/`.done`. Then: a `wrapped` item; an
-`ask` or `check` item whose `tool_use_id` is not a non-empty string or whose
-`expires-at` is not a number; and, on a `direct: true` stream, a `verdict` or
+`ask` or `check` item whose `tool_use_id` is not a non-empty string, whose
+`expires-at` is not a number, or that has no `input`; an `ask` or `check` item
+whose `id` is that of an ask still open on the session (the open ask is not
+changed); and, on a `direct: true` stream, a `verdict` or
 `checking` item, are each an `unknown` entry, never an ask (14). The kernel
 takes `verdict` and `checking` only from a checked provider's stream
 (`direct: false`, 10). It reads items strictly (no lossy UTF-8 decoding): an
@@ -1077,21 +1076,6 @@ A `check` is the checked provider's to answer (10); its `none` means "no
 objection", never an allow. A client shows a check as a pending check or a
 decision line, with no answer buttons; the kernel offers no answer options for
 it.
-
-Code to change (S12):
-- take `expires-at` from the item (no `at + 600 000`);
-- an ask or check item whose `tool_use_id` is not a non-empty string, or
-  whose `expires-at` is not a number, becomes `unknown` (today it is an ask
-  with a null id);
-- a `wrapped` item becomes `unknown`; so does a `verdict` or `checking` item
-  on a `direct: true` stream;
-- read lines strictly: no `from_utf8_lossy`; an unparsable line is `unknown`;
-- `hook_started`, `hook_response`, `tool_progress`, `task_progress` give
-  nothing (today `unknown` entries);
-- drop the `options` list whose check option `none` has ACP kind
-  `allow_once`;
-- build the ask's `toolCall` from the item's `tool` and `input` only (today
-  `title` is the tool name; keep it so, never copy a `ToolCall`'s).
 
 Libraries: `claude-codes` (types only) and `agent-client-protocol-schema`
 (v1). An unknown Claude line never fails: the adapter falls back to `unknown`
@@ -1563,6 +1547,17 @@ of `spec/VISION.md`.
     for a `tool` entry of T, before and after the decision. An earlier
     `ToolCall` T with input X, then an ask on T with input A: the card's name
     and argument both come from A. An ask on a read is a card, not folded.
+66. (9.4, 4.5, 9.8) Kernel crate: a stored transcript with a readable line
+    that claims `i` 7 in the place of index 3, and an unreadable one, read and
+    replayed: each comes back with the `i` of its place (R1). An `ask` item and
+    a `check` item without `input` are `unknown` entries, no ask (R2). A second
+    `ask` item with the `id` of an ask still open is `unknown` and the open
+    ask is unchanged; the fake host never reuses an id, also after its
+    `ask-resolved` (R3). A thinking block streamed as deltas and then finished
+    with the same text leaves `thought.text` as the text once, one live
+    `AgentThoughtChunk` per delta and none for the finished block, and
+    `seconds` from the deltas only; a finished block with no deltas is pushed
+    once (R5).
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
