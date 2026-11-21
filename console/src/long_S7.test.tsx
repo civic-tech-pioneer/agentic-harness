@@ -21,6 +21,9 @@ const hasButton = (name: string) => [...document.querySelectorAll("button")].som
 const rowCount = () => document.querySelectorAll(".wa-row").length;
 
 /** Resolves when pred holds, checked at once and after every DOM change. */
+/** The page settles: one animation frame, then an idle wait, so render work left by the last step does not run inside the next sample. */
+const settled = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+
 function until(pred: () => boolean, ms = 3000): Promise<void> {
   return new Promise((resolve, reject) => {
     if (pred()) return resolve();
@@ -131,6 +134,7 @@ describe("a session of 5 000 entries with the stream running", () => {
   });
 
   it("ac7_stream_delta_to_its_text_p95_within_100ms", async () => {
+    await settled();
     delays.length = 0;
     await until(() => delays.length >= 20, 5000); // the next 20 deltas of the stream that is playing
     const ms = delays.slice(0, 20);
@@ -142,6 +146,7 @@ describe("a session of 5 000 entries with the stream running", () => {
     const ms: number[] = [];
     const interrupts = () => fake.calls.filter((c) => c.name === "interrupt").length;
     for (let k = 0; k < 20; k++) {
+      await settled();
       const before = interrupts();
       const t = now();
       if (k % 2) fireEvent.click(screen.getByRole("button", { name: "Stop" }));
