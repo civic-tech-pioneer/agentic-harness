@@ -27,18 +27,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S26: the kernel tracks its provider streams (in flight (cloud), routine trig_01UPrShuM2hVaWsXaqncpSnh)
-
-Story: a kernel maker drives a Claude session through a fake provider stream on the in-memory
-state: open, items, `ended`, the 10-minute idle release and the resume after it (case 52), R4's
-idle row resuming with `resume` (not `resume: false`), `stream/<id>` and `live/<session>` keys
-(P09), and the deferral rules of 9.4 with a fake owner stream. As 9.4 "Code to change (a later
-slice)" names. Also from S25 (PO decisions, PR #28): `delete` skips a failing restart step
-(closing asks `cancel`), so a session can always be deleted; past quota, at most one `turn` entry
-per turn; the quota refusal says "this mod's agent sessions are at their limit" without naming the
-kernel's shared account (14 "A session is private"); spec lines for each in 9.3.
-Touches: `kernel/`, `design/TECHNICAL.md` (9.3). Protects: *core* (*guard* for the S25 items).
-
 ### S23: the console after S7: answered asks, its risks and rough edges (in flight (cloud), routine trig_01YMS4jWtoufvUniEj7XkoYk)
 
 Outcomes:
@@ -62,6 +50,17 @@ machine at S27 against S7's 14.5 s budget; S23 sets the highlight budget per blo
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
 ## Sketched
+
+### S28: no session is left running with nothing driving it (cloud, after S26 merges: kernel/)
+
+Story: a kernel maker runs `cargo test` in `kernel/`: a provider `ended` during an active turn
+ends that turn `idle {failed {error: provider-ended}}` (closing open asks as 9.8 rule 4 and S22 D5
+say), so the next `say` starts a turn and the console offers "Try again" (18.5); spec lines in 9.3
+and 9.8 and a case in 16 (S26 RISK, PO decision). Also: the past-quota flag can no longer be read
+by a call that did not read the owner's accounts first (a type or constructor that requires it,
+S26 RISK), and `kernel/tests/it/adv_s26.rs` gets `cargo fmt` once it is no longer red-only.
+Touches: `kernel/`, `design/TECHNICAL.md` (9.3, 9.8, 16). Protects: *core* (*guard* for quota).
+
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -272,6 +271,16 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   highlighted once complete and visible with a per-block budget (S23 sets it). User-sim ACCEPTED
   (run 1); no adversary (no code, 14 unchanged).
 
+- **S26** the kernel tracks its provider streams (PR #31, 1.3 h). A kernel maker drives a Claude
+  session through a fake provider stream: `stream/<id>` and the record's `streams`, 8 provider
+  slots (4 per owner, `busy`, case 52), the 10-minute idle release through `s/<id>`, resume with
+  `resume: true` after a release, `ended`, `cancel` or restart (not for `persist: false`),
+  `attach` with `live/<session>`, deferral rolled back whole and applied once, `lagging` and
+  `replaced` closes resuming the provider, a delta reads only two keys (P09); S25's three items.
+  User-sim ACCEPTED on run 2 (a deferred provider stayed deferred after a kernel close);
+  adversary BREACHED 1 then 1 (past-quota `turn` entries), fixed, HELD. Implementer runs 1 each
+  of 7.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -359,6 +368,12 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   past quota; the quota refusal stops naming the kernel's shared account (all to S26). Accepted:
   duplicate lines from a restart step that fails in a timer firing (the real host rolls a call
   back whole, 7; only `MemState` lacks it); no migration (nothing deployed).
+
+- 2026-11-21 S26 RISKs: a provider `ended` during an active turn ends it `failed {provider-ended}`
+  (S28); the past-quota flag is made unreadable without the accounts read (S28). Accepted: the
+  transcript's last `turn` entry may trail the record past quota (attach and pushes carry the
+  record's turn); decisions use the chunk cap's kept room (older); for a moment after `cancel` the
+  host may run one more `claude` than the kernel counts (the host's own caps bound it).
 
 ## Human answers (2026-11-20, through the PO)
 
@@ -486,6 +501,10 @@ S2 writes each into the document that owns it.
 - 2026-11-21 S7: the `npm test` budget moved three times within the slice (8.6, 11, 12.5, 14.5 s);
   a budget should be fixed at the slice's end, not per task. Parallel console tasks conflict in the
   committed `ui/` every time (S9, S15, S7): a factory rule to build `ui/` once at integration.
+
+- 2026-11-21 S26: briefs that paraphrase a spec rule missed two of them (user-sim and adversary
+  caught both); a brief should quote the rule. Implementers still skip the red phase on some
+  tasks, and `cargo mutants` is not in the cloud image.
 
 ## Suite time
 
