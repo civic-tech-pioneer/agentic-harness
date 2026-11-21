@@ -99,6 +99,22 @@ pub fn scope(tool: &str, workspace: Option<&str>, input: &Value) -> Option<Strin
     {
         return None;
     }
+    // A write there can make code run later (9.6, 4.3): it always asks.
+    if matches!(tool, "Write" | "Edit" | "MultiEdit" | "NotebookEdit") {
+        let last = rest.rsplit('/').next().unwrap_or("");
+        let named = [
+            "CLAUDE.md",
+            "AGENTS.md",
+            "build.rs",
+            "package.json",
+            "Makefile",
+        ]
+        .iter()
+        .any(|n| last.eq_ignore_ascii_case(n));
+        if named || rest.split('/').any(|s| s.starts_with('.')) {
+            return None;
+        }
+    }
     Some(format!("{ws}/**"))
 }
 

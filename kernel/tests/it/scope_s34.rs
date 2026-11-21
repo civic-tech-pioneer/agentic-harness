@@ -498,3 +498,89 @@ fn ac8_no_key_no_session_allow() {
             .unwrap();
     }
 }
+
+#[test]
+fn fix1_ac1_a_write_that_can_run_later_gets_no_key() {
+    for p in [
+        "/w/.git/config",
+        "/w/a/.claude/settings.json",
+        "/w/.mcp.json",
+        "/w/.vscode/tasks.json",
+        "/w/.husky/pre-commit",
+        "/w/.env",
+        "/w/src/CLAUDE.md",
+        "/w/claude.md",
+        "/w/AGENTS.md",
+        "/w/build.rs",
+        "/w/pkg/package.json",
+        "/w/Makefile",
+        "/w/MAKEFILE",
+    ] {
+        for t in ["Write", "Edit", "MultiEdit"] {
+            assert_eq!(r(t, json!({"file_path": p})), None, "{t} {p}");
+        }
+    }
+    assert_eq!(
+        r(
+            "NotebookEdit",
+            json!({"notebook_path": "/w/.ipynb_checkpoints/x.ipynb"})
+        ),
+        None
+    );
+    for p in ["/w/src/main.rs", "/w/docs/make.md"] {
+        assert_eq!(
+            r("Write", json!({"file_path": p})).as_deref(),
+            Some("Write(/w/**)")
+        );
+    }
+    for (t, k, p) in [
+        ("Read", "file_path", "/w/.git/config"),
+        ("Glob", "path", "/w/.git"),
+        ("Grep", "path", "/w/.git"),
+    ] {
+        let mut i = json!({"pattern": "x"});
+        i[k] = json!(p);
+        if t == "Read" {
+            i = json!({"file_path": p});
+        }
+        assert_eq!(r(t, i), Some(format!("{t}(/w/**)")), "{t}");
+    }
+}
+
+#[test]
+fn fix1_ac2_a_session_allow_does_not_reach_a_dot_path() {
+    let mut k = kernel();
+    let s = started(&mut k);
+    let mut w = rec(&mut k, &s);
+    w.workspace = Some("/w".into());
+    w.save(&mut k.state).unwrap();
+    let mut a = ClaudeAdapter::new();
+    ask_in(
+        &mut k,
+        &mut a,
+        &s,
+        "e1",
+        "Edit",
+        json!({"file_path": "/w/src/a.rs"}),
+    );
+    k.answer("alice", &s, "k1", "e1", SESSION).unwrap();
+    feed(
+        &mut k,
+        &mut a,
+        &s,
+        resolved("e1", "answered", Some("allow")),
+    );
+    ask_in(
+        &mut k,
+        &mut a,
+        &s,
+        "e2",
+        "Edit",
+        json!({"file_path": "/w/.git/config"}),
+    );
+    assert!(open(&mut k, &s, "e2"));
+    assert_ne!(by(&mut k, &s, "e2").as_deref(), Some("session-allow"));
+    let o = rec(&mut k, &s);
+    let o = o.open.iter().find(|o| o.id == "e2").unwrap();
+    assert!(!format!("{o:?}").contains("reach"), "{o:?}");
+}
