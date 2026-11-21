@@ -977,35 +977,6 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 - `turn`: `state` is the turn JSON of 9.3. `queue`: `inputs` as `queued` gives
   them. `usage`: `compact-at` is optional.
 
-**Code to change.** The wire above differs from the code in these places.
-
-- Console, a console slice after S9: read `expires-at` (not `expiresAt`) in
-  the ask body and the `waiting` turn.
-- Console, a console slice after S9: `answer` with the ask entry's `id`, not
-  the tool call id.
-- Console, a console slice after S9: accept `paused` without `until`.
-- Console, a console slice after S9: accept a `verdict` without `toolCallId`
-  (`on: "input"`).
-- Console, a console slice after S9: accept a decision entry `by` value it
-  does not know, and show it as text.
-- Console, a console slice after S9: draw a `check` as a pending check with
-  no answer buttons.
-- Console, a console slice after S9: accept a decision `outcome` `none` (a
-  check the checked provider let through); `Decision.outcome` in
-  `console/kit/model.ts` gains `none`.
-- Console, a console slice after S9: read `part` entries (`console/kit/wire.ts`
-  has no `part` case today) and join parts 1..m, across pages and replay, into
-  one entry before parsing, as above.
-- Console, a console slice after S9: when a tool row of the ask's id exists,
-  `console/kit/reduce.ts` keeps that row's call (today it reads `m.call` only
-  when no row exists); instead the ask's `toolCall` and `input` replace the
-  row's call, so the card shows what the ask says will run (9.8); while the
-  ask is open and after its decision, a later call patch of that id does not
-  change the call the card shows, and an open ask's call is never folded.
-- Console, a console slice after S9: open asks are keyed by the ask entry's
-  `id` (2.3), not by `toolCallId`, so a check's decision never clears an ask
-  bar of the same call.
-
 **Code to change (S20).** The rules above and in 9.8 differ from the code in
 this place (S14 and S19 built the rest).
 
@@ -1214,7 +1185,10 @@ Give nothing (no update, no entry): Claude `system` `init`, `status`,
 `tool` is not a string, whose `expires-at` is not a whole number from 0 to 2^64 - 1, or whose `input` is not
 a JSON object;
 an `ask` or `check` item whose `id` is that of an ask or check still open on
-the session (the open one is not changed); and, on a `direct: true` stream, a `verdict` or
+the session (the open one is not changed); an `ask` or `check` item whose
+`tool_use_id` is that of an open ask or check with a different `tool` or
+`input` (the open one is not changed: one card per call, since a client draws
+the card of a call from its ask, 18.3); and, on a `direct: true` stream, a `verdict` or
 `checking` item, are each an `unknown` entry, never an ask (14). The kernel
 takes `verdict` and `checking` only from a checked provider's stream
 (`direct: false`, 10). It reads items strictly (no lossy UTF-8 decoding): an
@@ -1291,6 +1265,15 @@ same id, earlier or later, the ask's is the one that runs and the one shown: the
 (18.3), while the ask is open and after its decision. The kernel builds the
 ask's `toolCall` from the item's `tool` and `input` only (its `title` by the
 same rule as a `ToolCall`'s), never copied from a `ToolCall` of the same id.
+The `toolCall` carries ACP `kind` from `tool`: `Read` `read`; `Edit`,
+`MultiEdit`, `Write`, `NotebookEdit` `edit`; `Bash` `execute`; `Grep`, `Glob`
+`search`; `WebFetch`, `WebSearch` `fetch`; any other name `other`. For `Edit`,
+`Write` and `MultiEdit` it also carries `content`, the ACP `diff`(s) of the
+`input`: `Edit` one (`path` `file_path`, `oldText` `old_string`, `newText`
+`new_string`), `Write` one with `newText` the `content` and no `oldText`,
+`MultiEdit` one per `edits` item, in order. A field missing or not a string
+gives no `content`; the ask is still an ask. Both are built from the item's
+`input` only.
 
 A `check` is the checked provider's to answer (10); its `none` means "no
 objection", never an allow. A client shows a check as a pending check or a
@@ -1868,6 +1851,12 @@ of `spec/VISION.md`.
     leaves the turn `paused` with no time; `read`, `answer` with `deny`,
     `cancel` and `delete` still work. An unreadable `access/` value acts as
     an empty one.
+75. (9.8) Kernel crate, adapter: an `Edit` ask's `toolCall` has `kind: edit`
+    and its diff (`Write` and `MultiEdit` likewise, each other tool its kind
+    and no `content`); a second ask or check on the same call with another
+    `tool` or `input` is `unknown` and the open one is unchanged; the same
+    `tool` and `input` is an ask; after the open one is resolved, another
+    input is an ask again.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
