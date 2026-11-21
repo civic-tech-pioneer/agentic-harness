@@ -219,8 +219,8 @@ describe("other rows", () => {
 
 describe("StatusLine", () => {
   const T = 1_700_000_000_000;
-  const askE = (i: number, id: string, title: string, kind: string, path?: string) =>
-    entry(i, "ask", { id: `a-${id}`, kind: "ask", toolCallId: id, input: {}, "expires-at": 9, toolCall: { toolCallId: id, title, kind, status: "pending", ...(path ? { locations: [{ path }] } : {}) } });
+  const askE = (i: number, id: string, title: string, kind: string, path?: string, expires = 9) =>
+    entry(i, "ask", { id: `a-${id}`, kind: "ask", toolCallId: id, input: {}, "expires-at": expires, toolCall: { toolCallId: id, title, kind, status: "pending", ...(path ? { locations: [{ path }] } : {}) } });
   const status = (turn: object | null, o: { stopping?: boolean; rows?: string[]; asks?: string[] } = {}) => {
     const view = { ...feed(...(o.rows ?? [])), turn: turn as SessionView["turn"], openAsks: o.asks ?? [] };
     const actions = mk(); const onNeedsYou = vi.fn();
@@ -288,7 +288,7 @@ describe("StatusLine", () => {
   });
 
   it("ac9_waiting_diamond_time_left_needs_you", async () => {
-    const rows = [call("a", "Edit file", "edit"), askE(1, "a", "Edit file", "edit", "src/sync.ts").replace('"input":{}', '"input":{"file_path":"src/sync.ts"}'), call("b", "Edit other", "edit"), askE(2, "b", "Edit other", "edit", "x.ts")];
+    const rows = [call("a", "Edit file", "edit"), askE(1, "a", "Edit file", "edit", "src/sync.ts", T + 72_000).replace('"input":{}', '"input":{"file_path":"src/sync.ts"}'), call("b", "Edit other", "edit"), askE(2, "b", "Edit other", "edit", "x.ts")];
     status({ state: "waiting", asks: ["a-a", "a-b"], expiresAt: T + 72_000 }, { rows, asks: ["a-a", "a-b"] });
     expect(word()).toBe("Waiting for you · Edit src/sync.ts");
     expect(shape()).toBe("diamond");
