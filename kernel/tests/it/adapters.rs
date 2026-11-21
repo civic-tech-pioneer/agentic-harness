@@ -639,3 +639,13 @@ fn ac3_edit_with_replace_all_has_no_diff() {
     let b = body_of(&line(&mut a, ask_line("ask", "2", "c2", "Edit", off)));
     assert!(b["toolCall"]["content"].is_array());
 }
+
+#[test]
+fn ac2_multiedit_without_replace_all_keeps_diffs() {
+    let mut a = ClaudeAdapter::new();
+    let m = json!({"file_path": "/w/c", "edits": [
+        {"old_string": "a", "new_string": "b", "replace_all": false},
+        {"old_string": "c", "new_string": "d"}]});
+    let b = body_of(&line(&mut a, ask_line("ask", "3", "c3", "MultiEdit", m)));
+    assert_eq!(b["toolCall"]["content"].as_array().map(Vec::len), Some(2));
+}
