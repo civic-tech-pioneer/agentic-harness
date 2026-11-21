@@ -584,20 +584,26 @@ def probe_subagent_slash():
                  for b in m.get("message", {}).get("content", [])
                  if b.get("type") == "tool_use" and b.get("name") in ("Agent", "Task")]
         sent = any(b.get("input", {}).get("prompt", "").startswith("/") for b in calls)
-        ids = {b["id"] for b in calls if b.get("id")}
+        ids = {b["id"] for b in calls if b.get("id") and b.get("input", {}).get("prompt", "").startswith("/")}
+        results = [b for m in lines if m.get("type") == "user"
+                   for b in m.get("message", {}).get("content", [])
+                   if b.get("type") == "tool_result" and b.get("tool_use_id") in ids]
         # Only the child transcript or an Agent/Task result proves execution;
         # the parent's final answer alone may be invented.
         ran = any("PINEAPPLE" in json.dumps(m.get("message", {})).upper()
                   for m in lines if m.get("parent_tool_use_id")) or any(
-            "PINEAPPLE" in json.dumps(b.get("content", "")).upper()
-            for m in lines if m.get("type") == "user"
-            for b in m.get("message", {}).get("content", [])
-            if b.get("type") == "tool_result" and b.get("tool_use_id") in ids)
+            "PINEAPPLE" in json.dumps(b.get("content", "")).upper() for b in results)
+        # "Not ran" counts only if a subagent with the slash prompt really started.
+        started = any(m.get("parent_tool_use_id") in ids for m in lines) or any(
+            not b.get("is_error") for b in results)
+        sent = sent and started
         if expect:
             control_ok = sent and ran
-        inconclusive = "" if sent and control_ok else "inconclusive: slash prompt not sent or control failed; "
+        inconclusive = "" if sent and control_ok else "inconclusive: slash prompt not run or control failed; "
         record(f"subagent-slash: {label}", sent and control_ok and ran == expect,
-               f"{inconclusive}slash prompt sent={sent}, skill ran={ran}; answer={text_of(result)[:80]!r}")
+               f"{inconclusive}slash prompt sent={sent} (subagent started={started}), skill ran={ran}; "
+               f"agent result={json.dumps([b.get('content') for b in results])[:80]!r}; "
+               f"answer={text_of(result)[:80]!r}")
 
 
 def probe_loopback():
@@ -634,20 +640,27 @@ def probe_loopback():
                               ["Run these two Bash commands one at a time, even if the first fails, "
                                "and report each exit status: " + " ; ".join(
                                    f"curl -sS -m 5 {url}" for _, url in targets)])
-            commands = [b.get("input", {}).get("command", "")
+            commands = {b.get("id"): b.get("input", {}).get("command", "")
                         for m in lines if m.get("type") == "assistant"
                         for b in m.get("message", {}).get("content", [])
-                        if b.get("type") == "tool_use" and b.get("name") == "Bash"]
+                        if b.get("type") == "tool_use" and b.get("name") == "Bash"}
+            outputs = {b.get("tool_use_id"): json.dumps(b.get("content", ""))
+                       for m in lines if m.get("type") == "user"
+                       for b in m.get("message", {}).get("content", [])
+                       if b.get("type") == "tool_result" and b.get("tool_use_id") in commands}
             for target, url in targets:
                 reached = f"/{token}-{target}" in paths
-                sent = any("curl" in cmd and url in cmd for cmd in commands)
+                # Sent means the Bash call naming the URL came back with a result,
+                # so "not reached" is never a call that did not happen.
+                ran = [outputs[i] for i, cmd in commands.items() if "curl" in cmd and url in cmd and i in outputs]
+                sent = bool(ran)
                 if domains is None:
                     control_ok[target] = sent and reached
                 proved = control_ok[target] if domains is None else all(control_ok.values())
                 inconclusive = "" if sent and proved else "inconclusive: curl not sent or control failed; "
                 record(f"loopback: {label}, {target}",
                        sent and proved and reached == (domains is None),
-                       f"{inconclusive}reached={reached}, curl sent={sent}")
+                       f"{inconclusive}reached={reached}, curl sent={sent}; output={ran[:1]!r:.100}")
     finally:
         srv.shutdown()
         thread.join()
