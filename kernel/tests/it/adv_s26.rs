@@ -99,3 +99,40 @@ fn adv_s26_past_quota_ask_resolutions_add_turn_entries() {
         after - at
     );
 }
+
+/// S26-fix1 AC2, TECHNICAL 9.3 Quota ("one `turn` entry per turn past quota"; `answer` without
+/// `for: session` is not refused past quota): the fix put the guard on provider items only
+/// (`work.past` is set in `provider_work`). An owner past its quota answers the asks of a turn
+/// waiting on asks opened below it, one `answer` each: `answer`'s `close_ask` runs with
+/// `Work::default()` (`past: false`), so each answer writes a `turn` entry (the waiting list
+/// shrinks, then `running`): up to 64 more entries a turn past quota.
+#[test]
+fn adv_s26_past_quota_owner_answers_add_turn_entries() {
+    let mut k = kernel();
+    let s = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    for n in 0..8 {
+        k.provider_item("t1", ask(&format!("a{n}"))).unwrap();
+    }
+    k.limits.owner_bytes = Usage::load(&mut k.state, "quota/alice").bytes;
+    let at = turn_entries(&mut k, &s);
+    for n in 0..8 {
+        k.answer("alice", &s, &format!("ans{n}"), &format!("a{n}"), r#"{"deny":true}"#)
+            .unwrap();
+    }
+    k.provider_item(
+        "t1",
+        ProviderEvent::Turn(Turn::Idle {
+            stop: Stop::Completed,
+            seconds: None,
+            tools: None,
+            tokens: None,
+        }),
+    )
+    .unwrap();
+    let after = turn_entries(&mut k, &s);
+    assert!(
+        after - at <= 1,
+        "past quota one turn got {} turn entries",
+        after - at
+    );
+}
