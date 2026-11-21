@@ -345,21 +345,23 @@ fn ac3_ended_leaves_a_paused_turn() {
     assert!(k.state.get("stream/t1").is_none());
 }
 
-/// S28-fix1 AC4: at the ceiling a provider item other than `ended` is still refused `quota`
-/// and commits nothing (only `ended` may pass the ceiling).
+/// S29-2: at the ceiling an `ask` item succeeds, is not stored and is denied `quota`.
 #[test]
-fn ac4_another_item_at_the_ceiling_is_still_refused() {
+fn ac4_an_ask_at_the_ceiling_is_denied_quota() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
     k.limits.account_bytes = Usage::load(&mut k.state, "quota").bytes;
     k.limits.reserve_bytes = 0;
-    let a0 = Usage::load(&mut k.state, "quota").bytes;
-    let n = kinds(&mut k, &id).len();
-    assert!(matches!(
-        k.provider_item("t1", ask("a1")),
-        Err(KernelError::Quota(_))
-    ));
+    let (a0, h0) = (
+        Usage::load(&mut k.state, "quota").bytes as i64,
+        held(&k, false),
+    );
+    let n = kinds(&mut k, &id).iter().filter(|x| *x == "ask").count();
+    k.provider_item("t1", ask("a1")).unwrap();
     assert!(rec(&mut k, &id).open.is_empty());
-    assert_eq!(kinds(&mut k, &id).len(), n);
-    assert_eq!(Usage::load(&mut k.state, "quota").bytes, a0);
+    assert_eq!(kinds(&mut k, &id).iter().filter(|x| *x == "ask").count(), n);
+    assert!(k.host.calls.iter().any(|c| matches!(c,
+        HostCall::Request(Request::Answer { decision, .. }) if decision["reason"] == "quota")));
+    let wrote = held(&k, false) - h0;
+    assert_eq!(Usage::load(&mut k.state, "quota").bytes as i64 - a0, wrote);
 }
