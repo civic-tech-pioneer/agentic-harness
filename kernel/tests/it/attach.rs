@@ -262,26 +262,23 @@ fn ac2_a_lagging_close_resumes_the_provider_stream_and_none_means_no_resume() {
         resume_after_close(&k, &o, "lagging"),
         Some("t1".to_string())
     );
-    // no live provider stream: the close resumes nothing
-    k.provider(&id, idle()).unwrap();
-    k.provider_item("t1", ProviderEvent::Ended).unwrap();
+    // no live provider stream: the close resumes nothing. A queued input stays after the
+    // provider stream's `ended` (9.3); taking it back pushes the queue to the full stream.
     k.host.full.clear();
+    k.say("alice", &id, "q3", "queued").unwrap();
+    k.provider_item("t1", ProviderEvent::Ended).unwrap();
     let o2 = attach(&mut k, &id, 0);
     k.host.full.insert(o2.clone());
     let resumes = count_calls(&k, |c| matches!(c, HostCall::Resume { .. }));
-    k.say("alice", &id, "q3", "again").unwrap();
+    let n = k.queued("alice", &id).unwrap()[0].n;
+    k.unqueue("alice", &id, n).unwrap();
     assert!(k.host.calls.contains(&HostCall::Close {
-        stream: o2.clone(),
+        stream: o2,
         outcome: "lagging".into()
     }));
-    // the ended stream is not resumed; the say's own new provider stream (t4) is
-    assert_eq!(
-        resume_after_close(&k, &o2, "lagging"),
-        Some("t4".to_string())
-    );
     assert_eq!(
         count_calls(&k, |c| matches!(c, HostCall::Resume { .. })),
-        resumes + 1
+        resumes
     );
 }
 
