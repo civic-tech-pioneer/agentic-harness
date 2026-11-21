@@ -364,11 +364,25 @@ impl<S: State, H: Host> Kernel<S, H> {
         a.owner.bytes >= self.limits.owner_bytes || a.account.bytes >= self.limits.account_bytes
     }
 
-    fn refuse_past(&self, a: &Acct) -> Result<(), KernelError> {
-        if self.past(a) {
-            return Err(KernelError::Quota);
+    /// The cap `past` found, named for the refusal.
+    fn past_cause(&self, a: &Acct) -> Option<String> {
+        if a.owner.bytes >= self.limits.owner_bytes {
+            Some(format!("{} MiB per owner", self.limits.owner_bytes >> 20))
+        } else if a.account.bytes >= self.limits.account_bytes {
+            Some(format!(
+                "the kernel's {} MiB account",
+                self.limits.account_bytes >> 20
+            ))
+        } else {
+            None
         }
-        Ok(())
+    }
+
+    fn refuse_past(&self, a: &Acct) -> Result<(), KernelError> {
+        match self.past_cause(a) {
+            Some(cause) => Err(KernelError::Quota(cause)),
+            None => Ok(()),
+        }
     }
 
     /// The end of a call that writes: the record (when given) takes the change in its session keys,
@@ -386,7 +400,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             .account_bytes
             .saturating_add(self.limits.reserve_bytes);
         if c.owner > 0 && a.account.bytes > ceiling {
-            return Err(KernelError::Quota);
+            return Err(KernelError::Quota(format!(
+                "the {} MiB state",
+                ceiling >> 20
+            )));
         }
         self.save_accounts(a)
     }
@@ -568,7 +585,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                     rec.set_meta(&meta);
                     return Ok(Some(i));
                 }
-                Err(KernelError::Quota) => {}
+                Err(KernelError::Quota(_)) => {}
                 Err(e) => return Err(e),
             }
         }
@@ -878,7 +895,9 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     fn room(rec: &Record) -> Result<(), KernelError> {
         if rec.chunks.len() + CHUNK_MARGIN > MAX_CHUNKS {
-            return Err(KernelError::Quota);
+            return Err(KernelError::Quota(format!(
+                "{MAX_CHUNKS} transcript chunks per session"
+            )));
         }
         Ok(())
     }
@@ -924,9 +943,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         active::check_room(&slots)?;
         let mut acct = self.accounts(caller);
-        if acct.owner.sessions >= self.limits.owner_sessions || self.past(&acct) {
-            return Err(KernelError::Quota);
+        if acct.owner.sessions >= self.limits.owner_sessions {
+            return Err(KernelError::Quota(format!(
+                "{} sessions per owner",
+                self.limits.owner_sessions
+            )));
         }
+        self.refuse_past(&acct)?;
         // 9.1: the first page with room, or the next one.
         let n = acct
             .owner

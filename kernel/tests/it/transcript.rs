@@ -585,7 +585,9 @@ fn ac12_limits() {
     let before = meta.clone();
     assert_eq!(
         Transcript::new(&mut st, "s", &mut meta).append(&text_entry(5), 1),
-        Err(KernelError::Quota)
+        Err(KernelError::Quota(
+            "16384 transcript chunks per session".into()
+        ))
     );
     assert_eq!(meta, before);
     assert_eq!(st.len(), 0);

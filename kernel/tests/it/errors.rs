@@ -17,7 +17,7 @@ fn ac2_twelve_codes_and_messages_name_the_cause() {
         ),
         (KernelError::Refused(vec![r]), "refused", "effort"),
         (KernelError::QueueFull, "queue-full", "queue"),
-        (KernelError::Quota, "quota", "quota"),
+        (KernelError::Quota("x".into()), "quota", "quota: x"),
         (KernelError::Paused(1789), "paused", "1789"),
         (
             KernelError::Backend("socket closed".into()),

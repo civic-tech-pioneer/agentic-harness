@@ -362,7 +362,7 @@ fn ac5_an_owner_holds_at_most_64_sessions() {
     let snap = dump(&k);
     assert!(matches!(
         k.start("alice", "k64", "p", "{}", IN),
-        Err(KernelError::Quota)
+        Err(KernelError::Quota(_))
     ));
     assert_eq!(dump(&k), snap);
     start(&mut k, "bob", "k0");
@@ -398,7 +398,7 @@ fn ac5_a_cap_past_256_opens_more_owner_pages() {
     assert_eq!(seen, ids);
     assert!(matches!(
         k.start("alice", "k300", "p", "{}", IN),
-        Err(KernelError::Quota)
+        Err(KernelError::Quota(_))
     ));
     // delete of a page-1 session reads page 1 and not page 0
     k.state.reset_counts();
@@ -440,7 +440,7 @@ fn ac6_an_owner_past_its_bytes_is_refused_new_work() {
     k.limits.owner_bytes = usage(&mut k, "quota/alice").bytes;
     let q = |k: &mut K, r: Result<Called<()>, KernelError>| {
         let snap = dump(k);
-        assert!(matches!(r, Err(KernelError::Quota)), "{r:?}");
+        assert!(matches!(r, Err(KernelError::Quota(_))), "{r:?}");
         assert_eq!(dump(k), snap);
     };
     let snap = dump(&k);
@@ -497,17 +497,20 @@ fn ac7_the_account_past_its_bytes_refuses_both_owners() {
     let snap = dump(&k);
     assert!(matches!(
         k.start("alice", "k2", "p", "{}", IN),
-        Err(KernelError::Quota)
+        Err(KernelError::Quota(_))
     ));
     assert!(matches!(
         k.start("bob", "k2", "p", "{}", IN),
-        Err(KernelError::Quota)
+        Err(KernelError::Quota(_))
     ));
     assert!(matches!(
         k.say("alice", &a, "x", "hi"),
-        Err(KernelError::Quota)
+        Err(KernelError::Quota(_))
     ));
-    assert!(matches!(k.rename("bob", &b, "t"), Err(KernelError::Quota)));
+    assert!(matches!(
+        k.rename("bob", &b, "t"),
+        Err(KernelError::Quota(_))
+    ));
     assert_eq!(dump(&k), snap);
     k.delete("bob", &b).unwrap();
     k.delete("alice", &a).unwrap();
@@ -702,7 +705,7 @@ fn ac9_a_call_cannot_take_the_account_past_the_reserve() {
     k.limits.reserve_bytes = 0;
     assert!(matches!(
         k.say("alice", &s1, "x", &"y".repeat(500)),
-        Err(KernelError::Quota)
+        Err(KernelError::Quota(_))
     ));
     k.limits.reserve_bytes = 1 << 20;
     k.say("alice", &s1, "x2", &"y".repeat(500)).unwrap();
@@ -731,7 +734,7 @@ fn ac10_a_session_at_the_chunk_cap_ends_its_turn_case_53() {
     }));
     assert!(matches!(
         k.say("alice", &s1, "x", "more"),
-        Err(KernelError::Quota)
+        Err(KernelError::Quota(_))
     ));
 }
 
@@ -835,4 +838,64 @@ fn validator_a_firing_past_the_reserve_still_charges_its_step() {
     k.timer("restart");
     assert_eq!(rec(&mut k, &s1).turn, Turn::Unknown);
     check(&k);
+}
+
+fn cause<T: std::fmt::Debug>(r: Result<T, KernelError>) -> String {
+    match r {
+        Err(KernelError::Quota(c)) => c,
+        other => panic!("not a quota refusal: {other:?}"),
+    }
+}
+
+#[test]
+fn ac3_the_sessions_cap_is_named() {
+    let mut k = kernel();
+    for n in 0..64 {
+        start(&mut k, "alice", &format!("k{n}"));
+    }
+    let e = k.start("alice", "k64", "p", "{}", IN).unwrap_err();
+    assert_eq!(cause(Err::<(), _>(e.clone())), "64 sessions per owner");
+    assert_eq!(e.to_string(), "quota: 64 sessions per owner");
+    k.limits.owner_sessions = 65;
+    start(&mut k, "alice", "k64");
+    assert_eq!(
+        cause(k.start("alice", "k65", "p", "{}", IN)),
+        "65 sessions per owner"
+    );
+}
+
+#[test]
+fn ac3_the_owner_bytes_cap_is_named() {
+    let mut k = kernel();
+    start(&mut k, "alice", "k1");
+    k.limits.owner_bytes = usage(&mut k, "quota/alice").bytes;
+    assert_eq!(
+        cause(k.start("alice", "k2", "p", "{}", IN)),
+        "0 MiB per owner"
+    );
+    k.limits.owner_bytes = 64 << 20;
+    k.limits.account_bytes = 1 << 40;
+    start(&mut k, "alice", "k2");
+}
+
+#[test]
+fn ac3_the_kernel_account_cap_is_named() {
+    let mut k = kernel();
+    start(&mut k, "alice", "k1");
+    start(&mut k, "bob", "k1");
+    k.limits.account_bytes = usage(&mut k, "quota").bytes;
+    assert_eq!(
+        cause(k.start("bob", "k2", "p", "{}", IN)),
+        "the kernel's 0 MiB account"
+    );
+}
+
+#[test]
+fn ac3_the_reserve_ceiling_is_named() {
+    let mut k = kernel();
+    let s = start(&mut k, "alice", "k1");
+    let used = usage(&mut k, "quota").bytes;
+    k.limits.account_bytes = used + 1;
+    k.limits.reserve_bytes = 0;
+    assert_eq!(cause(k.say("alice", &s, "q1", "more")), "the 0 MiB state");
 }
