@@ -1155,21 +1155,30 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(())
     }
 
-    /// Writes the one decision entry of the ask at `i`: its entry repeated, with `decision`.
+    /// Writes the one decision entry of the ask at `i`: its entry repeated, with `decision`; past
+    /// its quota, counted at this write, the short form from the record alone (9.4).
+    #[allow(clippy::too_many_arguments)]
     fn write_decision(
         &mut self,
         rec: &mut Record,
+        past: Past,
+        ask: (&str, &str),
         i: u64,
         decision: Value,
         now: u64,
     ) -> Result<(), KernelError> {
-        let Some(mut body) = self.ask_body(rec, i) else {
-            return Ok(());
+        let body = if past.short(self.state.change().owner) {
+            json!({"id": ask.0, "kind": ask.1, "ask-i": i, "decision": decision})
+        } else {
+            let Some(mut body) = self.ask_body(rec, i) else {
+                return Ok(());
+            };
+            let Some(obj) = body.as_object_mut() else {
+                return Ok(());
+            };
+            obj.insert("decision".into(), decision);
+            body
         };
-        let Some(obj) = body.as_object_mut() else {
-            return Ok(());
-        };
-        obj.insert("decision".into(), decision);
         let entry = NewEntry {
             kind: "ask".into(),
             uuid: None,
@@ -1195,10 +1204,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         for o in std::mem::take(&mut rec.open) {
             rec.deadlines.retain(|d| d.what != format!("ask {}", o.id));
             let d = json!({"outcome": "deny", "by": "kernel", "reason": reason});
-            self.write_decision(rec, o.i, d, now)?;
+            self.write_decision(rec, past, (&o.id, &o.kind), o.i, d, now)?;
         }
-        for (_, p) in std::mem::take(&mut rec.pending_answers) {
-            self.write_decision(rec, p.i, p.decision(), now)?;
+        for (id, p) in std::mem::take(&mut rec.pending_answers) {
+            self.write_decision(rec, past, (&id, &p.kind), p.i, p.decision(), now)?;
         }
         if any && follow && matches!(rec.turn, Turn::Waiting { .. }) {
             let t = Turn::Running {
@@ -1247,7 +1256,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             },
             _ => json!({"outcome": "deny", "by": "host", "reason": r.by}),
         };
-        self.write_decision(rec, i, decision, now)?;
+        self.write_decision(rec, past, (&r.id, &kind), i, decision, now)?;
         if open.is_some() {
             self.close_ask(rec, past, &r.id, now, work)
         } else {
@@ -2482,7 +2491,26 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let id = body.get("id").and_then(Value::as_str);
         // An ask decision is stored as ever; any other entry is not past the quota (9.3).
-        let stored = if decided {
+        let stored = if decided && past.short(self.state.change().owner) {
+            // Past its quota the decision is stored short when the ask is open or pending, else not.
+            let at = rec
+                .open
+                .iter()
+                .map(|o| (&o.id, &o.kind, o.i))
+                .chain(rec.pending_answers.iter().map(|(id, p)| (id, &p.kind, p.i)))
+                .find(|(oid, _, _)| Some(oid.as_str()) == id)
+                .map(|(oid, k, i)| (oid.clone(), k.clone(), i));
+            let Some((oid, k, ai)) = at else {
+                return Ok(());
+            };
+            let d = body.get("decision").cloned().unwrap_or(Value::Null);
+            let short = NewEntry {
+                kind: "ask".into(),
+                uuid: None,
+                body: json!({"id": oid, "kind": k, "ask-i": ai, "decision": d}),
+            };
+            Some(self.append(rec, short, now)?)
+        } else if decided {
             Some(self.append(rec, NewEntry::from(e), now)?)
         } else {
             self.append_loose(rec, past, NewEntry::from(e), now, work)?
@@ -2511,7 +2539,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if rec.open.len() + rec.pending_answers.len() >= OPEN_ASKS {
             // Past the cap: denied at once, so a closing call writes at most 64 decisions.
             let d = json!({"outcome": "deny", "by": "kernel", "reason": "busy"});
-            self.write_decision(rec, i, d, now)?;
+            self.write_decision(rec, past, (id, kind), i, d, now)?;
             work.requests.push(Request::Answer {
                 session: rec.id.clone(),
                 ask: id.to_string(),
