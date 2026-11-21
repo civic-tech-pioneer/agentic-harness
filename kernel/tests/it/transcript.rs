@@ -516,6 +516,9 @@ fn ac10_joiner() {
     let n = serde_json::from_str::<Value>(&second.entries[0]).unwrap()["body"]["n"].as_u64();
     assert!(n > Some(1), "second page starts with part {n:?}");
     assert_eq!(out[2]["body"]["text"], "z".repeat(700_000));
+    // S14-fix4 AC2: the 3-part whole is the stored entry, with the last part's i.
+    let expect = json!({"v":1,"i":i,"kind":"message","at":1,"body":{"text":"z".repeat(700_000)}});
+    assert_eq!(out[2], expect);
 }
 
 #[test]
