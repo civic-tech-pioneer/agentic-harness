@@ -51,7 +51,95 @@ fn ac2_bash_reach_needs_only_the_plain_keys() {
         assert_eq!(bash(bad.clone()), None, "{bad}");
     }
     let ok = json!({"command":"ls","description":"d","timeout":5,"run_in_background":true});
-    assert_eq!(bash(ok).as_deref(), Some("Bash(ls)"));
+    assert_eq!(
+        bash(ok).as_deref(),
+        Some("Bash(ls) timeout=5 run_in_background=true")
+    );
+}
+
+#[test]
+fn ac1_only_listed_tools_have_a_reach() {
+    for t in [
+        "Task",
+        "Skill",
+        "WebFetch",
+        "WebSearch",
+        "Agent",
+        "MultiEdit",
+        "KillShell",
+        "BashOutput",
+        "mcp__other__x",
+        "mcp__watane__",
+    ] {
+        assert_eq!(r(None, t, json!({})), None, "{t}");
+    }
+    assert_eq!(
+        r(None, "TodoWrite", json!({})).as_deref(),
+        Some("TodoWrite")
+    );
+    assert_eq!(
+        r(None, "mcp__watane__send", json!({})).as_deref(),
+        Some("mcp__watane__send")
+    );
+}
+
+#[test]
+fn ac2_bash_reach_pins_timeout_and_background() {
+    let b = |i: Value| r(None, "Bash", i);
+    let c = |i: Value| b(i);
+    assert_eq!(c(json!({"command":"ls"})).as_deref(), Some("Bash(ls)"));
+    assert_eq!(
+        c(json!({"command":"ls","description":"d"})).as_deref(),
+        Some("Bash(ls)")
+    );
+    assert_eq!(
+        c(json!({"command":"ls","timeout":5})).as_deref(),
+        Some("Bash(ls) timeout=5")
+    );
+    assert_eq!(
+        c(json!({"command":"ls","run_in_background":true})).as_deref(),
+        Some("Bash(ls) run_in_background=true")
+    );
+    assert_eq!(
+        c(json!({"command":"ls","run_in_background":false})).as_deref(),
+        Some("Bash(ls) run_in_background=false")
+    );
+    assert_eq!(
+        c(json!({"run_in_background":true,"description":"d","timeout":5,"command":"ls"}))
+            .as_deref(),
+        Some("Bash(ls) timeout=5 run_in_background=true")
+    );
+}
+
+#[test]
+fn ac3_bash_reach_refuses_odd_timeout_and_background() {
+    let b = |extra: Value| {
+        let mut i = json!({"command":"ls"});
+        i.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        r(None, "Bash", i)
+    };
+    for bad in [
+        json!({"timeout": -1}),
+        json!({"timeout": 1.5}),
+        json!({"timeout": "5"}),
+        json!({"timeout": null}),
+        json!({"timeout": true}),
+        json!({"run_in_background": "true"}),
+        json!({"run_in_background": 1}),
+        json!({"run_in_background": null}),
+    ] {
+        assert_eq!(b(bad.clone()), None, "{bad}");
+    }
+    assert_eq!(
+        b(json!({"timeout": 0})).as_deref(),
+        Some("Bash(ls) timeout=0")
+    );
+    assert_eq!(
+        b(json!({"timeout": 18446744073709551615u64})).as_deref(),
+        Some("Bash(ls) timeout=18446744073709551615")
+    );
 }
 
 #[test]
@@ -71,7 +159,7 @@ fn ac1_reach_of_bash_and_other_tools() {
         assert_eq!(bash(bad), None, "{bad:?}");
     }
     assert_eq!(r(None, "Bash", json!({"command": 5})), None);
-    assert_eq!(r(None, "WebFetch", json!({})).as_deref(), Some("WebFetch"));
+    assert_eq!(r(None, "WebFetch", json!({})), None);
     assert_eq!(
         r(None, "mcp__watane__send", json!({})).as_deref(),
         Some("mcp__watane__send")
@@ -79,8 +167,8 @@ fn ac1_reach_of_bash_and_other_tools() {
     for none in ["AskUserQuestion", "ExitPlanMode", "Web Fetch", "Bash(ls)"] {
         assert_eq!(r(None, none, json!({})), None, "{none}");
     }
-    assert_eq!(reach("alice", None, "check", "WebFetch", &json!({})), None);
-    assert_eq!(reach("agent:x", None, "ask", "WebFetch", &json!({})), None);
+    assert_eq!(reach("alice", None, "check", "TodoWrite", &json!({})), None);
+    assert_eq!(reach("agent:x", None, "ask", "TodoWrite", &json!({})), None);
 }
 
 type K = Kernel<MemState, FakeHost>;
@@ -381,4 +469,50 @@ fn ac7_an_ask_with_no_reach_refuses_for_session() {
     };
     assert_eq!(rs[0].field, "decision");
     assert!(answers(&k).is_empty());
+}
+
+#[test]
+fn ac4_a_session_allow_on_bash_holds_only_the_same_run() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    k.provider(&id, bash("a1", "npm test")).unwrap();
+    k.answer("alice", &id, "k1", "a1", SESSION).unwrap();
+    let with = |i: &str, extra: Value| {
+        let mut input = json!({"command": "npm test"});
+        input
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        ask(i, "Bash", input, None)
+    };
+    k.provider(&id, with("a2", json!({"run_in_background": true})))
+        .unwrap();
+    k.provider(&id, with("a3", json!({"timeout": 600000})))
+        .unwrap();
+    k.provider(&id, with("a4", json!({"description": "other"})))
+        .unwrap();
+    let r = rec(&mut k, &id);
+    assert!(r.open.iter().any(|o| o.id == "a2") && r.open.iter().any(|o| o.id == "a3"));
+    assert!(!r.open.iter().any(|o| o.id == "a4"));
+    assert_eq!(r.pending_answers["a4"].by, "session-allow");
+    assert!(!r.pending_answers.contains_key("a2"));
+    assert!(!r.pending_answers.contains_key("a3"));
+}
+
+#[test]
+fn ac5_web_fetch_and_task_asks_store_no_reach_and_refuse_for_session() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    for (n, t) in ["WebFetch", "Task"].iter().enumerate() {
+        let a = format!("w{n}");
+        k.provider(&id, ask(&a, t, json!({}), Some(t))).unwrap();
+        assert!(asked(&mut k, &id, &a)["body"].get("reach").is_none());
+        let KernelError::Refused(rs) = k.answer("alice", &id, "k1", &a, SESSION).unwrap_err()
+        else {
+            panic!()
+        };
+        assert_eq!(rs[0].field, "decision");
+        k.answer("alice", &id, "k2", &a, r#"{"allow":true}"#)
+            .unwrap();
+    }
 }

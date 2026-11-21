@@ -57,13 +57,27 @@ fn bash(input: &Value) -> Option<String> {
     if command.contains(':') {
         return None;
     }
-    let rule = format!("Bash({command})");
-    rule_problem(&rule, true).is_none().then_some(rule)
+    let mut rule = format!("Bash({command})");
+    if rule_problem(&rule, true).is_some() {
+        return None;
+    }
+    if let Some(t) = input.get("timeout") {
+        rule.push_str(&format!(" timeout={}", t.as_u64()?));
+    }
+    if let Some(b) = input.get("run_in_background") {
+        rule.push_str(&format!(" run_in_background={}", b.as_bool()?));
+    }
+    Some(rule)
 }
 
-/// Any other tool: its name, when it is a rule name.
+/// `TodoWrite` and `mcp__watane__<tool>`: their name, when it is a rule name. Every other tool
+/// gets none (fail closed, 9.6).
 fn named(tool: &str) -> Option<String> {
-    if tool.contains(['(', ')']) {
+    let listed = tool == "TodoWrite"
+        || tool
+            .strip_prefix("mcp__watane__")
+            .is_some_and(|t| !t.is_empty());
+    if !listed || tool.contains(['(', ')']) {
         return None;
     }
     rule_problem(tool, true).is_none().then(|| tool.to_string())

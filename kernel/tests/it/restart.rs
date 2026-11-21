@@ -50,7 +50,7 @@ fn ask(id: &str, expires: u64) -> ProviderEvent {
         entry: Some(Entry {
             kind: Kind::Ask,
             uuid: None,
-            body: json!({"id": id, "kind": "ask", "toolCallId": "t", "toolCall": {"toolCallId": "t", "title": "WebFetch"},
+            body: json!({"id": id, "kind": "ask", "toolCallId": "t", "toolCall": {"toolCallId": "t", "title": "mcp__watane__send"},
                 "input": {}, "expires-at": expires}),
         }),
         ..Out::default()
@@ -306,7 +306,7 @@ fn ac3_the_step_settles_a_claude_turn_case_69() {
             json!({"outcome": "deny", "by": "kernel", "reason": "restart"})
         );
     }
-    assert_eq!(denied[0]["body"]["reach"], "WebFetch");
+    assert_eq!(denied[0]["body"]["reach"], "mcp__watane__send");
     assert_eq!(
         (
             denied[2]["body"]["id"].as_str(),
