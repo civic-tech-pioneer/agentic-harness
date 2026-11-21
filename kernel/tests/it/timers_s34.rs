@@ -125,3 +125,26 @@ fn ac4_a_delay_under_30_days_is_asked_unchanged() {
     k.timer(&t);
     assert_eq!(timer_calls(&k, from), vec![(t, 29 * DAY)]);
 }
+
+#[test]
+fn fix1_ac3_an_early_firing_keeps_the_restart_step_it_ran() {
+    let mut k = kernel();
+    let id = far(&mut k, 1);
+    let t = format!("s/{id}");
+    k.host.generation = 2;
+    k.host.now += 1000;
+    let mut slots = Slots::load(&mut k.state);
+    slots.boot = 2;
+    slots.save(&mut k.state).unwrap();
+    assert!(Record::load(&mut k.state, &id).unwrap().boot < 2);
+    let from = k.host.calls.len();
+    k.timer(&t);
+    assert_eq!(timer_calls(&k, from), vec![(t.clone(), DAY - 1000)]);
+    let r = Record::load(&mut k.state, &id).unwrap();
+    assert_eq!(r.boot, 2);
+    let before = snapshot(&k);
+    let from = k.host.calls.len();
+    k.timer(&t);
+    assert_eq!(timer_calls(&k, from), vec![(t, DAY - 1000)]);
+    assert_eq!(before, snapshot(&k));
+}

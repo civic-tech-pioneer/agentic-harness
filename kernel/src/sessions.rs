@@ -2785,13 +2785,19 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         let mut acct = self.accounts(&rec.owner);
         let past = acct.past;
+        let boot = rec.boot;
         self.settle(&mut rec, past, slots, work)?;
         let now = self.host.now();
         if !rec.deadlines.iter().any(|d| d.at <= now) {
-            // Nothing due (an early firing, or a deadline over 30 days ahead, 7): only the timer
-            // is set again; no key and no count changes.
+            // Nothing due (an early firing, or a deadline over 30 days ahead, 7): the timer is set
+            // again; a restart step `settle` ran is saved and charged (9.3 "Past"), else no key
+            // and no count changes.
             if let Some(at) = next_due(&rec.deadlines, now) {
                 self.set_timer(&format!("s/{id}"), at - now);
+            }
+            if rec.boot != boot {
+                slots.save(&mut self.state)?;
+                return self.finish_as(Some(&mut rec), &mut acct, true);
             }
             return Ok(());
         }
