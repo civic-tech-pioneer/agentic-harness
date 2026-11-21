@@ -290,14 +290,25 @@ export function settleShort(view: SessionView, i: number, entry: string | null):
   const v: SessionView = { ...view, x };
   const a = m.ask;
   const decided: Ask = { ...a, decision: sh.decision };
-  if (!(x.open ?? []).some((o) => o.ask.toolCallId === a.toolCallId)) {
-    const had = find(v, a.toolCallId) !== undefined;
+  const f0 = find(v, a.toolCallId);
+  const shown = f0 && f0.n === undefined ? v.rows[f0.at] : undefined;
+  // a row that shows an ask (an open one, or a later entry's decided one) is another entry's card: it stays as it is
+  if (!(x.open ?? []).some((o) => o.ask.toolCallId === a.toolCallId) && !(shown?.kind === "tool" && shown.ask)) {
+    const cur = f0?.call;
     upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true);
     toToolRow(v, a.toolCallId);
-    syncAsks(v, x, a.toolCallId, { ask: decided, call: ownCall(m.call, a) });
-    const at = find(v, a.toolCallId)?.at ?? -1, k = keyAt(`e${i}`);
+    const f = find(v, a.toolCallId)!;
+    const r = v.rows[f.at]!;
+    if (r.kind === "tool") {
+      const own = ownCall(m.call, a);
+      // the stream's later status and output stay (as `syncAsks` keeps them for one entry); the ask's call gives the rest
+      const call: ToolCall = cur ? { ...own, status: cur.status, content: [...own.content.filter((b) => b.type === "diff"), ...cur.content.filter((b) => b.type !== "diff")], ...("rawOutput" in cur ? { rawOutput: cur.rawOutput } : {}) } : own;
+      const { checking: _c, ...rest } = r;
+      put(v, f.at, { ...rest, call, ask: decided });
+    }
+    const at = f.at, k = keyAt(`e${i}`);
     // a card the page did not hold stands at the placeholder's place
-    if (!had && at > k && k >= 0) { const row = v.rows[at]!; splice(v, at, 1); splice(v, k, 0, row); }
+    if (!cur && at > k && k >= 0) { const row = v.rows[at]!; splice(v, at, 1); splice(v, k, 0, row); }
   }
   const k = keyAt(`e${i}`), row = v.rows[k];
   if (row?.kind === "decision") put(v, k, { ...row, what: `${decisionWord(sh.decision)}: ${m.call?.title ?? askArg(a.input) ?? a.toolCallId}` });

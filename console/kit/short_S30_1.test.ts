@@ -103,7 +103,16 @@ describe("AC4 not held: closes at once, a placeholder stands", () => {
     const v = settleShort(v0, 6, ask(5, "a1", "e1"));
     expect(v.rows.map((r) => r.key)).toEqual(["ce1", "e2", "e6"]);
     expect(tool(v, "e1")!.call.title).toBe("Edit src/e1.ts");
-    expect(tool(v, "e1")!.call.status).toBe("pending");
+    expect(tool(v, "e1")!.call.status).toBe("in_progress"); // the row's status stays; the ask's call gives the rest
+    expect(tool(v, "e1")!.ask!.decision!.outcome).toBe("allow");
+  });
+  it("ac4_a_late_read_keeps_the_later_status_and_output_of_the_call", () => {
+    const upd = J({ sessionUpdate: "tool_call_update", toolCallId: "e1", status: "completed", rawOutput: "RAW", content: [{ type: "content", content: { type: "text", text: "out" } }] });
+    const v0 = run(short(6, 5, "a1"), upd);
+    const v = settleShort(v0, 6, entry(5, "ask", { id: "a1", kind: "ask", toolCallId: "e1", input: { file_path: "src/e1.ts" }, "expires-at": 9, toolCall: { toolCallId: "e1", title: "Edit src/e1.ts", kind: "edit", locations: [{ path: "src/e1.ts" }], content: [{ type: "diff", path: "src/e1.ts", oldText: "a", newText: "b" }] } }));
+    const c = tool(v, "e1")!.call;
+    expect(c).toMatchObject({ title: "Edit src/e1.ts", kind: "edit", status: "completed", rawOutput: "RAW", locations: [{ path: "src/e1.ts" }] });
+    expect(c.content.map((b) => b.type)).toEqual(["diff", "content"]);
     expect(tool(v, "e1")!.ask!.decision!.outcome).toBe("allow");
   });
   it("ac4_the_read_entry_of_a_read_call_leaves_the_explored_row_alone", () => {
@@ -156,6 +165,14 @@ describe("AC6 later state wins", () => {
     expect(tool(v, "e1")!.ask).toBe(open);
     expect(v.rows.filter((r) => r.kind === "tool").length).toBe(1);
     expect(line(v, 6)).toMatchObject({ what: "Allowed: Edit src/e1.ts" });
+  });
+  it("ac6_a_later_decided_ask_of_the_reused_id_on_the_same_call_keeps_its_card", () => {
+    const v0 = run(short(6, 5, "a1"), ask(9, "a1", "e1"), full(10, "a1", "e1", { outcome: "deny", by: "bob" }));
+    const v = settleShort(v0, 6, ask(5, "a1", "e1"));
+    expect(tool(v, "e1")).toBe(tool(v0, "e1")); // the very row object
+    expect(tool(v, "e1")!.ask!.decision).toEqual({ outcome: "deny", by: "bob" });
+    expect(line(v, 6)).toMatchObject({ what: "Allowed: Edit src/e1.ts" });
+    expect(line(v, 10)).toBe(line(v0, 10));
   });
   it("ac6_settling_twice_or_for_a_row_that_is_gone_changes_nothing", () => {
     const v = settleShort(run(short(6, 5, "a1")), 6, ask(5, "a1", "e1"));
@@ -251,6 +268,27 @@ describe("AC6 and AC7 in flight", () => {
     g.go();
     await flush();
     expect(a.views.length).toBe(n);
+  });
+});
+
+describe("AC7 session switch", () => {
+  it("ac7_a_read_returning_after_the_session_was_switched_changes_nothing", async () => {
+    // a switch closes the old openSession (App's effect cleanup) and opens a new one: the old one's late read must not reach its page
+    let go!: () => void;
+    const p = new Promise<void>((r) => { go = r; });
+    const k = fakeKernel([[short(6, 5, "a1")]], { preload: [] });
+    const read = k.read.bind(k);
+    k.read = async (s, a, m) => { if (a === 4) await p; return read(s, a, m); };
+    const old = open(k);
+    await flush(); k.play(0); await flush();
+    old.s.close();
+    const fresh = open(fakeKernel([], { preload: [] }));
+    const n = old.views.length;
+    go();
+    await flush();
+    expect(old.views.length).toBe(n);
+    expect(fresh.last()?.rows ?? []).toEqual([]);
+    fresh.s.close();
   });
 });
 

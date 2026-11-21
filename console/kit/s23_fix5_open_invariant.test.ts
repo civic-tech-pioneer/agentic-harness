@@ -58,7 +58,10 @@ it("ac3_open_ask_invariant_holds_after_every_message", () => {
         const sh = v.x?.shorts?.find((q) => q.i === i);
         const e = sent.find((q) => q.i === sh?.askI);
         log.push(`settle ${i} ${e?.m}`);
+        const before = v;
         v = settleShort(v, i, r() < 0.8 ? e?.m ?? null : null);
+        // a settle never changes a row that shows an ask (it belongs to another entry): the very row object stays
+        for (const row of before.rows) if (row.kind === "tool" && row.ask && !v.rows.includes(row)) throw new Error(`settle changed ${row.key}\n${log.join("\n")}`);
         check(v, log);
         continue;
       }
