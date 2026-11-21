@@ -4,6 +4,9 @@ import { MEASURE, type Actions, type ToolCall } from "../model";
 
 const QUESTION: Record<string, string> = { edit: "Allow this edit?", execute: "Allow this command?" };
 
+/** The words of an answered ask's line, on the card and on the status line: `judge` is the turn `running` with activity `checking`. */
+export const answeredWords = (judge: boolean) => (judge ? "Checking with your judge" : "Answered, waiting");
+
 /** 18.6 Asks: once an answer is sent the bar gives way to one line until the kernel's decision entry arrives (9.4 rule 4: a pending answer counts as decided). */
 export function AskBar({ call, askId, reach, actions, sent = false, judge = false, refused = false, lineRef, focusIn }:
   { call: ToolCall; askId: string; reach?: string; actions: Actions; sent?: boolean; judge?: boolean; refused?: boolean; lineRef?: MutableRefObject<HTMLElement | null>; focusIn?: RefObject<boolean> }) {
@@ -29,7 +32,7 @@ export function AskBar({ call, askId, reach, actions, sent = false, judge = fals
     n.dispatchEvent(new Event(MEASURE, { bubbles: true }));
   }, [refused]);
   if (sent) {
-    return <p key="line" ref={(n) => { line.current = n; mark(n); }} className="wa-answered askbar" role="status" tabIndex={-1}>{judge ? "Checking with your judge" : "Answered, waiting"}</p>;
+    return <p key="line" ref={(n) => { line.current = n; mark(n); }} className="wa-answered askbar" role="status" tabIndex={-1}>{answeredWords(judge)}</p>;
   }
   return (
     <>
