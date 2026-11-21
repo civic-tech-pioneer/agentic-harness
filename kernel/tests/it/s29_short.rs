@@ -384,30 +384,62 @@ fn decided_with(id: &str, decision: Value) -> ProviderEvent {
 
 #[test]
 fn ac1_a_decided_ask_past_is_stored_with_a_bounded_decision() {
+    // Past the owner's quota, and with the account at its ceiling (reserve 0), where a copied
+    // 200 KB decision would fail `quota` at a call that cannot fail.
+    for at_ceiling in [false, true] {
+        let mut k = kernel();
+        let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+        k.provider_item("t1", ask_of("a1", "ask", 0)).unwrap();
+        if at_ceiling {
+            k.limits.account_bytes = usage(&mut k, "quota");
+            k.limits.reserve_bytes = 0;
+        } else {
+            past_owner(&mut k);
+        }
+        let n = entries(&mut k, &id).len();
+        let big = format!("{}é", "x".repeat(255));
+        k.provider_item(
+            "t1",
+            decided_with(
+                "a1",
+                json!({"outcome": "deny", "by": "host", "for": "session",
+                    "reason": big + &"y".repeat(200_000), "extra": {"z": "w".repeat(1000)}}),
+            ),
+        )
+        .unwrap();
+        assert!(rec(&mut k, &id).open.is_empty());
+        let ds = decisions_after(&mut k, &id, n);
+        assert_eq!(ds.len(), 1);
+        let d = ds[0]["body"]["decision"].as_object().unwrap();
+        let mut keys: Vec<&String> = d.keys().collect();
+        keys.sort();
+        assert_eq!(keys, ["by", "outcome", "reason"]);
+        assert_eq!(d["reason"], json!(format!("{}", "x".repeat(255))));
+        assert!(ds[0].to_string().len() < 1024);
+    }
+}
+
+#[test]
+fn ac1_a_null_reason_is_left_out() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
     k.provider_item("t1", ask_of("a1", "ask", 0)).unwrap();
     past_owner(&mut k);
     let n = entries(&mut k, &id).len();
-    let big = format!("{}é", "x".repeat(255));
     k.provider_item(
         "t1",
         decided_with(
             "a1",
-            json!({"outcome": "deny", "by": "host", "reason": big + &"y".repeat(200_000),
-                "extra": {"z": "w".repeat(1000)}}),
+            json!({"outcome": "allow", "by": "owner", "reason": null}),
         ),
     )
     .unwrap();
-    assert!(rec(&mut k, &id).open.is_empty());
     let ds = decisions_after(&mut k, &id, n);
     assert_eq!(ds.len(), 1);
-    let d = ds[0]["body"]["decision"].as_object().unwrap();
-    let mut keys: Vec<&String> = d.keys().collect();
-    keys.sort();
-    assert_eq!(keys, ["by", "outcome", "reason"]);
-    assert_eq!(d["reason"].as_str().unwrap().len(), 255);
-    assert!(ds[0].to_string().len() < 1024);
+    assert_eq!(
+        ds[0]["body"]["decision"],
+        json!({"outcome": "allow", "by": "owner"})
+    );
 }
 
 #[test]
@@ -417,6 +449,9 @@ fn ac2_an_unreadable_decision_is_not_stored_and_stops_the_turn() {
         json!({"outcome": "deny", "by": "nobody"}),
         json!({"outcome": 1, "by": "host"}),
         json!({"outcome": "deny", "by": ["host"]}),
+        json!({"by": "host"}),
+        json!({"outcome": "deny"}),
+        json!({"outcome": "deny", "by": "host", "reason": 5}),
         json!("deny"),
     ] {
         let mut k = kernel();
@@ -427,12 +462,15 @@ fn ac2_an_unreadable_decision_is_not_stored_and_stops_the_turn() {
         k.provider_item("t1", decided_with("a1", bad.clone()))
             .unwrap();
         assert!(decisions_after(&mut k, &id, n).is_empty(), "{bad}");
-        assert!(matches!(
-            rec(&mut k, &id).turn,
-            Turn::Idle {
-                stop: Stop::Stopped { .. },
-                ..
-            }
-        ));
+        assert!(
+            matches!(
+                rec(&mut k, &id).turn,
+                Turn::Idle {
+                    stop: Stop::Stopped { ref limit },
+                    ..
+                } if limit == "quota"
+            ),
+            "{bad}"
+        );
     }
 }
