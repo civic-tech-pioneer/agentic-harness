@@ -264,7 +264,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   turn interrupted. User-sim ACCEPTED on run 2 (refusal text named the wrong cap); adversary HELD
   twice. Implementer runs 1/1/1. Kernel 262 tests in 3.67 s; gate 21 s.
 
-- **S7** the console stays fast on a long session (PR #29, compared and armed by the PO; ~3 h).
+- **S7** the console stays fast on a long session (PR #29, compared and armed by the PO, merged 2026-11-21 04:41 UTC; ~3 h).
   Alice opens a running 5 000-entry session and scrolls, types and stops without lag: about 35
   rows mounted, one render per frame, keystroke p50 ~30 ms, Stop 27 ms, code highlighted (Shiki,
   lazy chunks) once complete and visible; the reducer's cost per message is flat; `test:slow`
