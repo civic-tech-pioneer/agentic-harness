@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build && node scripts/hash.mjs",
     "test": "vitest run",
-    "test:slow": "node test/layout.slow.mjs && node test/regress_S4_open_shows_end.slow.mjs && node test/regress_S9_needs_you_focus_visible.slow.mjs && node test/adv_S9_ask_scroll_hides_input.slow.mjs",
+    "test:slow": "node test/layout.slow.mjs && node test/regress_S4_open_shows_end.slow.mjs && node test/regress_S9_needs_you_focus_visible.slow.mjs && node test/regress_S15_layout.slow.mjs && node test/adv_S9_ask_scroll_hides_input.slow.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

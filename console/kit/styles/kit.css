@@ -47,7 +47,7 @@
 .dl.gap { color: var(--muted); font-style: italic; padding-left: 28px; }
 .wa-ask-scroll { max-height: 30vh; overflow: auto; }
 .wa-more { position: sticky; bottom: 0; padding: 4px 14px; font-size: 12px; color: var(--muted); background: var(--panel); border-top: 1px solid var(--line); }
-.wa-askbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; background: var(--amber-bg); }
+.wa-askbar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 14px; background: var(--amber-bg); }
 .askq { font-weight: 500; margin-right: auto; color: var(--ink); }
 .btn { height: 36px; min-height: 36px; padding: 0 14px; border-radius: var(--radius-button); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 500; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

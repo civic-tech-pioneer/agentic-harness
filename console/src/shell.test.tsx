@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 // S9-3: header chips, context meter, ⋯ button, sidebar groups (TECHNICAL 18.4-18.6, 18.8).
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -109,6 +111,25 @@ describe("sidebar", () => {
     expect(within(cur).getByRole("img", { name: "Needs you" })).toBeInTheDocument();
     fireEvent.mouseLeave(nav);
     expect(screen.getByRole("button", { current: true }).closest(".wa-group")!.querySelector(".wa-glabel")!.textContent).toBe("Needs you");
+  });
+});
+
+describe("S15-3 sidebar hold", () => {
+  it("ac2_the_hold_begins_once_the_turn_is_known", () => {
+    const rows: SidebarSession[] = [];
+    const { rerender } = render(<Sidebar info={storyInfo} turn={undefined} sessions={rows} />);
+    const nav = screen.getByRole("navigation", { name: "Sessions" });
+    fireEvent.mouseEnter(nav);
+    rerender(<Sidebar info={storyInfo} turn="waiting" sessions={rows} />);
+    expect(screen.getByRole("button", { current: true }).closest(".wa-group")!.querySelector(".wa-glabel")!.textContent).toBe("Needs you");
+    rerender(<Sidebar info={storyInfo} turn="running" sessions={rows} />);
+    expect(screen.getByRole("button", { current: true }).closest(".wa-group")!.querySelector(".wa-glabel")!.textContent).toBe("Needs you");
+    fireEvent.mouseLeave(nav);
+    expect(screen.getByRole("button", { current: true }).closest(".wa-group")!.querySelector(".wa-glabel")!.textContent).toBe("Running");
+  });
+  it("ac1_the_needs_you_pill_has_no_focus_style_of_its_own", () => {
+    const css = readFileSync(join(process.cwd(), "src/theme.css"), "utf8");
+    expect(css).toMatch(/\.wa-needs:focus:not\(:focus-visible\)\s*\{\s*outline:\s*none/);
   });
 });
 
