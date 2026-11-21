@@ -2504,8 +2504,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let id = body.get("id").and_then(Value::as_str);
         // An ask decision is stored as ever; any other entry is not past the quota (9.3).
-        let stored = if decided && past.short(self.state.change().owner) {
-            // Past its quota the decision is stored short when the ask is open or pending, else not.
+        let stored = if decided {
+            // The decision is stored when the ask is open or pending, else not; past its quota
+            // it is stored short.
             let at = rec
                 .open
                 .iter()
@@ -2514,22 +2515,27 @@ impl<S: State, H: Host> Kernel<S, H> {
                 .find(|(oid, _, _)| Some(oid.as_str()) == id)
                 .map(|(oid, k, i)| (oid.clone(), k.clone(), i));
             let Some((oid, k, ai)) = at else {
-                // Not stored: an active turn ends as for any item not stored; no deny, as the
-                // adapter's entry already carries its decision.
-                return self.stop_at_quota(rec, past, now, work);
+                // Not stored: past the quota an active turn ends as for any item not stored;
+                // no deny, as the adapter's entry already carries its decision.
+                if past.short(self.state.change().owner) {
+                    return self.stop_at_quota(rec, past, now, work);
+                }
+                return Ok(());
             };
-            // Built from a fixed shape, so its size is bounded (9.3, 9.4).
-            let Some(d) = short_decision(body.get("decision")) else {
-                return self.stop_at_quota(rec, past, now, work);
-            };
-            let short = NewEntry {
-                kind: "ask".into(),
-                uuid: None,
-                body: json!({"id": oid, "kind": k, "ask-i": ai, "decision": d}),
-            };
-            Some(self.append(rec, short, now)?)
-        } else if decided {
-            Some(self.append(rec, NewEntry::from(e), now)?)
+            if past.short(self.state.change().owner) {
+                // Built from a fixed shape, so its size is bounded (9.3, 9.4).
+                let Some(d) = short_decision(body.get("decision")) else {
+                    return self.stop_at_quota(rec, past, now, work);
+                };
+                let short = NewEntry {
+                    kind: "ask".into(),
+                    uuid: None,
+                    body: json!({"id": oid, "kind": k, "ask-i": ai, "decision": d}),
+                };
+                Some(self.append(rec, short, now)?)
+            } else {
+                Some(self.append(rec, NewEntry::from(e), now)?)
+            }
         } else {
             self.append_loose(rec, past, NewEntry::from(e), now, work)?
         };
@@ -2551,6 +2557,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         };
         if body.get("decision").is_some_and(|d| !d.is_null()) {
+            // Closes the ask as an `ask-resolved` does: from `open` and from `pending-answers`.
+            rec.pending_answers.remove(id);
             return self.close_ask(rec, past, id, now, work);
         }
         let kind = body.get("kind").and_then(Value::as_str).unwrap_or("ask");
