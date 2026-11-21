@@ -82,7 +82,7 @@ and 0 is refused; 7 or 9.1 says a host commit is atomic per call, so a failed `a
 charged chunk; and whatever S10 names for a later design slice. Touches: `design/TECHNICAL.md`.
 Protects: *core*.
 
-### S7: the console stays fast on a long session (cloud, after S9 merges: same files)
+### S7: the console stays fast on a long session (cloud, after S15 merges: same files)
 
 Story: Alice opens a session of 5 000 entries with a fast stream running and scrolls, types and
 presses Stop without lag (P14).
@@ -91,24 +91,26 @@ highlighted once its block is complete and visible; a large-transcript fixture w
 input, Stop and scroll latency runs in `npm test`.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-### S10: the console's wire into the contract, and S8's 4.5 rules (in flight (cloud), routine trig_01483gqHeV4xSkpbyJMYYxmm)
+### S14: the kernel speaks the wire S10 wrote (cloud, after S12 merges: same files)
 
-Story: a kernel maker of stage B reads 2.3, 9.4 and 18 and finds what S4's console relies on.
-Outcomes: S4's wire assumptions (`console/kit/wire.ts`: entries as `_meta.watane {type:"entry"}`,
-`ask` with `toolCall` and `reach`, the push after `synced`, `synced {writing}`, a stored message's
-`thought`, the idle footer fields, `_meta.watane.at`) are adopted into 2.3 and 9.4 or replaced
-with a named console change; 9.4 says an `unreadable` entry keeps its `i`; 18.2 names
-assistant-ui's External-store runtime (its ACP adapter is not published); AGENTS.md gains the
-console's test row (`npm test`, `npm run test:slow` in `console/`); the decision JSON of 2.3 is
-spelled out as the console sends it.
-Also from S8 (adversary RISK at "An ask shows the tool call that will run", 14), in 4.5: ask and
-check items carry `tool_use_id` and `expires-at` on the host's clock; the host never passes through
-a stdout line whose top-level type is one of its item types (it wraps it as unknown); 14 names
-`kernel/src/adapters/`; 9.8 gains rows (or a "gives nothing" list) for `hook_started`,
-`tool_progress`, `task_progress`; check option `none` is not drawn as an allow. Then the kernel
-follow-up (a kernel slice after S10): take `expires-at` from the item when present.
-Touches: `design/TECHNICAL.md`, `AGENTS.md`. Protects: *core* (*guard* for the 4.5 lines). If S8's
-row-coverage test reads a 9.8 "From" cell that changes, edit its fixture's `row` in the same slice.
+Story: a kernel maker runs `cargo test` in `kernel/` and the adapters and store produce exactly the
+JSON of TECHNICAL 2.3, 9.3, 9.4 "The wire" and 9.8 as S10 wrote them.
+Outcomes: S10's "Code to change (S12)" list, item by item (PR #13): `expires-at` from the item;
+an item with a bad `tool_use_id` or `expires-at`, a `wrapped` item, and a `verdict`/`checking`
+item on a direct stream read as `unknown`; strict line reading (no lossy UTF-8); hook and progress
+lines give nothing; no `options` list; the ask entry with `toolCallId`, `toolCall`, `reach`; the
+ask pushed once as its entry; `ask-resolved` as a decision entry repeating the ask; `thought` on a
+message; `_meta.watane.at` on live updates. Each with a fixture.
+Touches: `kernel/` only. Protects: *guard* (asks) and *core*.
+
+### S15: the console reads the wire S10 wrote (cloud, after S9 merges: same files)
+
+Story: Alice's console works against the kernel JSON of S10 unchanged.
+Outcomes: S10's console list (PR #13): read `expires-at`; answer with the ask's `id` and key open
+asks by it; accept `paused` without `until`, a verdict without `toolCallId`, decision `none`; join
+`part` entries across pages; a check has no buttons; the ask card comes from the ask entry only, a
+later call patch does not change it, and an open ask is never folded. The scripted fake follows.
+Touches: `console/`, `ui/`. Protects: *guard* (asks) and *core*. S7 follows S15.
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -183,6 +185,14 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   else `behind`); `unreadable` keeps its `i`; `Bash(yarn ls)` refused. User-sim ACCEPTED (run 1);
   adversary BREACHED 1 (`read(u64::MAX)` overflow), fixed, HELD.
 
+- **S10** the console's wire and S8's 4.5 rules in the contract (PR #13, armed by the PO; 24 min).
+  A stage B kernel maker builds every stream message and entry body the console reads as JSON:
+  `answer` takes four decision shapes (others refused), the turn JSON per state, 9.4 "The wire";
+  4.5: a `control_request` without a string `tool_use_id` is denied, and a stdout line typed like
+  any watane item (or not one UTF-8 JSON object) goes out as `{"type":"wrapped"}`; 9.8 "Give
+  nothing"; cases 60-65; AGENTS.md tests made true. User-sim ACCEPTED on run 2; adversary BREACHED
+  4 then 1, fixed, HELD on pass 3. Implementer runs 1 each of 5 tasks. Gate 20 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -237,6 +247,12 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   `after` to the group's start; `read` takes `after` as given (a client that lost the start reads
   with `after = i - n`). Undo: one call, one test, one sentence; (c), a `restart` flag on `read`,
   can come on top. The sentence goes to S13; the RISKs to S12 and S13.
+
+- 2026-11-21 S10's foreman decisions kept: keys ACP has keep its spelling (`toolCallId`), the
+  kernel's own are kebab-case (`expires-at`); a decision is a later `ask` entry repeating the ask;
+  an ask goes out live once, as its entry; the wrap list stays a blocklist (each new item type is
+  added to 4.5), the envelope option still declined. S10's code lists become S14 (kernel) and S15
+  (console); S12 was already out, so S14 follows it.
 
 ## Human answers (2026-11-20, through the PO)
 
