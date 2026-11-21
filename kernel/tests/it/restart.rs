@@ -36,7 +36,9 @@ fn started(k: &mut K, owner: &str, key: &str) -> String {
     k.state
         .put(&format!("access/{owner}"), br#"["p"]"#.to_vec())
         .unwrap();
-    k.start(owner, key, "p", "{}", IN).unwrap().value
+    let id = k.start(owner, key, "p", "{}", IN).unwrap().value;
+    k.attach(owner, &id, 0).unwrap();
+    id
 }
 
 fn rec(k: &mut K, id: &str) -> Record {

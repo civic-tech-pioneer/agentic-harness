@@ -2660,6 +2660,33 @@ impl<S: State, H: Host> Kernel<S, H> {
             });
             return Ok(());
         }
+        if kind == "ask" {
+            if let Some((pending, decision)) = self.kernel_answer(rec, &body) {
+                rec.pending_answers.insert(
+                    id.to_string(),
+                    PendingAnswer {
+                        i,
+                        kind: kind.to_string(),
+                        call: body
+                            .get("toolCallId")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                        outcome: pending.0.to_string(),
+                        by: pending.1.to_string(),
+                        for_: None,
+                        reason: pending.2.map(str::to_string),
+                        input: None,
+                    },
+                );
+                work.requests.push(Request::Answer {
+                    session: rec.id.clone(),
+                    ask: id.to_string(),
+                    decision,
+                });
+                return Ok(());
+            }
+        }
         let mine = body.get("expires-at").and_then(Value::as_u64);
         rec.open.push(OpenAsk {
             id: id.to_string(),
@@ -2682,6 +2709,30 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.turn_to(rec, past, waiting(asks, expires), now, work)?;
         }
         Ok(())
+    }
+
+    /// 9.6: the kernel's own answer to a new Claude ask: a held session allow whose profile the
+    /// owner may still use, else the "no owner stream" deny; none when the owner is to be asked.
+    /// Returns `((outcome, by, reason), the request's decision)`.
+    #[allow(clippy::type_complexity)]
+    fn kernel_answer(
+        &mut self,
+        rec: &Record,
+        body: &Value,
+    ) -> Option<((&'static str, &'static str, Option<&'static str>), Value)> {
+        let reach = body.get("reach").and_then(Value::as_str);
+        if reach.is_some_and(|r| rec.allows.iter().any(|a| a.reach == r))
+            && self.may_use(&rec.owner, &rec.profile)
+        {
+            return Some((("allow", "session-allow", None), json!({"allow": true})));
+        }
+        if rec.owner.starts_with("agent:") || rec.live.is_none() {
+            return Some((
+                ("deny", "kernel", Some("no-owner")),
+                json!({"deny": true, "reason": "no-owner"}),
+            ));
+        }
+        None
     }
 
     /// `timer-sink.fired`: `restart` is R2, `s/<id>` a session's deadlines (9.3).

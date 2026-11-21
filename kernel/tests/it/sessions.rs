@@ -36,7 +36,9 @@ fn started(k: &mut K, owner: &str, key: &str) -> String {
     k.state
         .put(&format!("access/{owner}"), br#"["p"]"#.to_vec())
         .unwrap();
-    k.start(owner, key, "p", "{}", IN).unwrap().value
+    let id = k.start(owner, key, "p", "{}", IN).unwrap().value;
+    k.attach(owner, &id, 0).unwrap();
+    id
 }
 
 /// The session's workspace is `/w`, so an `Edit` of `/w/a.rs` has a reach (9.6).
@@ -452,8 +454,10 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
 #[test]
 fn ac5_active_index_follows_the_turn() {
     let mut k = kernel();
+    // no owner stream attached: the counted writes are the start's own
+    k.state.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
     k.state.reset_counts();
-    let id = started(&mut k, "alice", "k");
+    let id = k.start("alice", "k", "p", "{}", IN).unwrap().value;
     let c = k.state.counts();
     assert_eq!(
         k.state.get_keys().iter().filter(|x| *x == "slots").count(),

@@ -129,6 +129,7 @@ fn ac1_ended_ends_the_turn() {
 fn ac2_asks_first_then_one_turn_entry() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a1")).unwrap();
     k.provider_item("t1", ask("a2")).unwrap();
     k.answer("alice", &id, "ans1", "a2", r#"{"allow":true}"#)
@@ -147,6 +148,7 @@ fn ac2_asks_first_then_one_turn_entry() {
 fn ac3_past_quota_one_turn_entry_and_its_push() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a1")).unwrap();
     k.limits.owner_bytes = Usage::load(&mut k.state, "quota/alice").bytes;
     let n = turns(&mut k, &id);
@@ -246,6 +248,7 @@ fn ac3_the_past_flag_is_per_call() {
     let mut k = kernel();
     k.state.put("access/bob", br#"["p"]"#.to_vec()).unwrap();
     let a = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &a, 0).unwrap();
     let b = k.start("bob", "k2", "p", "{}", IN).unwrap().value;
     for n in ["a1", "a2", "a3"] {
         k.provider(&a, ask(n)).unwrap();
@@ -295,6 +298,7 @@ fn decisions(k: &mut K, id: &str) -> usize {
 fn ac2_ended_at_the_ceiling_closes_the_asks_and_charges_what_it_wrote() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a1")).unwrap();
     k.provider_item("t1", ask("a2")).unwrap();
     k.answer("alice", &id, "ans1", "a2", r#"{"allow":true}"#)
@@ -350,6 +354,7 @@ fn ac3_ended_leaves_a_paused_turn() {
 fn ac4_an_ask_at_the_ceiling_is_denied_quota() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.limits.account_bytes = Usage::load(&mut k.state, "quota").bytes;
     k.limits.reserve_bytes = 0;
     let (a0, h0) = (

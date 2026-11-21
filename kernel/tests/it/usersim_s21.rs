@@ -113,6 +113,7 @@ fn usersim_s21_story() {
     );
 
     // Outcome 3: running -> waiting writes no page.
+    k.attach("ann", &s1, 0).unwrap();
     k.state.reset_counts();
     let before = k.state.get("active/0");
     k.provider(&s1, ask("a1")).unwrap();

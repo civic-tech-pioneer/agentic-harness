@@ -100,6 +100,7 @@ fn past_account(k: &mut K) {
 /// entry count before the closing call.
 fn waiting(k: &mut K) -> String {
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask_of("a1", "ask", 0)).unwrap();
     k.provider_item("t1", ask_of("a2", "ask", 0)).unwrap();
     k.answer("alice", &id, "ans1", "a2", r#"{"allow":true}"#)
@@ -165,6 +166,7 @@ fn ac1_ended_past_the_account_quota_writes_short_decisions() {
 fn ac1_the_pending_decision_keeps_its_input() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask_of("a1", "ask", 0)).unwrap();
     k.answer(
         "alice",
@@ -254,6 +256,7 @@ fn ac4_below_quota_a_decision_is_the_full_form() {
 /// `n` open asks, each entry about `pad` bytes, in a running session.
 fn many(k: &mut K, n: usize, pad: usize) -> String {
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     for j in 0..n {
         k.provider_item("t1", ask_of(&format!("a{j}"), "ask", pad))
             .unwrap();
@@ -309,6 +312,7 @@ fn ac6_ended_past_with_64_large_asks_writes_under_a_mebibyte() {
 fn ac7_past_a_decided_ask_entry_is_stored_short_when_open_and_not_otherwise() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask_of("a1", "ask", 0)).unwrap();
     let i1 = rec(&mut k, &id).open[0].i;
     past_owner(&mut k);
@@ -389,6 +393,7 @@ fn ac1_a_decided_ask_past_is_stored_with_a_bounded_decision() {
     for at_ceiling in [false, true] {
         let mut k = kernel();
         let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+        k.attach("alice", &id, 0).unwrap();
         k.provider_item("t1", ask_of("a1", "ask", 0)).unwrap();
         if at_ceiling {
             k.limits.account_bytes = usage(&mut k, "quota");
@@ -423,6 +428,7 @@ fn ac1_a_decided_ask_past_is_stored_with_a_bounded_decision() {
 fn ac1_a_null_reason_is_left_out() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask_of("a1", "ask", 0)).unwrap();
     past_owner(&mut k);
     let n = entries(&mut k, &id).len();
@@ -456,6 +462,7 @@ fn ac2_an_unreadable_decision_is_not_stored_and_stops_the_turn() {
     ] {
         let mut k = kernel();
         let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+        k.attach("alice", &id, 0).unwrap();
         k.provider_item("t1", ask_of("a1", "ask", 0)).unwrap();
         past_owner(&mut k);
         let n = entries(&mut k, &id).len();

@@ -161,6 +161,7 @@ fn requests(k: &K, pick: fn(&Request) -> bool) -> usize {
 fn ac1_cancel_at_the_ceiling_succeeds_and_frees() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a1")).unwrap();
     k.provider_item("t1", ask("a2")).unwrap();
     k.answer("alice", &id, "ans1", "a2", r#"{"allow":true}"#)
@@ -182,6 +183,7 @@ fn ac1_cancel_at_the_ceiling_succeeds_and_frees() {
     assert!(active::read_page(&mut k.state, 0)
         .iter()
         .any(|e| e.id == id));
+    let live0 = k.state.get(&format!("live/{id}"));
     k.cancel("alice", &id).unwrap();
     assert!(!active::read_page(&mut k.state, 0)
         .iter()
@@ -192,7 +194,9 @@ fn ac1_cancel_at_the_ceiling_succeeds_and_frees() {
     assert_eq!(decisions(&mut k, &id), d0 + 2);
     assert_eq!(count(&mut k, &id, "turn"), t0 + 1);
     assert!(k.state.get("stream/t1").is_none());
-    assert!(k.state.get(&format!("live/{id}")).is_none());
+    // The owner stream the test attached is not the provider's: cancel leaves it as it was.
+    assert!(live0.is_some());
+    assert_eq!(k.state.get(&format!("live/{id}")), live0);
     assert!(r.deadlines.is_empty() && r.active_page.is_none());
     let s = Slots::load(&mut k.state);
     // Only an idle turn holds a deadline (its timer goes in ac1_cancel_at_the_ceiling_frees_the_timer).
@@ -208,6 +212,7 @@ fn ac1_cancel_at_the_ceiling_succeeds_and_frees() {
 fn ac1_cancel_at_the_ceiling_frees_the_timer() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     let done = ProviderEvent::Out(Out {
         idle: true,
         ..Out::default()
@@ -231,6 +236,7 @@ fn ac1_cancel_at_the_ceiling_frees_the_timer() {
 fn ac2_interrupt_without_replacement_at_the_ceiling() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     ceiling(&mut k);
     let b = before(&mut k, "alice", &id);
     let t0 = count(&mut k, &id, "turn");
@@ -245,6 +251,7 @@ fn ac2_interrupt_without_replacement_at_the_ceiling() {
 fn ac2_interrupt_with_a_replacement_at_the_ceiling_is_refused() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     ceiling(&mut k);
     let (h0, a0) = (held(&k, false), Usage::load(&mut k.state, "quota").bytes);
     assert!(matches!(
@@ -260,6 +267,7 @@ fn ac2_interrupt_with_a_replacement_at_the_ceiling_is_refused() {
 fn ac3_a_message_at_the_ceiling_stops_the_turn() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     ceiling(&mut k);
     let b = before(&mut k, "alice", &id);
     let (m0, t0) = (count(&mut k, &id, "message"), count(&mut k, &id, "turn"));
@@ -276,6 +284,7 @@ fn ac4_above_the_ceiling_persists() {
     for same_owner in [false, true] {
         let mut k = kernel();
         let a = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+        k.attach("alice", &a, 0).unwrap();
         let other = if same_owner { "alice" } else { "bob" };
         let b = k.start(other, "k2", "p", "{}", IN).unwrap().value;
         let tb = rec(&mut k, &b).streams.first().cloned().unwrap();
@@ -294,6 +303,7 @@ fn ac4_above_the_ceiling_persists() {
 fn ac5_an_ask_at_the_ceiling_is_denied_and_stops_the_turn() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     ceiling(&mut k);
     let b = before(&mut k, "alice", &id);
     let n = count(&mut k, &id, "ask");
@@ -315,6 +325,7 @@ fn ac5_an_ask_at_the_ceiling_is_denied_and_stops_the_turn() {
 fn ac6_new_work_is_still_refused_at_the_ceiling() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a1")).unwrap();
     ceiling(&mut k);
     let (h0, a0) = (held(&k, false), Usage::load(&mut k.state, "quota").bytes);
@@ -350,6 +361,7 @@ fn ac6_new_work_is_still_refused_at_the_ceiling() {
 fn ac2_interrupt_without_replacement_after_a_restart_at_the_ceiling() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a1")).unwrap();
     k.host.boot = 2;
     ceiling(&mut k);
@@ -364,6 +376,7 @@ fn ac2_interrupt_without_replacement_after_a_restart_at_the_ceiling() {
 fn ac7_an_item_below_the_ceiling_cannot_cross_it() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.limits.account_bytes = Usage::load(&mut k.state, "quota").bytes + 10;
     k.limits.reserve_bytes = 0;
     let (h0, a0) = (held(&k, false), Usage::load(&mut k.state, "quota").bytes);

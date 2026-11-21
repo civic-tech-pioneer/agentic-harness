@@ -10,6 +10,7 @@ mod adv_s26;
 mod adv_s28;
 mod adv_s29;
 mod adversary;
+mod allows;
 mod asks;
 mod attach;
 mod broker;

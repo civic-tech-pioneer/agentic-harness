@@ -63,6 +63,7 @@ fn entry_bytes(k: &K) -> usize {
 fn adv_s29_pending_decided_ask_repeats_past_ceiling() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a2", None)).unwrap();
     k.answer("alice", &id, "ans1", "a2", r#"{"allow":true}"#)
         .unwrap();

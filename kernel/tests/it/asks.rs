@@ -32,7 +32,9 @@ fn kernel() -> K {
 }
 
 fn started(k: &mut K) -> String {
-    k.start("alice", "k", "p", "{}", IN).unwrap().value
+    let id = k.start("alice", "k", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
+    id
 }
 
 fn rec(k: &mut K, id: &str) -> Record {
@@ -233,6 +235,7 @@ fn case73_b_checked_mode_owner_allow_then_answered_deny() {
     assert_eq!(d["a1"], json!({"outcome": "deny", "by": "checked"}));
     // a direct stream's differing answered is the host's
     let id2 = k.start("alice", "k2", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id2, 0).unwrap();
     let mut a = ClaudeAdapter::new();
     feed(&mut k, &mut a, &id2, ask_line("ask", "a1"));
     feed(
