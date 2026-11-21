@@ -224,12 +224,59 @@ fn ac2_a_new_attach_replaces_the_old_stream_in_that_call() {
     assert!(k.state.get(&format!("stream/{p}")).is_none());
     assert_eq!(live(&mut k, &id).as_deref(), Some(q.as_str()));
     assert_eq!(rec(&mut k, &id).streams, ["t1", q.as_str()]);
+    // the kernel resumed the provider stream right after the close (3, "Forwarding")
+    assert_eq!(
+        resume_after_close(&k, &p, "replaced"),
+        Some("t1".to_string())
+    );
     // the old stream's `ended` changes nothing
     let before = dump(&k);
     k.stream_ended(&p);
     assert_eq!(dump(&k), before);
     assert_eq!(live(&mut k, &id).as_deref(), Some(q.as_str()));
-    assert_eq!(count_calls(&k, |c| matches!(c, HostCall::Resume { .. })), 0);
+    assert_eq!(count_calls(&k, |c| matches!(c, HostCall::Resume { .. })), 1);
+}
+
+/// The stream resumed by the host call that directly follows the `Close` of `stream`.
+fn resume_after_close(k: &K, stream: &str, outcome: &str) -> Option<String> {
+    let at = k.host.calls.iter().position(|c| {
+        *c == HostCall::Close {
+            stream: stream.into(),
+            outcome: outcome.into(),
+        }
+    })?;
+    match k.host.calls.get(at + 1) {
+        Some(HostCall::Resume { stream }) => Some(stream.clone()),
+        _ => None,
+    }
+}
+
+#[test]
+fn ac2_a_lagging_close_resumes_the_provider_stream_and_none_means_no_resume() {
+    let mut k = kernel();
+    let id = started(&mut k);
+    let o = attach(&mut k, &id, 0);
+    k.host.full.insert(o.clone());
+    k.say("alice", &id, "q2", "next").unwrap();
+    assert_eq!(
+        resume_after_close(&k, &o, "lagging"),
+        Some("t1".to_string())
+    );
+    // no live provider stream: the close resumes nothing
+    k.provider_item("t1", ProviderEvent::Ended).unwrap();
+    k.host.full.clear();
+    let o2 = attach(&mut k, &id, 0);
+    k.host.full.insert(o2.clone());
+    let resumes = count_calls(&k, |c| matches!(c, HostCall::Resume { .. }));
+    k.say("alice", &id, "q3", "again").unwrap();
+    assert!(k.host.calls.contains(&HostCall::Close {
+        stream: o2,
+        outcome: "lagging".into()
+    }));
+    assert_eq!(
+        count_calls(&k, |c| matches!(c, HostCall::Resume { .. })),
+        resumes
+    );
 }
 
 #[test]
