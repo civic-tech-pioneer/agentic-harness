@@ -1,5 +1,6 @@
 // TECHNICAL 18.3, 18.5, 18.6: component tests of the transcript and status line from scripted wire messages.
 import { describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emptyView, type Actions, type SessionView } from "./model";
@@ -14,8 +15,13 @@ const upd = (u: object, i?: number, at?: number) => j({ ...u, ...(i || at ? { _m
 const text = (t: string) => ({ type: "text", text: t });
 const feed = (...msgs: string[]) => msgs.reduce(reduce, emptyView);
 const mk = (): Actions => ({ say: vi.fn(), answer: vi.fn(), stop: vi.fn(), takeBack: vi.fn() });
-const show = (view: SessionView, actions = mk()) =>
-  render(<ThreadProvider view={view} actions={actions}><Transcript view={view} actions={actions} /></ThreadProvider>);
+/** Stands in for App: it owns the answered set the rows read (9.4 rule 4) and adds to it when an answer is sent. */
+function Shell({ view, actions }: { view: SessionView; actions: Actions }) {
+  const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
+  const a: Actions = { ...actions, answered, answer: (id, d) => { setAnswered((s) => new Set(s).add(id)); return actions.answer(id, d); } };
+  return <ThreadProvider view={view} actions={a}><Transcript view={view} actions={a} /></ThreadProvider>;
+}
+const show = (view: SessionView, actions = mk()) => render(<Shell view={view} actions={actions} />);
 const call = (id: string, title: string, kind: string, extra: object = {}) =>
   upd({ sessionUpdate: "tool_call", toolCallId: id, title, kind, status: "pending", ...extra });
 const finish = (id: string, i: number, extra: object = {}) =>
