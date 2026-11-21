@@ -15,7 +15,7 @@ use crate::record::{check_key, check_title, OpenAsk, Record, Stop, Turn, ID_BYTE
 use crate::state::State;
 use crate::transcript::{Joiner, NewEntry, Page, Transcript, MAX_CHUNKS};
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// What the kernel needs of the host (2.1): the boot number, the clock, ids, timers, requests.
@@ -148,6 +148,16 @@ fn refused(field: &str, reason: &str) -> KernelError {
     }])
 }
 
+/// What `key/<owner>/<key>` holds: the first result, with the call and owner it belongs to, so a
+/// key reused by another call kind, or met through an owner whose identity is a prefix, is never
+/// taken as a replay nor overwritten.
+#[derive(Serialize, Deserialize)]
+struct Kept {
+    call: String,
+    owner: String,
+    value: Value,
+}
+
 fn key_of(owner: &str, key: &str) -> String {
     format!("key/{owner}/{key}")
 }
@@ -256,13 +266,40 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(rec)
     }
 
-    fn key_get<T: DeserializeOwned>(&mut self, owner: &str, key: &str) -> Option<T> {
-        let bytes = self.state.get(&key_of(owner, key))?;
-        serde_json::from_slice(&bytes).ok()
+    /// The kept result of `call` for this key; a key kept by another call or owner is refused
+    /// `{field: "key"}` and stays as it is.
+    fn key_get<T: DeserializeOwned>(
+        &mut self,
+        call: &str,
+        owner: &str,
+        key: &str,
+    ) -> Result<Option<T>, KernelError> {
+        let Some(bytes) = self.state.get(&key_of(owner, key)) else {
+            return Ok(None);
+        };
+        let used = || refused("key", "this key was used by another call");
+        let kept: Kept = serde_json::from_slice(&bytes).map_err(|_| used())?;
+        if kept.call != call || kept.owner != owner {
+            return Err(used());
+        }
+        serde_json::from_value(kept.value)
+            .map(Some)
+            .map_err(|_| used())
     }
 
-    fn key_put<T: Serialize>(&mut self, owner: &str, key: &str, v: &T) -> Result<(), KernelError> {
-        let bytes = serde_json::to_vec(v).expect("a key result serializes");
+    fn key_put<T: Serialize>(
+        &mut self,
+        call: &str,
+        owner: &str,
+        key: &str,
+        v: &T,
+    ) -> Result<(), KernelError> {
+        let kept = Kept {
+            call: call.to_string(),
+            owner: owner.to_string(),
+            value: serde_json::to_value(v).expect("a key result serializes"),
+        };
+        let bytes = serde_json::to_vec(&kept).expect("a key result serializes");
         self.state
             .put(&key_of(owner, key), bytes)
             .map_err(|t| KernelError::TooLarge(t.0 as u64))
@@ -432,7 +469,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<String>, KernelError> {
         check_key(key)?;
         let mut slots = self.begin();
-        if let Some(id) = self.key_get::<String>(caller, key) {
+        if let Some(id) = self.key_get::<String>("start", caller, key)? {
             return Ok(Called {
                 value: id,
                 pushes: Vec::new(),
@@ -493,7 +530,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             )
             .map_err(|t| KernelError::TooLarge(t.0 as u64))?;
         rec.save(&mut self.state)?;
-        self.key_put(caller, key, &id)?;
+        self.key_put("start", caller, key, &id)?;
         Ok(Called {
             value: id,
             pushes: self.flush(work),
@@ -509,7 +546,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<u64>, KernelError> {
         check_key(key)?;
         let mut slots = self.begin();
-        if let Some(n) = self.key_get::<u64>(caller, key) {
+        if let Some(n) = self.key_get::<u64>("say", caller, key)? {
             return Ok(Called {
                 value: n,
                 pushes: Vec::new(),
@@ -518,13 +555,18 @@ impl<S: State, H: Host> Kernel<S, H> {
         check_input(input)?;
         let mut rec = self.session(caller, session)?;
         let mut work = Work::default();
+        // A pause with no time ends with the next `say` (9.3); one with a time queues until it
+        // resumes on its own.
         let n = match rec.turn {
-            Turn::Idle { .. } | Turn::Unknown | Turn::ResumeLost => {
+            Turn::Idle { .. } | Turn::Unknown | Turn::ResumeLost | Turn::Paused { until: None } => {
+                let was = rec.turn.is_active();
                 Self::room(&rec)?;
-                active::check_room(&slots)?;
+                if !was {
+                    active::check_room(&slots)?;
+                }
                 let now = self.host.now();
                 let n = self.start_turn(&mut rec, input.to_string(), now, &mut work)?;
-                self.sync_active(&mut rec, &mut slots, false)?;
+                self.sync_active(&mut rec, &mut slots, was)?;
                 rec.updated = now;
                 rec.save(&mut self.state)?;
                 n
@@ -537,7 +579,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 n
             }
         };
-        self.key_put(caller, key, &n)?;
+        self.key_put("say", caller, key, &n)?;
         Ok(Called {
             value: n,
             pushes: self.flush(work),
@@ -574,7 +616,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<()>, KernelError> {
         check_key(key)?;
         self.begin();
-        if self.key_get::<()>(caller, key).is_some() {
+        if self.key_get::<()>("answer", caller, key)?.is_some() {
             return Ok(Called {
                 value: (),
                 pushes: Vec::new(),
@@ -623,7 +665,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         });
         rec.updated = now;
         rec.save(&mut self.state)?;
-        self.key_put(caller, key, &())?;
+        self.key_put("answer", caller, key, &())?;
         Ok(Called {
             value: (),
             pushes: self.flush(work),
