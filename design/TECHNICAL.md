@@ -1820,6 +1820,7 @@ the change, and the section here it comes from.
 - [ ] `spec/TECHNICAL.md` new W row: the agent layer's boundary (14).
 - [ ] `host/TECHNICAL.md` H1 to H5 and H7 (3, 4, 5, 6, 7).
 - [ ] `host/TECHNICAL.md` 9.3: page connection ids and their own queues (3).
+- [ ] `host/TECHNICAL.md` 8.5: the step 11 `watane.js` passes the `connection` message (`{type, id}`) to the page's handlers too, so a page learns that its `/events` connection was replaced and reattaches its streams (18.2; S32). Without it, a `changed` cannot be told from a reconnect.
 - [ ] `host/TECHNICAL.md` host state: timers per mod, kept across restarts (7).
 - [ ] `host/TECHNICAL.md` `caller.identity()` (9.3, 14).
 - [ ] `host/TECHNICAL.md` new interface `host-info` with `generation()`: the start number, raised once per host start, kept in host state, a pure read, no grant (2.1, 9.3; G1; accepted, the human, 2026-11-21).
@@ -2290,6 +2291,11 @@ say (layout, spacing, words).
   (`list`), or starts one (`probe.start`, 9.9). Without `window.watane` (the
   component tests, `npm run dev`) it opens the scripted fake kernel
   (`console/fake/`), which the page never ships as its kernel when served.
+  Known limit (S32): a page cannot tell a reconnected `/events` connection
+  (whose streams the host ended `gone` on the old one) from the `changed` that
+  follows any committing call (host 8.2), so until watane.js passes its
+  `connection` message to handlers (15) a dropped connection leaves the view
+  frozen until a reload.
 - State: the console's own reducer over the wire of 9.4
   (`console/kit/wire.ts`, `console/kit/reduce.ts`); its view is the state the
   transcript draws. assistant-ui's External-store runtime
