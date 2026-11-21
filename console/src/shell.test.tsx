@@ -1,6 +1,6 @@
 // S9-3: header chips, context meter, ⋯ button, sidebar groups (TECHNICAL 18.4-18.6, 18.8).
 import { describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fakeKernel } from "../fake/kernel";
 import { story } from "../fake/story";
@@ -123,6 +123,7 @@ describe("app", () => {
     for (let n = 0; n < story.length; n++) f.play(n);
     render(<App kernel={f} info={storyInfo} sessions={storySessions} />);
     await screen.findByRole("button", { name: "Needs you (1)" });
+    await waitFor(() => expect(document.querySelectorAll(".wa-row").length).toBeGreaterThan(4));
     const cur = screen.getByRole("button", { current: true });
     expect(within(cur).getByRole("img", { name: "Needs you" })).toBeInTheDocument();
     act(() => f.play(story.length));
@@ -137,6 +138,7 @@ describe("app", () => {
     for (let n = 0; n < story.length; n++) f.play(n);
     render(<App kernel={f} info={storyInfo} />);
     await screen.findByRole("button", { name: "Needs you (1)" });
+    await waitFor(() => expect(document.querySelectorAll(".wa-row").length).toBeGreaterThan(4));
     // Each tag is its own box; the "·" between them is aria-hidden, so the words never run together.
     expect(Array.from(document.querySelectorAll(".wa-tag"), (t) => t.lastChild?.textContent)).toEqual(["Claude Sonnet", "Ask before edits"]);
     await userEvent.setup().click(screen.getByRole("button", { name: "Stop" }));
