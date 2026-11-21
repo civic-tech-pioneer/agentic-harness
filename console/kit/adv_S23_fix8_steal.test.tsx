@@ -28,7 +28,7 @@ describe("adv S23 fix8 steal", () => {
     </>);
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Deny…" }));
-    await u.click(screen.getByRole("button", { name: "Deny", exact: true }));
+    await u.click(screen.getByRole("button", { name: /^Deny$/ }));
     expect(calls[0]).toEqual({ outcome: "deny" });
     // the participant moves on to write a message; the kernel's busy refusal lands while they type
     await u.click(screen.getByRole("textbox", { name: "Message" }));
