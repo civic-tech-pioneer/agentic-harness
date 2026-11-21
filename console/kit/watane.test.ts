@@ -154,3 +154,27 @@ describe("S32-3 AC3", () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+describe("S32-3 reconnect", () => {
+  it("reconnect_changed_ends_live_streams_gone_and_openSession_reattaches_once_each", async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const f = fakeWatane({ "sessions.attach": () => ({ ok: `st${++n}` }) });
+      let view = emptyView;
+      const h = openSession(wataneKernel(f.w), "s", (v) => { view = v; });
+      f.push({ type: "changed" }); // the first open
+      await vi.advanceTimersByTimeAsync(50);
+      f.push({ ...items([1, entry(1, "one")], [2, entry(2, "two")], [3, synced(2)]), stream: "st1" });
+      await vi.advanceTimersByTimeAsync(50);
+      f.push({ type: "changed" }); // the reconnect
+      await vi.advanceTimersByTimeAsync(1500);
+      f.push({ ...items([1, entry(3, "three")]), stream: "st2" });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(f.calls.map((c) => c.args.after)).toEqual([0, 2]);
+      const texts = view.rows.map((r) => JSON.stringify(r)).map((j) => ["one", "two", "three"].filter((w) => j.includes(`"${w}"`))[0]);
+      expect(texts).toEqual(["one", "two", "three"]);
+      h.close();
+    } finally { vi.useRealTimers(); }
+  });
+});
