@@ -5,6 +5,7 @@ under the flags the host would use, and checks one assumption. Rerun after a cla
 
     python3 -I proto/claude-probes/probes.py            # all probes
     python3 -I proto/claude-probes/probes.py hooks init  # some
+    python3 -I proto/claude-probes/probes.py subagent-slash loopback  # V26 and V27
 """
 
 import json, os, shutil, subprocess, sys, tempfile, threading, uuid
@@ -562,12 +563,104 @@ def probe_dont_ask():
         record(f"dontAsk: hook answer {label} -> file written={expect}", wrote == expect, f"file written={wrote}")
 
 
+def probe_subagent_slash():
+    """V26: does a leading slash in a subagent prompt run a denied skill?"""
+    fruit = "---\nname: fruit\ndescription: Fruit skill.\n---\nReply with exactly one word: PINEAPPLE\n"
+    control_ok = False
+    cases = [("allowed (control)", "Agent,Task,Skill,Read", ["Skill", "Read"], [], True),
+             ("denied by Skill(...) rule", "Agent,Task,Skill,Read", ["Skill", "Read"],
+              ["--disallowedTools=Skill(watane-run:fruit)"], False),
+             ("Skill not in --tools", "Agent,Task,Read", ["Read"], [], False)]
+    for label, tools, child_tools, extra, expect in cases:
+        pl = plugin(tempfile.mkdtemp(), {"fruit": fruit})
+        agents = json.dumps({"runner": {"description": "Runs the requested skill.",
+                                        "prompt": "Follow the supplied prompt and return the answer.",
+                                        "tools": child_tools}})
+        _, result, lines = run([f"--tools={tools}", *extra, f"--plugin-dir={pl}", f"--agents={agents}",
+                                "--permission-mode=manual", "--permission-prompts=none"], workspace(),
+                               ["Start the runner subagent with a prompt of exactly /watane-run:fruit "
+                                "(no other text in its prompt), and reply with what it returns."])
+        calls = [b for m in lines if m.get("type") == "assistant"
+                 for b in m.get("message", {}).get("content", [])
+                 if b.get("type") == "tool_use" and b.get("name") in ("Agent", "Task")]
+        sent = any(b.get("input", {}).get("prompt", "").startswith("/") for b in calls)
+        ids = {b["id"] for b in calls if b.get("id")}
+        # Only the child transcript or an Agent/Task result proves execution;
+        # the parent's final answer alone may be invented.
+        ran = any("PINEAPPLE" in json.dumps(m.get("message", {})).upper()
+                  for m in lines if m.get("parent_tool_use_id")) or any(
+            "PINEAPPLE" in json.dumps(b.get("content", "")).upper()
+            for m in lines if m.get("type") == "user"
+            for b in m.get("message", {}).get("content", [])
+            if b.get("type") == "tool_result" and b.get("tool_use_id") in ids)
+        if expect:
+            control_ok = sent and ran
+        inconclusive = "" if sent and control_ok else "inconclusive: slash prompt not sent or control failed; "
+        record(f"subagent-slash: {label}", sent and control_ok and ran == expect,
+               f"{inconclusive}slash prompt sent={sent}, skill ran={ran}; answer={text_of(result)[:80]!r}")
+
+
+def probe_loopback():
+    """V27: does the shell grant's sandbox block IP and hostname loopback?"""
+    paths = set()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            paths.add(self.path)
+            self.send_response(200)
+            self.send_header("content-length", "0")
+            self.end_headers()
+
+    srv = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        control_ok = {}
+        for label, domains in (("control, no sandbox", None), ("sandbox, empty allowlist", []),
+                               ("sandbox, plain-domain allowlist", ["example.com"])):
+            extra = []
+            if domains is not None:
+                settings = json.dumps({"sandbox": {"enabled": True, "allowUnsandboxedCommands": False,
+                                                   "network": {"allowedDomains": domains}}})
+                extra = [f"--settings={settings}"]
+            token = uuid.uuid4().hex
+            targets = [("ip", f"http://127.0.0.1:{srv.server_port}/{token}-ip"),
+                       ("name", f"http://localhost:{srv.server_port}/{token}-name")]
+            _, _, lines = run(["--tools=Bash", "--allowedTools=Bash", *extra,
+                               "--permission-mode=manual", "--permission-prompts=none"], workspace(),
+                              ["Run these two Bash commands one at a time, even if the first fails, "
+                               "and report each exit status: " + " ; ".join(
+                                   f"curl -sS -m 5 {url}" for _, url in targets)])
+            commands = [b.get("input", {}).get("command", "")
+                        for m in lines if m.get("type") == "assistant"
+                        for b in m.get("message", {}).get("content", [])
+                        if b.get("type") == "tool_use" and b.get("name") == "Bash"]
+            for target, url in targets:
+                reached = f"/{token}-{target}" in paths
+                sent = any("curl" in cmd and url in cmd for cmd in commands)
+                if domains is None:
+                    control_ok[target] = sent and reached
+                proved = control_ok[target] if domains is None else all(control_ok.values())
+                inconclusive = "" if sent and proved else "inconclusive: curl not sent or control failed; "
+                record(f"loopback: {label}, {target}",
+                       sent and proved and reached == (domains is None),
+                       f"{inconclusive}reached={reached}, curl sent={sent}")
+    finally:
+        srv.shutdown()
+        thread.join()
+        srv.server_close()
+
+
 PROBES = {"init": probe_init, "hooks": probe_hooks, "workspace": probe_workspace_loading,
           "skills": probe_skills, "flags": probe_flags, "mcp": probe_mcp_pipe,
           "sandbox": probe_sandbox, "resume": probe_resume,
           "slash": probe_slash, "hookfail": probe_hook_failure, "plugins": probe_plugins,
           "memory": probe_memory, "resumeat": probe_resume_at, "subagents": probe_subagents,
-          "prompts": probe_permission_prompts, "updatedinput": probe_updated_input, "dontask": probe_dont_ask}
+          "prompts": probe_permission_prompts, "updatedinput": probe_updated_input, "dontask": probe_dont_ask,
+          "subagent-slash": probe_subagent_slash, "loopback": probe_loopback}
 
 if __name__ == "__main__":
     print("claude", subprocess.run(["claude", "--version"], capture_output=True, text=True).stdout.strip(), "model", MODEL)
