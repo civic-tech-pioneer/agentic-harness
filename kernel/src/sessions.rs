@@ -191,6 +191,15 @@ const OWNER_PAGE: usize = 256;
 /// A start or say adds at most a message (two parts) and a turn entry: chunk starts to keep free.
 const CHUNK_MARGIN: usize = 4;
 
+/// A cap for a `quota` cause: whole MiB as "64 MiB", any other size in bytes, so the text names the real cap.
+fn size(bytes: u64) -> String {
+    if bytes > 0 && bytes.is_multiple_of(1 << 20) {
+        format!("{} MiB", bytes >> 20)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
 fn refused(field: &str, reason: &str) -> KernelError {
     KernelError::Refused(vec![Refusal {
         field: field.to_string(),
@@ -367,11 +376,11 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// The cap `past` found, named for the refusal.
     fn past_cause(&self, a: &Acct) -> Option<String> {
         if a.owner.bytes >= self.limits.owner_bytes {
-            Some(format!("{} MiB per owner", self.limits.owner_bytes >> 20))
+            Some(format!("{} per owner", size(self.limits.owner_bytes)))
         } else if a.account.bytes >= self.limits.account_bytes {
             Some(format!(
-                "the kernel's {} MiB account",
-                self.limits.account_bytes >> 20
+                "the kernel's {} account",
+                size(self.limits.account_bytes)
             ))
         } else {
             None
@@ -400,10 +409,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .account_bytes
             .saturating_add(self.limits.reserve_bytes);
         if c.owner > 0 && a.account.bytes > ceiling {
-            return Err(KernelError::Quota(format!(
-                "the {} MiB state",
-                ceiling >> 20
-            )));
+            return Err(KernelError::Quota(format!("the {} state", size(ceiling))));
         }
         self.save_accounts(a)
     }
