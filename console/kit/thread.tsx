@@ -1,6 +1,6 @@
 // TECHNICAL 18.2, 18.3, 18.6: the rows inside assistant-ui's thread, fed by its External-store runtime; P14: only the
 // rows near the viewport are in the DOM (the transcript is windowed), so a long session costs what a short one does.
-import { memo, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { memo, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime, type ThreadMessageLike } from "@assistant-ui/react";
 import type { Actions, Row, SessionView } from "./model";
 import { FoldStore } from "./parts/disclosure";
@@ -55,7 +55,6 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
   const heights = useRef(new Map<string, number>());
   const version = useRef(0);
   const folds = useRef(new Map<string, boolean>()).current;
-  const [focused, setFocused] = useState<string | null>(null);
   const [, tick] = useReducer((x: number) => x + 1, 0);
   /** The transcript's top inside the scroller's content (its padding), and whether the reader is within 40 px of the end. */
   const origin = useRef(0);
@@ -92,7 +91,10 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
   }
   const shown = new Set<number>();
   for (let i = from; i <= to; i++) shown.add(i);
-  // kept mounted: the row with focus and every row with an open ask or check
+  // kept mounted: the row with focus and every row with an open ask or check. Focus is read from the document, not from
+  // focus events: when the window loses focus, the element keeps it (and gets it back), though a blur event fired.
+  const active = root.current?.ownerDocument.activeElement;
+  const focused = active && root.current!.contains(active) ? active.closest<HTMLElement>("[data-key]")?.dataset.key ?? null : null;
   rows.forEach((r, i) => { if (!shown.has(i) && (r.key === focused || holdsAsk(r))) shown.add(i); });
   const list = [...shown].sort((a, b) => a - b);
 
@@ -165,9 +167,7 @@ export function Transcript(props: { view: SessionView; actions: Actions }) {
 
   return (
     <FoldStore.Provider value={folds}>
-      <ThreadPrimitive.Root ref={root} className="wa-transcript" data-total={total}
-        onFocusCapture={(e: React.FocusEvent<HTMLElement>) => setFocused((e.target as HTMLElement).closest<HTMLElement>("[data-key]")?.dataset.key ?? null)}
-        onBlurCapture={(e: React.FocusEvent<HTMLElement>) => { const to = e.relatedTarget as Node | null; if (!to || !e.currentTarget.contains(to)) setFocused(null); }}>
+      <ThreadPrimitive.Root ref={root} className="wa-transcript" data-total={total}>
         {out}
       </ThreadPrimitive.Root>
     </FoldStore.Provider>
