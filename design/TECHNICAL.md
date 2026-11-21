@@ -635,7 +635,7 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 | `chunks` | 16 384 chunk starts, 8 bytes each (u64), so 128 KiB of the 512 KiB record | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
 | `streams` | 10 ids | – (the slots of 9.5 allow no more; an owner stream that `attach` replaces leaves `streams` in that `attach`, not at its `ended`) |
 | `deadlines` | 64 | – (an open ask past the 61st is denied `timers`, below) |
-| `open` | one per open ask or check, so bounded as the asks are: at most 64 with `deadlines` (a 62nd open ask is denied `timers`) and `pending-answers` | – |
+| `open` | one per open ask or check. An ask with a kernel deadline (the OpenAI loop's, `ask-expiry`) is bounded by `deadlines` (a 62nd is denied `timers`); a Claude ask or check takes no kernel deadline, so until the cap on open Claude asks and checks (9.4, "Code to change (S20)") only the record's 512 KiB bounds them | – |
 | `pending-answers` | 64 (one per Claude ask the kernel answered that the host has not closed), each at most 1 KiB | the kernel sends no further answer to a Claude ask of the session until one closes: the owner's `answer` is refused `busy` (2.3), and a session allow or the "no owner stream" deny leaves the ask open for the host to close at its `expires-at` (4.5) |
 
 | Turn state | Meaning |
@@ -1036,6 +1036,10 @@ this place (S14 and S19 built the rest).
   and a turn that ends starts the next queued input without reading it (9.7,
   "Revoking"); only `start` checks it. The OpenAI `task` check comes with the
   loop (9.5).
+- Kernel, S20: at most 64 open Claude asks and checks per session (the
+  record's `open`, 9.3); one past that is denied at once, `by: kernel`, reason
+  `busy`, so `cancel`, R4 and `ended` write at most 64 decisions in one call.
+  The rule and its case come with that code (9.3 Sizes, 9.6).
 
 **Code to change (a later slice).** Owed, and not the rule above.
 
