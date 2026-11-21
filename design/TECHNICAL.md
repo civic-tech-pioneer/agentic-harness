@@ -944,7 +944,9 @@ read. Past quota, an ask entry that already carries a decision (no adapter
 makes one today, 9.8) is stored short when its `id` is open or pending, and
 is not stored otherwise. The decision of an adapter's decided entry stored short
 keeps only `outcome`, `by` and `reason` (cut at 256 bytes); any other
-value makes the entry unstored.
+value makes the entry unstored. A decided entry that is stored closes its ask: the
+id leaves `open` or `pending-answers` (as an `ask-resolved` does, 9.8 rule
+4), so a repeat of it finds neither and is not stored.
 
 - Indexes start at 1, increase by one, never change. Deltas are never
   entries.
