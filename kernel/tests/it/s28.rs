@@ -344,3 +344,22 @@ fn ac3_ended_leaves_a_paused_turn() {
     assert_eq!(turns(&mut k, &id), n);
     assert!(k.state.get("stream/t1").is_none());
 }
+
+/// S28-fix1 AC4: at the ceiling a provider item other than `ended` is still refused `quota`
+/// and commits nothing (only `ended` may pass the ceiling).
+#[test]
+fn ac4_another_item_at_the_ceiling_is_still_refused() {
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.limits.account_bytes = Usage::load(&mut k.state, "quota").bytes;
+    k.limits.reserve_bytes = 0;
+    let a0 = Usage::load(&mut k.state, "quota").bytes;
+    let n = kinds(&mut k, &id).len();
+    assert!(matches!(
+        k.provider_item("t1", ask("a1")),
+        Err(KernelError::Quota(_))
+    ));
+    assert!(rec(&mut k, &id).open.is_empty());
+    assert_eq!(kinds(&mut k, &id).len(), n);
+    assert_eq!(Usage::load(&mut k.state, "quota").bytes, a0);
+}
