@@ -1,4 +1,6 @@
 // TECHNICAL 9.4: joins the `part` entries of an entry over 256 KiB back into the one entry, before the reducer sees them.
+import { parse } from "./wire";
+
 type Rec = Record<string, unknown>;
 const isRec = (x: unknown): x is Rec => typeof x === "object" && x !== null && !Array.isArray(x);
 
@@ -45,6 +47,9 @@ export function joiner(): { push(message: string): string[] } {
       const p = partOf(message);
       if (!p) {
         if (!open) { skip = null; return [message]; }
+        // only an entry fails the open group; an item with no index (synced, turn, queue, usage) passes on
+        const e = parse(message);
+        if (!("i" in e && typeof e.i === "number")) return [message];
         const g = open;
         return [fail(g.i), message];
       }

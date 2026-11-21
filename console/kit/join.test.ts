@@ -93,4 +93,13 @@ describe("S15-2 AC2 failures", () => {
     expect(out).toHaveLength(2); unknownAt(out[0], 2); expect(out[1]).toBe(s);
     expect(j.push(s)).toEqual([s]);
   });
+  it("ac2_an_item_that_is_not_an_entry_leaves_the_open_group_open", () => {
+    const j = joiner();
+    const ps = partsOf(msg(4, "x".repeat(100)), 40);
+    const turn = JSON.stringify({ _meta: { watane: { type: "turn", state: { state: "running", since: 1 } } } });
+    expect(j.push(ps[0])).toEqual([]);
+    expect(j.push(turn)).toEqual([turn]);
+    const out = ps.slice(1).flatMap((p) => j.push(p));
+    expect(out).toHaveLength(1); expect(JSON.parse(out[0])).toEqual(msg(4, "x".repeat(100)));
+  });
 });
