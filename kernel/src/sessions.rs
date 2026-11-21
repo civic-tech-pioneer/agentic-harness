@@ -960,6 +960,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             by: "owner".to_string(),
             for_: d.for_session.then(|| "session".to_string()),
             reason: d.reason.clone(),
+            call: open.call.clone(),
+            input: None,
         };
         let size = serde_json::to_vec(&pending)
             .expect("an answer serializes")
@@ -967,6 +969,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         if size > ALLOW_BYTES {
             return Err(KernelError::TooLarge(ALLOW_BYTES as u64));
         }
+        let pending = PendingAnswer {
+            input: d.value.get("input").cloned(),
+            ..pending
+        };
         if d.for_session {
             let Some(reach) = body.get("reach").and_then(Value::as_str) else {
                 return Err(refused("decision", "this ask offers no session allow"));
@@ -1260,6 +1266,34 @@ impl<S: State, H: Host> Kernel<S, H> {
         })
     }
 
+    /// Whether an ask item reuses the id of an open or pending ask, or shows another tool or input
+    /// on the call of one (9.8): the record decides, not the adapter's memory.
+    fn reused(&mut self, rec: &Record, body: &Value) -> bool {
+        let id = body.get("id").and_then(Value::as_str).unwrap_or_default();
+        if rec.open.iter().any(|o| o.id == id) || rec.pending_answers.contains_key(id) {
+            return true;
+        }
+        let call = body
+            .get("toolCallId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if call.is_empty() {
+            return false;
+        }
+        let at = rec
+            .open
+            .iter()
+            .map(|o| (&o.call, o.i))
+            .chain(rec.pending_answers.values().map(|p| (&p.call, p.i)))
+            .find(|(c, _)| c.as_str() == call)
+            .map(|(_, i)| i);
+        let Some(other) = at.and_then(|i| self.ask_body(rec, i)) else {
+            return false;
+        };
+        other.pointer("/toolCall/title") != body.pointer("/toolCall/title")
+            || other.get("input") != body.get("input")
+    }
+
     /// An entry from the provider; an `ask` opens (or, with a decision, closes) an ask.
     fn out_entry(
         &mut self,
@@ -1270,6 +1304,10 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<(), KernelError> {
         let is_ask = e.kind == Kind::Ask;
         let body = e.body.clone();
+        if is_ask && !body.get("decision").is_some_and(|d| !d.is_null()) && self.reused(rec, &body)
+        {
+            return self.unknown_entry(rec, body, now);
+        }
         let i = self.append(rec, NewEntry::from(e), now)?;
         let id = body.get("id").and_then(Value::as_str);
         let (true, Some(id)) = (is_ask, id) else {
@@ -1277,9 +1315,6 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         if body.get("decision").is_some_and(|d| !d.is_null()) {
             return self.close_ask(rec, id, now, work);
-        }
-        if rec.open.iter().any(|o| o.id == id) {
-            return Ok(());
         }
         let kind = body.get("kind").and_then(Value::as_str).unwrap_or("ask");
         if rec.open.len() + rec.pending_answers.len() >= OPEN_ASKS {
@@ -1298,6 +1333,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             id: id.to_string(),
             kind: kind.to_string(),
             i,
+            call: body
+                .get("toolCallId")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
             expires_at: mine,
         });
         if kind == "ask" {

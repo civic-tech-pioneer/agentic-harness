@@ -82,6 +82,7 @@ fn ac2_record_round_trips_with_kebab_keys() {
         id: "a".into(),
         kind: "ask".into(),
         expires_at: None,
+        call: String::new(),
         i: 4,
     });
     r.save(&mut st).unwrap();
