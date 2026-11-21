@@ -1737,7 +1737,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         let was = rec.turn.is_active();
         let before = rec.deadlines.clone();
         if replacement.is_none() && !was {
-            self.finish(None, &mut acct)?;
+            // 9.3 "Past": nothing to end, but the restart step it ran is charged, never refused.
+            self.finish_as(None, &mut acct, true)?;
             return Ok(Called {
                 value: (),
                 pushes: self.flush(work, rec.live.as_deref()),
