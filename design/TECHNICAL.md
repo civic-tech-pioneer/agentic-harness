@@ -266,7 +266,7 @@ the `id` of the ask entry (9.4; the ask id of the deadlines in 9.3), never the
 tool call id. A check (`kind: "check"`, 9.4) is answered only by the checked
 provider (10); the owner's `answer` to it is refused, `{field: "ask"}`.
 `allow` in `take-back` is the id of an `allow`
-entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5), the session holds 64 pending answers (9.3, `pending-answers`), or the active index is full at 1 024 sessions (9.3, A3); its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
+entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5), the session holds 64 pending answers (9.3, `pending-answers`), the active index is full at 1 024 sessions (9.3, A3), or a `probe.start` finds no session timer free (9.9); its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
 
 ## 3. Streams (H1)
 
@@ -629,7 +629,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `profile/<name>` | a profile (9.2) |
 | `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed. `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile may say so). A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
 | `adopted/<offer id>` | `{content hash, content}` |
-| `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
+| `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. A `probe.start` keeps its key with `call` `probe` (9.9). The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
 | `session/<id>` | the session record (9.3) |
 | `owner/<owner>/<n>` | page n of the owner's session ids, a JSON array of at most 256; `<owner>` percent-encoded as in `key/` above. `start` adds the id to the first page with room (by the page counts of `quota/<owner>`), opening page `pages.len()` when none has room; the record's `owner-page` names its page, so `delete` reads only that page; an emptied page is deleted and its count stays 0. `list` reads the pages in order. The per-owner session cap (9.3 Quota, default 64) bounds the pages: one page by default |
 | `queue/<id>` | `{next, inputs: [{n, input}]}`: the session's queued inputs (9.3), apart from the record; `input` is the input JSON as a string, `next` the number the next input takes. An emptied queue keeps `next`, so a number is never used twice in one session |
@@ -762,7 +762,7 @@ wire") are this JSON; the entry has no `activity`.
 - **Deadlines and the session timer.** The kernel holds one host timer per
   session, `s/<session id>` (7), due at the session's earliest deadline. A
   deadline is `{what, at}`, `what` one of `ask <ask id>` (9.6, `ask-expiry`),
-  `retry` and `resume` (9.5), `idle` (9.5, the 10-minute release); at most 64
+  `retry` and `resume` (9.5), `idle` (9.5, the 10-minute release), `probe` (9.9); at most 64
   (one per open ask plus the three others: a 62nd open ask with a deadline is
   denied `timers`). When the timer fires, the kernel handles every due
   deadline and sets the timer for the next one, or cancels it; a session
@@ -1579,7 +1579,8 @@ section, and its code).
   same key answers the same id and changes nothing), and it counts against
   the owner's sessions and the quota as `start` does. `count` is 1 to 1 000
   and `every-ms` 100 to 60 000, else `refused` with one refusal naming the
-  field. It makes a session record with `backend` `probe`, `profile` empty,
+  field. At the session-timer cap (9.3: 240 kernel-wide, 120 per owner) it is
+  refused `busy`, naming the cap, and writes nothing. It makes a session record with `backend` `probe`, `profile` empty,
   `title` `Numbered items`, turn `idle`, no provider stream and no client
   input, and the deadline `{what: "probe", at: now + every-ms}` on the session
   timer (7, 9.3).
@@ -1733,7 +1734,7 @@ section, and its code).
 | `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id`, `bad-delay` | timers | 7 (`bad-delay`: a delay over 30 days) |
-| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider slot, 64 pending answers on the session, or 1 024 active sessions, 9.3, A3) |
+| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider slot, 64 pending answers on the session, 1 024 active sessions, 9.3, A3, or no session timer for a `probe.start`, 9.9) |
 | `not-owner`, `not-direct` | providers | 2.2, 10 (`not-owner`: the caller is not the kernel) |
 | `unknown-input`, `unknown-allow`, `behind {through}` (`through`: the high-water index) | kernel | 9.3, 9.6, 9.4 |
 | `too-large` | OpenAI loop outcome | 9.5, body budget |
