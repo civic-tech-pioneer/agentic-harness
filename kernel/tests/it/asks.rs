@@ -346,7 +346,17 @@ fn case73_f_the_streams_end_closes_every_ask() {
     let id = two_asks(&mut k);
     k.provider(&id, ProviderEvent::Ended).unwrap();
     assert_two(&mut k, &id, "ended");
-    assert!(matches!(rec(&mut k, &id).turn, Turn::Running { .. }));
+    assert_eq!(
+        rec(&mut k, &id).turn,
+        Turn::Idle {
+            stop: Stop::Failed {
+                error: "provider-ended".into()
+            },
+            seconds: None,
+            tools: None,
+            tokens: None,
+        }
+    );
 }
 
 #[test]

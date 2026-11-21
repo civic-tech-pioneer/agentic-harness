@@ -282,11 +282,17 @@ fn fix1_ac2_past_quota_closing_asks_move_the_turn_without_entries() {
     let c = k.provider_item("t1", resolved("a2")).unwrap();
     assert!(matches!(turn(&mut k), Turn::Waiting { ref asks, .. } if asks == &["a3"]));
     assert_eq!(turn_pushes(&c), vec![turn(&mut k).to_json()]);
-    // `close_all` (the provider stream ends): the last ask goes, the turn runs
+    // the provider stream ends: the last ask goes, the turn ends `failed {provider-ended}`, the
+    // one `turn` entry past quota (it ends an active turn), pushed
     let c = k.provider_item("t1", ProviderEvent::Ended).unwrap();
-    assert!(matches!(turn(&mut k), Turn::Running { .. }));
+    assert_eq!(
+        turn(&mut k),
+        idle(Stop::Failed {
+            error: "provider-ended".into()
+        })
+    );
     assert_eq!(turn_pushes(&c), vec![turn(&mut k).to_json()]);
-    assert_eq!(turn_entries(&mut k, &s), n);
+    assert_eq!(turn_entries(&mut k, &s), n + 1);
 }
 
 /// S26-fix2 AC3, 9.3 Quota: past quota an owner `answer` that closes one of two open asks adds no

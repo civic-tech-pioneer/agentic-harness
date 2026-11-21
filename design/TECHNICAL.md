@@ -687,6 +687,7 @@ wire") are this JSON; the entry has no `activity`.
   keeps the keys, and sends `cancel` once after its last write (the host ends the
   stream and handle and closes the open asks, 4.5; the kernel writes no decision
   entry for them). A `delete` that fails sends nothing.
+- A provider stream's `ended` while the turn is `running` or `waiting` closes each open or pending ask (9.8 rule 4) and ends the turn `idle {failed {error: provider-ended}}` in the same call: one `turn` entry (also past quota, since it ends an active turn), no `idle` deadline (the stream is gone), and no queued input starts; the next `say` starts a turn, the oldest queued input first, and resumes the Claude session (as after the idle release; `persist: false`: a fresh session). A client offers Try again (18.5). On any other turn, `ended` changes no turn.
 - **Deadlines and the session timer.** The kernel holds one host timer per
   session, `s/<session id>` (7), due at the session's earliest deadline. A
   deadline is `{what, at}`, `what` one of `ask <ask id>` (9.6, `ask-expiry`),
@@ -1268,7 +1269,8 @@ below is an `unknown` entry, never an ask or a decision.
      still have held it; 14, "Not protected"); an open ask or check with no
      pending answer gets `deny`, `by: kernel`, reason `cancel`, `restart` or
      `ended`. The `ended` closes every open or pending ask or check of the
-     session in the same call, so no Claude ask stays without a decision.
+     session in the same call, so no Claude ask stays without a decision; then it ends
+     an active turn `idle {failed {error: provider-ended}}` (9.3).
 
    An ask or check with no pending answer that the host closes with
    `answered` gives the decision entry from `outcome` (`by: checked` on a
@@ -1890,6 +1892,21 @@ of `spec/VISION.md`.
     `tool` or `input` is `unknown` and the open one is unchanged; the same
     `tool` and `input` is an ask; after the open one is resolved, another
     input is an ask again.
+76. (9.3, 9.8 rule 4) Kernel crate: the provider stream's `ended` on a
+    `running` or `waiting` session closes each open or pending ask (the two
+    decision entries of case 73 (f)) and then ends the turn `idle {failed
+    {error: provider-ended}}` in the same call: exactly one `turn` entry
+    after the decisions (no `turn` entry for `running` between them), the
+    push of that turn, the session out of `active/` (no `active-page`), and
+    no `idle` deadline. Past the owner's quota the same: one `turn` entry
+    and its push. A queued input does not start: the queue keeps it and no
+    `Request::Turn` is sent; the next `say` starts a turn with the oldest
+    queued input first (the new one joins the queue), sends `Request::Turn`
+    with `resume: true` (`persist: false`: `resume: false`) and opens a
+    provider stream; with no queue, that `say` starts a turn with its own
+    input. On `idle {completed}`, `unknown` and `resume-lost`, `ended`
+    leaves the turn as it was and writes no `turn` entry; it still frees the
+    stream's slot and keys.
 
 **V8 record.** Empty until stage A fills it: the numbers of V8 (order and
 delay through the three layers, the cost of one fsync per commit), the date
