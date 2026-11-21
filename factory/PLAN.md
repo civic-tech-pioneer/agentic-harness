@@ -202,7 +202,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   `say` on `unknown` resumes; cases 67-71. User-sim ACCEPTED on run 2; no adversary (no code, 14
   unchanged). Gate 17 s.
 
-- **S19** the kernel fails closed on S14's open points (PR #21, 12 min). An `ask-resolved` with a
+- **S19** the kernel fails closed on S14's open points (PR #21, merged 2026-11-21 01:21 UTC, 12 min). An `ask-resolved` with a
   `by` other than `expired` or `cancelled` is `unknown` and the ask stays open; an ask or check
   whose `input` is not an object or whose `expires-at` is not a u64 integer is `unknown`; a joined
   whole of kind `part` is `unreadable` (dropped when its last part has no whole `i`). User-sim
