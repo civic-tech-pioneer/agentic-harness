@@ -361,7 +361,7 @@ and `.husky/**`. No launch can remove them.
 | `control_request` `hook_callback` (PreToolUse) | `{"type":"check","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
 | `control_cancel_request` | `{"type":"ask-resolved","id":…,"by":"cancelled"}` |
 | a line whose top-level `type` is any watane item type that can share the stream: `ask`, `check`, `ask-resolved`, `initialized`, `wrapped`, `consent-pending`, and the checked provider's `verdict` and `checking` (10); a slice that adds an item type to any of these streams adds it here | never passed through: the host pushes `{"type":"wrapped","line":"<the line, as a JSON string>"}` instead |
-| a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item: the host decides on the parsed value, so the kernel and the host never read one line two ways |
+| a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item (a byte that is not UTF-8 becomes U+FFFD in `line`): the host decides on the parsed value, so the kernel and the host never read one line two ways |
 | any other line, known or not | the line unchanged |
 
    `expires-at` is on the host's clock: for an ask, the time the host pushed
@@ -858,10 +858,10 @@ the card.
 - Console, a console slice after S9: accept a decision entry `by` value it
   does not know, and show it as text.
 - Console, a console slice after S9: draw a `check` with no Allow button.
-- Console, a console slice after S9: `console/kit/reduce.ts` does not merge an
-  ask's call into an earlier tool row of the same id (it reads `m.call` only
-  when no row exists); the ask's `toolCall` and `input` replace the row's
-  call, so the card shows what the ask says will run (9.8).
+- Console, a console slice after S9: when a tool row of the ask's id exists,
+  `console/kit/reduce.ts` keeps that row's call (today it reads `m.call` only
+  when no row exists); instead the ask's `toolCall` and `input` replace the
+  row's call, so the card shows what the ask says will run (9.8).
 - Kernel, S12: the ask entry body `tool-call-id` becomes `toolCallId`, and it
   gains `toolCall` and `reach`.
 - Kernel, S12: the `ask` `_meta.watane` item becomes the `entry` item (no
