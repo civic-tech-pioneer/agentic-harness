@@ -1187,7 +1187,10 @@ below is an `unknown` entry, never an ask or a decision.
    or `none`, or is `none` on an ask or `allow` on a check, is `unknown`
    (a check is answered only `none` or `deny`, 4.5). An ask or check the
    kernel answered itself stays open until the host's `ask-resolved` for
-   it arrives; the kernel's `answer` does not close it. Any other or missing
+   it arrives; the kernel's `answer` does not close it. Until then it
+   counts as decided: a second `answer` is refused `{field: "ask"}` (case
+   9), and no session allow, `ask-expiry` or restart step answers it again,
+   and it is not counted as open for the owner. Any other or missing
    `by`, or one that is not a string, is `unknown`. An `unknown` item leaves
    the ask open, so a later `expired` or `cancelled` still gives its decision
    (S19; until the code to change of 9.4 is built, `answered` is `unknown`
