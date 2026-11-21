@@ -42,10 +42,9 @@ fn far(k: &mut K, days: u64) -> String {
         }),
     )
     .unwrap();
+    // The idle deadline moved in the record; the test's first firing (an early one) arms it.
     let mut r = Record::load(&mut k.state, &id).unwrap();
     r.deadlines.clear();
-    r.save(&mut k.state).unwrap();
-    // A call that sets the deadline: put it in the record, then let a firing-free path arm it.
     r.deadlines.push(Deadline {
         what: "idle".into(),
         at: k.host.now + days * DAY,

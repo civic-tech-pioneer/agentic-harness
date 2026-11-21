@@ -727,8 +727,9 @@ wire") are this JSON; the entry has no `activity`.
   any call that starts a turn removes it. The timer and the counts
   (`slots.timers`, `quota/<owner>` `timers`) follow the record: a session
   holds a counted timer while its `deadlines` is not empty. A firing with
-  no due deadline changes nothing but the timer: it sets it again for the earliest deadline (a deadline over 30 days ahead, 7). Until stage D, a due deadline of a later
-  stage (`ask`, `retry`, `resume`) stays and keeps its count but arms no
+  no due deadline changes nothing but the timer: it sets it again for the
+  earliest deadline (a deadline over 30 days ahead, 7). Until stage D, a due
+  deadline of a later stage (`ask`, `retry`, `resume`) stays and keeps its count but arms no
   timer: the timer is set for the earliest deadline still in the future. A firing whose restart step (R6) fails
   re-arms nothing; the next call on the session settles its deadline.
 - **Quota.** An owner's bytes (`quota/<owner>`) count every key the owner
