@@ -336,12 +336,12 @@ impl ClaudeAdapter {
             .get("id")
             .filter(|i| i.as_str().is_some_and(|s| !s.is_empty()));
         let tool = str_of(v, "tool");
-        let expires = v.get("expires-at").filter(|e| e.is_number());
+        let expires = v.get("expires-at").filter(|e| e.as_u64().is_some());
         let (Some(call_id), Some(id), Some(tool), Some(expires)) = (call_id, id, tool, expires)
         else {
             return vec![unknown(v.clone())];
         };
-        let Some(input) = v.get("input").filter(|i| !i.is_null()).cloned() else {
+        let Some(input) = v.get("input").filter(|i| i.is_object()).cloned() else {
             return vec![unknown(v.clone())];
         };
         if self.open.contains_key(&id.to_string()) {
@@ -363,12 +363,12 @@ impl ClaudeAdapter {
         let (Some(id), Some(by)) = (id, str_of(v, "by")) else {
             return vec![unknown(v.clone())];
         };
+        if by != "expired" && by != "cancelled" {
+            return vec![unknown(v.clone())];
+        }
         let Some(mut body) = self.open.remove(&id.to_string()) else {
             return vec![unknown(v.clone())];
         };
-        if by != "expired" && by != "cancelled" {
-            return vec![];
-        }
         body["decision"] = json!({"outcome": "deny", "by": "host", "reason": by});
         vec![ask_entry(body)]
     }

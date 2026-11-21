@@ -621,7 +621,20 @@
         }
       }
     ],
-    [],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "ask-3",
+              "by": "user"
+            }
+          }
+        }
+      }
+    ],
     [
       {
         "entry": {

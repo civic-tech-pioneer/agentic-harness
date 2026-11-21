@@ -1,0 +1,2035 @@
+{
+  "row": "`ask`, `check`, `ask-resolved` items",
+  "input": [
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "b1",
+        "tool": "Bash",
+        "input": {
+          "command": "ls"
+        },
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b1",
+        "by": "user"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "b1",
+        "tool": "Bash",
+        "input": {
+          "command": "ls"
+        },
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "b1",
+        "tool": "Bash",
+        "input": {
+          "command": "ls"
+        },
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b1",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "b2",
+        "tool": "Bash",
+        "input": {
+          "command": "ls"
+        },
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b2",
+        "by": "allow"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b2",
+        "by": "cancelled"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "b3",
+        "tool": "Bash",
+        "input": {
+          "command": "ls"
+        },
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b3",
+        "by": ""
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b3",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "b4",
+        "tool": "Bash",
+        "input": {
+          "command": "ls"
+        },
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b4",
+        "by": 1
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b4",
+        "by": "cancelled"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "b5",
+        "tool": "Bash",
+        "input": {
+          "command": "ls"
+        },
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b5",
+        "by": null
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b5",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "b6",
+        "tool": "Bash",
+        "input": {
+          "command": "ls"
+        },
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b6"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "b6",
+        "by": "cancelled"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "iask0",
+        "tool": "Bash",
+        "input": [
+          1
+        ],
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "iask0",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "iask1",
+        "tool": "Bash",
+        "input": "ls",
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "iask1",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "iask2",
+        "tool": "Bash",
+        "input": 3,
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "iask2",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "iask3",
+        "tool": "Bash",
+        "input": true,
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "iask3",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "iask4",
+        "tool": "Bash",
+        "input": null,
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "iask4",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "iask5",
+        "tool": "Bash",
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "iask5",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask",
+        "id": "eask",
+        "tool": "Bash",
+        "input": {},
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "icheck0",
+        "tool": "Bash",
+        "input": [
+          1
+        ],
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "icheck0",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "icheck1",
+        "tool": "Bash",
+        "input": "ls",
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "icheck1",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "icheck2",
+        "tool": "Bash",
+        "input": 3,
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "icheck2",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "icheck3",
+        "tool": "Bash",
+        "input": true,
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "icheck3",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "icheck4",
+        "tool": "Bash",
+        "input": null,
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "icheck4",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "icheck5",
+        "tool": "Bash",
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "icheck5",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "check",
+        "id": "echeck",
+        "tool": "Bash",
+        "input": {},
+        "tool_use_id": "toolu_1",
+        "expires-at": 1763600060000
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"ask\",\"id\":\"xask0\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":-1}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xask0",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"ask\",\"id\":\"xask1\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":1.5}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xask1",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"ask\",\"id\":\"xask2\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":5.0}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xask2",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"ask\",\"id\":\"xask3\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":1e3}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xask3",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"ask\",\"id\":\"xask4\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":18446744073709551616}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xask4",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"ask\",\"id\":\"xask5\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":\"5\"}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xask5",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"ask\",\"id\":\"xask6\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":null}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xask6",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"ask\",\"id\":\"okask0\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":0}"
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"ask\",\"id\":\"okask1\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":18446744073709551615}"
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"check\",\"id\":\"xcheck0\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":-1}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xcheck0",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"check\",\"id\":\"xcheck1\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":1.5}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xcheck1",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"check\",\"id\":\"xcheck2\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":5.0}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xcheck2",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"check\",\"id\":\"xcheck3\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":1e3}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xcheck3",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"check\",\"id\":\"xcheck4\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":18446744073709551616}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xcheck4",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"check\",\"id\":\"xcheck5\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":\"5\"}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xcheck5",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"check\",\"id\":\"xcheck6\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":null}"
+    },
+    {
+      "at": 1763600000000,
+      "line": {
+        "type": "ask-resolved",
+        "id": "xcheck6",
+        "by": "expired"
+      }
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"check\",\"id\":\"okcheck0\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":0}"
+    },
+    {
+      "at": 1763600000000,
+      "raw": "{\"type\":\"check\",\"id\":\"okcheck1\",\"tool\":\"Bash\",\"input\":{\"command\":\"ls\"},\"tool_use_id\":\"toolu_1\",\"expires-at\":18446744073709551615}"
+    }
+  ],
+  "expected": [
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b1",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "b1",
+              "by": "user"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "b1",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "b1",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b1",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000,
+            "decision": {
+              "outcome": "deny",
+              "by": "host",
+              "reason": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b2",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "b2",
+              "by": "allow"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b2",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000,
+            "decision": {
+              "outcome": "deny",
+              "by": "host",
+              "reason": "cancelled"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b3",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "b3",
+              "by": ""
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b3",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000,
+            "decision": {
+              "outcome": "deny",
+              "by": "host",
+              "reason": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b4",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "b4",
+              "by": 1
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b4",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000,
+            "decision": {
+              "outcome": "deny",
+              "by": "host",
+              "reason": "cancelled"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b5",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "b5",
+              "by": null
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b5",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000,
+            "decision": {
+              "outcome": "deny",
+              "by": "host",
+              "reason": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b6",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "b6"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "b6",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 1763600060000,
+            "decision": {
+              "outcome": "deny",
+              "by": "host",
+              "reason": "cancelled"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "iask0",
+              "tool": "Bash",
+              "input": [
+                1
+              ],
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "iask0",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "iask1",
+              "tool": "Bash",
+              "input": "ls",
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "iask1",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "iask2",
+              "tool": "Bash",
+              "input": 3,
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "iask2",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "iask3",
+              "tool": "Bash",
+              "input": true,
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "iask3",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "iask4",
+              "tool": "Bash",
+              "input": null,
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "iask4",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "iask5",
+              "tool": "Bash",
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "iask5",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "eask",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {}
+            },
+            "input": {},
+            "expires-at": 1763600060000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "icheck0",
+              "tool": "Bash",
+              "input": [
+                1
+              ],
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "icheck0",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "icheck1",
+              "tool": "Bash",
+              "input": "ls",
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "icheck1",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "icheck2",
+              "tool": "Bash",
+              "input": 3,
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "icheck2",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "icheck3",
+              "tool": "Bash",
+              "input": true,
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "icheck3",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "icheck4",
+              "tool": "Bash",
+              "input": null,
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "icheck4",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "icheck5",
+              "tool": "Bash",
+              "tool_use_id": "toolu_1",
+              "expires-at": 1763600060000
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "icheck5",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "echeck",
+            "kind": "check",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {}
+            },
+            "input": {},
+            "expires-at": 1763600060000
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "xask0",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": -1
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xask0",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "xask1",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 1.5
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xask1",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "xask2",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 5.0
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xask2",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "xask3",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 1000.0
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xask3",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "xask4",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 18446744073709551616
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xask4",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "xask5",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": "5"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xask5",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask",
+              "id": "xask6",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": null
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xask6",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "okask0",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 0
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "okask1",
+            "kind": "ask",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 18446744073709551615
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "xcheck0",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": -1
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xcheck0",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "xcheck1",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 1.5
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xcheck1",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "xcheck2",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 5.0
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xcheck2",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "xcheck3",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 1000.0
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xcheck3",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "xcheck4",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": 18446744073709551616
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xcheck4",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "xcheck5",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": "5"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xcheck5",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "check",
+              "id": "xcheck6",
+              "tool": "Bash",
+              "input": {
+                "command": "ls"
+              },
+              "tool_use_id": "toolu_1",
+              "expires-at": null
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "unknown",
+          "body": {
+            "raw": {
+              "type": "ask-resolved",
+              "id": "xcheck6",
+              "by": "expired"
+            }
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "okcheck0",
+            "kind": "check",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 0
+          }
+        }
+      }
+    ],
+    [
+      {
+        "entry": {
+          "kind": "ask",
+          "body": {
+            "id": "okcheck1",
+            "kind": "check",
+            "toolCallId": "toolu_1",
+            "toolCall": {
+              "toolCallId": "toolu_1",
+              "title": "Bash",
+              "rawInput": {
+                "command": "ls"
+              }
+            },
+            "input": {
+              "command": "ls"
+            },
+            "expires-at": 18446744073709551615
+          }
+        }
+      }
+    ]
+  ]
+}
