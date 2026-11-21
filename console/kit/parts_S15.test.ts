@@ -44,6 +44,27 @@ describe("S15-2 parts in the console", () => {
     expect(k.calls.filter((c) => c.name === "attach").at(-1)!.args).toEqual(["s1", b.last().lastIndex]);
     b.s.close();
   });
+  it("ac3_a_new_attach_starts_a_clean_joiner", async () => {
+    // part 1 of 2 comes live, the stream drops; the reattach replays both parts from the group's start
+    const ps = partsOf(msg(3, "s".repeat(300)), 200);
+    expect(ps).toHaveLength(2);
+    const synced = (through: number) => JSON.stringify({ _meta: { watane: { type: "synced", through } } });
+    let n = 0;
+    const k = {
+      ...fakeKernel([]),
+      async attach(_s: string, after: number, on: (j: string) => void, end: (r: string) => void) {
+        if (n++ === 0) { on(user(1)); on(synced(1)); on(item(ps[0])); setTimeout(() => end("dropped"), 0); }
+        else { for (const e of [user(1), ...ps].filter((x) => JSON.parse(x).i > after)) on(e); on(synced(3)); }
+        return { ok: true as const };
+      },
+    };
+    const a = open(k as any);
+    await flush(); await flush(); await flush();
+    expect(n).toBe(2);
+    expect(agents(a.last())).toEqual(["s".repeat(300)]);
+    expect(a.last().rows.filter((r) => r.kind === "unknown")).toHaveLength(0);
+    a.s.close();
+  });
   it("ac6_attach_inside_a_group_starts_at_the_groups_first_part", async () => {
     const ps = partsOf(msg(20, "q".repeat(300)), 100);
     const k = fakeKernel([], { preload: [...Array.from({ length: 20 - ps.length }, (_, n) => user(n + 1)), ...ps] });
