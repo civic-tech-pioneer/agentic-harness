@@ -79,6 +79,19 @@ fn ask(id: &str, kind: &str, expires: u64) -> ProviderEvent {
     })
 }
 
+fn resolved(id: &str, by: &str, outcome: Option<&str>) -> ProviderEvent {
+    ProviderEvent::Out(Out {
+        resolved: Some(agent_kernel::adapters::Resolved {
+            id: id.into(),
+            by: by.into(),
+            outcome: outcome.map(str::to_string),
+            direct: true,
+            raw: json!({"type": "ask-resolved", "id": id, "by": by}),
+        }),
+        ..Out::default()
+    })
+}
+
 fn idle() -> ProviderEvent {
     ProviderEvent::Out(Out {
         idle: true,
@@ -582,6 +595,16 @@ fn ac6_answer_shapes_and_effects() {
         c.pushes[0].value["state"],
         json!({"state": "waiting", "asks": ["a2"], "expires-at": 6000})
     );
+    // the answer writes no decision entry: it is pending until the host resolves the ask
+    let es = entries(&mut k, "alice", &id);
+    assert!(es.iter().all(|e| e["body"].get("decision").is_none()));
+    let p = &rec(&mut k, &id).pending_answers["a1"];
+    assert_eq!(
+        (p.outcome.as_str(), p.by.as_str(), p.for_.as_deref()),
+        ("allow", "owner", Some("session"))
+    );
+    k.provider(&id, resolved("a1", "answered", Some("allow")))
+        .unwrap();
     let es = entries(&mut k, "alice", &id);
     let dec = es.iter().rev().find(|e| e["kind"] == "ask").unwrap();
     assert_eq!(dec["body"]["id"], "a1");
@@ -590,6 +613,7 @@ fn ac6_answer_shapes_and_effects() {
         json!({"outcome": "allow", "by": "owner", "for": "session"})
     );
     assert_eq!(dec["body"]["toolCall"]["title"], "Edit");
+    assert!(rec(&mut k, &id).pending_answers.is_empty());
     // the last ask: back to running
     let c = k
         .answer("alice", &id, "k2", "a2", r#"{"deny":true,"reason":"no"}"#)
@@ -602,6 +626,8 @@ fn ac6_answer_shapes_and_effects() {
             activity: None
         }
     );
+    k.provider(&id, resolved("a2", "answered", Some("deny")))
+        .unwrap();
     let es = entries(&mut k, "alice", &id);
     let dec = es.iter().rev().find(|e| e["kind"] == "ask").unwrap();
     assert_eq!(

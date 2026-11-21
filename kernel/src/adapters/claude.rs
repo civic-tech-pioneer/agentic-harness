@@ -11,7 +11,7 @@ use claude_codes::io::ToolResultContent;
 use claude_codes::ClaudeOutput;
 use serde_json::{json, Map, Value};
 
-use super::{cut_output, unknown, Entry, Kind, Out};
+use super::{cut_output, unknown, Entry, Kind, Out, Resolved};
 
 /// Turns one Claude stream item into `Out`s. Its only state is in memory.
 #[derive(Debug, Default)]
@@ -21,6 +21,8 @@ pub struct ClaudeAdapter {
     idle_seen: bool,
     /// Asks and checks the host has not resolved yet, by id, as their entry body.
     open: HashMap<String, Value>,
+    /// Whether the stream is the host's own (`true`) or a checked provider's (10).
+    direct: bool,
     /// Thinking of the step so far (9.4 `thought`).
     thinking: Thinking,
 }
@@ -84,7 +86,16 @@ fn str_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 impl ClaudeAdapter {
+    /// A stream the host feeds directly.
     pub fn new() -> Self {
+        ClaudeAdapter {
+            direct: true,
+            ..Self::default()
+        }
+    }
+
+    /// The checked provider's stream (10): the host's `answered` may be the judge's.
+    pub fn checked() -> Self {
         Self::default()
     }
 
@@ -359,18 +370,39 @@ impl ClaudeAdapter {
     fn resolved(&mut self, v: &Value) -> Vec<Out> {
         let id = v
             .get("id")
-            .filter(|i| i.as_str().is_some_and(|s| !s.is_empty()));
+            .and_then(Value::as_str)
+            .filter(|i| !i.is_empty());
         let (Some(id), Some(by)) = (id, str_of(v, "by")) else {
             return vec![unknown(v.clone())];
         };
-        if by != "expired" && by != "cancelled" {
-            return vec![unknown(v.clone())];
-        }
-        let Some(mut body) = self.open.remove(&id.to_string()) else {
+        // `ask` keys `open` by the id's JSON text (quotes included).
+        let key = Value::String(id.to_string()).to_string();
+        let Some(body) = self.open.get(&key) else {
             return vec![unknown(v.clone())];
         };
-        body["decision"] = json!({"outcome": "deny", "by": "host", "reason": by});
-        vec![ask_entry(body)]
+        let is_check = str_of(body, "kind") == Some("check");
+        let outcome = match by {
+            "answered" => match str_of(v, "outcome") {
+                Some("none") if !is_check => return vec![unknown(v.clone())],
+                Some("allow") if is_check => return vec![unknown(v.clone())],
+                Some(o @ ("allow" | "deny" | "none")) => Some(o.to_string()),
+                _ => return vec![unknown(v.clone())],
+            },
+            "expired" | "cancelled" if v.get("outcome").is_none() => None,
+            _ => return vec![unknown(v.clone())],
+        };
+        self.open.remove(&key);
+        let id = id.to_string();
+        vec![Out {
+            resolved: Some(Resolved {
+                id,
+                by: by.to_string(),
+                outcome,
+                direct: self.direct,
+                raw: v.clone(),
+            }),
+            ..Out::default()
+        }]
     }
 
     fn stream_event(&mut self, event: &Value, at: u64) -> Option<Out> {

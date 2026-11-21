@@ -715,28 +715,15 @@
     ],
     [
       {
-        "entry": {
-          "kind": "ask",
-          "body": {
+        "resolved": {
+          "id": "b1",
+          "by": "expired",
+          "outcome": null,
+          "direct": true,
+          "raw": {
+            "type": "ask-resolved",
             "id": "b1",
-            "kind": "ask",
-            "toolCallId": "toolu_1",
-            "toolCall": {
-              "toolCallId": "toolu_1",
-              "title": "Bash",
-              "rawInput": {
-                "command": "ls"
-              }
-            },
-            "input": {
-              "command": "ls"
-            },
-            "expires-at": 1763600060000,
-            "decision": {
-              "outcome": "deny",
-              "by": "host",
-              "reason": "expired"
-            }
+            "by": "expired"
           }
         }
       }
@@ -780,28 +767,15 @@
     ],
     [
       {
-        "entry": {
-          "kind": "ask",
-          "body": {
+        "resolved": {
+          "id": "b2",
+          "by": "cancelled",
+          "outcome": null,
+          "direct": true,
+          "raw": {
+            "type": "ask-resolved",
             "id": "b2",
-            "kind": "ask",
-            "toolCallId": "toolu_1",
-            "toolCall": {
-              "toolCallId": "toolu_1",
-              "title": "Bash",
-              "rawInput": {
-                "command": "ls"
-              }
-            },
-            "input": {
-              "command": "ls"
-            },
-            "expires-at": 1763600060000,
-            "decision": {
-              "outcome": "deny",
-              "by": "host",
-              "reason": "cancelled"
-            }
+            "by": "cancelled"
           }
         }
       }
@@ -845,28 +819,15 @@
     ],
     [
       {
-        "entry": {
-          "kind": "ask",
-          "body": {
+        "resolved": {
+          "id": "b3",
+          "by": "expired",
+          "outcome": null,
+          "direct": true,
+          "raw": {
+            "type": "ask-resolved",
             "id": "b3",
-            "kind": "ask",
-            "toolCallId": "toolu_1",
-            "toolCall": {
-              "toolCallId": "toolu_1",
-              "title": "Bash",
-              "rawInput": {
-                "command": "ls"
-              }
-            },
-            "input": {
-              "command": "ls"
-            },
-            "expires-at": 1763600060000,
-            "decision": {
-              "outcome": "deny",
-              "by": "host",
-              "reason": "expired"
-            }
+            "by": "expired"
           }
         }
       }
@@ -910,28 +871,15 @@
     ],
     [
       {
-        "entry": {
-          "kind": "ask",
-          "body": {
+        "resolved": {
+          "id": "b4",
+          "by": "cancelled",
+          "outcome": null,
+          "direct": true,
+          "raw": {
+            "type": "ask-resolved",
             "id": "b4",
-            "kind": "ask",
-            "toolCallId": "toolu_1",
-            "toolCall": {
-              "toolCallId": "toolu_1",
-              "title": "Bash",
-              "rawInput": {
-                "command": "ls"
-              }
-            },
-            "input": {
-              "command": "ls"
-            },
-            "expires-at": 1763600060000,
-            "decision": {
-              "outcome": "deny",
-              "by": "host",
-              "reason": "cancelled"
-            }
+            "by": "cancelled"
           }
         }
       }
@@ -975,28 +923,15 @@
     ],
     [
       {
-        "entry": {
-          "kind": "ask",
-          "body": {
+        "resolved": {
+          "id": "b5",
+          "by": "expired",
+          "outcome": null,
+          "direct": true,
+          "raw": {
+            "type": "ask-resolved",
             "id": "b5",
-            "kind": "ask",
-            "toolCallId": "toolu_1",
-            "toolCall": {
-              "toolCallId": "toolu_1",
-              "title": "Bash",
-              "rawInput": {
-                "command": "ls"
-              }
-            },
-            "input": {
-              "command": "ls"
-            },
-            "expires-at": 1763600060000,
-            "decision": {
-              "outcome": "deny",
-              "by": "host",
-              "reason": "expired"
-            }
+            "by": "expired"
           }
         }
       }
@@ -1039,28 +974,15 @@
     ],
     [
       {
-        "entry": {
-          "kind": "ask",
-          "body": {
+        "resolved": {
+          "id": "b6",
+          "by": "cancelled",
+          "outcome": null,
+          "direct": true,
+          "raw": {
+            "type": "ask-resolved",
             "id": "b6",
-            "kind": "ask",
-            "toolCallId": "toolu_1",
-            "toolCall": {
-              "toolCallId": "toolu_1",
-              "title": "Bash",
-              "rawInput": {
-                "command": "ls"
-              }
-            },
-            "input": {
-              "command": "ls"
-            },
-            "expires-at": 1763600060000,
-            "decision": {
-              "outcome": "deny",
-              "by": "host",
-              "reason": "cancelled"
-            }
+            "by": "cancelled"
           }
         }
       }

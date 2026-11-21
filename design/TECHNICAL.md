@@ -617,7 +617,7 @@ Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `pr
 `handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
 `boot` (the boot number of the session's last restart step, or of its creation; "Restart" below), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
-(session allows, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {outcome, by, for?, reason?}}`, the pending answers of 9.8 rule 4; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
+(session allows, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {i, kind, outcome, by, for?, reason?}}`, the pending answers of 9.8 rule 4; `i` and `kind` are the ask entry's index and its `ask` or `check`, so the decision entry can repeat the ask, and follow the kind rules of 9.8 rule 4, after a restart without the adapter; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
 `chunks` (the first index of each entry chunk, 9.1), `streams` (the ids of the session's open streams, at most 10: 1 provider or 1 request, 8 jobs, 1 owner; 9.4, 9.5), `deadlines` (each `{what, at}`, at most 64; below), `open` (the open asks and checks, each `{id, kind, i, expires-at?}`: the ask id, `kind` `ask` or `check`, the index `i` of its ask entry (9.4), and that entry's `expires-at` when it has one; an open ask leaves `open` when it is decided or closed. A decision entry can repeat its ask (9.4) after the adapter's memory is gone (a restart), and `waiting.expires-at`, the earliest open ask's, is recomputed without reading entries), `next-index`, `created`, `updated`. The queue is not in the record: it lives
 in `queue/<id>` (9.1), at most 32 inputs, each numbered from 1 per session.
 
@@ -635,7 +635,7 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 | `chunks` | 16 384 chunk starts, 8 bytes each (u64), so 128 KiB of the 512 KiB record | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
 | `streams` | 10 ids | – (the slots of 9.5 allow no more; an owner stream that `attach` replaces leaves `streams` in that `attach`, not at its `ended`) |
 | `deadlines` | 64 | – (an open ask past the 61st is denied `timers`, below) |
-| `open` | one per open ask or check. An ask with a kernel deadline (the OpenAI loop's, `ask-expiry`) is bounded by `deadlines` (a 62nd is denied `timers`); a Claude ask or check takes no kernel deadline, so until the cap on open Claude asks and checks (9.4, "Code to change (S20)") only the record's 512 KiB bounds them | – |
+| `open` | one per open ask or check. An ask with a kernel deadline (the OpenAI loop's, `ask-expiry`) is bounded by `deadlines` (a 62nd is denied `timers`); a Claude ask or check takes no kernel deadline. At most 64 open asks and checks, the pending answers counted in (`open` + `pending-answers` <= 64); past it the ask is denied at once, `by: kernel`, reason `busy`, its ask and decision entries written in that call and a `Request::Answer` deny sent, so `cancel`, R4 and `ended` write at most 64 decisions in one call | – |
 | `pending-answers` | 64 (one per Claude ask the kernel answered that the host has not closed), each at most 1 KiB | the kernel sends no further answer to a Claude ask of the session until one closes: the owner's `answer` is refused `busy` (2.3), and a session allow or the "no owner stream" deny leaves the ask open for the host to close at its `expires-at` (4.5) |
 
 | Turn state | Meaning |
@@ -755,13 +755,13 @@ wire") are this JSON; the entry has no `activity`.
 
     | Backend, state | Becomes |
     |---|---|
-    | Claude, `running` or `waiting` | each open ask or check is decided `deny`, `by: kernel`, reason `restart`, its deadline dropped, and each ask with a pending answer is decided with that answer (9.8 rule 4); the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
+    | Claude, `running` or `waiting` | each open ask or check is decided `deny`, `by: kernel`, reason `restart` (a Claude ask has no kernel deadline, 9.6; it expires only at the host, 4.5), and each ask with a pending answer is decided with that answer (9.8 rule 4); the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
     | `paused`, either backend | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` (9.5); 9.8 gives nothing for a Claude rate limit, so a slice that adds one adds its row here |
     | OpenAI, `requesting` or `ready` (waiting in the FIFO or not) | goes to `ready`, takes a request slot or waits in the FIFO under this boot (9.5); the turn stays `running` |
     | OpenAI, `retrying` | stays `retrying`; its `retry` deadline and timer are kept (7) and the request goes when it fires (9.5); nothing is sent at once, so no request is sent twice |
     | OpenAI, `tools` | stays `tools`; its open jobs of `idempotent` tools start again under their keys (taking job slots or waiting, as 9.5 "Slots"), the others get `aborted`; `pending` calls stay pending and start in waves as before, the first at once up to the free job slots; when no call is left open or pending, it goes to `ready` as above (9.5) |
     | OpenAI, `waiting` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
-    | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, `restart` for an open one and its answer for a pending one; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` resumes with `session {resume}` once the kernel tracks provider streams across a restart (owed, "Code to change (a later slice)" below), as after the idle release |
+    | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, in every state (as built), `restart` for an open one and its answer for a pending one, the turn kept; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` resumes with `session {resume}` once the kernel tracks provider streams across a restart (owed, "Code to change (a later slice)" below), as after the idle release |
 
     AGT-F-27 applies to the tool jobs of 6 (the OpenAI loop, row `tools`),
     the only calls a mod marks safe to repeat. AGT-F-10: no stored turn is
@@ -1009,28 +1009,9 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 **Code to change (S20).** The rules above and in 9.8 differ from the code in
 this place (S14 and S19 built the rest).
 
-- Kernel, S20: an `ask-resolved` with `by: answered` closes the open
-  ask or check: with the pending answer as the decision when the item's
-  `outcome` equals it, and otherwise with the item's `outcome` (`by: checked`
-  on a `direct: false` stream, else `host`), the pending answer dropped; a missing or bad `outcome`, `none` on
-  an ask or `allow` on a check is `unknown` (S19 reads every `answered` as `unknown`; 9.8).
-- Kernel, S20 (S22, D1): the kernel's own answer to a Claude ask (the owner's
-  `answer`, a session allow, the "no owner stream" deny) writes no decision entry yet; it
-  keeps the pending answer in the record (`pending-answers`, 9.3) and the ask
-  counts as decided. The decision entry is written when the ask closes (9.8
-  rule 4).
-- Kernel, S20 (S22, D2): `expired` or `cancelled` on an ask with a pending
-  answer gives the one decision `deny, by: host, reason` and drops the pending
-  answer; an `expired` or `cancelled` item that carries an `outcome` key is
-  `unknown`.
-- Kernel, S20 (S22, D5): the provider stream's `ended` closes each open or
-  pending Claude ask or check in the same call: a pending answer becomes the
-  decision, an open one `deny, by: kernel, reason: ended`.
-- Kernel, S20 (S22-fix1): `cancel` and the restart step R4 close each open
-  or pending Claude ask or check in every turn state (`idle`, `unknown` and
-  `resume-lost` too), with its pending answer or `deny, by: kernel`; at 64
-  pending answers the owner's `answer` to a Claude ask is refused `busy` and
-  no session allow or "no owner stream" deny is sent (9.3).
+- Kernel, S20 (S22-fix1): `cancel` closes each open or pending Claude ask or
+  check in every turn state (`idle`, `unknown` and `resume-lost` too), with its
+  pending answer or `deny, by: kernel, reason: cancel` (9.3).
 - Kernel, S20 (S24, AC8 b): `say`, `interrupt` with a replacement, R5
   Continue and the owner's `answer` with `allow` do not read `access/` again,
   and a turn that ends starts the next queued input without reading it (9.7,
@@ -1042,10 +1023,6 @@ this place (S14 and S19 built the rest).
   `{field: "model"}` (9.2); today `start` checks a profile of either backend
   without `model` as `"default"`.
 - Kernel, S20 (S24): case 74, revoking `access/` (9.7).
-- Kernel, S20: at most 64 open Claude asks and checks per session (the
-  record's `open`, 9.3); one past that is denied at once, `by: kernel`, reason
-  `busy`, so `cancel`, R4 and `ended` write at most 64 decisions in one call.
-  The rule and its case come with that code (9.3 Sizes, 9.6).
 
 **Code to change (a later slice).** Owed, and not the rule above.
 
@@ -1155,7 +1132,7 @@ this place (S14 and S19 built the rest).
 - An ask goes to the owner when it has an attached stream; otherwise, and for
   an `agent:` owner, it is denied. Kernel asks expire after `ask-expiry`
   (an `ask` deadline of the session's timer, 9.3; at the timer cap the ask is denied `timers`); Claude asks after 10 minutes (the host). A kernel ask that reaches its `ask-expiry` is denied, reason `expired`, as the host denies a Claude ask at its 10 minutes (4.5); an `ask-expiry` of 0 denies at once. The session is not allowed anything by it.
-- For Claude, rules went in as flags; the broker sees only asks. The kernel's own answer to a Claude ask (the owner's, a session allow, the "no owner stream" deny above) is kept as a pending answer; its decision entry is written when the ask closes (9.8 rule 4).
+- For Claude, rules went in as flags; the broker sees only asks. The kernel's own answer to a Claude ask (the owner's, a session allow, the "no owner stream" deny above) is kept as a pending answer; its decision entry is written when the ask closes (9.8 rule 4). A session holds at most 64 open asks and checks with the pending answers counted in (9.3); an ask past that is denied at once, `by: kernel`, reason `busy`.
 - **Session allows.** An answer `{allow, for: session}` adds a rule to the
   session's `allows`: the tool's name, and for a file tool the workspace it
   is in (`Edit(<workspace>/**)`). The rule names that reach for the page. The
@@ -1260,7 +1237,7 @@ below is an `unknown` entry, never an ask or a decision.
    that answer as the ask's **pending answer** (`{outcome, by, for?, reason?}`,
    in the session record, so it survives a restart, 9.3) and writes no decision entry yet.
    While an ask has a pending answer it counts as decided: a second `answer`
-   is refused `{field: "ask"}` (case 9), no session allow, `ask-expiry` or
+   is refused `{field: "ask"}` (case 9), no session allow or
    restart step answers it again, and it is not counted as open for the
    owner. The ask closes:
    - at `answered` with an `outcome`: when it equals the pending answer's
@@ -1295,8 +1272,7 @@ below is an `unknown` entry, never an ask or a decision.
    `outcome` key; the ask stays as it was, open or pending. Any other or
    missing `by`, or one that is not a string, is `unknown`. An `unknown`
    item leaves the ask as it was, open or pending, so a later `expired` or
-   `cancelled` still gives its decision (S19; until S20 builds the code to change of 9.4, `answered`
-   is `unknown` too). An `ask-resolved` whose `id` is not open or pending is
+   `cancelled` still gives its decision (S19). An `ask-resolved` whose `id` is not open or pending is
    `unknown`. A kernel ask (OpenAI) is unchanged: its decision is written at
    its answer. Stage E builds only the provider's side (10).
 5. A line that is not valid UTF-8 is `unknown`. Its `raw` is the line as a
@@ -1865,7 +1841,7 @@ of `spec/VISION.md`.
     with that outcome, and gives the decision
     entry from `outcome` otherwise (`by: checked` on a `direct: false`
     stream, else `host`); a missing or bad `outcome`, `none` on an ask or
-    `allow` on a check is `unknown` (S19 reads every `answered` as `unknown`, 9.4). An `ask` or
+    `allow` on a check is `unknown`. An `ask` or
     `check` whose `tool` is not a string is `unknown`. A part group whose joined
     whole is of kind `part` reads as `unreadable`.
 73. (9.3, 9.4, 9.8 rule 4, 4.5) Kernel crate, with the fake `claude` or
@@ -1879,7 +1855,11 @@ of `spec/VISION.md`.
     stream's `ended` with one open ask and one with a pending answer: two
     decisions, `deny, by: kernel, reason: ended` and the pending answer. (g)
     `cancel` and the restart step with the same two asks give the same two
-    kinds.
+    kinds. (h) The cap: with 64 open asks and checks, a 65th is denied at once,
+    `deny, by: kernel, reason: busy`, its ask and decision entries written in
+    that call and a `Request::Answer` deny sent; it never opens, a later
+    `ask-resolved` of it is `unknown`, and the stream's `ended` then writes 64
+    decisions. With 64 pending answers the owner's `answer` is refused `busy`.
 74. (9.7 "Revoking", 9.1) Kernel crate: an owner starts a session on
     profile `p` and queues one input; then `p` leaves `access/<owner>`. `say`,
     `interrupt` with a replacement, Continue on an `unknown` session and

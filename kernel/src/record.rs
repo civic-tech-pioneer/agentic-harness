@@ -5,6 +5,7 @@ use crate::state::State;
 use crate::transcript::Meta;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 pub const ID_BYTES: usize = 64;
 pub const KEY_BYTES: usize = 256;
@@ -13,6 +14,7 @@ pub const RECORD_BYTES: usize = 524_288;
 pub const ALLOWS: usize = 64;
 pub const ALLOWS_BYTES: usize = 65_536;
 pub const ALLOW_BYTES: usize = 1024;
+pub const OPEN_ASKS: usize = 64;
 pub const STREAMS: usize = 10;
 pub const DEADLINES: usize = 64;
 const CHUNKS: usize = 16_384;
@@ -131,6 +133,35 @@ pub struct OpenAsk {
     pub expires_at: Option<u64>,
 }
 
+/// The kernel's own answer to a Claude ask, kept until the ask closes (9.8 rule 4). `i` and `kind`
+/// let the decision entry repeat the ask after a restart, without the adapter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingAnswer {
+    pub i: u64,
+    /// "ask" or "check".
+    pub kind: String,
+    pub outcome: String,
+    pub by: String,
+    #[serde(rename = "for", default, skip_serializing_if = "Option::is_none")]
+    pub for_: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl PendingAnswer {
+    /// The `decision` of the ask entry.
+    pub fn decision(&self) -> Value {
+        let mut d = serde_json::json!({"outcome": self.outcome, "by": self.by});
+        if let Some(f) = &self.for_ {
+            d["for"] = Value::String(f.clone());
+        }
+        if let Some(r) = &self.reason {
+            d["reason"] = Value::String(r.clone());
+        }
+        d
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default)]
 pub struct Record {
@@ -159,6 +190,7 @@ pub struct Record {
     pub streams: Vec<String>,
     pub deadlines: Vec<Deadline>,
     pub open: Vec<OpenAsk>,
+    pub pending_answers: BTreeMap<String, PendingAnswer>,
     pub next_index: u64,
     pub created: u64,
     pub updated: u64,
@@ -187,6 +219,7 @@ impl Default for Record {
             streams: Vec::new(),
             deadlines: Vec::new(),
             open: Vec::new(),
+            pending_answers: BTreeMap::new(),
             next_index: 1,
             created: 0,
             updated: 0,
