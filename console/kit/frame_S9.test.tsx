@@ -190,3 +190,15 @@ describe("S9-1", () => {
     expect(screen.getByRole("region").textContent).not.toContain("Already reviewed");
   });
 });
+
+describe("S9-fix5: a missing final newline", () => {
+  const rows = (o: string, n: string) => Array.from(render(<DiffView path="a" oldText={o} newText={n} />).container.querySelectorAll("[data-diff]")).map((e) => `${e.getAttribute("data-diff")} ${e.lastElementChild?.textContent}`);
+  it("ac2_no_newline_marker_under_the_side_that_lacks_it", () => {
+    expect(rows("#x", "#x\n")).toEqual(["del #x", "del No newline at end of file", "add #x"]);
+    expect(rows("safe #\n", "safe #")).toEqual(["del safe #", "add safe #", "add No newline at end of file"]);
+  });
+  it("ac2_both_lacking_is_unchanged_and_ac3_empty_sides_have_no_marker", () => {
+    expect(rows("a\nb", "a\nc")).toEqual(["same a", "del b", "add c"]);
+    expect(rows("", "p\nq")).toEqual(["add p", "add q"]);
+  });
+});
