@@ -380,3 +380,24 @@ fn ac9_thought_seconds_round_and_clear_at_result() {
         .get("thought")
         .is_none());
 }
+
+#[test]
+fn ac9_thinking_blocks_join_with_a_blank_line_and_replace_their_deltas() {
+    let mut a = ClaudeAdapter::new();
+    let delta = |t: &str| json!({"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":t}},"session_id":"s","uuid":"u"});
+    let think = |t: &str| json!({"type":"assistant","message":{"id":"m","role":"assistant","model":"x","content":[{"type":"thinking","thinking":t,"signature":"g"}]},"session_id":"s","uuid":"u"});
+    let msg = json!({"type":"assistant","message":{"id":"m","role":"assistant","model":"x","content":[{"type":"text","text":"ok"}]},"session_id":"s","uuid":"u"});
+    for (v, at) in [
+        (delta("A"), 1000),
+        (think("A"), 1100),
+        (think("B"), 2000),
+        (delta("C"), 4000),
+    ] {
+        a.line(v.to_string().as_bytes(), at);
+    }
+    let outs = a.line(msg.to_string().as_bytes(), 5000);
+    assert_eq!(
+        outs[0].entry.as_ref().unwrap().body["thought"],
+        json!({"text": "A\n\nB\n\nC", "seconds": 3})
+    );
+}
