@@ -20,10 +20,10 @@ const now = () => performance.now();
 const hasButton = (name: string) => [...document.querySelectorAll("button")].some((b) => b.textContent === name || b.getAttribute("aria-label") === name);
 const rowCount = () => document.querySelectorAll(".wa-row").length;
 
-/** Resolves when pred holds, checked at once and after every DOM change. */
 /** The page settles: one animation frame, then an idle wait, so render work left by the last step does not run inside the next sample. */
 const settled = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 30)));
 
+/** Resolves when pred holds, checked at once and after every DOM change. */
 function until(pred: () => boolean, ms = 3000): Promise<void> {
   return new Promise((resolve, reject) => {
     if (pred()) return resolve();
