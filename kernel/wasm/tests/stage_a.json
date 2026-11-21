@@ -1,0 +1,7 @@
+{
+  "steps": [
+    {"call": "sessions.list", "args": {"max": 10}, "returns": {"ok": []}},
+    {"call": "probe.start", "args": {"key": "k1", "count": 3, "every-ms": 100}, "returns": {"ok": "s1"}},
+    {"call": "probe.start", "args": {"key": "k1", "count": 3, "every-ms": 100}, "returns": {"ok": "s1"}}
+  ]
+}

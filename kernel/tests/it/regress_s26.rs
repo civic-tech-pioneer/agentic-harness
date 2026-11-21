@@ -52,7 +52,10 @@ fn deferred() -> (K, String, String, String) {
         panic!("attach opened no stream")
     };
     k.host.full.insert(o.clone());
-    assert_eq!(k.provider_item(&t, done()).unwrap().value, Item::Defer);
+    assert_eq!(
+        k.provider_item(&t, done()).unwrap().value,
+        SinkOutcome::Defer
+    );
     (k, id, t, o)
 }
 
@@ -70,7 +73,7 @@ fn regress_s26_lagging_close_resumes_the_deferred_provider() {
     k.say("alice", &id, "q1", IN).unwrap();
     assert!(k.host.calls.contains(&HostCall::Close {
         stream: o.clone(),
-        outcome: "lagging".into()
+        outcome: Outcome::Lagging
     }));
     k.host.full.clear();
     // The host then reports that stream's end to its producer.

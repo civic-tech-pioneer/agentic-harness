@@ -264,7 +264,7 @@ fn ac3_ac4_the_timer_releases_the_stream_and_the_next_say_resumes() {
     assert_eq!(
         k.host.calls[from..]
             .iter()
-            .filter(|c| matches!(c, HostCall::Open { .. }))
+            .filter(|c| matches!(c, HostCall::StartProvider { .. }))
             .count(),
         1
     );
@@ -460,8 +460,9 @@ fn ac9_a_start_that_fails_past_the_reserve_cancels_its_stream() {
     assert_eq!(
         calls,
         vec![
-            HostCall::Open {
-                stream: "t2".into()
+            HostCall::StartProvider {
+                launch: P.into(),
+                input: IN.into()
             },
             HostCall::CancelStream {
                 stream: "t2".into()
@@ -488,8 +489,9 @@ fn ac9_a_say_that_fails_after_opening_cancels_its_stream() {
     assert_eq!(
         host_calls(&k, from),
         vec![
-            HostCall::Open {
-                stream: "t2".into()
+            HostCall::StartProvider {
+                launch: P.into(),
+                input: "x".repeat(2000)
             },
             HostCall::CancelStream {
                 stream: "t2".into()

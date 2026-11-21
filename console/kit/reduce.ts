@@ -1,5 +1,5 @@
 // TECHNICAL 18.3: turns one kernel stream message into the session view (rows and dock fields).
-import { askArg, type Internal, type Row, type SessionView, type ToolCall, type TurnState, type Ask } from "./model";
+import { askArg, type Decision, type Internal, type Row, type SessionView, type ToolCall, type TurnState, type Ask } from "./model";
 import { parse, type CallPatch, type TurnExtra } from "./wire";
 
 type ExploredRow = Extract<Row, { kind: "explored" }>;
@@ -155,6 +155,26 @@ function syncAsks(v: SessionView, x: Internal, toolCallId: string, decided?: { a
   }
 }
 
+/** The index of the entry each open ask came from (9.4: a short decision names its ask entry by it); kept apart from the view, which stays as it was. */
+const askAt = new WeakMap<Ask, number>();
+const decisionWord = (d: Decision) => `${d.outcome === "allow" ? "Allowed" : d.outcome === "deny" ? "Denied" : "No objection"}${d.for ? " for this session" : ""}`;
+
+/** A decision entry `i` of ask `a` (which carries its decision): closes the id, shows the card of the ask's call decided, and adds the decision line. */
+function decide(v: SessionView, x: Internal, i: number, a: Ask, call: CallPatch | undefined) {
+  const d = a.decision!;
+  const open = x.open ?? [];
+  const title = call?.title ?? open.find((o) => o.ask.id === a.id)?.title ?? askArg(a.input) ?? a.toolCallId;
+  // 9.4: the decision repeats the ask, so a page that starts at it (no ask of this call seen open) still draws the ask's card
+  if (!open.some((o) => o.ask.toolCallId === a.toolCallId)) { upsertCall(v, call ?? { id: a.toolCallId }, undefined, true); toToolRow(v, a.toolCallId); }
+  // the entry removed may be open on another call than the decision names: that card is synced too, and the decided card keeps its own call
+  const gone = open.find((o) => o.ask.id === a.id);
+  const own = ownCall(call, a, gone?.ask.toolCallId === a.toolCallId ? gone.call : undefined);
+  x.open = open.filter((o) => o.ask.id !== a.id);
+  for (const o of open) if (o.ask.id === a.id && o.ask.toolCallId !== a.toolCallId) syncAsks(v, x, o.ask.toolCallId);
+  syncAsks(v, x, a.toolCallId, { ask: a, call: own });
+  push(v, { kind: "decision", key: `e${i}`, i, who: d.by, what: `${decisionWord(d)}: ${title}`, ...(d.reason !== undefined ? { reason: d.reason } : {}) });
+}
+
 /** The entry's own call, as the card draws it (9.8). */
 function ownCall(p: CallPatch | undefined, a: Ask, kept?: ToolCall): ToolCall {
   if (!p && kept) return kept;
@@ -186,7 +206,7 @@ function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra
   const prev = v.turn;
   v.turn = state;
   if (state.state === "unknown" || state.state === "resume-lost" || state.state === "idle") markEnded(v, x);
-  if (state.state !== "idle" || prev?.state === "idle") return;
+  if (state.state !== "idle" || !prev || prev.state === "idle") return;
   const key = `f:${v.rows[v.rows.length - 1]?.key ?? ""}`;
   if (hasKey(key)) return;
   push(v, { kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}) });
@@ -250,6 +270,53 @@ export function settle(view: SessionView, n: number, entry: string | null): Sess
   return { ...view, rows: uniqueKeys(rows) };
 }
 
+/**
+ * 9.4: the ask entry a short decision named, read back (`entry`, or null when it could not be read), draws the card and the decision line at the
+ * placeholder's place. An entry that is not an undecided ask of the same `id` and `kind` at `askI` draws nothing: the placeholder stays as it is.
+ * It touches the placeholder and the card it draws only; no ask opens or closes, so `openAsks`, the turn and a newer ask's card stay.
+ */
+export function settleShort(view: SessionView, i: number, entry: string | null): SessionView {
+  const sh = view.x?.shorts?.find((s) => s.i === i);
+  if (!sh) return view;
+  const x: Internal = { ...view.x, shorts: view.x!.shorts!.filter((s) => s.i !== i) };
+  let m: ReturnType<typeof parse> | undefined;
+  try { if (entry !== null) m = parse(entry); } catch { m = undefined; }
+  if (m?.t !== "ask" || m.i !== sh.askI || m.ask.id !== sh.id || m.ask.kind !== sh.kind || m.ask.decision || !view.rows.some((r) => r.key === `e${i}` && r.kind === "decision")) return { ...view, x };
+  let idx = indexes.get(view.rows);
+  if (!idx) { idx = build(view.rows); indexes.set(view.rows, idx); }
+  I = idx;
+  indexes.delete(view.rows);
+  I.changed = false; I.dup = false;
+  const v: SessionView = { ...view, x };
+  const a = m.ask;
+  const decided: Ask = { ...a, decision: sh.decision };
+  const f0 = find(v, a.toolCallId);
+  const shown = f0 && f0.n === undefined ? v.rows[f0.at] : undefined;
+  // a row that shows an ask (an open one, or a later entry's decided one) is another entry's card: it stays as it is
+  if (!(x.open ?? []).some((o) => o.ask.toolCallId === a.toolCallId) && !(shown?.kind === "tool" && shown.ask)) {
+    const cur = f0?.call;
+    upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true);
+    toToolRow(v, a.toolCallId);
+    const f = find(v, a.toolCallId)!;
+    const r = v.rows[f.at]!;
+    if (r.kind === "tool") {
+      const own = ownCall(m.call, a);
+      // the stream's later status and output stay (as `syncAsks` keeps them for one entry); the ask's call gives the rest
+      const call: ToolCall = cur ? { ...own, status: cur.status, content: [...own.content.filter((b) => b.type === "diff"), ...cur.content.filter((b) => b.type !== "diff")], ...("rawOutput" in cur ? { rawOutput: cur.rawOutput } : {}) } : own;
+      const { checking: _c, ...rest } = r;
+      put(v, f.at, { ...rest, call, ask: decided });
+    }
+    const at = f.at, k = keyAt(`e${i}`);
+    // a card the page did not hold stands at the placeholder's place
+    if (!cur && at > k && k >= 0) { const row = v.rows[at]!; splice(v, at, 1); splice(v, k, 0, row); }
+  }
+  const k = keyAt(`e${i}`), row = v.rows[k];
+  if (row?.kind === "decision") put(v, k, { ...row, what: `${decisionWord(sh.decision)}: ${m.call?.title ?? askArg(a.input) ?? a.toolCallId}` });
+  if (I.dup) { v.rows = uniqueKeys(v.rows); I = build(v.rows); }
+  indexes.set(v.rows, I);
+  return v;
+}
+
 export function reduce(view: SessionView, message: string): SessionView {
   const m = parse(message);
   const i = "i" in m ? m.i : undefined;
@@ -304,29 +371,26 @@ export function reduce(view: SessionView, message: string): SessionView {
       break;
     }
     case "tool": upsertCall(v, m.call, m.i); break;
+    case "short": {
+      // 9.4: the decision closes the id at once; with the ask entry at `askI` open in the view it is exactly the full decision for that ask
+      const held = (x.open ?? []).find((o) => o.ask.id === m.id && o.ask.kind === m.kind && askAt.get(o.ask) === m.askI);
+      if (held) { decide(v, x, m.i, { ...held.ask, decision: m.decision }, undefined); break; }
+      const open = x.open ?? [];
+      x.open = open.filter((o) => o.ask.id !== m.id);
+      for (const o of open) if (o.ask.id === m.id) syncAsks(v, x, o.ask.toolCallId);
+      x.shorts = [...(x.shorts ?? []), { i: m.i, askI: m.askI, id: m.id, kind: m.kind, decision: m.decision }];
+      push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: m.decision.by, what: `${decisionWord(m.decision)}: ${m.id}`, ...(m.decision.reason !== undefined ? { reason: m.decision.reason } : {}) });
+      break;
+    }
     case "ask": {
       const a = m.ask, d = a.decision;
       const open = x.open ?? [];
-      if (d) {
-        const title = m.call?.title ?? open.find((o) => o.ask.id === a.id)?.title ?? askArg(a.input) ?? a.toolCallId;
-        // 9.4: the decision repeats the ask, so a page that starts at it (no ask of this call seen open) still draws the ask's card
-        if (!open.some((o) => o.ask.toolCallId === a.toolCallId)) { upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true); toToolRow(v, a.toolCallId); }
-        // the entry removed may be open on another call than the decision names: that card is synced too, and the decided card keeps its own call
-        const gone = open.find((o) => o.ask.id === a.id);
-        const own = ownCall(m.call, a, gone?.ask.toolCallId === a.toolCallId ? gone.call : undefined);
-        x.open = open.filter((o) => o.ask.id !== a.id);
-        for (const o of open) if (o.ask.id === a.id && o.ask.toolCallId !== a.toolCallId) syncAsks(v, x, o.ask.toolCallId);
-        syncAsks(v, x, a.toolCallId, { ask: a, call: own });
-        const word = d.outcome === "allow" ? "Allowed" : d.outcome === "deny" ? "Denied" : "No objection";
-        push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: d.by,
-          what: `${word}${d.for ? " for this session" : ""}: ${title}`,
-          ...(d.reason !== undefined ? { reason: d.reason } : {}) });
-        break;
-      }
+      if (d) { decide(v, x, m.i, a, m.call); break; }
       // 9.8: the card is the ask's own call, whatever the stream said of the id before (an entry already open on the call keeps its card)
       if (!open.some((o) => o.ask.toolCallId === a.toolCallId && o.ask.id !== a.id)) upsertCall(v, m.call ?? { id: a.toolCallId }, undefined, true);
       toToolRow(v, a.toolCallId);
       const moved = open.find((o) => o.ask.id === a.id && o.ask.toolCallId !== a.toolCallId)?.ask.toolCallId;
+      askAt.set(a, m.i);
       x.open = [...open.filter((o) => o.ask.id !== a.id), { ask: a, title: m.call?.title ?? askArg(a.input) ?? a.toolCallId, call: ownCall(m.call, a) }];
       if (moved !== undefined) syncAsks(v, x, moved);
       syncAsks(v, x, a.toolCallId);

@@ -101,7 +101,7 @@ fn opens(k: &K) -> usize {
     k.host
         .calls
         .iter()
-        .filter(|c| matches!(c, HostCall::Open { .. }))
+        .filter(|c| matches!(c, HostCall::StartProvider { .. }))
         .count()
 }
 

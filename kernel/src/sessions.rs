@@ -14,7 +14,7 @@ use crate::profile::{parse_profile, Backend};
 use crate::queue::{check_input, Queue, Queued};
 use crate::quota::{segment, Change, Limits, Metered, Past, Usage};
 use crate::record::{
-    check_key, check_title, Allow, Deadline, OpenAsk, PendingAnswer, Record, Stop, Turn,
+    check_key, check_title, Allow, Deadline, OpenAsk, PendingAnswer, Probe, Record, Stop, Turn,
     ALLOW_BYTES, ID_BYTES, OPEN_ASKS,
 };
 use crate::state::State;
@@ -32,14 +32,17 @@ fn next_due(deadlines: &[Deadline], now: u64) -> Option<u64> {
     deadlines.iter().filter(|d| d.at > now).map(|d| d.at).min()
 }
 
-/// The longest delay the host's `timers.after` takes (7, `bad-delay`): 30 days.
-const MAX_TIMER_MS: u64 = 2_592_000_000;
-
 /// The kernel's own timer for the restart pass (R2).
 const RESTART: &str = "restart";
 /// The deadline of the 10-minute provider release (9.3, 9.5), and its delay.
 const IDLE: &str = "idle";
 const IDLE_MS: u64 = 600_000;
+/// The deadline of a probe session's next entry (9.9).
+const PROBE: &str = "probe";
+/// What a probe session refuses: it has no provider to take input (9.9).
+fn no_input() -> KernelError {
+    KernelError::Backend("a probe session takes no input".to_string())
+}
 
 /// What the kernel needs of the host (2.1): the generation, the clock, ids, timers, requests.
 pub trait Host {
@@ -49,30 +52,72 @@ pub trait Host {
     fn now(&mut self) -> u64;
     /// A fresh session id, at most 64 bytes.
     fn new_id(&mut self) -> String;
+    /// The kernel never passes more than `MAX_TIMER_MS` (2.1, "The kernel's side of the seam").
     fn timer_after(&mut self, id: &str, delay_ms: u64);
     fn timer_cancel(&mut self, id: &str);
     /// What goes to the provider: recorded, never run.
     fn request(&mut self, r: Request);
-    /// Opens a provider stream for a Claude session (3): its id, as the host's items will carry it.
-    fn open_stream(&mut self) -> String;
+    /// `streams.open()`: a new owner stream (9.4).
+    fn open_stream(&mut self) -> Result<String, StreamError>;
+    /// The provider's `start` (2.2): the provider stream of a new Claude session; `Err(cause)`
+    /// when none is linked (stage A).
+    fn start_provider(&mut self, launch: &str, input: &str) -> Result<String, String>;
     /// The consumer's `cancel` of a stream the kernel holds.
     fn cancel_stream(&mut self, stream: &str);
-    /// The producer's `push` on a stream the kernel opened (an owner stream): `Full` when it is at its window (3).
-    fn push(&mut self, stream: &str, value: Value) -> Result<(), Full>;
+    /// The producer's `push` on a stream the kernel opened (an owner stream) (3, 2.1).
+    fn push(&mut self, stream: &str, value: Value) -> Result<(), StreamError>;
     /// The producer's `close` of a stream the kernel opened, with its outcome.
-    fn close_stream(&mut self, stream: &str, outcome: &str);
+    fn close_stream(&mut self, stream: &str, outcome: Outcome);
     /// The consumer's `resume` of a stream the kernel holds; it does nothing for one that is not deferred (3).
     fn resume_stream(&mut self, stream: &str);
 }
 
-/// A `push` past the stream's window (3, "In flight").
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Full;
+/// The longest delay the kernel asks of `timers.after`: 30 days (7).
+pub const MAX_TIMER_MS: u64 = 30 * 24 * 60 * 60 * 1000;
 
-/// What an item call answers the host (3, "Deferred batch"): `Defer` is a call rolled back whole.
+/// host 19's `stream-error`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Item {
-    Done,
+pub enum StreamError {
+    NotYours,
+    UnknownStream,
+    /// A `push` past the stream's window (3, "In flight"), or `open` past 32 streams.
+    Full,
+    TooLarge,
+}
+
+impl StreamError {
+    /// The host's code, as the WIT enum spells it.
+    pub fn code(&self) -> &'static str {
+        match self {
+            StreamError::NotYours => "not-yours",
+            StreamError::UnknownStream => "unknown-stream",
+            StreamError::Full => "full",
+            StreamError::TooLarge => "too-large",
+        }
+    }
+
+    fn cause(&self) -> &'static str {
+        match self {
+            StreamError::NotYours => "this call carries no live connection",
+            StreamError::UnknownStream => "the stream is gone",
+            StreamError::Full => "the client holds all its streams",
+            StreamError::TooLarge => "the item is too large",
+        }
+    }
+}
+
+/// The `outcome` a producer's `close` passes (2.1): the three the kernel uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    Closed,
+    Replaced,
+    Lagging,
+}
+
+/// What an items call answers the host (3, "Deferred batch"): `Defer` is a call rolled back whole.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SinkOutcome {
+    Taken,
     Defer,
 }
 
@@ -104,14 +149,37 @@ pub enum Request {
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostCall {
     Generation,
-    TimerAfter { id: String, delay_ms: u64 },
-    TimerCancel { id: String },
+    TimerAfter {
+        id: String,
+        delay_ms: u64,
+    },
+    TimerCancel {
+        id: String,
+    },
     Request(Request),
-    Open { stream: String },
-    CancelStream { stream: String },
-    Push { stream: String, value: Value },
-    Close { stream: String, outcome: String },
-    Resume { stream: String },
+    /// `streams.open()`: an owner stream.
+    Open {
+        stream: String,
+    },
+    /// The provider's `start`: a Claude session's provider stream.
+    StartProvider {
+        launch: String,
+        input: String,
+    },
+    CancelStream {
+        stream: String,
+    },
+    Push {
+        stream: String,
+        value: Value,
+    },
+    Close {
+        stream: String,
+        outcome: Outcome,
+    },
+    Resume {
+        stream: String,
+    },
 }
 
 /// A host for tests: a settable clock and generation, ids `s1`, `s2`, ..., and a log of what was asked.
@@ -124,6 +192,12 @@ pub struct FakeHost {
     pub calls: Vec<HostCall>,
     /// Streams whose window is full: a push to one fails `Full`.
     pub full: BTreeSet<String>,
+    /// Streams that have ended: a push to one fails `UnknownStream`.
+    pub gone: BTreeSet<String>,
+    /// `open_stream` fails with this.
+    pub open_error: Option<StreamError>,
+    /// `start_provider` fails: no provider is linked.
+    pub no_provider: bool,
 }
 
 impl FakeHost {
@@ -157,22 +231,39 @@ impl Host for FakeHost {
     fn request(&mut self, r: Request) {
         self.calls.push(HostCall::Request(r));
     }
-    fn open_stream(&mut self) -> String {
+    fn open_stream(&mut self) -> Result<String, StreamError> {
+        if let Some(e) = self.open_error {
+            return Err(e);
+        }
         self.next_stream += 1;
         let stream = format!("t{}", self.next_stream);
         self.calls.push(HostCall::Open {
             stream: stream.clone(),
         });
-        stream
+        Ok(stream)
+    }
+    fn start_provider(&mut self, launch: &str, input: &str) -> Result<String, String> {
+        if self.no_provider {
+            return Err("no Claude Code provider is linked".to_string());
+        }
+        self.next_stream += 1;
+        self.calls.push(HostCall::StartProvider {
+            launch: launch.to_string(),
+            input: input.to_string(),
+        });
+        Ok(format!("t{}", self.next_stream))
     }
     fn cancel_stream(&mut self, stream: &str) {
         self.calls.push(HostCall::CancelStream {
             stream: stream.to_string(),
         });
     }
-    fn push(&mut self, stream: &str, value: Value) -> Result<(), Full> {
+    fn push(&mut self, stream: &str, value: Value) -> Result<(), StreamError> {
+        if self.gone.contains(stream) {
+            return Err(StreamError::UnknownStream);
+        }
         if self.full.contains(stream) {
-            return Err(Full);
+            return Err(StreamError::Full);
         }
         self.calls.push(HostCall::Push {
             stream: stream.to_string(),
@@ -180,10 +271,10 @@ impl Host for FakeHost {
         });
         Ok(())
     }
-    fn close_stream(&mut self, stream: &str, outcome: &str) {
+    fn close_stream(&mut self, stream: &str, outcome: Outcome) {
         self.calls.push(HostCall::Close {
             stream: stream.to_string(),
-            outcome: outcome.to_string(),
+            outcome,
         });
     }
     fn resume_stream(&mut self, stream: &str) {
@@ -252,6 +343,17 @@ pub struct Kernel<S: State, H: Host> {
     /// While an item call may still be dropped whole (3, "Deferred batch"), the host calls it
     /// makes outside `request` wait here until the call commits.
     held: Option<Vec<Effect>>,
+}
+
+/// What one item of an items call came to (`item_step`).
+enum Step {
+    Defer,
+    Done {
+        pushes: Vec<Push>,
+        requests: Vec<Request>,
+        /// `(session, stream)` of an owner stream whose push failed other than `full`: it has ended.
+        gone: Vec<(String, String)>,
+    },
 }
 
 /// A host call an item call makes that must not happen when the call defers.
@@ -332,6 +434,13 @@ struct Kept {
 struct StreamKey {
     session: String,
     kind: String,
+    /// The last `seq` an items call took on this stream (2.1, case 7); 0 when none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    last: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 const PROVIDER: &str = "provider";
@@ -576,19 +685,40 @@ impl<S: State, H: Host> Kernel<S, H> {
         None
     }
 
-    /// Opens the session's provider stream: the host's id, its `stream/` key, the record's
+    /// The launch the provider's `start` gets until stage B builds 4.1's document: the profile JSON.
+    fn launch_of(&mut self, profile: &str) -> String {
+        self.state
+            .get(&format!("profile/{profile}"))
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default()
+    }
+
+    /// The provider's `start` (2.2): the stream of a new Claude session. It comes before the
+    /// call's first write, so a provider that is not linked leaves nothing behind. A call that
+    /// then fails cancels the stream (`guarded`).
+    fn start_provider(&mut self, profile: &str, input: &str) -> Result<String, KernelError> {
+        let launch = self.launch_of(profile);
+        let t = self
+            .host
+            .start_provider(&launch, input)
+            .map_err(KernelError::Backend)?;
+        self.opened = Some(t.clone());
+        Ok(t)
+    }
+
+    /// Registers the session's provider stream `t`: its `stream/` key, the record's
     /// `streams`, and one slot of the kernel and of the owner. `slots` is saved by the caller.
     fn open_provider(
         &mut self,
+        t: String,
         rec: &mut Record,
         slots: &mut Slots,
         a: &mut Acct,
     ) -> Result<(), KernelError> {
-        let t = self.host.open_stream();
-        self.opened = Some(t.clone());
         let key = StreamKey {
             session: rec.id.clone(),
             kind: PROVIDER.to_string(),
+            last: 0,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         self.state
@@ -620,6 +750,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         true
     }
 
+    /// `timers.after`, for at most `MAX_TIMER_MS`: a later deadline is armed at the limit, and
+    /// that firing arms the rest (2.1, 7).
     fn set_timer(&mut self, id: &str, delay_ms: u64) {
         let delay_ms = delay_ms.min(MAX_TIMER_MS);
         match &mut self.held {
@@ -1333,14 +1465,12 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// Pushes, in order, to the live stream of their session (`live`, from its record or its key).
-    /// Whether the stream was full: it gets no more.
-    fn send_live(&mut self, pushes: &[Push], live: Option<&str>) -> bool {
-        let Some(o) = live else {
-            return false;
-        };
+    /// The first failure: the stream gets no more.
+    fn send_live(&mut self, pushes: &[Push], live: Option<&str>) -> Option<StreamError> {
+        let o = live?;
         pushes
             .iter()
-            .any(|p| self.host.push(o, on_wire(&p.value)).is_err())
+            .find_map(|p| self.host.push(o, on_wire(&p.value)).err())
     }
 
     /// Outside an item call a full owner stream cannot be waited for: it is closed `lagging` (9.4).
@@ -1348,15 +1478,24 @@ impl<S: State, H: Host> Kernel<S, H> {
         let (Some(o), Some(first)) = (live, pushes.first()) else {
             return;
         };
-        if self.send_live(pushes, live) {
-            self.drop_live(&first.session.clone(), o, "lagging");
+        if let Some(e) = self.send_live(pushes, live) {
+            self.drop_failed(&first.session.clone(), o, e);
         }
     }
 
-    /// Closes the session's live owner stream and takes its keys and its place in `streams`, in one
-    /// write of its own: its bytes go from the record and both accounts.
-    fn drop_live(&mut self, session: &str, stream: &str, outcome: &str) {
-        self.host.close_stream(stream, outcome);
+    /// A push to the live owner stream failed: `Full` closes it `lagging`; any other failure
+    /// means it has ended meanwhile, so it is dropped and nothing is closed (2.1).
+    fn drop_failed(&mut self, session: &str, stream: &str, e: StreamError) {
+        let outcome = (e == StreamError::Full).then_some(Outcome::Lagging);
+        self.drop_live(session, stream, outcome);
+    }
+
+    /// Closes the session's live owner stream (when `outcome` says so) and takes its keys and its
+    /// place in `streams`, in one write of its own: its bytes go from the record and both accounts.
+    fn drop_live(&mut self, session: &str, stream: &str, outcome: Option<Outcome>) {
+        if let Some(outcome) = outcome {
+            self.host.close_stream(stream, outcome);
+        }
         self.open_meter();
         self.state.delete(&stream_key(stream));
         self.state.delete(&format!("live/{session}"));
@@ -1397,6 +1536,123 @@ impl<S: State, H: Host> Kernel<S, H> {
             )));
         }
         Ok(())
+    }
+
+    /// 9.1: the first page of the owner's session ids with room, or the next one: its number,
+    /// its key and its ids.
+    fn owner_page(&mut self, caller: &str, acct: &Acct) -> (usize, String, Vec<String>) {
+        let n = acct
+            .owner
+            .pages
+            .iter()
+            .position(|&c| (c as usize) < OWNER_PAGE)
+            .unwrap_or(acct.owner.pages.len());
+        let page_key = owner_page_key(caller, n as u32);
+        let page: Vec<String> = if acct.owner.pages.get(n).is_some_and(|&c| c > 0) {
+            self.state
+                .get(&page_key)
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        (n, page_key, page)
+    }
+
+    /// 9.9 `probe.start`: a session whose entries the kernel writes itself, one per firing of its
+    /// timer. Like `start`: a client key, the owner's session cap and the quota.
+    pub fn probe_start(
+        &mut self,
+        caller: &str,
+        key: &str,
+        count: u32,
+        every_ms: u32,
+    ) -> Result<Called<String>, KernelError> {
+        check_key(key)?;
+        let mut slots = self.begin()?;
+        if let Some((id, _)) = self.key_get::<String>("probe", caller, key)? {
+            return Ok(Called {
+                value: id,
+                pushes: Vec::new(),
+            });
+        }
+        if !(1..=1000).contains(&count) {
+            return Err(refused("count", "count is 1 to 1000"));
+        }
+        if !(100..=60_000).contains(&every_ms) {
+            return Err(refused("every-ms", "every-ms is 100 to 60000"));
+        }
+        let mut acct = self.accounts(caller);
+        if acct.owner.sessions >= self.limits.owner_sessions {
+            return Err(KernelError::Quota(format!(
+                "{} sessions per owner",
+                self.limits.owner_sessions
+            )));
+        }
+        self.refuse_past(&acct)?;
+        if slots.timers >= self.limits.timers {
+            return Err(KernelError::Busy(format!(
+                "{} session timers",
+                self.limits.timers
+            )));
+        }
+        if acct.owner.timers >= self.limits.owner_timers {
+            return Err(KernelError::Busy(format!(
+                "{} session timers per owner",
+                self.limits.owner_timers
+            )));
+        }
+        let (n, page_key, mut page) = self.owner_page(caller, &acct);
+        let id = self.host.new_id();
+        if id.len() > ID_BYTES {
+            return Err(KernelError::Backend(
+                "the host's session id is too long".into(),
+            ));
+        }
+        let now = self.host.now();
+        let mut rec = Record {
+            id: id.clone(),
+            owner: caller.to_string(),
+            key: key.to_string(),
+            backend: "probe".to_string(),
+            title: "Numbered items".to_string(),
+            boot: slots.boot,
+            created: now,
+            updated: now,
+            owner_page: n as u32,
+            probe: Some(Probe {
+                n: 0,
+                count: u64::from(count),
+                every_ms,
+            }),
+            deadlines: vec![Deadline {
+                what: PROBE.to_string(),
+                at: now + u64::from(every_ms),
+            }],
+            ..Record::default()
+        };
+        self.sync_timer(&rec, &mut slots, &mut acct, &[], now, false);
+        slots.save(&mut self.state)?;
+        page.push(id.clone());
+        self.state
+            .put(
+                &page_key,
+                serde_json::to_vec(&page).expect("a page serializes"),
+            )
+            .map_err(|t| KernelError::TooLarge(t.0 as u64))?;
+        self.seal(&mut rec)?;
+        self.key_put("probe", caller, key, None, &id)?;
+        if acct.owner.pages.len() <= n {
+            acct.owner.pages.resize(n + 1, 0);
+        }
+        acct.owner.pages[n] += 1;
+        acct.owner.sessions += 1;
+        acct.account.sessions += 1;
+        self.finish(None, &mut acct)?;
+        Ok(Called {
+            value: id,
+            pushes: Vec::new(),
+        })
     }
 
     pub fn start(
@@ -1462,22 +1718,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if backend == Backend::Claude {
             self.check_provider(&slots, &acct)?;
         }
-        // 9.1: the first page with room, or the next one.
-        let n = acct
-            .owner
-            .pages
-            .iter()
-            .position(|&c| (c as usize) < OWNER_PAGE)
-            .unwrap_or(acct.owner.pages.len());
-        let page_key = owner_page_key(caller, n as u32);
-        let mut page: Vec<String> = if acct.owner.pages.get(n).is_some_and(|&c| c > 0) {
-            self.state
-                .get(&page_key)
-                .and_then(|b| serde_json::from_slice(&b).ok())
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        let (n, page_key, mut page) = self.owner_page(caller, &acct);
         let id = self.host.new_id();
         if id.len() > ID_BYTES {
             return Err(KernelError::Backend(
@@ -1497,10 +1738,15 @@ impl<S: State, H: Host> Kernel<S, H> {
             owner_page: n as u32,
             ..Record::default()
         };
+        // The provider's `start` comes before the first write (2.1): none linked, nothing written.
+        let stream = match backend {
+            Backend::Claude => Some(self.start_provider(profile, input)?),
+            _ => None,
+        };
         let mut work = Work::default();
         self.start_turn(&mut rec, past, input.to_string(), false, now, &mut work)?;
-        if backend == Backend::Claude {
-            self.open_provider(&mut rec, &mut slots, &mut acct)?;
+        if let Some(t) = stream {
+            self.open_provider(t, &mut rec, &mut slots, &mut acct)?;
         }
         // The first turn is active: this saves `slots` with the slot taken.
         self.sync_active(&mut rec, &mut slots, false)?;
@@ -1553,6 +1799,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         check_input(input)?;
         let mut rec = self.load_owned(caller, session)?;
+        if rec.probe.is_some() {
+            return Err(no_input());
+        }
         if !self.may_use(caller, &rec.profile) {
             return Err(Self::revoked());
         }
@@ -1575,6 +1824,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                 // the end and the oldest starts the turn. A turn with no live provider stream
                 // opens one (9.5), and resumes the Claude session it had (9.4).
                 let (open, resume) = self.plan_turn(&rec, &slots, &acct)?;
+                let stream = match open {
+                    true => Some(self.start_provider(&rec.profile, input)?),
+                    false => None,
+                };
                 let mut q = Queue::load(&mut self.state, &rec.id);
                 // The oldest leaves before the new input joins, so 32 queued inputs never refuse; the 2 MiB of stored bytes still can (`queue-full`).
                 let queued = if q.is_empty() {
@@ -1595,8 +1848,8 @@ impl<S: State, H: Host> Kernel<S, H> {
                         n
                     }
                 };
-                if open {
-                    self.open_provider(&mut rec, &mut slots, &mut acct)?;
+                if let Some(t) = stream {
+                    self.open_provider(t, &mut rec, &mut slots, &mut acct)?;
                 }
                 let timed = self.idle_after(&mut rec, &mut slots, &mut acct, was, &before, now);
                 if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed) {
@@ -1662,6 +1915,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             });
         }
         let mut rec = self.load_owned(caller, session)?;
+        if rec.probe.is_some() {
+            return Err(no_input());
+        }
         let d = parse_decision(decision)?;
         if d.allow && !self.may_use(caller, &rec.profile) {
             return Err(Self::revoked());
@@ -1779,6 +2035,9 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut rec = self.load_owned(caller, session)?;
+        if rec.probe.is_some() {
+            return Err(no_input());
+        }
         let at = rec
             .allows
             .iter()
@@ -1820,6 +2079,9 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut rec = self.load_owned(caller, session)?;
+        if rec.probe.is_some() {
+            return Err(no_input());
+        }
         let mut acct = self.accounts(caller);
         let past = acct.past;
         if let Some(input) = replacement {
@@ -1849,6 +2111,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             plan = self.plan_turn(&rec, &slots, &acct)?;
         }
+        let stream = match (plan.0, replacement) {
+            (true, Some(input)) => Some(self.start_provider(&rec.profile, input)?),
+            _ => None,
+        };
         let now = self.host.now();
         if was {
             self.end_interrupted(&mut rec, past, now, &mut work)?;
@@ -1860,8 +2126,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(input) = replacement {
             self.start_turn(&mut rec, past, input.to_string(), resume, now, &mut work)?;
         }
-        if open {
-            self.open_provider(&mut rec, &mut slots, &mut acct)?;
+        if let Some(t) = stream {
+            self.open_provider(t, &mut rec, &mut slots, &mut acct)?;
         }
         let timed = self.idle_after(&mut rec, &mut slots, &mut acct, was, &before, now);
         if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed) {
@@ -1953,6 +2219,9 @@ impl<S: State, H: Host> Kernel<S, H> {
     pub fn queued(&mut self, caller: &str, session: &str) -> Result<Vec<Queued>, KernelError> {
         let mut slots = self.begin()?;
         let rec = self.read_session(caller, session, &mut slots)?;
+        if rec.probe.is_some() {
+            return Err(no_input());
+        }
         Ok(Queue::load(&mut self.state, &rec.id).inputs)
     }
 
@@ -1967,6 +2236,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         let past = acct.past;
         let mut work = Work::default();
         let mut rec = self.session(past, caller, session, &mut slots, &mut work)?;
+        if rec.probe.is_some() {
+            return Err(no_input());
+        }
         let mut q = Queue::load(&mut self.state, &rec.id);
         q.remove(n)?;
         q.save(&mut self.state, &rec.id)?;
@@ -2084,7 +2356,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.finish(None, &mut acct)?;
         // After the last write, as `cancel` does: the host ends the stream and closes the asks.
         for o in owners {
-            self.host.close_stream(&o, "closed");
+            self.host.close_stream(&o, Outcome::Closed);
         }
         self.host.request(Request::Cancel {
             session: rec.id.clone(),
@@ -2150,50 +2422,232 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(out)
     }
 
+    /// The `stream/<id>` of a provider stream; `None` for an id with no key (never opened or
+    /// ended) and for an owner stream's id, which is no provider item (9.1 `stream/<id>`).
+    fn provider_key(&mut self, stream: &str) -> Option<StreamKey> {
+        self.state
+            .get(&stream_key(stream))
+            .and_then(|b| serde_json::from_slice::<StreamKey>(&b).ok())
+            .filter(|k| k.kind == PROVIDER)
+    }
+
     /// One item of a provider's stream, by its id: `stream/<id>` is read first and names the
     /// session (9.4). An id with no key (never opened or ended) changes nothing and sends
     /// nothing; an id of an older boot is no different to the code, and reaches it only if the
     /// host breaks R1 (items come on streams of this boot). When the session's live owner stream is full, the call is
-    /// dropped whole and answers `Defer` (3, "Deferred batch").
+    /// dropped whole and answers `Defer` (3, "Deferred batch"). It does not keep a `seq`
+    /// (`provider_batch` does).
     pub fn provider_item(
         &mut self,
         stream: &str,
         event: ProviderEvent,
-    ) -> Result<Called<Item>, KernelError> {
-        self.open_meter();
-        let key = self
-            .state
-            .get(&stream_key(stream))
-            .and_then(|b| serde_json::from_slice::<StreamKey>(&b).ok());
-        // An owner stream's id is no provider item (9.1 `stream/<id>`).
-        let Some(key) = key.filter(|k| k.kind == PROVIDER) else {
+    ) -> Result<Called<SinkOutcome>, KernelError> {
+        if matches!(event, ProviderEvent::Ended) {
+            let done = self.provider_ended(stream)?;
             return Ok(Called {
-                value: Item::Done,
+                value: SinkOutcome::Taken,
+                pushes: done.pushes,
+            });
+        }
+        self.open_meter();
+        let Some(key) = self.provider_key(stream) else {
+            return Ok(Called {
+                value: SinkOutcome::Taken,
                 pushes: Vec::new(),
             });
         };
-        // 9.4, P09: an item that only forwards a delta reads `stream/<id>` and `live/<session>`.
-        if let ProviderEvent::Out(out) = &event {
-            if let Some(update) = delta_only(out) {
-                let now = self.host.now();
-                let push = Push::of(&key.session, wire_update(update, now, None));
-                let pushes = vec![push];
-                let live = self.live_stream(&key.session);
-                if self.send_live(&pushes, live.as_deref()) {
-                    return Ok(Called {
-                        value: Item::Defer,
-                        pushes: Vec::new(),
-                    });
-                }
-                return Ok(Called {
-                    value: Item::Done,
-                    pushes,
-                });
-            }
-        }
+        self.hold();
+        let step = self.item_step(stream, &key.session, event);
+        self.finish_items(step)
+    }
+
+    /// `stream-sink.ended` of a provider stream: it cannot defer, so it is applied in full (asks
+    /// closed, slot and key released, turn settled) and its pushes go to the live owner stream, or,
+    /// when that is full, close it `lagging` (9.4, outside an item call).
+    pub fn provider_ended(&mut self, stream: &str) -> Result<Called<()>, KernelError> {
+        self.open_meter();
+        let Some(key) = self.provider_key(stream) else {
+            return Ok(Called {
+                value: (),
+                pushes: Vec::new(),
+            });
+        };
         let rec = Record::load(&mut self.state, &key.session)
             .ok_or_else(|| KernelError::UnknownSession(key.session.clone()))?;
-        self.provider_on(rec, Some(stream), event, true)
+        let work = self.provider_work(rec, Some(stream), ProviderEvent::Ended)?;
+        let live = work.live.clone();
+        Ok(Called {
+            value: (),
+            pushes: self.flush(work, live.as_deref()),
+        })
+    }
+
+    /// 2.1, case 7: a numbered batch of a provider's stream. Items at or below the last `seq`
+    /// taken are dropped, the rest are taken in `seq` order, and the last `seq` is kept in
+    /// `stream/<id>`, written once. When any item defers the whole batch does (nothing is kept,
+    /// the host sends it again).
+    pub fn provider_batch(
+        &mut self,
+        stream: &str,
+        items: Vec<(u64, ProviderEvent)>,
+    ) -> Result<Called<SinkOutcome>, KernelError> {
+        self.open_meter();
+        let Some(key) = self.provider_key(stream) else {
+            return Ok(Called {
+                value: SinkOutcome::Taken,
+                pushes: Vec::new(),
+            });
+        };
+        let mut fresh: Vec<_> = items.into_iter().filter(|(n, _)| *n > key.last).collect();
+        fresh.sort_by_key(|(n, _)| *n);
+        let Some(last) = fresh.last().map(|(n, _)| *n) else {
+            return Ok(Called {
+                value: SinkOutcome::Taken,
+                pushes: Vec::new(),
+            });
+        };
+        self.hold();
+        let mut done = (Vec::new(), Vec::new(), Vec::new());
+        let mut prev = key.last;
+        for (seq, event) in fresh {
+            if seq == prev {
+                continue;
+            }
+            prev = seq;
+            self.open_meter();
+            match self.item_step(stream, &key.session, event) {
+                Ok(Step::Done {
+                    mut pushes,
+                    mut requests,
+                    gone,
+                }) => {
+                    done.0.append(&mut pushes);
+                    done.1.append(&mut requests);
+                    done.2.extend(gone);
+                }
+                other => return self.finish_items(other),
+            }
+        }
+        let kept = self.take_seq(stream, last);
+        let (pushes, requests, gone) = done;
+        self.finish_items(kept.map(|()| Step::Done {
+            pushes,
+            requests,
+            gone,
+        }))
+    }
+
+    /// Starts an items call: its writes and the host calls it makes outside `request` are held.
+    fn hold(&mut self) {
+        self.state.hold();
+        self.held = Some(Vec::new());
+    }
+
+    /// Ends an items call: dropped whole on an error or a deferral, else committed, its requests
+    /// sent and any owner stream that turned out to have ended dropped.
+    fn finish_items(
+        &mut self,
+        step: Result<Step, KernelError>,
+    ) -> Result<Called<SinkOutcome>, KernelError> {
+        let (pushes, requests, gone) = match step {
+            Err(e) => {
+                self.drop_held();
+                return Err(e);
+            }
+            Ok(Step::Defer) => {
+                self.drop_held();
+                return Ok(Called {
+                    value: SinkOutcome::Defer,
+                    pushes: Vec::new(),
+                });
+            }
+            Ok(Step::Done {
+                pushes,
+                requests,
+                gone,
+            }) => (pushes, requests, gone),
+        };
+        self.commit_held();
+        for r in requests {
+            self.host.request(r);
+        }
+        let mut seen = BTreeSet::new();
+        for (session, stream) in gone {
+            if seen.insert(stream.clone()) {
+                self.drop_live(&session, &stream, None);
+            }
+        }
+        Ok(Called {
+            value: SinkOutcome::Taken,
+            pushes,
+        })
+    }
+
+    /// Keeps `last` in `stream/<id>`, unless the batch ended the stream; its bytes go from the
+    /// record and both accounts.
+    fn take_seq(&mut self, stream: &str, last: u64) -> Result<(), KernelError> {
+        let Some(mut key) = self
+            .state
+            .get(&stream_key(stream))
+            .and_then(|b| serde_json::from_slice::<StreamKey>(&b).ok())
+        else {
+            return Ok(());
+        };
+        self.open_meter();
+        key.last = last;
+        let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
+        self.state
+            .put(&stream_key(stream), bytes)
+            .map_err(|e| KernelError::TooLarge(e.0 as u64))?;
+        match Record::load(&mut self.state, &key.session) {
+            Some(mut rec) => {
+                let mut acct = self.accounts(&rec.owner);
+                self.finish_as(Some(&mut rec), &mut acct, true)
+            }
+            None => {
+                self.state.close();
+                Ok(())
+            }
+        }
+    }
+
+    /// One item's work and its pushes to the session's live owner stream, as part of an items
+    /// call: `Defer` when that stream is full. A stream that has ended is reported in `gone`.
+    fn item_step(
+        &mut self,
+        stream: &str,
+        session: &str,
+        event: ProviderEvent,
+    ) -> Result<Step, KernelError> {
+        // 9.4, P09: an item that only forwards a delta reads `stream/<id>` and `live/<session>`.
+        let (pushes, requests, live) = match &event {
+            ProviderEvent::Out(out) if delta_only(out).is_some() => {
+                let update = delta_only(out).expect("checked");
+                let now = self.host.now();
+                let push = Push::of(session, wire_update(update, now, None));
+                (vec![push], Vec::new(), self.live_stream(session))
+            }
+            _ => {
+                let rec = Record::load(&mut self.state, session)
+                    .ok_or_else(|| KernelError::UnknownSession(session.to_string()))?;
+                let work = self.provider_work(rec, Some(stream), event)?;
+                (work.pushes, work.requests, work.live)
+            }
+        };
+        let failed = self.send_live(&pushes, live.as_deref());
+        if failed == Some(StreamError::Full) {
+            return Ok(Step::Defer);
+        }
+        let gone = live
+            .filter(|_| failed.is_some())
+            .map(|o| (session.to_string(), o))
+            .into_iter()
+            .collect();
+        Ok(Step::Done {
+            pushes,
+            requests,
+            gone,
+        })
     }
 
     /// One item of a provider's stream for a session, for tests: it goes by the session's live
@@ -2207,10 +2661,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         let rec = Record::load(&mut self.state, session)
             .ok_or_else(|| KernelError::UnknownSession(session.to_string()))?;
         let stream = self.live_provider(&rec);
-        let c = self.provider_on(rec, stream.as_deref(), event, false)?;
+        let work = self.provider_work(rec, stream.as_deref(), event)?;
+        let live = work.live.clone();
         Ok(Called {
             value: (),
-            pushes: c.pushes,
+            pushes: self.flush(work, live.as_deref()),
         })
     }
 
@@ -2251,14 +2706,17 @@ impl<S: State, H: Host> Kernel<S, H> {
             _ => rec.stream_room()?,
         }
         let queue = Queue::load(&mut self.state, &rec.id).push_value();
-        let o = self.host.open_stream();
+        let o = self
+            .host
+            .open_stream()
+            .map_err(|e| KernelError::Backend(format!("{}: {}", e.code(), e.cause())))?;
         let written = self.write_owner(&mut rec, &mut acct, &o, previous.as_deref());
         if let Err(e) = written {
-            self.host.close_stream(&o, "closed");
+            self.host.close_stream(&o, Outcome::Closed);
             return Err(e);
         }
         if let Some(p) = &previous {
-            self.host.close_stream(p, "replaced");
+            self.host.close_stream(p, Outcome::Replaced);
             // The key is gone, so the host's `ended` resumes nothing: resume here (3).
             if let Some(t) = self.live_provider(&rec) {
                 self.host.resume_stream(&t);
@@ -2273,8 +2731,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         items.push(json!({"_meta": {"watane": turn_push(&rec.turn)}}));
         items.push(json!({"_meta": {"watane": queue}}));
         for v in items {
-            if self.host.push(&o, v).is_err() {
-                self.drop_live(&rec.id, &o, "lagging");
+            if let Err(e) = self.host.push(&o, v) {
+                self.drop_failed(&rec.id, &o, e);
                 break;
             }
         }
@@ -2301,6 +2759,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let key = StreamKey {
             session: rec.id.clone(),
             kind: OWNER.to_string(),
+            last: 0,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         let too_large = |e: crate::state::TooLarge| KernelError::TooLarge(e.0 as u64);
@@ -2376,50 +2835,6 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.host.resume_stream(&t);
         }
         done
-    }
-
-    /// `item`: the call may be dropped whole when a push fails `Full` (3); its writes and host
-    /// calls are held until it commits.
-    fn provider_on(
-        &mut self,
-        rec: Record,
-        stream: Option<&str>,
-        event: ProviderEvent,
-        item: bool,
-    ) -> Result<Called<Item>, KernelError> {
-        if item {
-            self.state.hold();
-            self.held = Some(Vec::new());
-        }
-        let work = match self.provider_work(rec, stream, event) {
-            Ok(w) => w,
-            Err(e) => {
-                self.drop_held();
-                return Err(e);
-            }
-        };
-        let live = work.live.clone();
-        if !item {
-            return Ok(Called {
-                value: Item::Done,
-                pushes: self.flush(work, live.as_deref()),
-            });
-        }
-        if self.send_live(&work.pushes, live.as_deref()) {
-            self.drop_held();
-            return Ok(Called {
-                value: Item::Defer,
-                pushes: Vec::new(),
-            });
-        }
-        self.commit_held();
-        for r in work.requests {
-            self.host.request(r);
-        }
-        Ok(Called {
-            value: Item::Done,
-            pushes: work.pushes,
-        })
     }
 
     /// The item's work, on the session it names; `stream` is the provider stream it came on.
@@ -2809,12 +3224,60 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             rec.deadlines.retain(|d| !(d.at <= now && d.what == IDLE));
         }
+        if rec.deadlines.iter().any(|d| d.at <= now && d.what == PROBE) {
+            self.probe_entry(&mut rec, past, now, work)?;
+        }
         // Due deadlines of later stages stay (and keep the count); the timer follows the rest.
         self.sync_timer(&rec, slots, &mut acct, &before, now, true);
         slots.save(&mut self.state)?;
         // A restart step `settle` ran is charged as the early path does (9.3 "Past").
         let stepped = rec.boot != boot;
-        self.finish_as(Some(&mut rec), &mut acct, stepped)
+        self.finish_as(Some(&mut rec), &mut acct, stepped)?;
+        // After the last write (7): the live owner stream gets the entry, or is dropped `lagging`.
+        self.deliver(&work.pushes, rec.live.as_deref());
+        Ok(())
+    }
+
+    /// 9.9: the next entry of a probe session, stored and pushed as a provider's finished entry
+    /// is, and the next deadline until the `count`th. An entry that cannot be stored (past the
+    /// quota, 9.3) ends the run.
+    fn probe_entry(
+        &mut self,
+        rec: &mut Record,
+        past: Past,
+        now: u64,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
+        rec.deadlines.retain(|d| d.what != PROBE);
+        let Some(p) = rec.probe.clone() else {
+            return Ok(());
+        };
+        let n = p.n + 1;
+        let body = json!({
+            "role": "agent",
+            "content": [{"type": "text", "text": format!("Item {n} of {}", p.count)}],
+        });
+        let entry = NewEntry {
+            kind: "message".into(),
+            uuid: None,
+            body: body.clone(),
+        };
+        let Some(i) = self.append_loose(rec, past, entry, now, work)? else {
+            return Ok(());
+        };
+        rec.probe = Some(Probe { n, ..p.clone() });
+        rec.updated = now;
+        let shown = json!({"v": 1, "i": i, "kind": "message", "at": now, "body": body});
+        work.pushes
+            .push(Push::of(&rec.id, json!({"type": "entry", "entry": shown})));
+        if n < p.count {
+            let at = now + u64::from(p.every_ms);
+            rec.add_deadline(Deadline {
+                what: PROBE.to_string(),
+                at,
+            })?;
+        }
+        Ok(())
     }
 
     /// One firing of the pass (R2): the next session of an older boot does its step, or the pass ends.

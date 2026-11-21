@@ -1,7 +1,7 @@
 // TECHNICAL 2.3, 9.4, 18.3: the kernel as a page sees it, and the attach / behind / read / reattach loop.
 import { emptyView, type SessionView } from "./model";
 import { parse } from "./wire";
-import { safeReduce, settle, withUnknown } from "./reduce";
+import { safeReduce, settle, settleShort, withUnknown } from "./reduce";
 import { joiner, partOf } from "./join";
 
 export interface Kernel {
@@ -83,12 +83,12 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
   const healthy = () => { tries = 0; quick = false; };
 
   const fetching = new Set<number>();
-  /** Reads entry n back for its `~p<n>` row: once if it is read, at most 3 times (1 s apart) if the read fails. */
-  async function fetchEntry(n: number) {
+  /** Reads entry n back: once if it is read, at most 3 times (1 s apart) if the read fails; null when it could not be read. */
+  async function readEntry(n: number): Promise<string | null> {
     let e: string | null = null;
     for (let tries = 0; tries < 3 && e === null && !closed; tries++) {
       if (tries) await new Promise((r) => setTimeout(r, RETRY_MS));
-      if (closed) return;
+      if (closed) return null;
       try {
         e = (await kernel.read(session, n - 1, 1))[0] ?? null;
         // an entry stored as parts: read the whole group (9.4) and join it
@@ -101,7 +101,17 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
         }
       } catch { e = null; }
     }
+    return e;
+  }
+  /** Reads entry n back for its `~p<n>` row. */
+  async function fetchEntry(n: number) {
+    const e = await readEntry(n);
     if (!closed) show(settle(view, n, e));
+  }
+  /** Reads the ask entry a short decision (entry i) names; what comes back is checked against the placeholder when it is applied to the view now. */
+  async function fetchAsk(i: number, askI: number) {
+    const e = await readEntry(askI);
+    if (!closed) show(settleShort(view, i, e));
   }
   /** P14: the reducer sees every message at once, but the page is told at most once per animation frame (a 16 ms timer where there is none). */
   let frame: number | ReturnType<typeof setTimeout> | undefined;
@@ -112,7 +122,7 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
     const v = view;
     onView(v);
   };
-  const show = (v: SessionView, now = false) => {
+  const show = (v: SessionView, now = false, fetch = true) => {
     view = v;
     if (closed) return;
     // a message the view saw only in part: fetch its entry, which replaces the row
@@ -121,6 +131,12 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
       if (Number.isNaN(n) || fetching.has(n)) continue;
       fetching.add(n);
       void fetchEntry(n).finally(() => fetching.delete(n));
+    }
+    for (const sh of fetch ? v.x?.shorts ?? [] : []) {
+      const key = -sh.i; // a short decision's placeholder is read once (a negative key keeps it apart from a `~p` row)
+      if (fetching.has(key)) continue;
+      fetching.add(key);
+      void fetchAsk(sh.i, sh.askI).finally(() => fetching.delete(key));
     }
     if (now) { // the newest page of a long session shows at once (18.3), not with the next frame
       if (frame !== undefined) { if (framed) cancelAnimationFrame(frame as number); else clearTimeout(frame as ReturnType<typeof setTimeout>); }
@@ -165,7 +181,7 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
       if (closed || g !== gen) return undefined;
       pages.unshift(chunk.splice(0).flat());
       hi = lo;
-      if (pages.length === 1) show(assemble(pages).reduce(safeReduce, base), true); // the newest range shows at once; the whole is reduced once below
+      if (pages.length === 1) show(assemble(pages).reduce(safeReduce, base), true, false); // the newest range shows at once (no read: its short decisions may find their ask in an older page); the whole is reduced once below
     }
     if (closed || g !== gen) return undefined;
     show(assemble(pages).reduce(safeReduce, base));

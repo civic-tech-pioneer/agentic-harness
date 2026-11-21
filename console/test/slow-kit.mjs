@@ -17,9 +17,11 @@ export function buildOnce() {
   execSync("npm run build", { cwd: root, stdio: "inherit" });
 }
 
-export async function serveUi() {
+export async function serveUi(wataneJs = "") {
   const server = createServer(async (req, res) => {
     const p = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^(\.\.[/\\])+/, "");
+    // host 8.5 serves /watane.js; these pages run without a host, so it is an empty script and the page opens the fake
+    if (p === "/watane.js") return void res.writeHead(200, { "content-type": "text/javascript" }).end(wataneJs);
     try {
       const f = p.endsWith("/") ? p + "index.html" : p;
       const body = await readFile(join(ui, f));
