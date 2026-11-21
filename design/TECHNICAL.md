@@ -703,7 +703,17 @@ wire") are this JSON; the entry has no `activity`.
   no time (the next `say` resumes it, as after retries ran out); an idle
   release, the provider stream released at once. Nothing waits for a timer
   slot. The checked provider's judge timers (10) are the provider's own 256,
-  for at most 8 sessions' streams: unchanged.
+  for at most 8 sessions' streams: unchanged. As built (S26): the `idle`
+  deadline (`now` + 10 minutes) is set when a Claude turn moves into `idle`
+  while the session holds a live provider stream (not by `cancel`, which
+  releases at once, nor by an end that starts the next queued input), and
+  any call that starts a turn removes it. The timer and the counts
+  (`slots.timers`, `quota/<owner>` `timers`) follow the record: a session
+  holds a counted timer while its `deadlines` is not empty. A firing with
+  no due deadline changes nothing. Until stage D, a due deadline of a later
+  stage (`ask`, `retry`, `resume`) stays and keeps its count but arms no
+  timer: the timer is set for the earliest deadline still in the future. A firing whose restart step (R6) fails
+  re-arms nothing; the next call on the session settles its deadline.
 - **Quota.** An owner's bytes (`quota/<owner>`) count every key the owner
   causes: session records, `queue/`, entries, wire chunks, loop state,
   `stream/`, `live/` and its kept `key/<owner>/<key>` results (kept after a

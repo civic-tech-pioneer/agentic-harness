@@ -497,3 +497,143 @@ fn ac9_a_say_that_fails_after_opening_cancels_its_stream() {
         ]
     );
 }
+
+// Validator (S26-3 round 1): the timer follows only the deadlines this build handles.
+
+fn with_retry(k: &mut K, id: &str, at: u64) {
+    let mut r = rec(k, id);
+    r.deadlines.push(Deadline {
+        what: "retry".into(),
+        at,
+    });
+    r.save(&mut k.state).unwrap();
+}
+
+#[test]
+fn ac3_a_firing_before_the_deadline_makes_no_host_call() {
+    let mut k = kernel();
+    let id = start(&mut k, "alice", "k1");
+    k.provider(&id, done()).unwrap();
+    k.host.now = 2000;
+    let from = k.host.calls.len();
+    k.timer(&format!("s/{id}"));
+    assert_eq!(host_calls(&k, from), vec![]);
+}
+
+#[test]
+fn ac3_a_due_deadline_of_a_later_stage_stays_counted_and_arms_no_timer() {
+    let mut k = kernel();
+    let id = start(&mut k, "alice", "k1");
+    k.provider(&id, done()).unwrap();
+    with_retry(&mut k, &id, 1000 + TEN);
+    k.host.now = 1000 + TEN;
+    let from = k.host.calls.len();
+    k.timer(&format!("s/{id}"));
+    let r = rec(&mut k, &id);
+    assert_eq!(r.deadlines.len(), 1);
+    assert_eq!(r.deadlines[0].what, "retry");
+    assert!(r.streams.is_empty());
+    // the stream goes; no timer for the retry that waits for its stage
+    assert!(host_calls(&k, from)
+        .iter()
+        .all(|h| matches!(h, HostCall::CancelStream { .. })));
+    assert_eq!(slots(&mut k).timers, 1);
+    check(&mut k, &["alice"]);
+    // a second firing: nothing to do, nothing re-armed
+    let from = k.host.calls.len();
+    k.timer(&format!("s/{id}"));
+    assert_eq!(host_calls(&k, from), vec![]);
+    check(&mut k, &["alice"]);
+    // with one still to come, a firing arms the timer for it alone
+    with_retry(&mut k, &id, 1000 + TEN + 70);
+    k.timer(&format!("s/{id}"));
+    assert_eq!(
+        host_calls(&k, from),
+        vec![HostCall::TimerAfter {
+            id: format!("s/{id}"),
+            delay_ms: 70
+        }]
+    );
+    check(&mut k, &["alice"]);
+}
+
+#[test]
+fn ac2_the_timer_is_rearmed_for_the_earliest_of_several_left() {
+    let mut k = kernel();
+    let id = start(&mut k, "alice", "k1");
+    k.provider(&id, done()).unwrap();
+    with_retry(&mut k, &id, 1000 + 90);
+    with_retry(&mut k, &id, 1000 + 50);
+    let from = k.host.calls.len();
+    k.say("alice", &id, "q", "more").unwrap();
+    assert_eq!(
+        host_calls(&k, from),
+        vec![HostCall::TimerAfter {
+            id: format!("s/{id}"),
+            delay_ms: 50
+        }]
+    );
+    check(&mut k, &["alice"]);
+}
+
+#[test]
+fn ac5_a_session_that_holds_its_timer_sets_idle_at_the_cap() {
+    let mut k = kernel();
+    k.limits.owner_timers = 1;
+    let id = start(&mut k, "alice", "k1");
+    k.provider(&id, done()).unwrap();
+    with_retry(&mut k, &id, 1000 + 2 * TEN);
+    k.say("alice", &id, "q", "more").unwrap();
+    assert_eq!(timers(&mut k, "alice"), 1);
+    k.provider(&id, done()).unwrap();
+    let r = rec(&mut k, &id);
+    assert_eq!(idle_at(&r), vec![1000 + TEN]);
+    assert_eq!(r.streams.len(), 1);
+    check(&mut k, &["alice"]);
+}
+
+#[test]
+fn ac2_a_turn_the_provider_starts_removes_the_deadline() {
+    let mut k = kernel();
+    let id = start(&mut k, "alice", "k1");
+    k.provider(&id, done()).unwrap();
+    let from = k.host.calls.len();
+    k.provider(
+        &id,
+        ProviderEvent::Turn(Turn::Running {
+            since: 1000,
+            activity: None,
+        }),
+    )
+    .unwrap();
+    assert!(rec(&mut k, &id).deadlines.is_empty());
+    assert_eq!(
+        host_calls(&k, from),
+        vec![HostCall::TimerCancel {
+            id: format!("s/{id}")
+        }]
+    );
+    check(&mut k, &["alice"]);
+}
+
+#[test]
+fn ac3_a_due_deadline_of_a_later_stage_releases_nothing() {
+    let mut k = kernel();
+    let id = start(&mut k, "alice", "k1");
+    k.provider(&id, done()).unwrap();
+    with_retry(&mut k, &id, 2000);
+    k.host.now = 2000;
+    let from = k.host.calls.len();
+    k.timer(&format!("s/{id}"));
+    let r = rec(&mut k, &id);
+    assert_eq!(r.streams.len(), 1);
+    assert_eq!(r.deadlines.len(), 2);
+    assert_eq!(
+        host_calls(&k, from),
+        vec![HostCall::TimerAfter {
+            id: format!("s/{id}"),
+            delay_ms: TEN - 1000
+        }]
+    );
+    check(&mut k, &["alice"]);
+}
