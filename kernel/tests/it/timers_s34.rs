@@ -70,6 +70,22 @@ fn snapshot(k: &K) -> Vec<(String, Vec<u8>)> {
         .collect()
 }
 
+/// The bytes of the keys a session's owner is charged for (`session` only for the record's own).
+fn held(k: &K, session: bool) -> i64 {
+    let kinds: &[&str] = if session {
+        &["queue", "entries", "wire", "loop", "stream", "live"]
+    } else {
+        &[
+            "session", "queue", "entries", "wire", "loop", "stream", "live", "key", "owner",
+        ]
+    };
+    k.state
+        .entries()
+        .filter(|(key, _)| kinds.contains(&key.split('/').next().unwrap_or_default()))
+        .map(|(key, v)| (key.len() + v.len()) as i64)
+        .sum()
+}
+
 #[test]
 fn ac1_ac2_a_deadline_40_days_ahead_arms_30_then_10_then_fires() {
     let mut k = kernel();
@@ -136,12 +152,36 @@ fn fix1_ac3_an_early_firing_keeps_the_restart_step_it_ran() {
     let mut slots = Slots::load(&mut k.state);
     slots.boot = 2;
     slots.save(&mut k.state).unwrap();
-    assert!(Record::load(&mut k.state, &id).unwrap().boot < 2);
+    // The stale keys of the older boot, planted as the restart tests do.
+    let mut r = Record::load(&mut k.state, &id).unwrap();
+    assert!(r.boot < 2);
+    r.streams = vec!["x1".into()];
+    r.save(&mut k.state).unwrap();
+    let live = format!("live/{id}");
+    k.state.put("stream/x1", b"{}".to_vec()).unwrap();
+    k.state.put(&live, b"x1".to_vec()).unwrap();
+    let (o0, a0, r0) = (
+        Usage::load(&mut k.state, "quota/alice").bytes as i64,
+        Usage::load(&mut k.state, "quota").bytes as i64,
+        Record::load(&mut k.state, &id).unwrap().bytes as i64,
+    );
+    let (h0, s0) = (held(&k, false), held(&k, true));
     let from = k.host.calls.len();
     k.timer(&t);
     assert_eq!(timer_calls(&k, from), vec![(t.clone(), DAY - 1000)]);
     let r = Record::load(&mut k.state, &id).unwrap();
     assert_eq!(r.boot, 2);
+    assert!(k.state.get(&live).is_none());
+    assert!(k.state.get("stream/x1").is_none());
+    // R4/S29: both accounts take what the step wrote, the record's `bytes` its session keys.
+    let wrote = held(&k, false) - h0;
+    assert!(wrote < 0, "the step deleted the stale keys");
+    assert_eq!(
+        Usage::load(&mut k.state, "quota/alice").bytes as i64 - o0,
+        wrote
+    );
+    assert_eq!(Usage::load(&mut k.state, "quota").bytes as i64 - a0, wrote);
+    assert_eq!(r.bytes as i64 - r0, held(&k, true) - s0);
     let before = snapshot(&k);
     let from = k.host.calls.len();
     k.timer(&t);

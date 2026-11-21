@@ -388,3 +388,28 @@ fn ac7_an_item_below_the_ceiling_cannot_cross_it() {
     assert_eq!(held(&k, false), h0);
     assert_eq!(Usage::load(&mut k.state, "quota").bytes, a0);
 }
+
+/// S34-fix1, 9.3 "Past": an early session-timer firing on a record of an older boot runs the
+/// restart step at the ceiling and is charged for it; a firing cannot fail.
+#[test]
+fn fix1_an_early_timer_firing_after_a_restart_at_the_ceiling() {
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.attach("alice", &id, 0).unwrap();
+    k.provider_item("t1", ask("a1")).unwrap();
+    let mut r = rec(&mut k, &id);
+    r.deadlines.push(Deadline {
+        what: "idle".into(),
+        at: k.host.now + 86_400_000,
+    });
+    r.save(&mut k.state).unwrap();
+    k.host.generation = 2;
+    ceiling(&mut k);
+    let b = before(&mut k, "alice", &id);
+    k.timer(&format!("s/{id}"));
+    let r = rec(&mut k, &id);
+    assert_eq!(r.boot, 2);
+    assert!(matches!(r.turn, Turn::Unknown));
+    assert!(held(&k, false) > b.3, "the step wrote past the ceiling");
+    charged(&mut k, "alice", &id, &b);
+}
