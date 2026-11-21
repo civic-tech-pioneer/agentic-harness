@@ -903,6 +903,7 @@ fn ac3_oldest_out_and_new_in_still_over_the_bytes_is_queue_full_and_writes_nothi
             .unwrap_err(),
         KernelError::QueueFull
     );
+    assert_eq!(k.state.counts().puts + k.state.counts().deletes, 0);
     assert_eq!(requests(&k).len(), n0);
     assert_eq!(k.queued("alice", &id).unwrap().len(), 9);
     assert_eq!(rec(&mut k, &id).turn, Turn::Paused { until: None });
