@@ -337,7 +337,7 @@ impl<'a, S: State> Transcript<'a, S> {
     }
 }
 
-/// A stored line as a reader gets it: itself, or `unreadable` (9.4).
+/// A stored line as a reader gets it: itself with the `i` of its place, or `unreadable` (9.4).
 fn render(line: &str, pos: u64) -> String {
     let parsed: Option<Value> = serde_json::from_str(line).ok();
     if let Some(Value::Object(o)) = &parsed {
@@ -347,7 +347,12 @@ fn render(line: &str, pos: u64) -> String {
             .and_then(Value::as_str)
             .is_some_and(|k| KINDS.contains(&k));
         if v_ok && kind_ok {
-            return line.to_string();
+            if o.get("i").and_then(Value::as_u64) == Some(pos) {
+                return line.to_string();
+            }
+            let mut o = o.clone();
+            o.insert("i".into(), Value::from(pos));
+            return Value::Object(o).to_string();
         }
     }
     let v = parsed

@@ -669,3 +669,51 @@ fn ac2_append_takes_only_whole_entry_kinds() {
         assert_eq!(st.counts().puts, puts, "{k:?} writes no state");
     }
 }
+
+#[test]
+fn ac1_readable_line_takes_the_i_of_its_place() {
+    let (mut st, mut meta) = many(10, 5);
+    let mut lines = chunk_lines(&mut st, 0);
+    let good = lines[3].clone();
+    lines[0] = r#"{"v":1,"i":7,"kind":"message","at":4,"uuid":"u","body":{"a":[1,2]}}"#.into();
+    lines[4] = r#"{"v":1,"i":99999,"kind":"message","at":5,"body":{}}"#.into();
+    lines[5] = r#"{"v":1,"i":"x","kind":"tool","at":6,"body":{}}"#.into();
+    lines[9] = r#"{"v":1,"kind":"part","at":7,"body":{"n":1,"m":2,"text":"t"}}"#.into();
+    st.put(&chunk_key("s", 0), lines.join("\n").into_bytes())
+        .unwrap();
+    let mut t = Transcript::new(&mut st, "s", &mut meta);
+    for max in [1, 3, 256] {
+        let (mut after, mut seen) = (0, Vec::new());
+        loop {
+            let p = t.read(after, None, max).unwrap();
+            let Some(l) = p.entries.last() else { break };
+            after = idx(l);
+            seen.extend(p.entries.iter().map(|l| idx(l)));
+        }
+        assert_eq!(seen, (1..=10).collect::<Vec<u64>>(), "max {max}");
+        let (mut before, mut seen) = (11, Vec::new());
+        while before > 1 {
+            let p = t.read(0, Some(before), max).unwrap();
+            before = idx(&p.entries[0]);
+            seen.splice(0..0, p.entries.iter().map(|l| idx(l)));
+        }
+        assert_eq!(seen, (1..=10).collect::<Vec<u64>>(), "back max {max}");
+    }
+    let all = t.read(0, None, 256).unwrap().entries;
+    let v: Value = serde_json::from_str(&all[0]).unwrap();
+    let want = json!({"v":1,"i":1,"kind":"message","at":4,"uuid":"u","body":{"a":[1,2]}});
+    assert_eq!(v, want);
+    assert_eq!(idx(&all[4]), 5);
+    assert_eq!(idx(&all[5]), 6);
+    assert_eq!(idx(&all[9]), 10);
+    let p: Value = serde_json::from_str(&all[9]).unwrap();
+    assert_eq!(p["body"]["text"], "t");
+    assert_eq!(all[3], good, "a correct i is given byte for byte");
+    let Replay::Entries(r) = t.replay(4) else {
+        panic!("replay")
+    };
+    assert_eq!(
+        r.iter().map(|l| idx(l)).collect::<Vec<_>>(),
+        (5..=10).collect::<Vec<u64>>()
+    );
+}
