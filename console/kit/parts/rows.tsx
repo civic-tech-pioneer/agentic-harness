@@ -68,20 +68,23 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const [sent, setSent] = useState<{ ask: Ask; refused: boolean } | null>(null);
   // read when the refusal arrives, before the re-mount: did focus sit in this card (on its answered line or inside it)?
   const lineRef = useRef<HTMLElement | null>(null);
-  const focusIn = useRef(false), wasIn = useRef(false);
+  // left: the participant moved focus out of the card after the answer went out (null while the answer call runs: a loss then is the card's own)
+  const focusIn = useRef(false), wasIn = useRef(false), left = useRef<boolean | null>(null);
   const inCard = (at: Element | null) => !!at && !!lineRef.current?.parentElement?.contains(at);
   const answered = open && actions.answeredAsks?.get(ask.id) === ask;
   const asking = open && !answered;
   const send = useMemo<Actions>(() => ({ ...actions, answer: (id, d) => {
     wasIn.current = inCard(document.activeElement); // the pressed button, or the reason field, holds focus here
+    left.current = null;
     setSent({ ask: ask!, refused: false });
     let p: void | Promise<void>;
     try { p = actions.answerDrawn ? actions.answerDrawn(ask!, d) : actions.answer(id, d); } catch (e) { p = Promise.reject(e); }
+    left.current = false;
     return Promise.resolve(p).catch((e) => {
       if (isAskRefusal(e)) return;
       // focus on body counts only when this card lost it itself (the pressed button went away), never when the participant left it
       const at = document.activeElement;
-      focusIn.current = inCard(at) || (wasIn.current && (!at || at === document.body));
+      focusIn.current = inCard(at) || (wasIn.current && !left.current && (!at || at === document.body));
       setSent({ ask: ask!, refused: true });
     });
   } }), [actions, ask]);
@@ -124,7 +127,10 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
     </>
   );
   return (
-    <section className={`wa-tool card${asking ? " ask" : ""}`} data-call={call.id} data-ask={ask?.id} data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}>
+    <section className={`wa-tool card${asking ? " ask" : ""}`} data-call={call.id} data-ask={ask?.id} data-status={call.status} data-asking={asking ? "true" : undefined} aria-label={name}
+      onBlur={(e) => { const t = e.target, to = e.relatedTarget;
+        // a blur of an element that stays in the page took focus out of the card; a removed one (the pressed control) did not
+        if (left.current === false && !(to && e.currentTarget.contains(to))) queueMicrotask(() => { if (t.isConnected && left.current === false) left.current = true; }); }}>
       <ToolCard stateKey={row.key} head={head} open={call.status === "failed" || pending} initial={!!ask}>{body}</ToolCard>
     </section>
   );
