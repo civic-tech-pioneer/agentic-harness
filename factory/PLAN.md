@@ -51,6 +51,25 @@ Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
 ## Sketched
 
+### S31: the broker: session allows and rule matching (cloud, after S29 merges: kernel/)
+
+Story: a kernel maker runs `cargo test` in `kernel/` and asks are answered as 9.6 says, on the
+in-memory state with the fake host:
+1. An answer `{allow, for: session}` adds a session allow (the tool's name, and for a file tool
+   `Edit(<workspace>/**)`), never sent to `claude` as a rule; later matching Claude asks are
+   answered `allow` by the kernel, `by: session-allow`, as pending answers (S22 D1).
+2. Before answering from a session allow, the kernel reads `access/` for the session's profile;
+   a revoked profile makes the ask go to the owner instead (PO decision, S20).
+3. `take-back` removes the allow, writes an `allow` entry, and later matching calls ask again;
+   allows end with the session; the `allows` caps of 9.3 (64, 64 KiB, 1 KiB each).
+4. An ask with no attached owner stream, or for an `agent:` owner, is denied at once.
+5. The OpenAI matcher (deny, then ask, then allow; `Name(arg)` with `*` and `?`; strictest wins;
+   an unparsable rule disables its tool; an unnamed tool asks) as a pure function with tests;
+   kernel asks' `ask-expiry` deadline waits for stage D's loop.
+Also: the Waiting item "session allow on `Bash`" stays open; build it so an allow on `Bash` holds
+only its exact command prefix under 4.1's grammar (the recommended option), cheap to widen.
+Touches: `kernel/`, `design/TECHNICAL.md` (9.6 lines as built). Protects: *guard* (asks, access).
+
 ### S30: the console draws a short decision (cloud, after S23 and S29 merge: console/)
 
 Outcomes: a decision entry with `ask-i` and no ask body (S29, 9.4) draws the ask's card from the
