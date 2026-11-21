@@ -51,6 +51,10 @@ Outcomes (each a view test, plus the PO's own comparison before acceptance):
    shapes). "+ New session" is shown off (offers are out of this target, 18.8).
 6. Folded rows ("Thought for n s", "Explored · …", "Plan · n of m done") have the chevron and,
    for Explored, the search icon.
+7. *guard*: `console/src/App.test.tsx` › `the page` ›
+   `ac1_app_shows_sidebar_header_rows_dock_on_the_played_story` awaits the rows instead of asserting
+   at once (it failed "expected [] to include 'user'" on PR #9, which touched only `.claude/`; main
+   green). Added after hand-out: the PO checks it before arming S9's merge, else a fix task.
 Touches: `console/`, `ui/`. Not `kernel/`, `design/`, `factory/`.
 Fakes: the same scripted kernel; extend the script where a frame shows a state it lacks.
 Protects: *polish* (*core* for 1 and 2: an ask must read as one).
@@ -322,6 +326,11 @@ S2 writes each into the document that owns it.
   came too late. A UI slice should open its PR with auto-merge off, and the PO arms it after
   the comparison (or the foreman skill names UI slices as "PO arms").
 - 2026-11-20 watch-cloud.sh miss: fixed in the factory (watane-mods aaf89b6, synced by PR #7).
+
+- 2026-11-21 Flake: S4's `ac1_app_shows_sidebar_header_rows_dock_on_the_played_story` races the
+  played story (PR #9, rerun once). Weighed: *guard*, hits any PR; folded into S9 (owns
+  `console/`, in flight, merge armed by the PO) rather than a separate slice on the same files.
+  A cloud foreman cannot be told mid-run, so a late outcome is checked at acceptance.
 
 ## Suite time
 
