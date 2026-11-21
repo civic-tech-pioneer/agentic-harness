@@ -17,7 +17,7 @@ vi.mock("shiki/core", async () => {
 });
 
 import { MessageText } from "./parts/code";
-import { CACHE_ENTRIES, highlight, peek } from "./parts/highlight";
+import { CACHE_BYTES, CACHE_ENTRIES, highlight, peek } from "./parts/highlight";
 
 let io: { cb: (e: { isIntersecting: boolean }[]) => void; opts: IntersectionObserverInit }[] = [];
 beforeEach(async () => {
@@ -88,6 +88,16 @@ describe("MessageText", () => {
     for (let i = 0; i < CACHE_ENTRIES + 5; i++) await highlight("json", `{"k": ${i}}`);
     expect(peek("json", `{"k": 0}`)).toBeUndefined();
     expect(peek("json", `{"k": ${CACHE_ENTRIES + 4}}`)).toBeDefined();
+  });
+
+  it("ac3_cache_is_bounded_by_2_MiB_of_code_oldest_out", async () => {
+    // 35 blocks of 60 000 chars are 2 100 000 > 2 MiB (2 097 152); 34 fit, so only the oldest goes
+    expect(CACHE_BYTES).toBe(2 * 1024 * 1024);
+    const code = (i: number) => String(i).padStart(2, "0") + "+".repeat(59_998);
+    for (let i = 0; i < 35; i++) await highlight("diff", code(i));
+    expect(peek("diff", code(0))).toBeUndefined();
+    expect(peek("diff", code(1))).toBeDefined();
+    expect(peek("diff", code(34))).toBeDefined();
   });
 
   it("ac5_unknown_language_and_oversize_code_stay_plain", async () => {
