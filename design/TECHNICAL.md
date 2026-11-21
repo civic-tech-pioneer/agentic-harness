@@ -258,7 +258,7 @@ fields. Each value goes out as one `--flag=value` argument.
 | `subagents` | each exactly `{name [a-z0-9-]{1,64}, description, prompt, tools ⊆ tools, model}`; any other key is refused by name; 64 KiB in all (N9, the human, 2026-11-20: subagents stay `--agents=` flags) | `--agents=` |
 | `subagent-depth` | 0..3, default 1; 0 also removes `Task` | env `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` |
 | `skills` | `{name [a-z0-9-]{1,64}, files}`; paths under the skill folder, no `..`, 1 MiB in all; a `SKILL.md` that starts with `---` has strict frontmatter, below | the run folder's plugin, `--plugin-dir=` |
-| `sandbox` | the typed record of 4.2; required with the shell grant | the host's `--settings=` |
+| `sandbox` | the typed record of 4.2; required with the shell grant | the host's `--settings=`, which always sets `allowUnsandboxedCommands: false` itself: Claude's default is `true`, so "none of" in 4.2 means the key is written `false`, never left out (PLAN S33) |
 | `json-schema` | at most 64 KiB, valid JSON Schema | `--json-schema=` |
 | `max-turns` | 1..1000 | `--max-turns=` |
 | `max-budget-usd` | positive | `--max-budget-usd=` |
@@ -1181,8 +1181,13 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   (an `ask` deadline of the session's timer, 9.3; at the timer cap the ask is denied `timers`); Claude asks after 10 minutes (the host). A kernel ask that reaches its `ask-expiry` is denied, reason `expired`, as the host denies a Claude ask at its 10 minutes (4.5); an `ask-expiry` of 0 denies at once. The session is not allowed anything by it.
 - For Claude, rules went in as flags; the broker sees only asks. The kernel's own answer to a Claude ask (the owner's, a session allow, the "no owner stream" deny above) is kept as a pending answer; its decision entry is written when the ask closes (9.8 rule 4). A session holds at most 64 open asks and checks with the pending answers counted in (9.3); an ask past that is denied at once, `by: kernel`, reason `busy`.
 - **Session allows.** An answer `{allow, for: session}` adds a rule to the
-  session's `allows`: the tool's name, and for a file tool the workspace it
-  is in (`Edit(<workspace>/**)`). The rule names that reach for the page. The
+  session's `allows`: for a file tool the workspace it is in
+  (`Edit(<workspace>/**)`), for `Bash` the exact command with its
+  `timeout` and `run_in_background` pinned, for `TodoWrite` and an
+  `mcp__watane__<tool>` the tool's name. No other tool has one, so its asks
+  always go to the owner: a bare `Task`, `Skill`, `WebFetch` or `WebSearch`
+  would cover every subagent, skill, URL or query (the PO, 2026-11-21, S31
+  RISKs; built in S33). The rule names that reach for the page. The
   kernel keeps it; it never sends it to `claude` as a rule
   (`updatedPermissions`), so it can be taken back. Later asks that match an
   allow are answered `allow` by the kernel, with `by: session-allow`.
@@ -1210,11 +1215,21 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     passes the 4.1 allow grammar, the command has no `:`, and the input has
     no key but `command`, `description`, `timeout` and `run_in_background`
     (so `dangerouslyDisableSandbox` always goes to the owner; S31-fix1) (the
-    Waiting item "session allow on `Bash`", option (a)); any other tool its
-    name.
+    Waiting item "session allow on `Bash`", option (a)); then, when the
+    input has them, ` timeout=<n>` (`timeout` a JSON integer from 0 to
+    2^64-1, written in decimal) and ` run_in_background=<true|false>` (a
+    JSON boolean), in that order, each after one space; any other value of
+    either gives no reach. So an absent key and a key with Claude's default
+    value are different reaches, and `description` is never part of it
+    (S33). `TodoWrite` and `mcp__watane__<tool>` (a name that passes the
+    4.1 rule grammar) get their name; every other tool, `Task`, `Skill`,
+    `WebFetch`, `WebSearch` and any name not listed here among them, gets
+    none (fail closed: a tool added to an allowlist later has no session
+    allow until this list names it).
   - An ask matches an allow when its `reach` equals the allow's, byte for
-    byte (so a `Bash` allow holds only that exact command; widening to a
-    `:*` prefix is one rule here).
+    byte (so a `Bash` allow holds only that exact command with the same
+    `timeout` and `run_in_background`; widening to a `:*` prefix is one
+    rule here).
   - An allow is `{id, reach}`; its id is the index of its `given: true`
     entry. An answer `for: session` whose reach is already held adds nothing
     and writes no entry. The host gets the decision without `for`.
@@ -1626,6 +1641,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
 - [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended`; a lag clock from a failed `full` push to `ready` that reaches 10 s ends the stream `lagging`, except a stream its consumer has deferred (2.1, 3; P03).
 - [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7); the host builds each `ask`, `check` and `ask-resolved` item itself and never copies bytes of a `claude` line into one, and `ask-resolved {by: answered}` carries the `outcome` (4.5); the host pushes `ask-resolved {by: expired}` for a check it has not answered at its `expires-at` and writes nothing to stdin for it (4.5; S22).
+- [ ] `host/TECHNICAL.md` H2: the host's `--settings=` for the shell grant always writes `sandbox.allowUnsandboxedCommands: false`, never leaves it out (Claude's default is `true`); a test reads the settings the host writes (4.1, 4.2, 14; PLAN S33).
 - [ ] `host/TECHNICAL.md` H1: byte budgets for queued items (512 MiB host, 128 MiB per origin client, 16 MiB per page connection; `full`; a page connection past its budget ends `lagging`) (3; P11).
 - [ ] `host/TECHNICAL.md` tool annotations `@parallel`, `@idempotent` (6).
 - [ ] `host/TECHNICAL.md` a request that waits on a consent tells its requester `consent-pending {what}` once (7, 8).
