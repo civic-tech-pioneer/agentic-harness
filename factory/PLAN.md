@@ -61,6 +61,42 @@ compares the console and arms the merge.
 
 ## Sketched
 
+### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (waits on S32 merged; its watane half is watane S99)
+
+Story: Alice runs `watane-dev serve` with the agent kernel and the unchecked provider installed,
+opens the console, starts a session in a scratch workspace (4.6, no consent steps), types a
+message and watches the answer stream in from dev's fake `claude`: text deltas, folded thinking,
+finished entries, the status line Working then Idle. She reloads and sees the same transcript,
+nothing doubled. One story in two repositories, handed out together: watane S99 is the host half
+(H2 `claude-code.start` / `claude-session.say` with the unchecked path and
+`allowUnsandboxedCommands: false`, `host-info.generation` as S97 writes it, dev's fake `claude`,
+pkg). Interface, named the same in both sketches: the `watane:host@0.1.0` H2 and `host-info`
+additions of TECHNICAL 2.1 as watane S97/S99 write them in host 19.
+Outcomes:
+1. S32 R1 first: a kernel call that fails commits none of its writes on watane's host (a test that
+   fails today).
+2. The unchecked provider (10) starts a fake `claude` session and hands its stream to the kernel;
+   the kernel runs the launch and one `say` (9.3), items through the adapters (9.8, R2) into the
+   transcript.
+3. The console shows the turn live and after a reload; the status line follows the turn (fixes
+   the S32 "felt wrong" Idle line).
+4. The stage B cases of 17 that a single turn covers (5, 6, 8 to 12, 58 reattach part) pass on
+   watane's host.
+Carry list items folded in: R1, R2, S34 RISK 1 (the first `workspace`), the felt-wrong list.
+Touches: `kernel/`, `provider/` (see Waiting: its own repository), `wit/`, `mod.toml`, `console/`,
+`ui/`, `design/TECHNICAL.md` (2.1, 4.1, 4.6, the 15 row 4.6 names). Fakes nothing once S99
+merges; until then it builds against S99's branch. Protects: *core*. `PO arms`. Cloud.
+
+### S36: stage B, end to end: Alice steers a turn (sketch, after S35)
+
+Story: in the same session Alice answers an ask, queues a second message while the first runs,
+presses Stop, restarts `watane-dev serve` and finds the session where she left it. Covers asks
+(9.4, `answered.outcome`, checks closed `expired`), the queue, session allows, interrupt, restart
+detection through `host-info.generation`, the rest of 17's stage B cases, and the stage B budgets
+(8 fake sessions, 2 owners, 10 and 10 000 entries). Watane half (watane S100, if any host work is
+left after S99: interrupt, host ask items 4.5, the load test's fake). Carry: S34 RISK 3, S26/S28
+limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
+
 ### Stage B carry list (folded into stage B's end-to-end slices, never a slice of its own)
 
 - S34 RISK 1: write keys for build and config files beyond the list (`Cargo.toml`, `conftest.py`,
@@ -340,6 +376,9 @@ compares the console and arms the merge.
 
 ## Deputy decisions
 
+- 2026-11-21 Stage B is two end-to-end slices (S35 one turn, S36 steering, restart, budgets), each with
+  a watane half (S99, S100); S35 builds the unchecked provider in `provider/` as a self-contained mod
+  until R-B1 is answered.
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
   now named as a precondition of stage B (TECHNICAL 4.6), not a defect of the slice.
 - 2026-11-20 Adversary RISK 3 of S2: the checked provider's first judge call waits until the
@@ -485,6 +524,18 @@ S2 writes each into the document that owns it.
   it. (3) Bash: the exact command. (4) The sandbox is the boundary for Bash allow rules.
 
 ## Waiting on the human
+
+- **R-B1 The unchecked provider's own repository** (TECHNICAL 17 stage B: "its own repository,
+  built only with its `factory/config.toml` `boundaries` pointing at 14"). It does not exist;
+  creating a GitHub repository and adopting it is yours. Options: (a) create
+  `civic-tech-pioneer/<name>` and run `factory/bin/adopt.sh` (rec); (b) keep it as `provider/` in
+  this repository and change 17 (one boundary list instead of two). Meanwhile S35 builds it in
+  `provider/` as a self-contained mod (own `mod.toml`, no imports from `kernel/`), so (a) is a
+  `git subtree split`. Undo: (a) archive a repo; (b) one 17 row. Blocks only S35's merge.
+- **R-B2 Cross-vendor checks for this repository.** `factory/config.toml` has no `codex_env`, so
+  cloud foremen here implement and validate on Claude only (watane implements in Codex Cloud).
+  Options: (a) add a Codex Cloud environment for this repo and its `codex_env` (rec); (b) keep
+  Claude-only. Undo: one config line.
 
 - **N5 The factory's implementer needs a shell.** The human chose to decide at stage F. Options:
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
