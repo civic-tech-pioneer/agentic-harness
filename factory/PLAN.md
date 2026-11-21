@@ -49,9 +49,7 @@ adversaries' held cases are acceptance. Watch `npm test` time: 16.4 s on a loade
 machine at S27 against S7's 14.5 s budget; S23 sets the highlight budget per block (18.6).
 Touches: `console/`, `ui/`. Protects: *guard* (asks) and *polish*.
 
-## Sketched
-
-### S28: no session is left running with nothing driving it (cloud, after S26 merges: kernel/)
+### S28: no session is left running with nothing driving it (in flight (cloud), routine trig_01Vkr91y84XBPTb43ZP9U14m)
 
 Story: a kernel maker runs `cargo test` in `kernel/`: a provider `ended` during an active turn
 ends that turn `idle {failed {error: provider-ended}}` (closing open asks as 9.8 rule 4 and S22 D5
@@ -61,6 +59,7 @@ by a call that did not read the owner's accounts first (a type or constructor th
 S26 RISK), and `kernel/tests/it/adv_s26.rs` gets `cargo fmt` once it is no longer red-only.
 Touches: `kernel/`, `design/TECHNICAL.md` (9.3, 9.8, 16). Protects: *core* (*guard* for quota).
 
+## Sketched
 
 ### S1: the open probes of section 18 (local; blocked: worktree trust, see Waiting on the human)
 
@@ -271,7 +270,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   highlighted once complete and visible with a per-block budget (S23 sets it). User-sim ACCEPTED
   (run 1); no adversary (no code, 14 unchanged).
 
-- **S26** the kernel tracks its provider streams (PR #31, 1.3 h). A kernel maker drives a Claude
+- **S26** the kernel tracks its provider streams (PR #31, merged 2026-11-21 05:30 UTC, 1.3 h). A kernel maker drives a Claude
   session through a fake provider stream: `stream/<id>` and the record's `streams`, 8 provider
   slots (4 per owner, `busy`, case 52), the 10-minute idle release through `s/<id>`, resume with
   `resume: true` after a release, `ended`, `cancel` or restart (not for `persist: false`),
