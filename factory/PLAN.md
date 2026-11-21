@@ -52,9 +52,7 @@ Outcomes:
 Touches: `kernel/`, `design/TECHNICAL.md`, `design/FUNCTIONAL.md` if a requirement changes.
 Protects: *guard* (asks).
 
-## Sketched
-
-### S32: stage A, end to end: Alice watches a real kernel stream in the console (cloud, with watane S96)
+### S32: stage A, end to end: Alice watches a real kernel stream in the console (in flight (cloud), routine trig_01QrwDoJCFh8Q6DGBbTcF7qA, with watane S96)
 
 Story: Alice runs `watane-dev serve` with the agent kernel installed, opens its console page, and
 sees numbered items of a real kernel stream arrive in the page (18.4 layout and theme), live and
@@ -75,6 +73,8 @@ Every spec line this needs is written in this slice, not in a later one.
 Touches: `kernel/`, `wit/`, `mod.toml`, `console/`, `ui/`, `design/TECHNICAL.md`. Protects: *core*.
 Starts when watane S96 starts (it fakes nothing it can call for real once S96 merges; until then
 it builds against S96's branch or the host 19 text).
+
+## Sketched
 
 ## Done
 
@@ -596,6 +596,10 @@ S2 writes each into the document that owns it.
 
 - 2026-11-21 S1 (local): `test:slow` not run on the Mac (no global playwright); `probes.py` exits 0
   even when an expectation fails. Local foreman worked once the folder was trusted.
+
+- 2026-11-21 PO: S32 (stage A, end to end) shares `kernel/` and TECHNICAL with S34, still in flight;
+  handed out anyway to start the end-to-end path the human asked for. S34 should merge first and
+  S32 rebases on it. A cloud foreman cannot be told mid-run.
 
 ## Suite time
 
