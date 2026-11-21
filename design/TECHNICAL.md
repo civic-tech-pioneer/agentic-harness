@@ -940,9 +940,9 @@ entries it holds when that one is among them, else by reading that one entry
 (`read` with `after: ask-i - 1`, `max: 1`; when that line is a `part` with
 `m > 1`, `read` with `after: ask-i - m`, `max: m`, and join the parts). The
 ask entry is never removed while the session lives, so it is always there to
-read. Past quota, an ask entry that already carries a decision (no adapter
-makes one today, 9.8) is stored short when its `id` is open or pending, and
-is not stored otherwise. The decision of an adapter's decided entry stored short
+read. An ask entry that already carries a decision (no adapter
+makes one today, 9.8) is stored when its `id` is open or pending, and
+is not stored otherwise; past quota it is stored short. The decision of an adapter's decided entry stored short
 keeps only `outcome`, `by` and `reason` (cut at 256 bytes); any other
 value makes the entry unstored. A decided entry that is stored closes its ask: the
 id leaves `open` or `pending-answers` (as an `ask-resolved` does, 9.8 rule

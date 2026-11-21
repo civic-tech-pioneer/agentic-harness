@@ -474,3 +474,18 @@ fn ac2_an_unreadable_decision_is_not_stored_and_stops_the_turn() {
         );
     }
 }
+
+#[test]
+fn ac2_a_decided_ask_for_a_pending_id_is_stored_once_and_closes_it() {
+    let mut k = kernel();
+    let id = waiting(&mut k);
+    let n = entries(&mut k, &id).len();
+    let d = json!({"outcome": "allow", "by": "host"});
+    k.provider_item("t1", decided_with("a2", d.clone()))
+        .unwrap();
+    assert!(rec(&mut k, &id).pending_answers.is_empty());
+    assert_eq!(decisions_after(&mut k, &id, n).len(), 1);
+    let m = entries(&mut k, &id).len();
+    k.provider_item("t1", decided_with("a2", d)).unwrap();
+    assert_eq!(decisions_after(&mut k, &id, m).len(), 0);
+}
