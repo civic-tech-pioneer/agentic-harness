@@ -75,6 +75,7 @@ fn ac4_remove_and_reuse() {
     remove(&mut st, &mut sl, "s1", 0).unwrap();
     let c = st.counts();
     assert_eq!((c.gets, c.puts), (1, 2));
+    assert_eq!(st.get_keys(), ["active/0"]);
     assert_eq!(sl.active[0], 2);
     let ids: Vec<_> = read_page(&mut st, 0).into_iter().map(|e| e.id).collect();
     assert_eq!(ids, ["s0", "s2"]);
@@ -104,6 +105,7 @@ fn ac6_set_boot() {
     set_boot(&mut st, 0, "b", 9).unwrap();
     let c = st.counts();
     assert_eq!((c.gets, c.puts), (1, 1));
+    assert_eq!(st.get_keys(), ["active/0"]);
     let p = read_page(&mut st, 0);
     assert_eq!((p[0].boot, p[1].boot), (1, 9));
 }
@@ -111,9 +113,7 @@ fn ac6_set_boot() {
 #[test]
 fn ac7_next_stale_cursor() {
     let (mut st, mut sl) = fresh();
-    sl.active = [256, 256, 0, 0];
-    // build pages directly: page 0 all current, page 1 one stale
-    sl.active = [0; 4];
+    // page 0 all current, page 1 one stale
     add(&mut st, &mut sl, "cur", 2).unwrap();
     sl.active[0] = 256;
     add(&mut st, &mut sl, "old", 1).unwrap();
@@ -126,6 +126,13 @@ fn ac7_next_stale_cursor() {
     assert_eq!(sl.restart, Some(1));
     assert_eq!(st.get_keys(), ["active/1"]);
     assert_eq!(st.counts().puts, 0);
+    // from page 0 the cursor moves on to the page that holds the stale entry
+    sl.restart = Some(0);
+    st.reset_counts();
+    let (p, e) = next_stale(&mut st, &mut sl).unwrap();
+    assert_eq!((p, e.id.as_str()), (1, "old"));
+    assert_eq!(sl.restart, Some(1));
+    assert_eq!(st.get_keys(), ["active/0", "active/1"]);
     set_boot(&mut st, 1, "old", 2).unwrap();
     st.reset_counts();
     assert_eq!(next_stale(&mut st, &mut sl), None);
