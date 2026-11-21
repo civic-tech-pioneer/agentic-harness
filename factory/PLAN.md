@@ -42,9 +42,7 @@ ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live b
 after the restart's `unknown` turn the console shows it as ended, not running.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-## Sketched
-
-### S20: asks as the kernel records and shows them (cloud, after S21 and S24 merge: kernel/ and TECHNICAL)
+### S20: asks as the kernel records and shows them (in flight (cloud), routine trig_01UzA7nS6XUs2Xp5WpFokoCn)
 
 Story: a kernel maker runs `cargo test` in `kernel/` and asks are recorded and shaped as the spec
 says, with the spec fixed alongside.
@@ -72,6 +70,8 @@ Outcomes:
    decisions in one call; spec in 9.3/9.6 with a case. Also S22's wording: R4's Claude row and
    9.8 rule 4 no longer name a kernel deadline or `ask-expiry` for Claude asks.
 Touches: `kernel/`, `design/TECHNICAL.md` (after S22 merges). Protects: *guard* (asks).
+
+## Sketched
 
 ### S25: quotas (cloud, after S20: kernel/)
 
@@ -263,7 +263,7 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   queue); adversary BREACHED 2 (queue bytes counted before escaping; `start` ignored `access/`),
   fixed, HELD twice. Implementer runs 1 each of 7. Kernel 179 tests in 3.18 s; gate 22 s.
 
-- **S24** S21's spec debts (PR #26, armed by the PO; 12 min). 9.3 gains `open`; 9.1 the formats of
+- **S24** S21's spec debts (PR #26, armed by the PO, merged 2026-11-21 02:29 UTC; 12 min). 9.3 gains `open`; 9.1 the formats of
   `active/`, `queue/`, `access/`, `key/` and `owner/`; `access/` is reread beyond `start` (say,
   interrupt, R5, answer allow, a turn's end), failing closed, with an unlisted name refused the
   same whether or not the profile exists; an OpenAI profile needs `model`; a child session needs
