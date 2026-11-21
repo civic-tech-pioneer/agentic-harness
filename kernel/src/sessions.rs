@@ -339,8 +339,10 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn seal(&mut self, rec: &mut Record) -> Result<(), KernelError> {
         let c = self.state.change().session;
         rec.bytes = add_signed(rec.bytes, c - self.sealed);
+        rec.save(&mut self.state)?;
+        // Only a saved record holds the change (a failed restart step's is the firing's to keep).
         self.sealed = c;
-        rec.save(&mut self.state)
+        Ok(())
     }
 
     /// Reads the owner's account and the kernel's (9.1).
@@ -386,6 +388,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         if c.owner > 0 && a.account.bytes > ceiling {
             return Err(KernelError::Quota);
         }
+        self.save_accounts(a)
+    }
+
+    /// Writes each account that changed.
+    fn save_accounts(&mut self, a: &Acct) -> Result<(), KernelError> {
         if a.owner != a.owner0 {
             a.owner.save(&mut self.state, &a.owner_key)?;
         }
@@ -1334,8 +1341,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
         let rec = self.session(caller, session, &mut slots, &mut Work::default())?;
-        // The record's bytes, and what the restart step of `session` just changed in them.
-        let freed = rec.bytes as i64 + self.state.change().session - self.sealed;
+        // The record's bytes (the restart step, when it ran, sealed its change in them).
+        let freed = rec.bytes as i64;
         let page_key = owner_page_key(caller, rec.owner_page);
         let page: Vec<String> = self
             .state
@@ -1350,6 +1357,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                 .delete_uncharged(&crate::transcript::chunk_key(&rec.id, n));
         }
         self.state.delete_uncharged(&Queue::key_of(&rec.id));
+        for s in &rec.streams {
+            self.state.delete_uncharged(&format!("stream/{s}"));
+        }
+        self.state.delete_uncharged(&format!("live/{}", rec.id));
         let page: Vec<String> = page.into_iter().filter(|i| *i != rec.id).collect();
         if page.is_empty() {
             self.state.delete(&page_key);
@@ -1641,9 +1652,19 @@ impl<S: State, H: Host> Kernel<S, H> {
                 if stepped {
                     work.pushes.append(&mut done.pushes);
                 }
-                // A failure of `finish` (the reserve) leaves the pass going: R6 retries at the next
-                // read. What a failed step wrote stays charged to the owner.
-                let _ = self.finish(None, &mut acct);
+                // The firing commits what the step wrote, failed or not: the stored record's
+                // `bytes` and both accounts take it, past the reserve too (a firing cannot fail).
+                let lost = self.state.change().session - self.sealed;
+                if !stepped && lost != 0 {
+                    if let Some(mut held) = Record::load(&mut self.state, &entry.id) {
+                        held.bytes = add_signed(held.bytes, lost);
+                        let _ = held.save(&mut self.state);
+                    }
+                }
+                let c = self.state.close();
+                acct.owner.add(c.owner);
+                acct.account.add(c.owner);
+                let _ = self.save_accounts(&acct);
                 if !stepped && rec.active_page.is_some() {
                     // A step that fails must not stall the pass: its entry counts as current, and
                     // the record, still of an older boot, does its step when a call reads it (R6).
