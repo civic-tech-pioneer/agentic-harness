@@ -1255,7 +1255,7 @@ The `toolCall` carries ACP `kind` from `tool`: `Read` `read`; `Edit`,
 `input`: `Edit` one (`path` `file_path`, `oldText` `old_string`, `newText`
 `new_string`), `Write` one with `newText` the `content` and no `oldText`,
 `MultiEdit` one per `edits` item, in order. A field missing or not a string
-gives no `content`, and an `Edit`, or a `MultiEdit` with any edit `replace_all: true`, has none (a diff would understate what runs; the card shows `rawInput`); the ask is still an ask. Both are built from the item's
+gives no `content`, and an `Edit` with `replace_all: true`, or a `MultiEdit` with any edit `replace_all: true`, has none (a diff would understate what runs; the card shows `rawInput`); the ask is still an ask. Both are built from the item's
 `input` only.
 
 A `check` is the checked provider's to answer (10); its `none` means "no
