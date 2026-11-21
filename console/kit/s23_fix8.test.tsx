@@ -47,7 +47,7 @@ describe("s23 fix8", () => {
     }
   });
 
-  it("ac5_a_refusal_puts_focus_on_allow_once", async () => {
+  it("ac5_a_refusal_puts_focus_on_the_refused_line", async () => {
     const a = mk();
     a.answer = vi.fn(() => { (document.activeElement as HTMLElement).blur(); return Promise.reject(new Error("busy")); }); // focus is lost, as when the bar swaps to the line
     const v = [ask(1, "a1")].reduce(reduce, emptyView);
@@ -56,7 +56,7 @@ describe("s23 fix8", () => {
     await u.click(screen.getByRole("button", { name: "Deny…" }));
     await u.click(screen.getByRole("button", { name: "Allow once" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Allow once" })).toHaveFocus();
+    expect(screen.getByRole("alert")).toHaveFocus();
   });
 
   it("ac4_the_answered_line_has_the_bars_padding", () => {
