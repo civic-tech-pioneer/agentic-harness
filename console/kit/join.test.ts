@@ -1,3 +1,4 @@
+// @vitest-environment node
 // S15-2 AC1, AC2: the joiner of `part` entries (TECHNICAL 9.4).
 import { describe, expect, it } from "vitest";
 import { partsOf } from "../fake/kernel";

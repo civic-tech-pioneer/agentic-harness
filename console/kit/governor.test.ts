@@ -1,3 +1,4 @@
+// @vitest-environment node
 // S4-fix5: one rate governor for attach and read, and short pages read on.
 import { describe, expect, it, vi } from "vitest";
 import { governor, openSession, type Kernel } from "./kernel";

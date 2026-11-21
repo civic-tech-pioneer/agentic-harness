@@ -1,3 +1,4 @@
+// @vitest-environment node
 // S15-2 AC3-AC7: an entry stored as parts reads whole in the console (TECHNICAL 9.4).
 import { describe, expect, it, vi } from "vitest";
 import { fakeKernel, partsOf } from "../fake/kernel";

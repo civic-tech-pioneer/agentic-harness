@@ -1,37 +1,12 @@
 // S15-3 (18.6): after "Needs you" the pill shows no focus ring and Allow once does; at 760 px the ask bar ends with Allow once.
 // Slow: jsdom computes no layout or :focus-visible, so this builds ui/, serves it, and measures it in Chromium.
-import { createRequire } from "node:module";
-import { execSync } from "node:child_process";
-import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
-import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { buildOnce, serveUi, launch } from "./slow-kit.mjs";
 
-const require = createRequire(import.meta.url);
-let playwright;
-try { playwright = require("playwright"); } catch {
-  console.error("NOT RUN: `playwright` cannot be required here (install it globally, or set NODE_PATH to it).");
-  process.exit(2);
-}
+buildOnce();
+const { url, close } = await serveUi();
 
-const root = fileURLToPath(new URL("..", import.meta.url));
-const ui = join(root, "..", "ui");
-execSync("npm run build", { cwd: root, stdio: "inherit" });
-
-const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2" };
-const server = createServer(async (req, res) => {
-  const p = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^(\.\.[/\\])+/, "");
-  try {
-    const f = p.endsWith("/") ? p + "index.html" : p;
-    const body = await readFile(join(ui, f));
-    res.writeHead(200, { "content-type": types[extname(f)] ?? "application/octet-stream" }).end(body);
-  } catch { res.writeHead(404).end(); }
-});
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const url = `http://127.0.0.1:${server.address().port}/`;
-
-const browser = await playwright.chromium.launch();
+const browser = await launch();
 try {
   for (const [width, height] of [[1440, 900], [1280, 800], [760, 900]]) {
     const page = await browser.newPage({ viewport: { width, height } });
@@ -89,5 +64,5 @@ try {
   }
 } finally {
   await browser.close();
-  server.close();
+  await close();
 }
