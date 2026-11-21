@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S32: stage A, end to end: Alice watches a real kernel stream in the console (in flight (cloud), routine trig_01QrwDoJCFh8Q6DGBbTcF7qA, with watane S96)
+### S32: stage A, end to end: Alice watches a real kernel stream in the console (delivered 2026-11-21 10:47 UTC, PR #41 held: merges after watane S96, once the story passes on watane's own host; routine trig_01QrwDoJCFh8Q6DGBbTcF7qA)
 
 Story: Alice runs `watane-dev serve` with the agent kernel installed, opens its console page, and
 sees numbered items of a real kernel stream arrive in the page (18.4 layout and theme), live and
@@ -49,6 +49,16 @@ Touches: `kernel/`, `wit/`, `mod.toml`, `console/`, `ui/`, `design/TECHNICAL.md`
 Starts when watane S96 starts (it fakes nothing it can call for real once S96 merges; until then
 it builds against S96's branch or the host 19 text).
 
+Delivered (PR #41, not armed): the seam audit found 10 mismatches between the kernel's fake host
+and host 19 (batches with `seq`, `SinkOutcome {Taken, Defer}`, the `outcome` variant, `bad-delay`,
+`ended` through `provider_ended`, no host clock/id/generation yet, prebuilt `logic.wasm`, the world
+staged in `kernel/wasm/wit/` until a watane-dev with host 19 ships), all fixed; a probe session
+(`probe.start`, 9.9) is stage A's item source. User-sim ACCEPTED on a wasmtime stand-in host
+(live, reload, lagging, replaced, cases 20 and 21); adversary BREACHED 1 (a lost provider `ended`
+held a slot), fixed, HELD. Not yet run on watane's host: cases 7, 20, 21, 36, 51. Next: when S96
+merges, a continuation routine rebases S32, runs the story on watane's real host, and the PO
+compares the console and arms the merge.
+
 ## Sketched
 
 ### Stage B carry list (folded into stage B's end-to-end slices, never a slice of its own)
@@ -60,6 +70,13 @@ it builds against S96's branch or the host 19 text).
   a due firing with no step fails `quota` at the ceiling (`restart_firing` handles both).
 - S26 accepted limits and S28's: verify with the real host's rollback (7) once wired.
 - V27 (Waiting): the allowlist rule, before the shell grant (stage C).
+- S32 R1 (first, before any provider item reaches the kernel): in WASM a kernel error returns
+  normally and the host commits writes made before it, while the crate assumes a failed call
+  commits nothing: buffer writes in the crate until success (rec), or trap on error.
+- S32 R2: provider item bodies go through the adapters (9.8), not straight into `Out`.
+- S32 functional: an early wall-clock firing can stop a probe for good (the probe goes in stage B).
+- S32 user-sim "felt wrong": the first tab freezes with no word when a second takes over; the status
+  line reads Idle while probe items arrive; `probe.start` with two fields out of range names one.
 
 
 ## Done
