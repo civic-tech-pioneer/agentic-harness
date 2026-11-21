@@ -42,23 +42,19 @@ ask shows no "Checking" state. Also (S17): a Claude `ToolCall` a page saw live b
 after the restart's `unknown` turn the console shows it as ended, not running.
 Touches: `console/`, `ui/`. Protects: *core*.
 
-### S25: quotas (in flight (cloud), routine trig_01NLzmBugKHQZY7LxVeRB5dD)
-
-Story: a kernel maker runs `cargo test` in `kernel/` and owners are held to 9.3 "Quota": 64
-sessions and 64 MiB per owner (kernel settings), the 224 MiB account and its 32 MiB reserve, more
-`owner/<owner>/<n>` pages, the writes allowed into the reserve, `quota` refusals and
-`stopped {limit: quota}`; kept keys stay charged. As 9.4 "Code to change (a later slice)" names.
-Touches: `kernel/`. Protects: *guard*.
-
 ## Sketched
 
-### S26: the kernel tracks its provider streams (cloud, after S25: kernel/)
+### S26: the kernel tracks its provider streams (cloud, after S25 merges: kernel/)
 
 Story: a kernel maker drives a Claude session through a fake provider stream on the in-memory
 state: open, items, `ended`, the 10-minute idle release and the resume after it (case 52), R4's
 idle row resuming with `resume` (not `resume: false`), `stream/<id>` and `live/<session>` keys
 (P09), and the deferral rules of 9.4 with a fake owner stream. As 9.4 "Code to change (a later
-slice)" names. Touches: `kernel/`. Protects: *core*.
+slice)" names. Also from S25 (PO decisions, PR #28): `delete` skips a failing restart step
+(closing asks `cancel`), so a session can always be deleted; past quota, at most one `turn` entry
+per turn; the quota refusal says "this mod's agent sessions are at their limit" without naming the
+kernel's shared account (14 "A session is private"); spec lines for each in 9.3.
+Touches: `kernel/`, `design/TECHNICAL.md` (9.3). Protects: *core* (*guard* for the S25 items).
 
 ### S23: the console shows an answered ask as waiting (cloud, after S7 merges: same files)
 
@@ -251,6 +247,13 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
   or a reload; `MultiEdit` with `replace_all`), fixed, HELD. Implementer runs 2/1/1/1/1. Kernel 227
   tests in 3.9 s; gate 18 s.
 
+- **S25** quotas (PR #28, ~48 min). Owners are held to 9.3 "Quota": 64 sessions and 64 MiB per
+  owner (settable), the 224 MiB account and 32 MiB reserve, more owner pages past 256, `quota`
+  refusals naming their cap, a running turn ends `stopped {limit: quota}`, kept keys stay charged;
+  a key costs its name plus its value, metered per call; past quota a new ask is denied and the
+  turn interrupted. User-sim ACCEPTED on run 2 (refusal text named the wrong cap); adversary HELD
+  twice. Implementer runs 1/1/1. Kernel 262 tests in 3.67 s; gate 21 s.
+
 ## Deputy decisions
 
 - 2026-11-20 S2's user-sim rejection is accepted: the failing outcome is a gap of the proposal,
@@ -333,6 +336,11 @@ Protects: *guard*. Stays local: its outcomes need the Mac's logged-in `claude`.
 - 2026-11-21 S20: a `for: session` allow given before `access/` is revoked must not keep allowing
   calls: the slice that builds session-allow matching (the broker, 9.6) reads `access/` before
   answering from a session allow, failing closed. The host keeps checking `allow` + `input` (2.3).
+
+- 2026-11-21 S25 RISKs: `delete` skips a failing restart step; at most one `turn` entry per turn
+  past quota; the quota refusal stops naming the kernel's shared account (all to S26). Accepted:
+  duplicate lines from a restart step that fails in a timer firing (the real host rolls a call
+  back whole, 7; only `MemState` lacks it); no migration (nothing deployed).
 
 ## Human answers (2026-11-20, through the PO)
 
