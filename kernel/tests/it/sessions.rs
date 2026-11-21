@@ -859,3 +859,57 @@ fn ac3_say_resumes_a_pause_with_no_time_and_queues_on_a_timed_one() {
     assert_eq!(rec(&mut k, &id).turn, Turn::Paused { until: Some(9000) });
     assert_eq!(requests(&k).len(), n0 + 1);
 }
+
+#[test]
+fn ac2_say_on_idle_or_paused_with_a_full_queue_starts_the_oldest() {
+    for turn in [completed(), Turn::Paused { until: None }] {
+        let mut k = kernel();
+        let id = started(&mut k, "alice", "k");
+        for i in 0..32 {
+            k.say("alice", &id, &format!("c{i}"), &format!("in{i}"))
+                .unwrap();
+        }
+        let mut r = rec(&mut k, &id);
+        r.turn = turn;
+        r.save(&mut k.state).unwrap();
+        let n0 = requests(&k).len();
+        let c = k.say("alice", &id, "new", "fresh").unwrap();
+        let q = k.queued("alice", &id).unwrap();
+        assert_eq!(q.len(), 32);
+        assert_eq!(q[0].input, "in1");
+        assert_eq!(q[31].input, "fresh");
+        assert_eq!(c.value, q[31].n);
+        assert_eq!(requests(&k).len(), n0 + 1);
+    }
+}
+
+#[test]
+fn ac3_oldest_out_and_new_in_still_over_the_bytes_is_queue_full_and_writes_nothing() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    k.say("alice", &id, "s", "x").unwrap();
+    for i in 0..7 {
+        k.say("alice", &id, &format!("b{i}"), &"x".repeat(262_144))
+            .unwrap();
+    }
+    k.say("alice", &id, "t", &"x".repeat(262_143)).unwrap();
+    let mut r = rec(&mut k, &id);
+    r.turn = Turn::Paused { until: None };
+    r.save(&mut k.state).unwrap();
+    let n0 = requests(&k).len();
+    k.state.reset_counts();
+    assert_eq!(
+        k.say("alice", &id, "over", &"x".repeat(262_144))
+            .unwrap_err(),
+        KernelError::QueueFull
+    );
+    assert_eq!(requests(&k).len(), n0);
+    assert_eq!(k.queued("alice", &id).unwrap().len(), 9);
+    assert_eq!(rec(&mut k, &id).turn, Turn::Paused { until: None });
+    // no key was kept: the same key, once there is room, does the call
+    for n in 2..=9 {
+        k.unqueue("alice", &id, n).unwrap();
+    }
+    k.say("alice", &id, "over", &"x".repeat(262_144)).unwrap();
+    assert_eq!(requests(&k).len(), n0 + 1);
+}

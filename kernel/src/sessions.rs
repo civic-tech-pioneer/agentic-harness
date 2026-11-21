@@ -728,16 +728,17 @@ impl<S: State, H: Host> Kernel<S, H> {
                 // the end and the oldest starts the turn.
                 let resume = rec.turn == Turn::Unknown;
                 let mut q = Queue::load(&mut self.state, &rec.id);
+                // The oldest leaves before the new input joins, so a full queue never refuses.
                 let queued = if q.is_empty() {
                     None
                 } else {
-                    Some(q.push(input.to_string())?)
+                    let oldest = q.take_oldest().expect("the queue holds inputs");
+                    Some((oldest, q.push(input.to_string())?))
                 };
                 let now = self.host.now();
                 let n = match queued {
                     None => self.start_turn(&mut rec, input.to_string(), resume, now, &mut work)?,
-                    Some(n) => {
-                        let oldest = q.take_oldest().expect("the queue holds inputs");
+                    Some((oldest, n)) => {
                         self.start_turn(&mut rec, oldest.input, resume, now, &mut work)?;
                         q.save(&mut self.state, &rec.id)?;
                         work.pushes.push(Push::of(&rec.id, q.push_value()));
