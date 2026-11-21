@@ -13,8 +13,8 @@ use crate::profile::{parse_profile, Backend};
 use crate::queue::{check_input, Queue, Queued};
 use crate::quota::{segment, Change, Limits, Metered, Usage};
 use crate::record::{
-    check_key, check_title, OpenAsk, PendingAnswer, Record, Stop, Turn, ALLOW_BYTES, ID_BYTES,
-    OPEN_ASKS,
+    check_key, check_title, Deadline, OpenAsk, PendingAnswer, Record, Stop, Turn, ALLOW_BYTES,
+    ID_BYTES, OPEN_ASKS,
 };
 use crate::state::State;
 use crate::transcript::{Joiner, NewEntry, Page, Transcript, MAX_CHUNKS};
@@ -24,6 +24,9 @@ use serde_json::{json, Value};
 
 /// The kernel's own timer for the restart pass (R2).
 const RESTART: &str = "restart";
+/// The deadline of the 10-minute provider release (9.3, 9.5), and its delay.
+const IDLE: &str = "idle";
+const IDLE_MS: u64 = 600_000;
 
 /// What the kernel needs of the host (2.1): the boot number, the clock, ids, timers, requests.
 pub trait Host {
@@ -181,6 +184,8 @@ pub struct Kernel<S: State, H: Host> {
     pub limits: Limits,
     /// What of the call's change in session bytes the record in hand already holds (`seal`).
     sealed: i64,
+    /// The provider stream the call in hand opened: a call that then fails cancels it (7).
+    opened: Option<String>,
 }
 
 /// Pushes and provider requests a call collects; requests leave only after the last write.
@@ -353,6 +358,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             host,
             limits: Limits::default(),
             sealed: 0,
+            opened: None,
         }
     }
 
@@ -466,6 +472,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         a: &mut Acct,
     ) -> Result<(), KernelError> {
         let t = self.host.open_stream();
+        self.opened = Some(t.clone());
         let key = StreamKey {
             session: rec.id.clone(),
             kind: PROVIDER.to_string(),
@@ -498,6 +505,95 @@ impl<S: State, H: Host> Kernel<S, H> {
         slots.provider = slots.provider.saturating_sub(1);
         a.owner.close_provider(slots.boot);
         true
+    }
+
+    /// Runs a call that may open a provider stream; when it fails the stream goes back (7).
+    fn guarded<T>(
+        &mut self,
+        call: impl FnOnce(&mut Self) -> Result<T, KernelError>,
+    ) -> Result<T, KernelError> {
+        self.opened = None;
+        let r = call(self);
+        if let Some(t) = self.opened.take() {
+            if r.is_err() {
+                self.host.cancel_stream(&t);
+            }
+        }
+        r
+    }
+
+    /// 9.3: the session's one timer `s/<id>` follows its deadlines. `before` is what they were when
+    /// the call began; a change from none takes a timer slot, to none frees it (`fired`: the timer
+    /// that fired needs no cancel). Whether `slots` changed.
+    fn sync_timer(
+        &mut self,
+        rec: &Record,
+        slots: &mut Slots,
+        a: &mut Acct,
+        before: &[Deadline],
+        now: u64,
+        fired: bool,
+    ) -> bool {
+        if rec.deadlines == before {
+            return false;
+        }
+        let id = format!("s/{}", rec.id);
+        let had = !before.is_empty();
+        match rec.deadlines.iter().map(|d| d.at).min() {
+            Some(at) => {
+                self.host.timer_after(&id, at.saturating_sub(now));
+                if had {
+                    return false;
+                }
+                slots.timers += 1;
+                a.owner.timers += 1;
+            }
+            None => {
+                if !had {
+                    return false;
+                }
+                if !fired {
+                    self.host.timer_cancel(&id);
+                }
+                slots.timers = slots.timers.saturating_sub(1);
+                a.owner.timers = a.owner.timers.saturating_sub(1);
+            }
+        }
+        true
+    }
+
+    /// 9.5: a Claude turn that moved into `idle` while it holds a provider stream sets the `idle`
+    /// deadline; a session needing a timer at a cap releases its stream at once. A turn that is
+    /// active removes the deadline. Whether `slots` changed; the caller saves it.
+    fn idle_after(
+        &mut self,
+        rec: &mut Record,
+        slots: &mut Slots,
+        a: &mut Acct,
+        was: bool,
+        before: &[Deadline],
+        now: u64,
+    ) -> bool {
+        let mut changed = false;
+        if rec.turn.is_active() {
+            rec.deadlines.retain(|d| d.what != IDLE);
+        } else if was && matches!(rec.turn, Turn::Idle { .. }) {
+            if let Some(t) = self.live_provider(rec) {
+                rec.deadlines.retain(|d| d.what != IDLE);
+                let capped = before.is_empty()
+                    && (slots.timers >= self.limits.timers
+                        || a.owner.timers >= self.limits.owner_timers);
+                let idle = Deadline {
+                    what: IDLE.to_string(),
+                    at: now + IDLE_MS,
+                };
+                if capped || rec.add_deadline(idle).is_err() {
+                    self.host.cancel_stream(&t);
+                    changed = self.release_provider(rec, &t, slots, a);
+                }
+            }
+        }
+        self.sync_timer(rec, slots, a, before, now, false) || changed
     }
 
     /// Whether a turn this call starts opens a provider stream (and then whether it resumes the
@@ -1061,6 +1157,17 @@ impl<S: State, H: Host> Kernel<S, H> {
         overlay: &str,
         input: &str,
     ) -> Result<Called<String>, KernelError> {
+        self.guarded(|k| k.start_call(caller, key, profile, overlay, input))
+    }
+
+    fn start_call(
+        &mut self,
+        caller: &str,
+        key: &str,
+        profile: &str,
+        overlay: &str,
+        input: &str,
+    ) -> Result<Called<String>, KernelError> {
         check_key(key)?;
         let mut slots = self.begin()?;
         if let Some((id, _)) = self.key_get::<String>("start", caller, key)? {
@@ -1175,6 +1282,16 @@ impl<S: State, H: Host> Kernel<S, H> {
         key: &str,
         input: &str,
     ) -> Result<Called<u64>, KernelError> {
+        self.guarded(|k| k.say_call(caller, session, key, input))
+    }
+
+    fn say_call(
+        &mut self,
+        caller: &str,
+        session: &str,
+        key: &str,
+        input: &str,
+    ) -> Result<Called<u64>, KernelError> {
         check_key(key)?;
         let mut slots = self.begin()?;
         if let Some(n) = self.replay_for::<u64>("say", caller, key, session)? {
@@ -1192,6 +1309,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.refuse_past(&acct)?;
         let mut work = Work::default();
         self.settle(&mut rec, &mut slots, &mut work)?;
+        let before = rec.deadlines.clone();
         // A pause with no time ends with the next `say` (9.3); one with a time queues until it
         // resumes on its own.
         let n = match rec.turn {
@@ -1226,7 +1344,8 @@ impl<S: State, H: Host> Kernel<S, H> {
                 if open {
                     self.open_provider(&mut rec, &mut slots, &mut acct)?;
                 }
-                if !self.sync_active(&mut rec, &mut slots, was)? && open {
+                let timed = self.idle_after(&mut rec, &mut slots, &mut acct, was, &before, now);
+                if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed) {
                     slots.save(&mut self.state)?;
                 }
                 rec.updated = now;
@@ -1365,6 +1484,15 @@ impl<S: State, H: Host> Kernel<S, H> {
         session: &str,
         replacement: Option<&str>,
     ) -> Result<Called<()>, KernelError> {
+        self.guarded(|k| k.interrupt_call(caller, session, replacement))
+    }
+
+    fn interrupt_call(
+        &mut self,
+        caller: &str,
+        session: &str,
+        replacement: Option<&str>,
+    ) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut rec = self.load_owned(caller, session)?;
         let mut acct = self.accounts(caller);
@@ -1378,6 +1506,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut work = Work::default();
         self.settle(&mut rec, &mut slots, &mut work)?;
         let was = rec.turn.is_active();
+        let before = rec.deadlines.clone();
         if replacement.is_none() && !was {
             self.finish(None, &mut acct)?;
             return Ok(Called {
@@ -1407,7 +1536,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if open {
             self.open_provider(&mut rec, &mut slots, &mut acct)?;
         }
-        if !self.sync_active(&mut rec, &mut slots, was)? && open {
+        let timed = self.idle_after(&mut rec, &mut slots, &mut acct, was, &before, now);
+        if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed) {
             slots.save(&mut self.state)?;
         }
         rec.updated = now;
@@ -1449,10 +1579,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         // The host's `Cancel` ends the provider stream: its slot is free at once, and its later
         // `ended` finds no key (9.4).
-        let freed = match self.live_provider(&rec) {
+        let mut freed = match self.live_provider(&rec) {
             Some(t) => self.release_provider(&mut rec, &t, &mut slots, &mut acct),
             None => false,
         };
+        // 9.3: no deadline outlives a cancel; its timer goes with them.
+        let before = std::mem::take(&mut rec.deadlines);
+        freed |= self.sync_timer(&rec, &mut slots, &mut acct, &before, now, false);
         if !self.sync_active(&mut rec, &mut slots, was)? && freed {
             slots.save(&mut self.state)?;
         }
@@ -1564,6 +1697,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                     slot_freed = true;
                 }
             }
+        }
+        // 9.3: a record that held a deadline held its timer.
+        if !rec.deadlines.is_empty() {
+            self.host.timer_cancel(&format!("s/{}", rec.id));
+            slots.timers = slots.timers.saturating_sub(1);
+            acct.owner.timers = acct.owner.timers.saturating_sub(1);
+            slot_freed = true;
         }
         let mut saved = false;
         if let Some(p) = rec.active_page {
@@ -1758,6 +1898,16 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let (Some(t), Some(s)) = (ended, slots.as_mut()) {
             freed = self.release_provider(&mut rec, t, s, &mut acct);
         }
+        let touch = if rec.turn.is_active() {
+            rec.deadlines.iter().any(|d| d.what == IDLE)
+        } else {
+            was && matches!(rec.turn, Turn::Idle { .. })
+        };
+        if touch {
+            let mut s = slots.take().unwrap_or_else(|| Slots::load(&mut self.state));
+            freed |= self.idle_after(&mut rec, &mut s, &mut acct, was, &before.deadlines, now);
+            slots = Some(s);
+        }
         let mut saved = false;
         if was != rec.turn.is_active() {
             let mut s = match slots.take() {
@@ -1889,19 +2039,59 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(())
     }
 
-    /// `timer-sink.fired`. Session timers and deadlines are not built yet; `restart` is R2.
+    /// `timer-sink.fired`: `restart` is R2, `s/<id>` a session's deadlines (9.3).
     pub fn timer(&mut self, id: &str) -> Called<()> {
         let mut work = Work::default();
         if let Ok(mut slots) = self.begin() {
             if id == RESTART {
                 // A firing that still fails (its page or `slots` cannot be written) re-arms nothing.
                 let _ = self.restart_firing(&mut slots, &mut work);
+            } else if let Some(session) = id.strip_prefix("s/") {
+                // A firing is never an error: one that fails changes nothing more.
+                let _ = self.session_firing(session, &mut slots, &mut work);
             }
         }
         Called {
             value: (),
             pushes: work.pushes,
         }
+    }
+
+    /// One firing of a session's timer (9.3): every due deadline is handled (`idle` releases the
+    /// provider stream, the others wait for their stages), then the timer follows the rest.
+    fn session_firing(
+        &mut self,
+        id: &str,
+        slots: &mut Slots,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
+        let Some(mut rec) = Record::load(&mut self.state, id) else {
+            return Ok(());
+        };
+        let mut acct = self.accounts(&rec.owner);
+        self.settle(&mut rec, slots, work)?;
+        let now = self.host.now();
+        if !rec.deadlines.iter().any(|d| d.at <= now) {
+            return Ok(());
+        }
+        let before = rec.deadlines.clone();
+        if rec.deadlines.iter().any(|d| d.at <= now && d.what == IDLE) {
+            if let Some(t) = self.live_provider(&rec) {
+                self.host.cancel_stream(&t);
+                self.release_provider(&mut rec, &t, slots, &mut acct);
+            }
+            rec.deadlines.retain(|d| !(d.at <= now && d.what == IDLE));
+        }
+        if rec.deadlines == before {
+            // Only deadlines of later stages are due: they stay, and the timer follows them.
+            if let Some(at) = rec.deadlines.iter().map(|d| d.at).min() {
+                self.host
+                    .timer_after(&format!("s/{id}"), at.saturating_sub(now));
+            }
+        }
+        self.sync_timer(&rec, slots, &mut acct, &before, now, true);
+        slots.save(&mut self.state)?;
+        self.finish(Some(&mut rec), &mut acct)
     }
 
     /// One firing of the pass (R2): the next session of an older boot does its step, or the pass ends.
