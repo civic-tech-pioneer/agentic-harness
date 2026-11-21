@@ -22,7 +22,10 @@ const ALIAS: Record<string, string> = {
 };
 
 /** The language Shiki is loaded with for a fence label, or undefined (plain). */
-export const known = (lang: string | undefined): string | undefined => (lang ? ALIAS[lang.toLowerCase()] : undefined);
+export const known = (lang: string | undefined): string | undefined => {
+  const k = lang?.toLowerCase();
+  return k !== undefined && Object.hasOwn(ALIAS, k) ? ALIAS[k] : undefined;
+};
 
 // null: the block stayed plain (over budget or failed); it is not retried.
 const cache = new Map<string, Lines | null>();
@@ -117,7 +120,7 @@ function pump() {
     };
     w.onerror = fail;
     timer = setTimeout(fail, limit);
-    w.postMessage({ ...m, id });
+    try { w.postMessage({ ...m, id }); } catch { fail(); }
   };
   const tokens = () => send({ id: 0, op: "tokens", lang: job.lang, code: job.code }, HIGHLIGHT_BUDGET_MS, (r) => finish(job, r.lines ?? null));
   if (workerLangs.has(job.lang)) tokens();
