@@ -81,7 +81,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const body = asking ? (
     <>
       <AskScroll>{main}</AskScroll>
-      <AskBar call={call} askId={ask.id} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} />
+      <AskBar key={ask.id} call={call} askId={ask.id} {...(ask.reach !== undefined ? { reach: ask.reach } : {})} actions={actions} />
     </>
   ) : main;
   const head = (
