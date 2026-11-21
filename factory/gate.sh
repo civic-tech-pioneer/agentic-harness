@@ -12,8 +12,14 @@ cd "$root"
 # The prebuilt logic (watane dev 7.1): the kernel's component, built before check-mod.sh needs it.
 if [ -f kernel/wasm/Cargo.toml ]; then
   echo "gate: kernel/wasm build (logic.wasm)"
+  # CI adds the target only for a root wit/world.wit, so add it here when it is missing.
+  if command -v rustup >/dev/null 2>&1 && ! rustup target list --installed | grep -qx wasm32-wasip2; then
+    rustup target add wasm32-wasip2
+  fi
   (cd kernel && cargo build --release --target wasm32-wasip2 -p agent-mod)
-  cp kernel/target/wasm32-wasip2/release/agent_mod.wasm kernel/wasm/logic.wasm
+  # The target dir may be moved (CARGO_TARGET_DIR): ask cargo where it is.
+  tdir=$(cd kernel && cargo metadata --no-deps --format-version 1 | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')
+  cp "$tdir/wasm32-wasip2/release/agent_mod.wasm" kernel/wasm/logic.wasm
 fi
 
 echo "gate: check-mod.sh"

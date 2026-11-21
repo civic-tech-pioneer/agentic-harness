@@ -159,9 +159,21 @@ mod tests {
             stream_error(streams::StreamError::NotYours),
             StreamError::NotYours
         );
+        assert_eq!(
+            stream_error(streams::StreamError::UnknownStream),
+            StreamError::UnknownStream
+        );
+        assert_eq!(
+            stream_error(streams::StreamError::TooLarge),
+            StreamError::TooLarge
+        );
         assert!(matches!(
             sink_outcome(SinkOutcome::Defer),
             streams::SinkOutcome::Defer
+        ));
+        assert!(matches!(
+            sink_outcome(SinkOutcome::Taken),
+            streams::SinkOutcome::Taken
         ));
     }
 
