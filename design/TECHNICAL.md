@@ -755,7 +755,8 @@ the card.
   this rule (tool output stays cut at 64 KiB, as before).
 - Reading an entry of an older `v` upgrades it in memory; an unknown `kind`
   or newer `v` reads as `{"kind": "unreadable", "raw": …}`. An `unreadable`
-  entry keeps its `i` (and `at` when it has one), so paging, replay from
+  entry is `{"v":<its v>,"i":<i>,"kind":"unreadable","at":<at>?,"raw":<the
+  stored JSON>}` and keeps its `i` (and `at` when it has one), so paging, replay from
   `i + 1` and the drop of shown indexes (18.3) still hold. Nothing is
   migrated in bulk.
 - `attach(session, after, caps)`: in one call, read the entries with
@@ -828,6 +829,9 @@ the card.
 {"_meta":{"watane":{"type":"usage","context-used":1200,"context-window":200000,"compact-at":180000}}}
 ```
 
+In the `queue` item, `input` is the input's JSON as a string (2.3
+`queued-input`).
+
 - An ACP v1 `SessionUpdate` carries `_meta.watane.at` (ms, the kernel's clock
   when it adapted the line) on every live update, and `_meta.watane.i` on the
   update that finishes an entry (`message`, `tool`).
@@ -855,7 +859,14 @@ the card.
   (`on: "input"`).
 - Console, a console slice after S9: accept a decision entry `by` value it
   does not know, and show it as text.
-- Console, a console slice after S9: draw a `check` with no Allow button.
+- Console, a console slice after S9: draw a `check` as a pending check with
+  no answer buttons.
+- Console, a console slice after S9: accept a decision `outcome` `none` (a
+  check the checked provider let through); `Decision.outcome` in
+  `console/kit/model.ts` gains `none`.
+- Console, a console slice after S9: read `part` entries (`console/kit/wire.ts`
+  has no `part` case today) and join parts 1..m, across pages and replay, into
+  one entry before parsing, as above.
 - Console, a console slice after S9: when a tool row of the ask's id exists,
   `console/kit/reduce.ts` keeps that row's call (today it reads `m.call` only
   when no row exists); instead the ask's `toolCall` and `input` replace the
@@ -1037,7 +1048,7 @@ same rule as a `ToolCall`'s), never copied from a `ToolCall` of the same id.
 
 A `check` is the checked provider's to answer (10); its `none` means "no
 objection", never an allow. A client shows a check as a pending check or a
-decision line, with no Allow button; the kernel offers no answer options for
+decision line, with no answer buttons; the kernel offers no answer options for
 it.
 
 Code to change (S12):
@@ -1549,7 +1560,7 @@ length. A long session cannot hold the slot.
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
 | A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving | watane: host, pkg (H1, H5, H7); this repository: the kernel stream, the console skeleton | cases 7, 20, 21 pass; cases 36 and 51 for the host part (3); case 58 (host part); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59; the budgets of stage B |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2, dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts); the budgets of stage D |
 | E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
@@ -1626,7 +1637,7 @@ attach shows "Writing…" until its entry arrives.
 | `AgentThoughtChunk` | "Thinking…", open while it streams; then folded to "Thought for n s" |
 | `ToolCall` of reads and searches in a row | one folded line, "Explored · n reads, m searches" |
 | `ToolCall` of an edit, a program run, or any failed call | a card: name, argument, diff or output, status; a failed one open |
-| `ask` (unanswered) | the card of its tool call with the ask bar, drawn from the ask entry only, never from any `ToolCall`, `ToolCallUpdate` or `tool` entry of the same `toolCallId`, before or after the ask, while it is open; its argument line comes from the ask's `input` (not `toolCall.rawInput` or `title`); an open ask's call is never folded into "Explored" (a `check` has no Allow button); "Needs you (n)" above the input |
+| `ask` (unanswered) | the card of its tool call with the ask bar, drawn from the ask entry only, never from any `ToolCall`, `ToolCallUpdate` or `tool` entry of the same `toolCallId`, before or after the ask, while it is open; its argument line comes from the ask's `input` (not `toolCall.rawInput` or `title`); an open ask's call is never folded into "Explored" (a `check` shows as a pending check with no answer buttons); "Needs you (n)" above the input, counting open asks only, not checks |
 | `ask` (decided), `allow`, `verdict` | a decision line: who, what, the reason; a decided ask's line names the call by the ask's `toolCall.title` and shows its `input`'s argument, and its card keeps the ask's call (9.8) |
 | `Plan` | the plan above the input, "n of m done" |
 | `turn` | the status line (18.5); at a turn's end, a footer line of time, tools and tokens |
@@ -1672,7 +1683,8 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
 - **Place.** The transcript follows new output only while the reader is
   within 40 px of the end; otherwise a "New activity below" pill appears.
   Session rows do not move while the pointer is over the list.
-- **Asks.** Allow once (primary), Allow `<reach>` this session, Deny… with a
+- **Asks.** The bar is for an ask (`kind: "ask"`) only; a check has none.
+  Allow once (primary), Allow `<reach>` this session, Deny… with a
   reason field, Cancel, and Esc in that field closing it. "Needs you" scrolls
   to the first open ask and puts focus on Allow once. A session allow shows
   in the header until the session ends or `take-back`.
