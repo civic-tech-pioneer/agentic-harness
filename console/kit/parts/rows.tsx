@@ -66,7 +66,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const open = pending && ask.kind === "ask";
   // 9.4 rule 4: an answer sent and not yet decided counts as decided; a refusal other than "already decided" gives the bar back
   const [sent, setSent] = useState<{ ask: Ask; refused: boolean } | null>(null);
-  const answered = open && (actions.answeredAsks ? actions.answeredAsks.get(ask.id) === ask : !!actions.answered?.has(ask.id));
+  const answered = open && actions.answeredAsks?.get(ask.id) === ask;
   const asking = open && !answered;
   const send = useMemo<Actions>(() => ({ ...actions, answer: (id, d) => {
     setSent({ ask: ask!, refused: false });

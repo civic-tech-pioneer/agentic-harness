@@ -4,7 +4,7 @@ import { useState } from "react";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emptyView, type Actions, type SessionView } from "./model";
-import { reduce } from "./reduce";
+import { openAsk, reduce } from "./reduce";
 import { ThreadProvider, Transcript } from "./thread";
 import { StatusLine } from "./status";
 import { story } from "../fake/story";
@@ -18,7 +18,8 @@ const mk = (): Actions => ({ say: vi.fn(), answer: vi.fn(), stop: vi.fn(), takeB
 /** Stands in for App: it owns the answered set the rows read (9.4 rule 4) and adds to it when an answer is sent. */
 function Shell({ view, actions }: { view: SessionView; actions: Actions }) {
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
-  const a: Actions = { ...actions, answered, answer: (id, d) => { setAnswered((s) => new Set(s).add(id)); return actions.answer(id, d); } };
+  const answeredAsks = new Map([...answered].flatMap((id) => { const o = openAsk(view, id); return o ? [[id, o] as const] : []; }));
+  const a: Actions = { ...actions, answeredAsks, answer: (id, d) => { setAnswered((s) => new Set(s).add(id)); return actions.answer(id, d); } };
   return <ThreadProvider view={view} actions={a}><Transcript view={view} actions={a} /></ThreadProvider>;
 }
 const show = (view: SessionView, actions = mk()) => render(<Shell view={view} actions={actions} />);

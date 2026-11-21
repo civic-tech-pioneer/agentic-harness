@@ -56,9 +56,8 @@ export const emptyView: SessionView = {
   allows: [], lastIndex: 0, synced: false, loading: false,
 };
 export interface Actions {
-  /** The asks this console answered that have no decision entry yet (9.4 rule 4): the one source for the card's line and the dock's count. */
-  answered?: ReadonlySet<string>;
-  /** The open ask object each answered id stands for: a card is answered only when its own row's ask is that object. */
+  /** The asks this console answered that have no decision entry yet (9.4 rule 4), each with the open ask object it was answered for:
+   * a card is answered only when its own row's ask is that object (the dock's count reads the same set). */
   answeredAsks?: ReadonlyMap<string, Ask>;
   say(text: string): void;
   answer(ask: string, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void | Promise<void>;
