@@ -1,0 +1,46 @@
+package mods:agent@0.1.0;
+
+// The agent kernel (TECHNICAL 2.3, 9.9). Stage A: no `offers`.
+
+interface sessions {
+  use watane:host/streams@0.1.0.{stream-id};
+
+  record page { entries: list<string>, last: u64 }
+  record session-info { id: string, title: string, profile: string, backend: string, turn: string, updated: u64 }
+  record queued-input { n: u64, input: string }
+  record refusal { field: string, backend: string, model: string, reason: string }
+  variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow, behind(u64), too-large(u64), busy }
+
+  start: func(key: string, profile: string, overlay: string, input: string) -> result<string, error>;
+  check: func(profile: string, overlay: string) -> list<refusal>;
+  attach: func(session: string, after: u64, caps: string) -> result<stream-id, error>;
+  read: func(session: string, after: u64, before: option<u64>, max: u32) -> result<page, error>;
+  say: func(session: string, key: string, input: string) -> result<u64, error>;
+  answer: func(session: string, key: string, ask: string, decision: string) -> result<_, error>;
+  interrupt: func(session: string, replacement: option<string>) -> result<_, error>;
+  cancel: func(session: string);
+  %list: func(after: option<string>, max: u32) -> result<list<session-info>, error>;
+  rename: func(session: string, title: string) -> result<_, error>;
+  delete: func(session: string) -> result<_, error>;
+  queued: func(session: string) -> result<list<queued-input>, error>;
+  unqueue: func(session: string, n: u64) -> result<_, error>;
+  take-back: func(session: string, allow: string) -> result<_, error>;
+}
+
+interface probe {
+  use sessions.{error};
+
+  start: func(key: string, count: u32, every-ms: u32) -> result<string, error>;
+}
+
+world agent {
+  import watane:host/state@0.1.0;
+  import watane:host/caller@0.1.0;
+  import watane:host/streams@0.1.0;
+  import watane:host/timers@0.1.0;
+  export sessions;
+  export probe;
+  export watane:host/stream-sink@0.1.0;
+  export watane:host/stream-producer@0.1.0;
+  export watane:host/timer-sink@0.1.0;
+}

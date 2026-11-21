@@ -4,3 +4,5 @@ __pycache__/
 factory/runs/
 .claude/worktrees/
 kernel/target*
+kernel/wasm/logic.wasm
+kernel/wasm/ui

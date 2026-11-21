@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "wasm"]
+default-members = [".", "wasm"]
+
 [package]
 name = "agent-kernel"
 version = "0.1.0"
