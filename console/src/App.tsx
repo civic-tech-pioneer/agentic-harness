@@ -8,7 +8,8 @@ import { Dock } from "./Dock";
 let sent = 0;
 
 export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[] }) {
-  const [view, setView] = useState<SessionView>(emptyView);
+  const [held, setHeld] = useState<{ id: string; view: SessionView }>({ id: info.id, view: emptyView }); // the view is tagged with the session it belongs to
+  const view = held.id === info.id ? held.view : emptyView; // a new info.id shows nothing until that session's first view
   const [stopping, setStopping] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const scroller = useRef<HTMLDivElement>(null);
@@ -18,13 +19,16 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set()); // asks this console answered that have no decision entry yet (9.4 rule 4)
   const answeredAsk = useRef(new Map<string, Ask | undefined>()); // the ask object each answered id stood for when it was answered
   const viewRef = useRef(view); viewRef.current = view;
+  const heldRef = useRef(held); heldRef.current = held;
   useEffect(() => { setAnswered(new Set()); answeredAsk.current.clear(); }, [info.id]); // ask ids repeat across sessions: what this console answered is per session
   const [needsHidden, setNeedsHidden] = useState(false);
   const lastAsk = useRef<string | null>(null); // the ask whose card last took focus
 
   useEffect(() => {
-    const s = openSession(kernel, info.id, setView);
-    return () => s.close();
+    const id = info.id;
+    let open = true; // a late view of a closed session is never kept
+    const s = openSession(kernel, id, (v) => { if (open) setHeld({ id, view: v }); });
+    return () => { open = false; s.close(); };
   }, [kernel, info.id]);
   // 18.6 Place: follow the end while the reader is within 40 px of it (and on open).
   const toEnd = useCallback(() => {
@@ -70,6 +74,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: () => Promise.reject(new Error("an answer goes out only with the ask its card drew")), // fail closed: no drawn ask, no identity check
     answerDrawn: (drawn, d) => {
+      if (heldRef.current.id !== info.id) return Promise.reject(new Error("the view is not this session's")); // fail closed
       const mine = openAsk(viewRef.current, drawn.id);
       // fail closed: an answer for an ask that is not the open one of its id sends and records nothing
       return mine === drawn ? send(drawn.id, d, mine) : Promise.reject(new Error("the ask is no longer the one the card drew"));
@@ -92,7 +97,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
     setBehind(false);
   }, []);
 
-  const askCard = (id: string) => scroller.current?.ownerDocument.querySelector<HTMLElement>(`[data-ask="${CSS.escape(id)}"]`) ?? null;
+  const askCard = (id: string) => scroller.current?.ownerDocument.querySelector<HTMLElement>(`[data-ask="${CSS.escape(id)}"][data-asking]`) ?? null;
   // 18.6: Needs you hides while the only open ask's card is fully in view and holds focus
   const measureNeeds = useCallback(() => {
     const el = scroller.current, id = shown.openAsks.length === 1 ? shown.openAsks[0]! : undefined;
