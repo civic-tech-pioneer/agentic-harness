@@ -107,11 +107,16 @@ pub fn scope(tool: &str, workspace: Option<&str>, input: &Value) -> Option<Strin
             "AGENTS.md",
             "build.rs",
             "package.json",
+            "CLAUDE.local.md",
             "Makefile",
+            "GNUmakefile",
         ]
         .iter()
         .any(|n| last.eq_ignore_ascii_case(n));
-        if named || rest.split('/').any(|s| s.starts_with('.')) {
+        // A file system that folds Unicode case or drops ignorable code points can open a
+        // non-ASCII spelling as a named or dot file (9.6).
+        let odd = rest.bytes().any(|b| !(0x20..=0x7e).contains(&b));
+        if named || odd || rest.split('/').any(|s| s.starts_with('.')) {
             return None;
         }
     }

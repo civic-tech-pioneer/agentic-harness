@@ -2812,7 +2812,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         // Due deadlines of later stages stay (and keep the count); the timer follows the rest.
         self.sync_timer(&rec, slots, &mut acct, &before, now, true);
         slots.save(&mut self.state)?;
-        self.finish(Some(&mut rec), &mut acct)
+        // A restart step `settle` ran is charged as the early path does (9.3 "Past").
+        let stepped = rec.boot != boot;
+        self.finish_as(Some(&mut rec), &mut acct, stepped)
     }
 
     /// One firing of the pass (R2): the next session of an older boot does its step, or the pass ends.

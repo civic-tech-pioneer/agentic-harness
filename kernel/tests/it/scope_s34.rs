@@ -591,3 +591,32 @@ fn fix1_ac2_a_session_allow_does_not_reach_a_dot_path() {
     assert_eq!(stored("e1")["body"]["reach"], "Edit(/w/**)");
     assert!(stored("e2")["body"].get("reach").is_none());
 }
+
+#[test]
+fn fix2_ac2_unicode_and_new_names_get_no_write_key() {
+    for p in [
+        "/w/CLAUDE.local.md",
+        "/w/claude.LOCAL.md",
+        "/w/GNUmakefile",
+        "/w/src/caf\u{e9}.rs",
+        "/w/\u{200C}.git/config",
+    ] {
+        assert_eq!(
+            r("Write", json!({"file_path": p, "content": "x"})),
+            None,
+            "{p}"
+        );
+    }
+    assert_eq!(
+        r("Read", json!({"file_path": "/w/src/caf\u{e9}.rs"})).as_deref(),
+        Some("Read(/w/**)")
+    );
+    assert_eq!(
+        r(
+            "Write",
+            json!({"file_path": "/w/src/main.rs", "content": "x"})
+        )
+        .as_deref(),
+        Some("Write(/w/**)")
+    );
+}
