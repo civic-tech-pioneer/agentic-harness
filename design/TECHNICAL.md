@@ -998,8 +998,8 @@ these places (S14 built the rest).
 - Kernel, a later slice: an `ask-resolved` with `by: answered` closes the open
   ask or check with no entry when the kernel answered it itself, and
   otherwise gives the decision entry with the item's `outcome` (`by: checked`
-  on a `direct: false` stream, else `host`); a missing or bad `outcome`, or
-  `none` on an ask, is `unknown` (S19 reads every `answered` as `unknown`; 9.8).
+  on a `direct: false` stream, else `host`); a missing or bad `outcome`, `none` on
+  an ask or `allow` on a check is `unknown` (S19 reads every `answered` as `unknown`; 9.8).
 
 ### 9.5 The OpenAI loop
 
@@ -1184,7 +1184,10 @@ below is an `unknown` entry, never an ask or a decision.
    gives the decision entry with the item's `outcome`; its `by` is `checked`
    on a checked provider's stream (`direct: false`, 10) and `host`
    otherwise. An `answered` whose `outcome` is missing or not `allow`, `deny`
-   or `none`, or is `none` on an ask, is `unknown`. Any other or missing
+   or `none`, or is `none` on an ask or `allow` on a check, is `unknown`
+   (a check is answered only `none` or `deny`, 4.5). An ask or check the
+   kernel answered itself stays open until the host's `ask-resolved` for
+   it arrives; the kernel's `answer` does not close it. Any other or missing
    `by`, or one that is not a string, is `unknown`. An `unknown` item leaves
    the ask open, so a later `expired` or `cancelled` still gives its decision
    (S19; until the code to change of 9.4 is built, `answered` is `unknown`
@@ -1750,8 +1753,8 @@ of `spec/VISION.md`.
     gives its `by: host` decision; with `by: answered` it closes the ask
     with no entry when the kernel answered it itself, and gives the decision
     entry from `outcome` otherwise (`by: checked` on a `direct: false`
-    stream, else `host`); a missing or bad `outcome`, or `none` on an ask, is
-    `unknown` (S19 reads every `answered` as `unknown`, 9.4). An `ask` or
+    stream, else `host`); a missing or bad `outcome`, `none` on an ask or
+    `allow` on a check is `unknown` (S19 reads every `answered` as `unknown`, 9.4). An `ask` or
     `check` whose `tool` is not a string is `unknown`. A part group whose joined
     whole is of kind `part` reads as `unreadable`.
 
