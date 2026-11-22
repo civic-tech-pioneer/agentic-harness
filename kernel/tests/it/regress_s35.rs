@@ -223,6 +223,50 @@ fn ac2_live_indexes_equal_reads_over_two_turns() {
         .position(|e| e["body"]["content"][0]["text"] == "turn two")
         .unwrap();
     assert_eq!(all[second + 1]["kind"], "turn");
+    // Live, in the order the owner stream got them: each later message is an `entry` item, and
+    // the item right after it is its `running` turn's entry (S35 r1, F1.8).
+    let seen = live_items(&k, &o, from);
+    for text in ["turn two", "turn three"] {
+        let at = seen
+            .iter()
+            .position(|v| v["entry"]["body"]["content"][0]["text"] == text)
+            .unwrap_or_else(|| panic!("{text:?} did not go out live: {seen:?}"));
+        assert_eq!(
+            seen[at]["type"], "entry",
+            "{text:?} went out as {}",
+            seen[at]
+        );
+        assert_eq!(seen[at]["entry"]["kind"], "message");
+        assert_eq!(seen[at]["entry"]["body"]["role"], "user");
+        let next = seen
+            .get(at + 1)
+            .unwrap_or_else(|| panic!("nothing after {text:?}"));
+        assert_eq!(next["type"], "entry", "after {text:?}: {next}");
+        assert_eq!(next["entry"]["kind"], "turn", "after {text:?}: {next}");
+        assert_eq!(
+            next["entry"]["body"]["state"], "running",
+            "after {text:?}: {next}"
+        );
+        assert_eq!(
+            next["entry"]["i"].as_u64(),
+            seen[at]["entry"]["i"].as_u64().map(|i| i + 1),
+            "after {text:?}: {next}"
+        );
+    }
+}
+
+/// The owner stream's `_meta.watane` items that carry an entry index, in the order pushed.
+fn live_items(k: &K, owner: &str, from: usize) -> Vec<Value> {
+    k.host.calls[from..]
+        .iter()
+        .filter_map(|c| match c {
+            HostCall::Push { stream, value } if stream == owner => {
+                let w = &value["_meta"]["watane"];
+                (w["entry"]["i"].is_u64() || w["i"].is_u64()).then(|| w.clone())
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// AC4: an idle turn that ends a running one carries its whole seconds, rounded.
