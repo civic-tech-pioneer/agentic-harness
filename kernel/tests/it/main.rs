@@ -39,6 +39,7 @@ mod s26;
 mod s28;
 mod s29_ceiling;
 mod s29_short;
+mod s35_stage_b;
 mod scope_s34;
 mod seam_s32;
 mod sessions;
