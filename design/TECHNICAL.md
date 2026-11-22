@@ -1181,7 +1181,10 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 
 - An ACP v1 `SessionUpdate` carries `_meta.watane.at` (ms, the kernel's clock
   when it adapted the line) on every live update, and `_meta.watane.i` on the
-  update that finishes an entry (`message`, `tool`).
+  update that finishes an entry (`message`, `tool`). The update that finishes a
+  `message` carries the whole message, not a last delta: a client replaces
+  the text it streamed for that message with it (so a client that attached
+  mid-message shows it whole, and nothing is doubled; S35).
 - An entry with no ACP form (`ask`, `allow`, `verdict`, `turn`, `compaction`,
   `unknown`, `part`) goes out as an `entry` item, live and in replay. In
   replay every entry goes out as an `entry` item; a client also accepts a bare
