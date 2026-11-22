@@ -1,7 +1,7 @@
 # Boundaries of the unchecked provider
 
 The provider rows of `design/TECHNICAL.md` section 14 of the agentic-harness repository, copied at its
-commit `7443416e86e4` (refresh them, and this commit, when they change). Paths in "Files" are relative to
+commit `866d325` (refresh them, and this commit, when they change). Paths in "Files" are relative to
 that repository or to the watane checkout, as there.
 
 | Property | Holds by | Files |
