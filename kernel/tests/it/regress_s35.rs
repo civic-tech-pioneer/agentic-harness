@@ -246,3 +246,47 @@ fn ac4_idle_turn_entry_carries_seconds() {
         );
     }
 }
+
+/// On the host, a reload while the fake `claude` was writing (its delta sent, the message not
+/// finished) showed the status line "Working" until the message arrived, and the replay's `synced`
+/// item was `{"type":"synced","through":39}`. 9.4: `writing` is true when a message was being
+/// written at the attach; 18.3: such an attach shows "Writing…" until its entry arrives.
+#[test]
+fn regress_s35_attach_mid_message_says_writing() {
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    let t = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    let Attached::Live { stream: _ } = k.attach("alice", &id, 0).unwrap().value else {
+        panic!("not live");
+    };
+    let init = format!(r#"{{"type":"initialized","workspace":"{WS}"}}"#);
+    let sys = format!(r#"{{"type":"system","subtype":"init","session_id":"{UUID}"}}"#);
+    let delta = fake_lines()[1].clone();
+    assert!(String::from_utf8_lossy(&delta).contains("text_delta"));
+    k.provider_lines(
+        &t,
+        vec![(1, init.into_bytes()), (2, sys.into_bytes()), (3, delta)],
+    )
+    .unwrap();
+    let from = k.host.calls.len();
+    let Attached::Live { stream: o2 } = k.attach("alice", &id, 0).unwrap().value else {
+        panic!("not live");
+    };
+    let synced: Vec<Value> = k.host.calls[from..]
+        .iter()
+        .filter_map(|c| match c {
+            HostCall::Push { stream, value } if *stream == o2 => {
+                let w = &value["_meta"]["watane"];
+                (w["type"] == "synced").then(|| w.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(synced.len(), 1, "one synced item: {synced:?}");
+    assert_eq!(
+        synced[0]["writing"],
+        Value::Bool(true),
+        "attached mid-message, synced was {}",
+        synced[0]
+    );
+}
