@@ -1,4 +1,5 @@
 // S35-4: the agent chunk branch follows 9.4 (the finishing update carries the whole message); the rest is the reducer of 5882c51.
+// S35 continuation: a folded thought's seconds run from its first to its last chunk (9.4 `message` row), as in reduce.ts.
 // Test fixture, frozen: console/kit/reduce.ts as it was at 5882c51 (before S7-fix1), the oracle of s7_fix1.test.ts. Never imported by the app; do not edit.
 import { askArg, type Internal, type Row, type SessionView, type ToolCall, type TurnState, type Ask } from "../model";
 import { parse, type CallPatch, type TurnExtra } from "../wire";
@@ -137,16 +138,17 @@ function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra
 }
 
 /** Folds the thought that is streaming, if any, at time `at` (ms). */
-function fold(v: SessionView, x: Internal, at?: number) {
+function fold(v: SessionView, x: Internal) {
   for (let k = v.rows.length - 1; k >= 0; k--) {
     const r = v.rows[k]!;
     if (r.kind === "thought" && r.streaming) {
-      const seconds = at !== undefined && x.thoughtAt !== undefined ? Math.round((at - x.thoughtAt) / 1000) : 0;
+      const seconds = x.thoughtLast !== undefined && x.thoughtAt !== undefined ? Math.round((x.thoughtLast - x.thoughtAt) / 1000) : 0;
       v.rows[k] = { ...r, streaming: false, seconds };
       break;
     }
   }
   x.thoughtAt = undefined;
+  x.thoughtLast = undefined;
 }
 
 function toolTitle(v: SessionView, id: string): string {
@@ -200,7 +202,7 @@ export function reduce(view: SessionView, message: string): SessionView {
   const v: SessionView = { ...view, rows: view.rows.slice(), x };
 
   if (m.t === "chunk" || m.t === "call" || m.t === "plan") {
-    if (!(m.t === "chunk" && m.part === "thought")) fold(v, x, m.at);
+    if (!(m.t === "chunk" && m.part === "thought")) fold(v, x);
   } else if (m.t !== "synced" && m.t !== "queue" && m.t !== "usage" && m.t !== "turn") fold(v, x);
 
   switch (m.t) {
@@ -287,6 +289,7 @@ export function reduce(view: SessionView, message: string): SessionView {
       if (m.part === "thought") {
         if (last?.kind === "thought" && last.streaming) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
         else { v.rows.push({ kind: "thought", key: nextKey(x, "~t"), text: m.text, streaming: true }); x.thoughtAt = m.at; }
+        x.thoughtLast = m.at;
         break;
       }
       if (m.part === "user") {

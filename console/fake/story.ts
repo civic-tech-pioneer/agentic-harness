@@ -23,8 +23,8 @@ export const story: string[][] = [
     upd({ sessionUpdate: "user_message_chunk", content: text("Fix the retry bug in sync.ts") }, { i: 1, at: 1000 }),
     w({ type: "turn", state: { state: "running", since: T0 + 1000 } }),
     upd({ sessionUpdate: "agent_thought_chunk", content: text("The retry loop ") }, { at: 1500 }),
-    upd({ sessionUpdate: "agent_thought_chunk", content: text("never backs off.") }, { at: 2500 }),
-    upd({ sessionUpdate: "agent_message_chunk", content: text("I will read the sync code first.") }, { i: 2, at: 4500 }),
+    upd({ sessionUpdate: "agent_thought_chunk", content: text("never backs off.") }, { at: 4500 }),
+    upd({ sessionUpdate: "agent_message_chunk", content: text("I will read the sync code first.") }, { i: 2, at: 4600 }),
   ],
   [
     call("r1", "Read sync.ts", "read", { locations: [{ path: "src/sync.ts" }] }),

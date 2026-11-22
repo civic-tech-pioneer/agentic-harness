@@ -212,15 +212,16 @@ function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra
   push(v, { kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}) });
 }
 
-/** Folds the thought that is streaming, if any, at time `at` (ms). */
-function fold(v: SessionView, x: Internal, at?: number) {
+/** Folds the thought that is streaming, if any: its seconds run from its first to its last chunk's `at` (9.4 `message` row), as its entry's do. */
+function fold(v: SessionView, x: Internal) {
   const k = lastOf(I.thinking);
   if (k >= 0) {
     const r = v.rows[k] as Extract<Row, { kind: "thought" }>;
-    const seconds = at !== undefined && x.thoughtAt !== undefined ? Math.round((at - x.thoughtAt) / 1000) : 0;
+    const seconds = x.thoughtLast !== undefined && x.thoughtAt !== undefined ? Math.round((x.thoughtLast - x.thoughtAt) / 1000) : 0;
     put(v, k, { ...r, streaming: false, seconds });
   }
   x.thoughtAt = undefined;
+  x.thoughtLast = undefined;
 }
 
 function toolTitle(v: SessionView, id: string): string {
@@ -331,7 +332,7 @@ export function reduce(view: SessionView, message: string): SessionView {
   const v: SessionView = { ...view, x }; // rows: copied by `own` on the first change
 
   if (m.t === "chunk" || m.t === "call" || m.t === "plan") {
-    if (!(m.t === "chunk" && m.part === "thought")) fold(v, x, m.at);
+    if (!(m.t === "chunk" && m.part === "thought")) fold(v, x);
   } else if (m.t !== "synced" && m.t !== "queue" && m.t !== "usage" && m.t !== "turn") fold(v, x);
 
   switch (m.t) {
@@ -420,6 +421,7 @@ export function reduce(view: SessionView, message: string): SessionView {
       if (m.part === "thought") {
         if (last?.kind === "thought" && last.streaming) put(v, v.rows.length - 1, { ...last, text: last.text + m.text });
         else { push(v, { kind: "thought", key: nextKey(x, "~t"), text: m.text, streaming: true }); x.thoughtAt = m.at; }
+        x.thoughtLast = m.at;
         break;
       }
       if (m.part === "user") {

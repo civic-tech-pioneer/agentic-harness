@@ -41,10 +41,9 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[]; refu
     if (!o.sessionUpdate) { if (o.kind && o.i > last()) store.push(o); return; }
     const { i, at = 0 } = w ?? {};
     const text = o.content?.type === "text" ? (o.content.text as string) : "";
-    if (o.sessionUpdate !== "agent_thought_chunk" && acc.thoughtAt !== undefined && acc.thoughtEnd === undefined) acc.thoughtEnd = at;
     const put = (kind: string, body: Rec) => { if (i !== undefined && i > last()) store.push({ v: 1, i, kind, at, body }); };
     switch (o.sessionUpdate) {
-      case "agent_thought_chunk": acc.thought += text; acc.thoughtAt ??= at; break;
+      case "agent_thought_chunk": acc.thought += text; acc.thoughtAt ??= at; acc.thoughtEnd = at; break; // seconds: first to last chunk (9.4)
       case "user_message_chunk":
         acc.user += text;
         if (i !== undefined) { put("message", { role: "user", content: [{ type: "text", text: acc.user }] }); acc.user = ""; }
