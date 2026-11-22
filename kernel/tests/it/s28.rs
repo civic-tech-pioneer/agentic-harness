@@ -57,6 +57,7 @@ fn failed() -> Turn {
     Turn::Idle {
         stop: Stop::Failed {
             error: "provider-ended".into(),
+            cause: None,
         },
         seconds: None,
         tools: None,
@@ -84,6 +85,8 @@ fn turns(k: &mut K, id: &str) -> usize {
     kinds(k, id).iter().filter(|x| *x == "turn").count()
 }
 
+/// Each turn handed to the provider, with whether it resumes the Claude session: a new stream's
+/// `start` carries the input and a launch that names `session {resume}` (4.1, 10).
 fn turn_requests(k: &K) -> Vec<(String, bool)> {
     k.host
         .calls
@@ -92,9 +95,20 @@ fn turn_requests(k: &K) -> Vec<(String, bool)> {
             HostCall::Request(Request::Turn { input, resume, .. }) => {
                 Some((input.clone(), *resume))
             }
+            HostCall::StartProvider { launch, input } => {
+                let v: Value = serde_json::from_str(launch).unwrap();
+                Some((input.clone(), v["session"]["resume"].is_string()))
+            }
             _ => None,
         })
         .collect()
+}
+
+/// Gives the session its Claude session id, as `system/init` does (9.8 "Adapter state").
+fn init(k: &mut K, id: &str) {
+    let t = rec(k, id).streams[0].clone();
+    let line = br#"{"type":"system","subtype":"init","session_id":"c0ffee00-0000-4000-8000-000000000001"}"#;
+    k.provider_lines(&t, vec![(1, line.to_vec())]).unwrap();
 }
 
 fn opens(k: &K) -> usize {
@@ -166,6 +180,7 @@ fn ac4_the_queue_waits_for_a_person() {
     for (profile, resume) in [("p", true), ("np", false)] {
         let mut k = kernel();
         let id = k.start("alice", "k1", profile, "{}", IN).unwrap().value;
+        init(&mut k, &id);
         k.say("alice", &id, "s1", "one").unwrap();
         k.host.calls.clear();
         k.provider_item("t1", ProviderEvent::Ended).unwrap();
@@ -186,6 +201,7 @@ fn ac4_the_queue_waits_for_a_person() {
 fn ac5_the_next_say_starts_a_turn() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    init(&mut k, &id);
     k.provider_item("t1", ProviderEvent::Ended).unwrap();
     k.host.calls.clear();
     k.say("alice", &id, "s1", "again").unwrap();

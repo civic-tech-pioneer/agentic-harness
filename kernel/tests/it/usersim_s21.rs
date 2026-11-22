@@ -208,13 +208,21 @@ fn usersim_s21_story() {
         })
         .collect();
     eprintln!("requests after Continue: {:?}", reqs);
-    match &reqs[..] {
-        [Request::Turn { resume, input, .. }] => {
-            assert!(*resume);
-            assert_ne!(input, "Continue");
-        }
-        o => panic!("{o:?}"),
-    }
+    // S35: the turn rides on the new provider stream's `start` (10): the oldest queued input, not
+    // Continue, and no turn request. (The resume is the launch's `session`, which this session
+    // never had: no `system/init` came; the restart tests cover it.)
+    assert!(reqs.is_empty(), "{reqs:?}");
+    let started: Vec<_> = k
+        .host
+        .calls
+        .iter()
+        .filter_map(|c| match c {
+            HostCall::StartProvider { input, .. } => Some(input.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(started.len(), 1, "{started:?}");
+    assert_ne!(started[0], "Continue");
     let q = k.queued("ann", &s1).unwrap();
     assert_eq!(q.last().unwrap().input, "Continue");
     assert!(matches!(rec(&mut k, &s1).turn, Turn::Running { .. }));
@@ -330,11 +338,12 @@ fn usersim_s21_lazy() {
     // say
     k.host.calls.clear();
     k.say("ann", &ids[2], "y", "Continue").unwrap();
+    // S35: the continue rides on a new provider stream's `start`, not a turn request.
     assert!(k
         .host
         .calls
         .iter()
-        .any(|c| matches!(c, HostCall::Request(Request::Turn { resume: true, .. }))));
+        .any(|c| matches!(c, HostCall::StartProvider { .. })));
     // resume refused
     k.provider(&ids[2], ProviderEvent::Turn(Turn::ResumeLost))
         .unwrap();

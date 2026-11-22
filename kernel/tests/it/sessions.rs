@@ -142,14 +142,12 @@ fn ac1_start_makes_the_record_and_everything_it_names() {
     );
     assert_eq!(es[1]["kind"], "turn");
     assert_eq!(es[1]["body"], json!({"state": "running", "since": 1000}));
-    assert_eq!(
-        requests(&k),
-        [Request::Turn {
-            session: "s1".into(),
-            input: IN.into(),
-            resume: false
-        }]
-    );
+    // S35 AC2: the provider's `start` carries the input, so no turn request goes out.
+    assert!(requests(&k).is_empty());
+    assert!(k.host.calls.iter().any(|c| matches!(
+        c,
+        HostCall::StartProvider { input, .. } if input == IN
+    )));
     assert_eq!(
         c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
         [json!({"type": "turn", "state": {"state": "running", "since": 1000}})]
@@ -293,7 +291,8 @@ fn ac3_say_starts_on_idle_unknown_resume_lost_and_queues_while_active() {
         [json!({"type": "queue", "inputs": [{"n": 1, "input": "one"}]})]
     );
     assert_eq!(k.say("alice", &id, "b", "two").unwrap().value, 2);
-    assert_eq!(requests(&k).len(), 1);
+    // S35: the start sent no turn request, and queueing sends none.
+    assert_eq!(requests(&k).len(), 0);
     assert_eq!(
         k.queued("alice", &id).unwrap(),
         [
@@ -413,6 +412,8 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
         requests(&k).last().unwrap(),
         &Request::Turn {
             session: id.clone(),
+            stream: "t1".into(),
+            direct: true,
             input: "next".into(),
             resume: false
         }
@@ -593,6 +594,8 @@ fn ac6_answer_shapes_and_effects() {
         requests(&k).last().unwrap(),
         &Request::Answer {
             session: id.clone(),
+            stream: "t1".into(),
+            direct: true,
             ask: "a1".into(),
             decision: json!({"allow": true})
         }
@@ -1029,7 +1032,9 @@ fn ac1_interrupt_without_a_replacement_ends_an_active_turn() {
         assert_eq!(
             requests(&k)[sent..],
             [Request::Interrupt {
-                session: id.clone()
+                session: id.clone(),
+                stream: "t1".into(),
+                direct: true
             }]
         );
     }
@@ -1078,10 +1083,14 @@ fn ac1_interrupt_with_a_replacement_starts_it_and_the_session_stays_active() {
         requests(&k)[sent..],
         [
             Request::Interrupt {
-                session: id.clone()
+                session: id.clone(),
+                stream: "t1".into(),
+                direct: true
             },
             Request::Turn {
                 session: id.clone(),
+                stream: "t1".into(),
+                direct: true,
                 input: "instead".into(),
                 resume: false
             }
@@ -1159,7 +1168,8 @@ fn ac2_cancel_closes_asks_ends_the_turn_and_keeps_the_queue() {
         assert_eq!(
             requests(&k)[sent..],
             [Request::Cancel {
-                session: id.clone()
+                session: id.clone(),
+                stream: "t1".into()
             }]
         );
         if inactive {
@@ -1221,6 +1231,8 @@ fn ac1_interrupt_with_a_replacement_on_an_inactive_session_only_starts_the_turn(
             requests(&k)[sent..],
             [Request::Turn {
                 session: id.clone(),
+                stream: "t1".into(),
+                direct: true,
                 input: "instead".into(),
                 resume
             }]
@@ -1256,5 +1268,12 @@ fn ac1_ac2_interrupt_and_cancel_do_the_r6_step_first() {
         .map(|e| &e["body"]["decision"]["reason"])
         .collect();
     assert_eq!(reasons, [&json!("restart")]);
-    assert_eq!(requests(&k)[sent..], [Request::Cancel { session: id }]);
+    // The restart step released the stream: the cancel names none.
+    assert_eq!(
+        requests(&k)[sent..],
+        [Request::Cancel {
+            session: id,
+            stream: String::new()
+        }]
+    );
 }

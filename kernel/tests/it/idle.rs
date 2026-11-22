@@ -76,15 +76,48 @@ fn host_calls(k: &K, from: usize) -> Vec<HostCall> {
         .collect()
 }
 
+/// Gives the session its Claude session id, as `system/init` does (9.8 "Adapter state").
+fn init(k: &mut K, id: &str) {
+    let t = rec(k, id).streams[0].clone();
+    let line = br#"{"type":"system","subtype":"init","session_id":"c0ffee00-0000-4000-8000-000000000001"}"#;
+    k.provider_lines(&t, vec![(1, line.to_vec())]).unwrap();
+}
+
+/// What each turn the kernel handed the provider resumes: a new stream's launch names `session
+/// {resume}` (4.1); a turn on a live stream says `resume`.
 fn turn_requests(k: &K) -> Vec<bool> {
     k.host
         .calls
         .iter()
         .filter_map(|c| match c {
             HostCall::Request(Request::Turn { resume, .. }) => Some(*resume),
+            HostCall::StartProvider { launch, .. } => {
+                let v: serde_json::Value = serde_json::from_str(launch).unwrap();
+                Some(v["session"]["resume"].is_string())
+            }
             _ => None,
         })
         .collect()
+}
+
+/// Asserts `calls` are a `start` of `P` for session `p` in a new scratch workspace (4.1) with
+/// `input`, then the cancel of `t2`.
+fn assert_start_then_cancel(calls: Vec<HostCall>, input: &str) {
+    let [HostCall::StartProvider { launch, input: got }, cancel] = calls.as_slice() else {
+        panic!("{calls:?}");
+    };
+    let launch: serde_json::Value = serde_json::from_str(launch).unwrap();
+    assert_eq!(
+        launch,
+        serde_json::json!({"max-turns":20,"mode":"manual","profile":"p","tools":["Read"],"version":1,"workspace":"scratch"})
+    );
+    assert_eq!(got, input);
+    assert_eq!(
+        cancel,
+        &HostCall::CancelStream {
+            stream: "t2".into()
+        }
+    );
 }
 
 /// AC8: the timer counts are those of the sessions that hold a deadline.
@@ -243,6 +276,7 @@ fn ac2_with_other_deadlines_left_the_timer_is_rearmed_for_the_earliest() {
 fn ac3_ac4_the_timer_releases_the_stream_and_the_next_say_resumes() {
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
+    init(&mut k, &id);
     k.provider(&id, done()).unwrap();
     let t = rec(&mut k, &id).streams[0].clone();
     k.host.now = 1000 + TEN;
@@ -456,19 +490,7 @@ fn ac9_a_start_that_fails_past_the_reserve_cancels_its_stream() {
     let from = k.host.calls.len();
     let e = k.start("bob", "k1", "p", "{}", IN).unwrap_err();
     assert!(matches!(e, KernelError::Quota(_)), "{e}");
-    let calls = host_calls(&k, from);
-    assert_eq!(
-        calls,
-        vec![
-            HostCall::StartProvider {
-                launch: P.into(),
-                input: IN.into()
-            },
-            HostCall::CancelStream {
-                stream: "t2".into()
-            }
-        ]
-    );
+    assert_start_then_cancel(host_calls(&k, from), IN);
     assert!(k.host.calls[from..]
         .iter()
         .all(|c| !matches!(c, HostCall::Request(_))));
@@ -486,18 +508,7 @@ fn ac9_a_say_that_fails_after_opening_cancels_its_stream() {
     let from = k.host.calls.len();
     let e = k.say("alice", &id, "q", &"x".repeat(2000)).unwrap_err();
     assert!(matches!(e, KernelError::Quota(_)), "{e}");
-    assert_eq!(
-        host_calls(&k, from),
-        vec![
-            HostCall::StartProvider {
-                launch: P.into(),
-                input: "x".repeat(2000)
-            },
-            HostCall::CancelStream {
-                stream: "t2".into()
-            }
-        ]
-    );
+    assert_start_then_cancel(host_calls(&k, from), &"x".repeat(2000));
 }
 
 // Validator (S26-3 round 1): the timer follows only the deadlines this build handles.

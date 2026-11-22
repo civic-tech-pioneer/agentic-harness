@@ -95,3 +95,61 @@ impl State for MemState {
         self.map.remove(key);
     }
 }
+
+/// A state that keeps a call's writes to itself until `commit` (TECHNICAL 2.1, "A failed call
+/// commits nothing", S32 R1): `get` sees them, the inner state does not, and `discard` drops them.
+#[derive(Debug)]
+pub struct Buffered<S: State> {
+    inner: S,
+    /// `None`: a delete.
+    writes: BTreeMap<String, Option<Vec<u8>>>,
+}
+
+impl<S: State> Buffered<S> {
+    pub fn new(inner: S) -> Self {
+        Buffered {
+            inner,
+            writes: BTreeMap::new(),
+        }
+    }
+
+    /// Puts the buffered writes into the inner state, in key order, and gives it back.
+    pub fn commit(mut self) -> S {
+        for (k, v) in std::mem::take(&mut self.writes) {
+            match v {
+                Some(v) => {
+                    // Checked against `MAX_VALUE` when buffered, so it fits.
+                    let _ = self.inner.put(&k, v);
+                }
+                None => self.inner.delete(&k),
+            }
+        }
+        self.inner
+    }
+
+    /// Drops the buffered writes and gives the inner state back as it was.
+    pub fn discard(self) -> S {
+        self.inner
+    }
+}
+
+impl<S: State> State for Buffered<S> {
+    fn get(&mut self, key: &str) -> Option<Vec<u8>> {
+        match self.writes.get(key) {
+            Some(w) => w.clone(),
+            None => self.inner.get(key),
+        }
+    }
+
+    fn put(&mut self, key: &str, value: Vec<u8>) -> Result<(), TooLarge> {
+        if value.len() > MAX_VALUE {
+            return Err(TooLarge(MAX_VALUE));
+        }
+        self.writes.insert(key.to_string(), Some(value));
+        Ok(())
+    }
+
+    fn delete(&mut self, key: &str) {
+        self.writes.insert(key.to_string(), None);
+    }
+}

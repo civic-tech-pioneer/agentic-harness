@@ -33,7 +33,12 @@ pub enum Stop {
     Completed,
     Interrupted,
     Stopped { limit: String },
-    Failed { error: String },
+    Failed {
+        error: String,
+        /// Why the provider's stream ended, when it ended other than `closed` (2.1).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cause: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,15 +112,6 @@ impl Turn {
 pub struct Deadline {
     pub what: String,
     pub at: u64,
-}
-
-/// The state of a probe session (9.9): entries written so far, entries in all, the delay between.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct Probe {
-    pub n: u64,
-    pub count: u64,
-    pub every_ms: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -218,9 +214,6 @@ pub struct Record {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live: Option<String>,
     pub deadlines: Vec<Deadline>,
-    /// A probe session's run (9.9); `None` for every other session.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub probe: Option<Probe>,
     pub open: Vec<OpenAsk>,
     pub pending_answers: BTreeMap<String, PendingAnswer>,
     pub next_index: u64,
@@ -253,7 +246,6 @@ impl Default for Record {
             streams: Vec::new(),
             live: None,
             deadlines: Vec::new(),
-            probe: None,
             open: Vec::new(),
             pending_answers: BTreeMap::new(),
             next_index: 1,
