@@ -17,7 +17,7 @@ describe("regress_S32 footer", () => {
     expect(reload.rows.map((r) => r.kind === "agent" ? r.text : null)).toEqual(live.rows.map((r) => r.kind === "agent" ? r.text : null));
   });
   it("regress_S32_no_footer_before_a_turn_ends", () => {
-    expect(kinds(feed(turn.slice(0, 5))).filter((k) => k === "footer")).toEqual([]);
+    expect(kinds(feed(turn.slice(0, 7))).filter((k) => k === "footer")).toEqual([]);
     expect(kinds(feed(replay.slice(0, 3))).filter((k) => k === "footer")).toEqual([]);
   });
 });
