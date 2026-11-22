@@ -20,6 +20,9 @@ const wasmSrc = join(root, "kernel", "wasm");
 const wasmDir = join(tmpdir(), "stage-b-mod-" + process.pid); // a copy: watane-dev rewrites the staged world (wit/deps) of the folder it serves
 const tmp = mkdtempSync(join(tmpdir(), "stage-b-"));
 const env = { ...process.env, WATANE_HOME: join(tmp, "home"), WATANE_DEV_CACHE: join(tmp, "cache") };
+// the preview's fresh cache has no vendor/ (the provider's allowlist check needs it): seed it from the person's own cache when there is one
+const vendor = join(process.env.HOME ?? "", ".cache", "watane-dev", "vendor");
+if (process.env.HOME && existsSync(vendor)) cpSync(vendor, join(tmp, "cache", "vendor"), { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const say = (s) => console.log(s);
 
@@ -120,7 +123,8 @@ const itemsOf = (c, stream) => c.msgs.filter((m) => m.type === "stream" && m.str
   .map((it) => {
     const o = (() => { try { return JSON.parse(it.body); } catch { return {}; } })();
     const w = o._meta?.watane;
-    const e = w ? (w.type === "entry" && w.entry && typeof w.entry === "object" ? w.entry : {}) : o;
+    // an ACP update (no `type`) carries its entry's index in `_meta.watane.i` when it finishes a message or call; the turn items carry none
+    const e = w ? (w.type === "entry" && w.entry && typeof w.entry === "object" ? w.entry : w.type === undefined ? { i: w.i } : {}) : o;
     return { seq: it.seq, i: e.i, kind: e.kind, meta: w };
   });
 
@@ -220,7 +224,7 @@ async function main() {
   try { browser = await launch(); } catch (e) { throw new NotRun(`Chromium cannot start: ${e.message.split("\n")[0]}`); } // before serve: launch exits 2 without Playwright, which would skip the stop of the preview
   try {
     // ---- serve ----
-    try { serve(); } catch (e) { if (e.serveFailed && /claude-code|claude_code|fake-claude|provider/i.test(e.message)) e.linkFailed = true; throw e; }
+    try { serve(); } catch (e) { if (e.serveFailed && /allowlist/.test(`${e.code} ${e.message}`) && !existsSync(vendor)) e.notRun = true, e.message = `watane-dev serve fails ${e.code ?? "env.allowlist"} for the provider and there is no ${vendor} to seed the preview cache from: ${e.message}`; else if (e.serveFailed && /claude-code|claude_code|fake-claude|provider/i.test(e.message)) e.linkFailed = true; throw e; }
     say(`served page: ${preview.url}`);
     say(`preview home: ${preview.home}`);
     const logOffset = () => (existsSync(preview.log) ? statSync(preview.log).size : 0);
@@ -372,10 +376,13 @@ async function main() {
       await sleep(500);
       const again = itemsOf(c2, s2).filter((x) => x.i !== undefined).map((x) => x.i);
       c2.close();
-      const all = [...got.map((x) => x.i).filter((i) => i <= last), ...again];
-      ensure(all.every((x, k) => x === k + 1), () => `read ${last} then reattached: indexes ${all.slice(Math.max(0, last - 3), last + 4).join(",")} around the join`);
+      // live, a Claude session's items with an index are its finished messages (its turn entries go out as turn items): ascending, none twice;
+      // the reattach after the last of them replays every entry after it, once each, to the end
+      const seen = got.map((x) => x.i).filter((i, k, a) => a.indexOf(i) === k);
+      ensure(seen.every((x, k) => k === 0 || x > seen[k - 1]), () => `the indexes read live are not ascending: ${seen.slice(0, 12).join(",")}`);
+      ensure(again.length === total - last && again.every((x, k) => x === last + 1 + k), () => `reattached after ${last}: indexes ${again.slice(0, 8).join(",")}... (${again.length} of ${total - last})`);
       const es = await transcript(p);
-      ensure(all.length === es.length, `${all.length} entries after the reattach, the transcript holds ${es.length}`);
+      ensure(total === es.length, `the transcript grew from ${total} to ${es.length} during the check`);
       const bad = ascending(es) ?? items(es, count);
       await ok("sessions.delete", { session: p }).catch(() => {}); // the live and reload checks below open the newest session: leave none of this one
       ensure(!bad, () => `sessions.read: ${bad}`);
