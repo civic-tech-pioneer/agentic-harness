@@ -1,4 +1,3 @@
-// Source: watane host/wit/host.wit at commit 7f4cad0ce62e plus the interfaces of host/TECHNICAL.md 19.1 and caller.identity.
 package watane:host@0.1.0;
 
 /// Private storage of this mod. The writes of a call become visible to
@@ -9,9 +8,11 @@ interface state {
   delete: func(key: string);
 }
 
-/// Who made the current call: "page", "agent:<handle>" or "mod:<local name>".
+/// Who made the current call: "page", "agent:<handle>", "mod:<local name>" or "host".
 interface caller {
   who: func() -> string;
+  /// Step 11 (19.1): the caller's identity: "<publisher>/<slug>", "local/<slug>",
+  /// "page", "agent:<handle-name>" or "host". A pure read, no grant.
   identity: func() -> string;
 }
 
@@ -22,7 +23,7 @@ interface caller {
 interface manage {
   /// A grant as pkg names it. `provider` is "<publisher key>/<slug>" or "local/<slug>".
   record provided { %interface: string, provider: string }
-  variant grant { storage, http(string), call(provided), subscribe(provided), manage }
+  variant grant { storage, http(string), call(provided), subscribe(provided), manage, claude-code, claude-code-shell }
   record grant-state { grant: grant, granted: bool }
   enum link-kind { call, subscribe }
   /// `provider` is the local name of the linked mod; none while unbound.
@@ -131,6 +132,12 @@ interface timers {                                   // no grant
   cancel: func(id: string);
 }
 
+/// Step 11 (19.1): the host's start number, raised by one at each open and
+/// the same for every call until the next. A pure read, no grant.
+interface host-info {
+  generation: func() -> u64;
+}
+
 // host-only exports: a mod exports them to receive; no page, tool or mod can call them
 interface stream-sink {
   use streams.{item, sink-outcome, outcome};
@@ -143,4 +150,3 @@ interface stream-producer {
   ended: func(s: string, outcome: outcome);
 }
 interface timer-sink { fired: func(id: string); }
-

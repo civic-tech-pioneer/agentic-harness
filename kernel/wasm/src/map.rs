@@ -1,10 +1,8 @@
 //! The host-independent mappings between the crate's types and the WIT's (AC4, AC5, AC6).
 
 use crate::exports::mods::agent::sessions as wit;
-use crate::watane::host::streams;
-use agent_kernel::adapters;
-use agent_kernel::{KernelError, Outcome, ProviderEvent, Refusal, SinkOutcome, StreamError};
-use serde::Deserialize;
+use crate::watane::host::{claude_types, streams};
+use agent_kernel::{KernelError, Outcome, Refusal, SinkOutcome, StreamError};
 use serde_json::Value;
 
 /// The refusal of the WIT, field for field.
@@ -61,25 +59,55 @@ pub fn sink_outcome(o: SinkOutcome) -> streams::SinkOutcome {
     }
 }
 
-/// The JSON shape of a provider item's body (the providers' side, TECHNICAL 10): `{"out": ...}`
-/// or `{"turn": ...}`. The crate's `ProviderEvent` does not derive `Deserialize`.
-#[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum Wire {
-    Out(Box<adapters::Out>),
-    Turn(agent_kernel::record::Turn),
+/// A provider's `start-error` as the crate's `Err(cause)` (TECHNICAL 2.1): the case in kebab-case,
+/// `bad-launch` with its field and reason.
+pub fn start_error(e: claude_types::StartError) -> String {
+    use claude_types::StartError as E;
+    match e {
+        E::BadLaunch(b) => format!("bad-launch: {}: {}", b.field, b.reason),
+        E::Destination => "destination".into(),
+        E::ForbiddenHeader(_) => "forbidden-header".into(),
+        E::TooLarge => "too-large".into(),
+        E::Full => "full".into(),
+        E::NotOwner => "not-owner".into(),
+        E::NotDirect => "not-direct".into(),
+    }
 }
 
-/// An item body as a `ProviderEvent`; a body that does not parse is an `unknown` entry
-/// carrying the raw text as a JSON string (AC6).
-pub fn provider_event(body: &[u8]) -> ProviderEvent {
-    match serde_json::from_slice::<Wire>(body) {
-        Ok(Wire::Out(o)) => ProviderEvent::Out(*o),
-        Ok(Wire::Turn(t)) => ProviderEvent::Turn(t),
-        Err(_) => ProviderEvent::Out(adapters::unknown(Value::String(
-            String::from_utf8_lossy(body).into_owned(),
-        ))),
+/// An `answer` decision (2.3's table) as the WIT `decision`: `allow` takes the changed `input`
+/// as JSON text, `deny` its reason (empty when absent); `{"none":true}` is a check's `none`.
+pub fn decision(d: &Value) -> claude_types::Decision {
+    use claude_types::Decision as D;
+    if d.get("allow") == Some(&Value::Bool(true)) {
+        return D::Allow(d.get("input").map(Value::to_string));
     }
+    if d.get("deny") == Some(&Value::Bool(true)) {
+        let reason = d.get("reason").and_then(Value::as_str).unwrap_or("");
+        return D::Deny(reason.to_string());
+    }
+    D::None
+}
+
+/// The `cause` a provider stream's outcome gives `provider_ended_with` (2.1): `None` for `closed`,
+/// else the outcome's name.
+pub fn ended_cause(o: &streams::Outcome) -> Option<String> {
+    use streams::Outcome as O;
+    Some(match o {
+        O::Closed => return None,
+        O::Cancelled => "cancelled".into(),
+        O::Lagging => "lagging".into(),
+        O::Replaced => "replaced".into(),
+        O::ConsumerFailed => "consumer-failed".into(),
+        O::IdleTimeout => "idle-timeout".into(),
+        O::Gone => "gone".into(),
+        O::Mismatch(f) => format!("mismatch({f})"),
+        O::NoBinary => "no-binary".into(),
+        O::Version(v) => format!("version {} < {}", v.found, v.need),
+        O::ConsentRefused(x) => format!("consent-refused({x})"),
+        O::NoApp => "no-app".into(),
+        O::NoAccount => "no-account".into(),
+        O::Failed(t) => format!("failed: {t}"),
+    })
 }
 
 #[cfg(test)]
@@ -178,21 +206,87 @@ mod tests {
     }
 
     #[test]
-    fn ac6_unparsable_body_is_an_unknown_entry_with_raw_text() {
-        match provider_event(b"not json") {
-            ProviderEvent::Out(o) => {
-                let e = o.entry.expect("entry");
-                assert_eq!(e.body, serde_json::json!({"raw": "not json"}));
-            }
-            _ => panic!("out"),
+    fn ac3_start_errors_map_to_their_case_name() {
+        use claude_types::{BadLaunch, StartError as E};
+        let bad = E::BadLaunch(BadLaunch {
+            field: "model".into(),
+            reason: "unknown".into(),
+        });
+        assert_eq!(start_error(bad), "bad-launch: model: unknown");
+        assert_eq!(start_error(E::Destination), "destination");
+        assert_eq!(
+            start_error(E::ForbiddenHeader("x".into())),
+            "forbidden-header"
+        );
+        assert_eq!(start_error(E::TooLarge), "too-large");
+        assert_eq!(start_error(E::Full), "full");
+        assert_eq!(start_error(E::NotOwner), "not-owner");
+        assert_eq!(start_error(E::NotDirect), "not-direct");
+    }
+
+    #[test]
+    fn ac3_decisions_map_as_the_table_of_2_3() {
+        use claude_types::Decision as D;
+        assert!(matches!(
+            decision(&serde_json::json!({"allow": true})),
+            D::Allow(None)
+        ));
+        assert!(matches!(
+            decision(&serde_json::json!({"allow": true, "for": "session"})),
+            D::Allow(None)
+        ));
+        match decision(&serde_json::json!({"allow": true, "input": {"a": 1}})) {
+            D::Allow(Some(i)) => assert_eq!(i, r#"{"a":1}"#),
+            _ => panic!("allow with input"),
+        }
+        match decision(&serde_json::json!({"deny": true, "reason": "no"})) {
+            D::Deny(r) => assert_eq!(r, "no"),
+            _ => panic!("deny"),
+        }
+        match decision(&serde_json::json!({"deny": true})) {
+            D::Deny(r) => assert_eq!(r, ""),
+            _ => panic!("deny without reason"),
         }
         assert!(matches!(
-            provider_event(br#"{"turn":{"state":"paused"}}"#),
-            ProviderEvent::Turn(_)
+            decision(&serde_json::json!({"none": true})),
+            D::None
         ));
-        assert!(matches!(
-            provider_event(br#"{"out":{}}"#),
-            ProviderEvent::Out(_)
-        ));
+    }
+
+    #[test]
+    fn ac4_ended_cause_names_every_outcome_but_closed() {
+        use streams::Outcome as O;
+        let c = |o: O| ended_cause(&o);
+        assert_eq!(c(O::Closed), None);
+        assert_eq!(c(O::NoBinary).as_deref(), Some("no-binary"));
+        assert_eq!(
+            c(O::Mismatch("tools".into())).as_deref(),
+            Some("mismatch(tools)")
+        );
+        let v = streams::VersionNeed {
+            found: "2.1.200".into(),
+            need: "2.1.295".into(),
+        };
+        assert_eq!(
+            c(O::Version(v)).as_deref(),
+            Some("version 2.1.200 < 2.1.295")
+        );
+        assert_eq!(c(O::Failed("boom".into())).as_deref(), Some("failed: boom"));
+        assert_eq!(
+            c(O::ConsentRefused("shell".into())).as_deref(),
+            Some("consent-refused(shell)")
+        );
+        for (o, n) in [
+            (O::Cancelled, "cancelled"),
+            (O::Lagging, "lagging"),
+            (O::Replaced, "replaced"),
+            (O::ConsumerFailed, "consumer-failed"),
+            (O::IdleTimeout, "idle-timeout"),
+            (O::Gone, "gone"),
+            (O::NoApp, "no-app"),
+            (O::NoAccount, "no-account"),
+        ] {
+            assert_eq!(c(o).as_deref(), Some(n));
+        }
     }
 }

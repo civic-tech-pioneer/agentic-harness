@@ -1,0 +1,7 @@
+{
+  "fakes": {"mods:claude-code/sessions": {"start": {"err": "full"}}},
+  "steps": [
+    {"call": "sessions.start", "args": {"key": "k1", "profile": "scratch", "overlay": "{}", "input": "[{\"type\":\"text\",\"text\":\"hi\"}]"}, "returns": {"err": {"backend": "full"}}},
+    {"call": "sessions.list", "args": {"max": 10}, "returns": {"ok": []}}
+  ]
+}
