@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
+import { NotRun, outcomeOf } from "./outcome.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -197,7 +198,6 @@ function missing() {
   if (!existsSync(join(root, "provider", "mod.toml"))) return "provider/ is not built here (the unchecked provider, S35-2): nothing to link claude-code";
   return null;
 }
-class NotRun extends Error {}
 
 async function main() {
   const why = missing();
@@ -217,14 +217,14 @@ async function main() {
   const added = dev(["add", join(root, "provider")]);
   if (added.spawnError || added.status !== 0) {
     const e = added.json?.errors?.[0] ?? added.json?.error;
-    throw Object.assign(new Error(`watane-dev add provider: ${e ? `${e.code ?? ""} ${e.message ?? ""}` : (added.err || added.out).trim().split("\n")[0]}`), { linkFailed: true });
+    throw Object.assign(new Error(`watane-dev add provider: ${e ? `${e.code ?? ""} ${e.message ?? ""}` : (added.err || added.out).trim().split("\n")[0]}`), { addFailed: true, code: e?.code, out: added.out, err: added.err });
   }
 
   let browser;
   try { browser = await launch(); } catch (e) { throw new NotRun(`Chromium cannot start: ${e.message.split("\n")[0]}`); } // before serve: launch exits 2 without Playwright, which would skip the stop of the preview
   try {
     // ---- serve ----
-    try { serve(); } catch (e) { if (e.serveFailed && /allowlist/.test(`${e.code} ${e.message}`) && !existsSync(vendor)) e.notRun = true, e.message = `watane-dev serve fails ${e.code ?? "env.allowlist"} for the provider and there is no ${vendor} to seed the preview cache from: ${e.message}`; else if (e.serveFailed && /claude-code|claude_code|fake-claude|provider/i.test(e.message)) e.linkFailed = true; throw e; }
+    try { serve(); } catch (e) { if (e.serveFailed && /allowlist/.test(`${e.code} ${e.message}`) && !existsSync(vendor)) e.notRun = true, e.message = `watane-dev serve fails ${e.code ?? "env.allowlist"} for the provider and there is no ${vendor} to seed the preview cache from: ${e.message}`; throw e; }
     say(`served page: ${preview.url}`);
     say(`preview home: ${preview.home}`);
     const logOffset = () => (existsSync(preview.log) ? statSync(preview.log).size : 0);
@@ -235,8 +235,8 @@ async function main() {
     writeScript([{ do: "expect-user" }, { do: "delta", text: "This is the fake claude." }, { do: "message", text: "This is the fake claude." }, { do: "result" }, { do: "idle" }]);
     const first = await startClaude("hello");
     const firstLog = await until(async () => { const t = JSON.stringify(await transcript(first)); return /no-binary|provider-ended/.test(t) || /"idle"/.test(t) ? t : null; }, 30_000, "the first turn to end").catch(() => "");
-    if (/no-binary|provider-ended/.test(firstLog)) throw new NotRun(`the host cannot run claude-code in this preview (the first turn ended ${/no-binary/.test(firstLog) ? "no-binary" : "provider-ended"}): watane S99 (host H2) is not landed here`);
-    if (!firstLog) throw new NotRun("the first fake turn did not end in 30 s: claude-code is not linked in this preview (watane S99)");
+    if (/no-binary|provider-ended/.test(firstLog)) throw Object.assign(new Error(`the host cannot run claude-code in this preview (the first turn ended ${/no-binary/.test(firstLog) ? "no-binary" : "provider-ended"}): watane S99 (host H2) is not landed here`), { firstTurn: /no-binary/.test(firstLog) ? "no-binary" : "provider-ended", log: firstLog });
+    if (!firstLog) throw Object.assign(new Error("the first fake turn did not end in 30 s: claude-code is not linked in this preview (watane S99)"), { firstTurn: "stalled" });
     await ok("sessions.delete", { session: first });
 
     // AC5: the page starts a session on the fake claude, her message and the stream, Working then Idle, a reload that shows each entry once
@@ -563,16 +563,9 @@ async function main() {
 let code = 0;
 try { await main(); }
 catch (e) {
-  if (e.serveFailed && /cannot bind loopback port/.test(e.message)) {
-    say("NOT RUN test:host: the host binds 127.0.0.1 and [::1] both (host 8.1) and this machine has no IPv6 loopback");
-    code = 2;
-  } else if (e instanceof NotRun || e.notRun) {
-    say(`NOT RUN test:host: ${e.message}`);
-    code = 2;
-  } else if (e.linkFailed || (e.serveFailed && e.code === "mod.invalid" && /watane:host\/streams/.test(e.message))) {
-    say(`NOT RUN test:host: the host cannot link claude-code or watane-dev is too old (watane S99 not landed, or watane-dev older than rev 4f105a9): ${e.message.split("\n")[0].slice(0, 240)}`);
-    code = 2;
-  } else { fail++; say(`FAIL setup: ${e instanceof Error ? e.stack ?? e.message : String(e)}`); }
+  const o = outcomeOf(e);
+  if (o.code === 2) code = 2; else fail++;
+  say(o.line);
 } finally {
   stopPreview();
   try { rmSync(tmp, { recursive: true, force: true }); rmSync(wasmDir, { recursive: true, force: true }); } catch {}
