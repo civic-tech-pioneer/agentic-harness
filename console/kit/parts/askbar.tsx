@@ -2,6 +2,18 @@
 import { useLayoutEffect, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import { MEASURE, type Actions, type ToolCall } from "../model";
 
+/** 18.6 Asks: opening Deny… scrolls the transcript the least that puts the whole form in view, clear of the "back to the end" pill that covers its foot; in view already, nothing moves. */
+const revealForm = (form: HTMLElement | null) => {
+  const sc = form?.closest<HTMLElement>(".wa-scroll");
+  if (!form || !sc) return;
+  const f = form.getBoundingClientRect(), s = sc.getBoundingClientRect();
+  const pill = sc.ownerDocument.querySelector<HTMLElement>(".wa-pill")?.getBoundingClientRect();
+  const bottom = pill && pill.top > s.top && pill.top < s.bottom ? pill.top : s.bottom;
+  let by = Math.max(0, f.bottom - bottom);
+  if (f.top - by < s.top) by = f.top - s.top; // the form is taller than the visible part, or above it: its top wins
+  if (by) sc.scrollTop += by;
+};
+
 const QUESTION: Record<string, string> = { edit: "Allow this edit?", execute: "Allow this command?" };
 
 /** The words of an answered ask's line, on the card and on the status line: `judge` is the turn `running` with activity `checking`. */
@@ -39,7 +51,7 @@ export function AskBar({ call, askId, reach, actions, sent = false, judge = fals
       {refused ? <p key="refused" ref={note} className="wa-refused" role="alert" tabIndex={-1}>The answer was not taken. Try again.</p> : null}
       <div ref={mark} className="wa-askbar askbar" role="group" aria-label="Your answer">
         <span className="askq">{QUESTION[call.kind] ?? "Allow this call?"}</span>
-        <button type="button" ref={denyBtn} className="btn quiet danger" onClick={() => { if (denying) closeDeny(); else { setDenying(true); queueMicrotask(() => reasonIn.current?.focus({ preventScroll: true })); } }}>Deny…</button>
+        <button type="button" ref={denyBtn} className="btn quiet danger" onClick={() => { if (denying) closeDeny(); else { setDenying(true); queueMicrotask(() => { reasonIn.current?.focus({ preventScroll: true }); revealForm(reasonIn.current?.closest("form") ?? null); }); } }}>Deny…</button>
         {reach ? <button type="button" className="btn" onClick={() => actions.answer(id, { outcome: "allow", for: "session" })}>Allow {reach} this session</button> : null}
         <button type="button" className="btn primary wa-primary" data-ask-first onClick={() => actions.answer(id, { outcome: "allow" })}>Allow once</button>
       </div>
