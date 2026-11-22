@@ -187,7 +187,8 @@ watane S99 writes it). The WASM wrapper's `generation` (G1) is
   host stream's consumer (after the provider's `hand-off`, 10), so it calls
   `claude-session.say`, `interrupt` and `answer` itself; on a `direct: false`
   stream it calls the provider's `sessions` functions of the same name. A turn's
-  input goes to `say` as text: the `text` of its ACP text blocks joined with a
+  input goes to `say` as text: an input that is not a JSON array is its own
+  text (as the stored message reads it), else the `text` of its ACP text blocks joined with a
   blank line (other blocks are left out of the text until a later slice
   carries them). The owner's `cancel` is `streams.cancel` of the provider
   stream. Each is a request (7), made after the call's last write.
