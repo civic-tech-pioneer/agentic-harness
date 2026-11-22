@@ -72,3 +72,37 @@ describe("S32-fix2", () => {
     expect(isServed("127.0.0.1")).toBe(false);
   });
 });
+
+describe("S35-fix5: titles and meta", () => {
+  const two = [
+    { id: "a", title: "", profile: "scratch", backend: "claude-code", turn: "idle", updated: 99 },
+    { id: "b", title: "", profile: "scratch", backend: "claude-code", turn: "idle", updated: 5 },
+  ];
+  const mount = async (text: string) => {
+    const f = fakeWatane({
+      "sessions.list": () => ({ ok: two }),
+      "sessions.attach": () => ({ ok: "st1", after: 0 }),
+      "sessions.read": () => ({ ok: { entries: [], last: 0 } }),
+    });
+    const x = await served(f.w);
+    render(<App kernel={x.kernel} info={x.info!} sessions={x.sessions} />);
+    await new Promise((r) => setTimeout(r, 50));
+    f.push({ ...items([1, JSON.stringify({ v: 1, i: 1, kind: "message", at: 1000, body: { role: "user", content: [{ type: "text", text }] } })], [2, synced(1)]), stream: "st1" });
+    return screen;
+  };
+  it("ac1_header_and_sidebar_name_sessions_by_one_rule", async () => {
+    const s = await mount("hi");
+    await s.findByRole("heading", { level: 1, name: "hi" });
+    const rows = [...document.querySelectorAll(".wa-srow")].map((r) => r.textContent);
+    expect(rows).toHaveLength(2);
+    expect(rows.some((t) => t!.includes("hi"))).toBe(true);
+    expect(rows.some((t) => t!.includes("New session"))).toBe(true);
+    for (const t of rows) expect(t).toContain("Scratch folder · Claude Code (unchecked)");
+    cleanup();
+  });
+  it("ac2_a_long_first_message_is_cut_to_60_with_an_ellipsis", async () => {
+    const s = await mount("x".repeat(100));
+    await s.findByRole("heading", { level: 1, name: `${"x".repeat(60)}…` });
+    cleanup();
+  });
+});

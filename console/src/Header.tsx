@@ -3,6 +3,10 @@ import type { Actions, SessionView } from "../kit";
 
 export interface SessionInfo { id: string; title: string; profile: string; provider: string; workspace: string;
   place?: string; judge?: boolean; model?: string; mode?: string }
+/** The title every place shows (18.4): the kernel's; else the first user message cut to 60 characters; else "New session". */
+export const titleOf = (title: string, firstUser?: string): string => title || (firstUser ? (firstUser.length > 60 ? `${firstUser.slice(0, 60)}…` : firstUser) : "New session");
+/** The sidebar's meta line: `Scratch folder · Claude Code (unchecked)` for a scratch session of claude, else `<backend> · <profile>`. */
+export const metaOf = (i: Pick<SessionInfo, "workspace" | "provider" | "profile">): string => (i.workspace ? `${i.workspace} · ${i.provider}` : `${i.provider} · ${i.profile}`);
 const OFF = "Not in this console yet.";
 const svg = { width: 13, height: 13, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
 

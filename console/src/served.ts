@@ -1,6 +1,6 @@
 // TECHNICAL 18.2: served by watane, the page runs on the real kernel: the owner's newest session (or the new-session view), and the sidebar from `sessions.list`.
 import { wataneKernel, type Kernel, type Watane } from "../kit";
-import type { SessionInfo } from "./Header";
+import { metaOf, type SessionInfo } from "./Header";
 import { shapeOf, type SidebarSession } from "./Sidebar";
 
 interface Listed { id: string; title: string; profile: string; backend: string; turn?: string; updated: number }
@@ -26,7 +26,7 @@ const infoOf = (s: Listed): SessionInfo => ({
   provider: /claude/i.test(s.backend) ? "Claude Code (unchecked)" : s.backend,
   workspace: s.profile === "scratch" ? "Scratch folder" : "",
 });
-const rowOf = (s: Listed): SidebarSession => ({ id: s.id, title: s.title, place: s.backend, meta: `${s.backend} · ${s.profile}`, state: shapeOf(s.turn as Parameters<typeof shapeOf>[0]) });
+const rowOf = (s: Listed): SidebarSession => { const i = infoOf(s); return { id: s.id, title: i.title || "New session", place: i.workspace || i.profile, meta: metaOf(i), state: shapeOf(s.turn as Parameters<typeof shapeOf>[0]) }; };
 
 export async function served(w: Watane): Promise<Served> {
   const kernel = wataneKernel(w);

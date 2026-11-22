@@ -1,7 +1,7 @@
 // TECHNICAL 18.4-18.6: the sidebar, 260 px, hidden under 760 px: Agents, the off "+ New session", rows grouped by state.
 import { useEffect, useRef, useState } from "react";
 import type { TurnState } from "../kit";
-import type { SessionInfo } from "./Header";
+import { metaOf, type SessionInfo } from "./Header";
 
 export type SessionShape = "needs" | "running" | "paused" | "idle" | "unknown";
 export interface SidebarSession { id: string; title: string; place: string; meta: string; state: SessionShape }
@@ -60,7 +60,7 @@ export function Sidebar({ info, turn, needs, sessions = [], onNew }: { info?: Se
   // The hold begins once the state is known: a pointer already over the list before the first turn holds nothing.
   useEffect(() => { if (over && overNow.current && turn !== undefined) setHeld((h) => h ?? groupOf(live)); }, [over, turn, needs]);
   const group = held ?? groupOf(live);
-  const cur: SidebarSession | null = info ? { id: info.id, title: info.title, place: info.place ?? (info.workspace || info.profile), meta: `${info.place ?? (info.workspace || info.profile)} · ${info.provider}`, state: live } : null;
+  const cur: SidebarSession | null = info ? { id: info.id, title: info.title, place: info.place ?? (info.workspace || info.profile), meta: info.place ? `${info.place} · ${info.provider}` : metaOf(info), state: live } : null;
   const others = sessions.filter((s) => s.id !== info?.id);
   return (
     <nav ref={navRef} className="wa-sidebar" aria-label="Sessions" onMouseEnter={() => setOver(true)} onMouseLeave={() => { setOver(false); setHeld(null); }}>
