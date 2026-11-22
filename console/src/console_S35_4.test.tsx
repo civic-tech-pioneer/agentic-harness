@@ -182,3 +182,79 @@ describe("S35 r1 D1.1, D1.2: the profile's one spelling; model and mode on the r
     expect((await served(f.w)).info?.model).toBeUndefined();
   });
 });
+
+describe("S35 r2 F2.2, F2.3, F2.5", () => {
+  it("r2_f2_2_a_settled_older_send_leaves_a_newer_composers_draft", async () => {
+    let refuse!: (e: Error) => void;
+    const f = setup({
+      "sessions.start": ({ input }) => input === "first"
+        ? new Promise((_, reject) => { refuse = reject; })
+        : { ok: "n1" },
+    });
+    const page = render(<Console served={await served(f.w)} />);
+    const submit = (value: string) => {
+      fireEvent.change(box(), { target: { value } });
+      fireEvent.keyDown(box(), { key: "Enter" });
+    };
+    submit("first");
+    submit("second");
+    await screen.findByRole("heading", { name: "second" });
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    fireEvent.change(box(), { target: { value: "third remains unsent" } });
+    await act(async () => refuse(new Error("refused")));
+    page.unmount();
+    render(<Console served={await served(f.w)} />);
+    expect(box().value).toBe("third remains unsent");
+  });
+  it("r2_f2_2_settling_one_send_keeps_a_later_pending_send_of_the_same_text", async () => {
+    const settles: Array<(v: unknown) => void> = [];
+    const f = setup({ "sessions.start": () => new Promise((r) => { settles.push(r); }) });
+    const page = render(<Console served={await served(f.w)} />);
+    for (let n = 0; n < 2; n++) {
+      fireEvent.change(box(), { target: { value: "same words" } });
+      fireEvent.keyDown(box(), { key: "Enter" });
+    }
+    await act(async () => { settles[0]!({ err: "busy" }); await new Promise((r) => setTimeout(r, 20)); });
+    fireEvent.change(box(), { target: { value: "" } });
+    page.unmount();
+    render(<Console served={await served(f.w)} />);
+    expect(box().value).toBe("same words"); // the second send is still pending
+  });
+  it("r2_f2_3_an_untitled_row_whose_first_message_came_in_parts_reads_it", async () => {
+    const line = JSON.stringify({
+      v: 1, i: 2, at: 1, kind: "message",
+      body: { role: "user", content: [{ type: "text", text: "a".repeat(262144) }] },
+    });
+    const entries = [line.slice(0, 261900), line.slice(261900)].map((text, n) =>
+      JSON.stringify({ v: 1, i: n + 1, at: 1, kind: "part", body: { n: n + 1, m: 2, text } }),
+    );
+    const f = setup({
+      "sessions.list": () => ({ ok: [
+        { id: "older", title: "", profile: "scratch", backend: "claude", updated: 1 },
+        { id: "newer", title: "Newest", profile: "scratch", backend: "claude", updated: 2 },
+      ] }),
+      "sessions.read": () => ({ ok: { entries, last: 2 } }),
+    });
+    expect((await served(f.w)).sessions[0]?.title).toBe("a".repeat(60) + "…");
+  });
+  it("r2_f2_5_a_stored_scratch_profile_never_claims_the_default_model_open_or_reloaded", async () => {
+    // a stored `profile/scratch` (say, model haiku) lists exactly as the built-in: the console cannot tell them apart (18.4)
+    const f = setup({ "sessions.list": () => ({ ok: [{ id: "s", title: "T", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 }] }) });
+    const a = render(<Console served={await served(f.w)} />);
+    await tick();
+    expect(text()).not.toContain("default model");
+    a.unmount();
+    render(<Console served={await served(f.w)} />);
+    await tick();
+    expect(text()).not.toContain("default model");
+    expect((await served(f.w)).info?.model).toBeUndefined();
+  });
+  it("r2_f2_5_a_session_started_in_place_claims_no_model_either", async () => {
+    const f = setup();
+    render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "hi" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    await tick();
+    expect(text()).not.toContain("default model");
+  });
+});

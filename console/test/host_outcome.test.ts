@@ -16,10 +16,13 @@ describe("test:host's exit for an error before its checks", () => {
     expect(outcomeOf(err("the first turn ended provider-ended", { firstTurn: "provider-ended" })).code).toBe(1);
     expect(outcomeOf(err("the first fake turn did not end in 30 s", { firstTurn: "stalled" })).code).toBe(1);
   });
+  it("a loopback bind failure fails, exit 1: watane c2a7d4d serves 127.0.0.1 alone when the machine has no IPv6 (F2.4)", () => {
+    expect(outcomeOf(err("cannot bind loopback port 0", { serveFailed: true })).code).toBe(1);
+    expect(outcomeOf(err("cannot bind loopback port [::1]:0", { serveFailed: true })).code).toBe(1);
+  });
   it("a named missing prerequisite is not run, exit 2", () => {
     expect(outcomeOf(new NotRun("fake-claude is not found")).code).toBe(2);
     expect(outcomeOf(err("watane-dev cannot run: spawn watane-dev ENOENT", { notRun: true })).code).toBe(2);
-    expect(outcomeOf(err("cannot bind loopback port [::1]:0", { serveFailed: true })).code).toBe(2);
     expect(outcomeOf(err("watane-dev add provider: error: unrecognized subcommand 'add'", { addFailed: true, out: "", err: "error: unrecognized subcommand 'add'" })).code).toBe(2);
     expect(outcomeOf(err("mod.invalid [wit] world imports watane:host/host-info@0.1.0, which this host does not have", { serveFailed: true, code: "mod.invalid" })).code).toBe(2);
     expect(outcomeOf(err("the first turn ended no-binary", { firstTurn: "no-binary" })).code).toBe(2);
