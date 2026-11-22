@@ -8,6 +8,7 @@ import { errorWords } from "./errors";
 import { wataneKernel } from "./watane";
 import { fakeWatane } from "./watane_fake";
 import turn from "./fixtures/fake_claude_turn.json";
+import { fakeKernel } from "../fake/kernel";
 
 afterEach(cleanup);
 const actions = { say: () => {}, answer: () => {}, stop: () => {}, takeBack: () => {} };
@@ -25,6 +26,16 @@ describe("S35-4 AC1", () => {
   it("ac1_a_refused_start_rejects_with_its_case", async () => {
     const f = fakeWatane({ "sessions.start": () => ({ err: { backend: "boom" } }) });
     await expect(wataneKernel(f.w).start("k", "scratch", "{}", "hi")).rejects.toMatchObject({ kind: "backend", payload: "boom" });
+  });
+  it("ac1_the_scripted_fake_starts_a_new_session_that_plays_its_story", async () => {
+    const old = JSON.stringify({ v: 1, i: 1, kind: "message", at: 0, body: { role: "user", content: [{ type: "text", text: "old" }] } });
+    const k = fakeKernel([[(turn as string[])[1]!]], { preload: [old] });
+    const id = await k.start("k1", "scratch", "{}", "hi");
+    expect(id).not.toBe(await k.start("k2", "scratch", "{}", "hi"));
+    expect(k.calls[0]).toEqual({ name: "start", args: ["k1", "scratch", "{}", "hi"] });
+    await new Promise((r) => setTimeout(r, 10));
+    const read = (await k.read(id, 0, 256)).map((e) => JSON.parse(e).body.content[0].text);
+    expect(read).toEqual(["hi"]); // the story's first step, not the entries stored before
   });
 });
 
