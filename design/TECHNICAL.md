@@ -2431,6 +2431,7 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
 | View | each row of 18.3 and 18.5 from recorded event streams: the fake `claude`'s and the scripted Responses server's output, stored as fixtures | a component test run, under the 2-minute budget |
 | Long | the limits of "Long sessions" in 18.6 on 5 000 entries with the stream running (`console/src/long_S7.test.tsx`, the fixture `console/fake/long.ts`) | in the component test run |
 | Page | AGT-J6 against the kernel in `watane-dev serve` with the fake `claude` | a browser test, marked slow |
+| Host | the stage A story on watane's own host: cases 20, 21, 36 and 51 (kernel part) and the page's live and reload story, against `watane-dev serve` of `kernel/wasm` (`console/test/host/stage_a.mjs`, `npm run test:host`; by hand, not in the gate: it needs a watane with host 19) | a script, run after a kernel or console change and each watane bump |
 | Seen | each slice's console part, by the user-sim against the frames | the acceptance step |
 
 ### 18.8 Not in the first target
