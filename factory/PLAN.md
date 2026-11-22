@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-### S32: stage A, end to end: Alice watches a real kernel stream in the console (delivered 2026-11-21 10:47 UTC, PR #41 held: merges after watane S96, once the story passes on watane's own host; routine trig_01QrwDoJCFh8Q6DGBbTcF7qA)
+### S32: stage A, end to end: Alice watches a real kernel stream in the console (PR #41; continuing on watane's real host since 2026-11-22 12:05 UTC, routine trig_014twBAS43FX17jqormQVpSm, cloud; first delivery 2026-11-21 10:47 by trig_01QrwDoJCFh8Q6DGBbTcF7qA)
 
 Story: Alice runs `watane-dev serve` with the agent kernel installed, opens its console page, and
 sees numbered items of a real kernel stream arrive in the page (18.4 layout and theme), live and
