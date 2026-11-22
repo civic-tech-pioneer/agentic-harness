@@ -1,6 +1,7 @@
 //! The session record: TECHNICAL 9.3 (record, sizes, turn state), 9.1 (`session/<id>`).
 
 use crate::error::KernelError;
+use crate::overlay::Overlay;
 use crate::state::State;
 use crate::transcript::Meta;
 use serde::{Deserialize, Serialize};
@@ -196,6 +197,10 @@ pub struct Record {
     pub workspace: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claude_uuid: Option<String>,
+    /// The overlay `start` took (9.2), so a later launch of the session narrows as its first
+    /// did; absent when it narrows nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlay: Option<Overlay>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
     pub children: Vec<String>,
@@ -235,6 +240,7 @@ impl Default for Record {
             handle: None,
             workspace: None,
             claude_uuid: None,
+            overlay: None,
             parent: None,
             children: Vec::new(),
             turn: Turn::default(),
