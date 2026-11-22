@@ -1,0 +1,9 @@
+{
+  "steps": [
+    {"call": "sessions.start", "args": {"launch": "{}", "input": "[]"}, "returns": {"err": "not-owner"}},
+    {"call": "sessions.say", "args": {"s": "s1", "content": "hi"}, "returns": {"err": "not-owner"}},
+    {"call": "sessions.answer", "args": {"s": "s1", "ask": "a", "d": "none"}, "returns": {"err": "not-owner"}},
+    {"call": "sessions.interrupt", "args": {"s": "s1"}, "returns": {"err": "not-owner"}},
+    {"call": "sessions.compact", "args": {"s": "s1"}, "returns": {"err": "not-owner"}}
+  ]
+}
