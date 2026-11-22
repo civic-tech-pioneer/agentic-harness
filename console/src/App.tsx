@@ -79,7 +79,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
   };
   const actions: Actions = useMemo(() => ({
     answeredAsks,
-    say: (text) => void kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
+    say: (text) => kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: () => Promise.reject(new Error("an answer goes out only with the ask its card drew")), // fail closed: no drawn ask, no identity check
     answerDrawn: (drawn, d) => {
       const h = heldRef.current;

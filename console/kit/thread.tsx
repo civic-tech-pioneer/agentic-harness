@@ -25,7 +25,7 @@ export function ThreadProvider(props: { view: SessionView; actions: Actions; chi
     isRunning,
     onNew: async (m: { content: readonly { type: string; text?: string }[] }) => {
       const t = m.content.map((p) => (p.type === "text" ? p.text ?? "" : "")).join("");
-      if (t) actions.say(t);
+      if (t) void Promise.resolve(actions.say(t)).catch(() => {}); // the composer is the place a refusal shows; this path has none
     },
   }), [rows, isRunning, actions]);
   const runtime = useExternalStoreRuntime<Row>(store as Parameters<typeof useExternalStoreRuntime<Row>>[0]);

@@ -1,5 +1,5 @@
 // TECHNICAL 18.5, 18.6: the dock: Needs you, plan, queue, status line, input.
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { Actions, SessionView } from "../kit";
 
 export const QUEUE_MAX = 32;
@@ -12,11 +12,20 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
 }) {
   const [text, setText] = useState("");
   const full = queued >= QUEUE_MAX;
+  const [refused, setRefused] = useState<string | null>(null);
+  const edited = useRef(0); // counts edits and sends: a refusal restores its text only if none came since
   const send = () => {
     const t = text.trim();
     if (!t || full) return;
-    actions.say(t);
+    const mark = ++edited.current;
+    setRefused(null);
     setText("");
+    const back = (e: unknown) => {
+      if (edited.current !== mark) return;
+      setText(t);
+      setRefused(e instanceof Error && e.message ? e.message : "could not send");
+    };
+    try { Promise.resolve(actions.say(t)).catch(back); } catch (e) { back(e); }
   };
   const placeholder = full ? `The queue is full: ${QUEUE_MAX} messages wait. Remove one, or stop the turn.`
     : busy ? "Add a message: it is queued and sent when this turn ends"
@@ -24,8 +33,9 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   const tags = [session?.model, session?.mode].filter((x): x is string => !!x);
   return (
     <form className="wa-composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
+      {refused ? <p className="wa-send-err" role="alert">{refused}</p> : null}
       <textarea aria-label="Message" rows={2} value={text} placeholder={placeholder}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => { edited.current++; setRefused(null); setText(e.target.value); }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
           else if (e.key === "Escape") actions.stop();
