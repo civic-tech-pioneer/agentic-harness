@@ -105,3 +105,29 @@ fn regress_s35_say_user_message_goes_out_live() {
         "say returned {n}; her message is entry {i}, the owner stream got only {live:?}"
     );
 }
+
+/// On the host, `say("/x")` on an idle Claude session returned ok, stored the message and a
+/// `running` turn, and the session stayed Working for good: `claude-session.say` refuses
+/// `slash-command` (4.5) and the component drops that error (2.1), so no turn end ever comes; a
+/// later `say` only queued. Case 11 of 16: `say("/x")` is refused.
+#[test]
+fn regress_s35_say_slash_command_is_refused() {
+    let mut k = kernel();
+    let (id, _, _) = idle_session(&mut k);
+    let before = entries(&mut k, &id).len();
+    let r = k.say("alice", &id, "s2", "/x");
+    assert!(
+        r.is_err(),
+        "say(\"/x\") was accepted: {:?}",
+        r.map(|c| c.value)
+    );
+    assert_eq!(
+        entries(&mut k, &id).len(),
+        before,
+        "a refused say stores nothing"
+    );
+    assert!(matches!(
+        Record::load(&mut k.state, &id).unwrap().turn,
+        Turn::Idle { .. }
+    ));
+}
