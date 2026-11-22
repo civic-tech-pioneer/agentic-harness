@@ -2421,7 +2421,7 @@ The frames give layout, spacing and words; these values are fixed:
 
 | Turn | Word | Shape | Time | Acts |
 |---|---|---|---|---|
-| `running` | the activity: Thinking, Reading `<file>`, Writing | dot | elapsed | Esc stops |
+| `running` | the activity: Thinking, Reading `<file>`, Writing; Working when no activity is named (S35) | dot | elapsed | Esc stops |
 | `running {checking}` | Checking with your judge | square | elapsed | |
 | `running {compacting}` | Making room | dot | elapsed | |
 | `running {consent}` | Waiting for your answer in watane | diamond | | open the question |
