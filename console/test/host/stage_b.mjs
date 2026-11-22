@@ -254,8 +254,9 @@ async function main() {
         const w = words.indexOf("Working"), idle = words.lastIndexOf("Idle");
         ensure(w >= 0 && idle > w, `the status words were ${JSON.stringify(words)}`);
         const list = await ok("sessions.list", { after: null, max: 256 });
-        ensure(list.length === 1 && list[0].profile === "scratch", `the sessions are ${JSON.stringify(list).slice(0, 200)}`);
-        started = list[0].id;
+        // the page's session is the scratch one whose first message is hi (others, left by earlier checks, may still be listed)
+        for (const l of list) if (l.profile === "scratch" && (await transcript(l.id)).some((e) => e.kind === "message" && e.body?.role === "user" && textOf(e) === "hi")) started = l.id;
+        ensure(started, `no scratch session of hi among ${JSON.stringify(list).slice(0, 200)}`);
         say(`  status words: ${words.join(" > ")}`);
       });
       await check("reload: the same entries, each once, indexes unique and ascending, nothing doubled on the page", async () => {
@@ -376,6 +377,7 @@ async function main() {
       const es = await transcript(p);
       ensure(all.length === es.length, `${all.length} entries after the reattach, the transcript holds ${es.length}`);
       const bad = ascending(es) ?? items(es, count);
+      await ok("sessions.delete", { session: p }).catch(() => {}); // the live and reload checks below open the newest session: leave none of this one
       ensure(!bad, () => `sessions.read: ${bad}`);
     });
 

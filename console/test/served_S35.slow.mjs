@@ -10,10 +10,16 @@ const fake = `(() => {
   const hs = [];
   const get = () => { try { return JSON.parse(localStorage.getItem("fake") || "null"); } catch { return null; } };
   const T = Date.now();
+  // the real shape (9.4, S35-1): stored entries user i=1, turn running i=2, agent i=3, turn idle i=4; live, the agent message is a delta, then the update
+  // that finishes it with i and the WHOLE text, then a turn item
+  const ent = (i, kind, body) => JSON.stringify({ _meta: { watane: { type: "entry", entry: { v: 1, i, kind, at: i, body } } } });
   const entries = [
-    ${J(meta({ type: "entry", entry: { v: 1, i: 1, kind: "message", at: 0, body: { role: "user", content: [{ type: "text", text: "hi" }] } } }))},
-    ${J(meta({ type: "entry", entry: { v: 1, i: 2, kind: "message", at: 1, body: { role: "agent", content: [{ type: "text", text: "This is the fake claude." }] } } }))},
+    ent(1, "message", { role: "user", content: [{ type: "text", text: "hi" }] }),
+    ent(2, "turn", { state: "running", since: T }),
+    ent(3, "message", { role: "agent", content: [{ type: "text", text: "This is the fake claude." }] }),
+    ent(4, "turn", { state: "idle", stop: { kind: "completed" } }),
   ];
+  const chunk = (meta) => JSON.stringify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "This is the fake claude." }, _meta: { watane: meta } });
   const push = (stream, bodies, seq) => setTimeout(() => hs.forEach((h) => h({ type: "stream", stream, items: bodies.map((body, k) => ({ seq: seq + k, body })) })), 0);
   const turn = (state) => ${J(meta({ type: "turn" }))}.replace("}}}", ",\\"state\\":" + JSON.stringify(state) + "}}}");
   window.watane = {
@@ -31,16 +37,16 @@ const fake = `(() => {
         if (live) {
           localStorage.setItem("done", "1");
           const st = "st" + Math.random();
-          push(st, [sync, entries[0], turn({ state: "running", since: T })], 1);
-          setTimeout(() => push(st, [${J(J({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "This is the fake claude." } }))}], 4), 600);
-          setTimeout(() => push(st, [entries[1], turn({ state: "idle", stop: { kind: "completed" } })], 5), 1200);
+          push(st, [sync, entries[0], entries[1], turn({ state: "running", since: T })], 1);
+          setTimeout(() => push(st, [chunk({ at: T + 1 })], 5), 600);
+          setTimeout(() => push(st, [chunk({ at: T + 2, i: 3 }), turn({ state: "idle", stop: { kind: "completed" } })], 6), 1200);
           return { ok: st };
         }
         const st = "st" + Math.random();
-        push(st, [entries[0], entries[1], ${J(meta({ type: "synced", through: 2 }))}, turn({ state: "idle", stop: { kind: "completed" } })], 1);
+        push(st, [...entries, ${J(meta({ type: "synced", through: 4 }))}, turn({ state: "idle", stop: { kind: "completed" } })], 1);
         return { ok: st };
       }
-      if (fn === "sessions.read") return { ok: { entries: [], last: 2 } };
+      if (fn === "sessions.read") return { ok: { entries: [], last: 4 } };
       return { ok: null };
     },
   };

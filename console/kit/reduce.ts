@@ -428,7 +428,8 @@ export function reduce(view: SessionView, message: string): SessionView {
         if (m.i !== undefined) finish(v, m.i);
         break;
       }
-      if (last?.kind === "agent" && last.writing) put(v, v.rows.length - 1, { ...last, text: last.text + m.text });
+      // 9.4: the update that finishes a message (`i`) carries the whole message: it replaces the text streamed so far, never appends to it
+      if (last?.kind === "agent" && last.writing) put(v, v.rows.length - 1, { ...last, text: m.i !== undefined ? m.text : last.text + m.text });
       else push(v, { kind: "agent", key: nextKey(x, "~a"), text: m.text, writing: true });
       if (m.i !== undefined) finish(v, m.i);
       break;

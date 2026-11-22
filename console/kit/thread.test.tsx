@@ -198,7 +198,7 @@ describe("other rows", () => {
     const a = show(writing);
     expect(screen.getByText("Hel")).toHaveAttribute("aria-busy", "true");
     a.unmount();
-    const b = show(reduce(writing, upd({ sessionUpdate: "agent_message_chunk", content: text("lo") }, 2, 2000)));
+    const b = show(reduce(writing, upd({ sessionUpdate: "agent_message_chunk", content: text("Hello") }, 2, 2000)));
     expect(screen.getByText("Hello")).not.toHaveAttribute("aria-busy");
     b.unmount();
     show(feed(w({ type: "synced", through: 1, writing: true })));

@@ -2,12 +2,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { emptyView, type SessionView } from "./model";
+import { ThreadProvider, Transcript } from "./thread";
 import { reduce } from "./reduce";
 import { StatusLine } from "./status";
 import { errorWords } from "./errors";
 import { wataneKernel } from "./watane";
 import { fakeWatane } from "./watane_fake";
-import turn from "./fixtures/fake_claude_turn.json";
+import fixture from "./fixtures/fake_claude_turn.json";
+
+const { live: turn, replay } = fixture as { live: string[]; replay: string[] };
 import { fakeKernel } from "../fake/kernel";
 
 afterEach(cleanup);
@@ -15,7 +18,7 @@ const actions = { say: () => {}, answer: () => {}, stop: () => {}, takeBack: () 
 const status = (v: SessionView) => render(<StatusLine view={v} now={1795255996000} stopping={false} actions={actions} onNeedsYou={() => {}} />);
 const word = () => screen.getByRole("status").textContent;
 const shape = () => document.querySelector("[data-shape]")!.getAttribute("data-shape");
-const feed = (n: number) => (turn as string[]).slice(0, n).reduce<SessionView>(reduce, emptyView);
+const feed = (n: number) => turn.slice(0, n).reduce<SessionView>(reduce, emptyView);
 
 describe("S35-4 AC1", () => {
   it("ac1_wataneKernel_start_calls_sessions_start_and_resolves_the_id", async () => {
@@ -58,7 +61,10 @@ describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
     expect(v.rows[1]).toMatchObject({ kind: "agent", text: "This is the fake claude.", writing: true });
     status(v);
     expect(word()).toBe("Writing");
-    expect(feed(5).rows[1]).toMatchObject({ kind: "agent", i: 2, writing: false });
+    expect(v.rows).toHaveLength(2); // the delta alone: one row
+    const done = feed(5); // 9.4: the finishing update carries the whole message and replaces the streamed text
+    expect(done.rows[1]).toMatchObject({ kind: "agent", i: 3, text: "This is the fake claude.", writing: false });
+    expect(done.rows).toHaveLength(2);
   });
   it("ac3_idle_completed_shows_Idle_with_the_ring", () => {
     const v = feed(6);
@@ -67,6 +73,23 @@ describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
     expect(word()).toBe("Idle");
     expect(shape()).toBe("ring");
     expect(v.rows.filter((r) => r.kind === "agent")).toHaveLength(1);
+    expect(v.rows.filter((r) => r.kind === "agent")[0]).toMatchObject({ text: "This is the fake claude." }); // once, not twice
+  });
+  it("ac3_after_a_reload_the_agent_text_shows_exactly_once_and_Idle", () => {
+    const v = replay.reduce<SessionView>(reduce, emptyView);
+    expect(v.rows.filter((r) => r.kind === "agent").map((r) => (r as { text: string }).text)).toEqual(["This is the fake claude."]);
+    expect(v.rows.filter((r) => r.kind === "user")).toHaveLength(1);
+    status(v);
+    expect(word()).toBe("Idle");
+    expect(shape()).toBe("ring");
+  });
+  it("ac3_live_and_reload_draw_the_agent_text_once_in_the_page", () => {
+    for (const msgs of [turn, replay]) {
+      cleanup();
+      const v = msgs.reduce<SessionView>(reduce, emptyView);
+      render(<ThreadProvider view={v} actions={actions}><Transcript view={v} actions={actions} /></ThreadProvider>);
+      expect((document.body.textContent ?? "").split("This is the fake claude.").length - 1).toBe(1);
+    }
   });
   it("ac3_failed_no_binary_says_it_in_words_with_the_triangle", () => {
     const v = { ...emptyView, turn: { state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "no-binary" } } } as SessionView;

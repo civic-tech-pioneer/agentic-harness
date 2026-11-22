@@ -84,7 +84,7 @@ const running = J({ _meta: { watane: { type: "turn", state: { state: "running", 
 
 describe("lost message after attach", () => {
   it("lost_a_message_whose_first_chunk_comes_after_synced_ends_whole", async () => {
-    const k = fakeKernel([[running, chunk("Hello "), chunk("world", 1), J({ sessionUpdate: "tool_call", toolCallId: "t", title: "t", kind: "edit", _meta: { watane: { i: 2 } } })]]);
+    const k = fakeKernel([[running, chunk("Hello "), chunk("Hello world", 1), J({ sessionUpdate: "tool_call", toolCallId: "t", title: "t", kind: "edit", _meta: { watane: { i: 2 } } })]]);
     const a = open(k);
     await flush();
     k.play(0);
@@ -94,7 +94,7 @@ describe("lost message after attach", () => {
     expect(rows[0]).toMatchObject({ text: "Hello world", writing: false, key: "e1" });
   });
   it("lost_a_real_mid_message_attach_gets_the_whole_entry_on_the_finishing_update", async () => {
-    const k = fakeKernel([[running, chunk("Hello ")], [chunk("world", 1)]]);
+    const k = fakeKernel([[running, chunk("Hello ")], [chunk("Hello world", 1)]]);
     k.play(0);
     const a = open(k);
     await flush();
