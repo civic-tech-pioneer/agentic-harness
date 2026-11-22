@@ -215,7 +215,10 @@ watane S99 writes it). The WASM wrapper's `generation` (G1) is
   wrote; only a trap rolls back. So the WASM wrapper buffers every state write
   of a call and puts them only when the crate's call succeeds; an `error`
   drops them, and with them every host call the crate holds for after the last
-  write (requests, timers). `stream-sink.items` and `ended` trap on a kernel
+  write (requests, timers). The wrapper holds every timer call of a call until
+  it commits, in call order after the writes, so a refused call arms nothing
+  (not the `restart` of a new generation either). The buffer commits the puts
+  and deletes in call order. `stream-sink.items` and `ended` trap on a kernel
   error, as before (3, "Failed batch").
 - `stream-sink.ended` of a provider stream passes its `outcome`: anything but
   `closed` ends an active turn `idle {failed {error: provider-ended, cause}}`

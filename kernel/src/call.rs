@@ -1,6 +1,7 @@
 //! One exported call of the WASM wrapper (TECHNICAL 2.1, "A failed call commits nothing", S32 R1):
 //! the kernel runs over a `Buffered` state, the host's `new_id` keeps its counter in the same
-//! buffer, and `Ok` commits the writes while `Err` drops them. Host-independent, so the wrapper's
+//! buffer, and `Ok` commits the writes while `Err` drops them, and with them the call's timers (a
+//! refused call arms nothing that writes later, S35 r1 F1.1). Host-independent, so the wrapper's
 //! rule is tested natively.
 
 use crate::sessions::{Host, Kernel, Outcome, Request, Started, StreamError};
@@ -30,10 +31,17 @@ impl<S: State> State for CallState<S> {
     }
 }
 
+/// A timer call the call holds until it commits.
+enum Timer {
+    After(String, u64),
+    Cancel(String),
+}
+
 /// The kernel's host for one call: `inner` for everything but `new_id`, which counts in the
-/// call's buffer.
+/// call's buffer, and the timers, which wait for the call's `Ok`.
 pub struct CallHost<S: State, H: Host> {
     buf: Buf<S>,
+    timers: Vec<Timer>,
     pub inner: H,
 }
 
@@ -55,10 +63,10 @@ impl<S: State, H: Host> Host for CallHost<S, H> {
         format!("s{n}")
     }
     fn timer_after(&mut self, id: &str, delay_ms: u64) {
-        self.inner.timer_after(id, delay_ms)
+        self.timers.push(Timer::After(id.to_string(), delay_ms));
     }
     fn timer_cancel(&mut self, id: &str) {
-        self.inner.timer_cancel(id)
+        self.timers.push(Timer::Cancel(id.to_string()));
     }
     fn request(&mut self, r: Request) {
         self.inner.request(r)
@@ -86,8 +94,9 @@ impl<S: State, H: Host> Host for CallHost<S, H> {
 /// The kernel one call runs.
 pub type CallKernel<S, H> = Kernel<CallState<S>, CallHost<S, H>>;
 
-/// Runs one crate call over `state` and `host`: `Ok` commits the buffered writes in order, `Err`
-/// drops them. Gives the state and the host back.
+/// Runs one crate call over `state` and `host`: `Ok` commits the buffered writes in order, then
+/// sets and cancels the call's timers in order; `Err` drops both. Other host calls go out as the
+/// crate makes them. Gives the state and the host back.
 pub fn run<S: State, H: Host, T>(
     state: S,
     host: H,
@@ -98,6 +107,7 @@ pub fn run<S: State, H: Host, T>(
         CallState(buf.clone()),
         CallHost {
             buf: buf.clone(),
+            timers: Vec::new(),
             inner: host,
         },
     );
@@ -105,13 +115,23 @@ pub fn run<S: State, H: Host, T>(
     drop(k.state);
     let CallHost {
         buf: held,
-        inner: host,
+        timers,
+        inner: mut host,
     } = k.host;
     drop(held);
     let Ok(cell) = Rc::try_unwrap(buf) else {
         unreachable!("the kernel is dropped")
     };
     let b = cell.into_inner();
-    let state = if r.is_ok() { b.commit() } else { b.discard() };
+    if r.is_err() {
+        return (r, b.discard(), host);
+    }
+    let state = b.commit();
+    for t in timers {
+        match t {
+            Timer::After(id, ms) => host.timer_after(&id, ms),
+            Timer::Cancel(id) => host.timer_cancel(&id),
+        }
+    }
     (r, state, host)
 }
