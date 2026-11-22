@@ -548,8 +548,10 @@ fn ac8_a_running_turn_ends_stopped_quota_when_past() {
     assert!(lines
         .iter()
         .all(|l| l["kind"] != "message" || l["body"]["role"] == "user"));
-    assert_eq!(c.pushes.len(), 1);
-    assert_eq!(c.pushes[0].value["state"]["state"], "idle");
+    // the `turn` entry goes out as an `entry` item, then the turn item (S35-fix1)
+    assert_eq!(c.pushes.len(), 2);
+    assert_eq!(c.pushes[0].value["type"], "entry");
+    assert_eq!(c.pushes[1].value["state"]["state"], "idle");
     let reqs = requests(&k);
     assert_eq!(reqs.len(), n + 1);
     assert_eq!(

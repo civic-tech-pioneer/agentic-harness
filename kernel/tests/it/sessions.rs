@@ -149,7 +149,11 @@ fn ac1_start_makes_the_record_and_everything_it_names() {
         HostCall::StartProvider { input, .. } if input == IN
     )));
     assert_eq!(
-        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
+        c.pushes
+            .iter()
+            .map(|p| p.value.clone())
+            .filter(|v| v["type"] != "entry")
+            .collect::<Vec<_>>(),
         [json!({"type": "turn", "state": {"state": "running", "since": 1000}})]
     );
     assert_eq!(active::read_page(&mut k.state, 0).len(), 1);
@@ -380,19 +384,28 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
     let id = started(&mut k, "alice", "k");
     let c = k.provider(&id, ask("a1", "ask", 9000)).unwrap();
     assert_eq!(
-        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
+        c.pushes
+            .iter()
+            .map(|p| p.value.clone())
+            .filter(|v| v["type"] != "entry")
+            .collect::<Vec<_>>(),
         [
             json!({"type": "turn", "state": {"state": "waiting", "asks": ["a1"], "expires-at": 9000}})
         ]
     );
     let c2 = k.provider(&id, ask("a2", "ask", 7000)).unwrap();
     assert_eq!(
-        c2.pushes[0].value["state"],
+        c2.pushes
+            .iter()
+            .find(|p| p.value["type"] == "turn")
+            .unwrap()
+            .value["state"],
         json!({"state": "waiting", "asks": ["a1", "a2"], "expires-at": 7000})
     );
     // a check opens but does not change the turn
     let c3 = k.provider(&id, ask("c1", "check", 1)).unwrap();
-    assert!(c3.pushes.is_empty());
+    // its `ask` entry goes out as an `entry` item and no turn item follows (S35-fix1)
+    assert!(c3.pushes.iter().all(|p| p.value["type"] == "entry"));
     let r = rec(&mut k, &id);
     assert_eq!(
         r.open
@@ -418,10 +431,13 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
             resume: false
         }
     );
-    assert_eq!(c.pushes.len(), 3);
-    assert_eq!(c.pushes[0].value["state"]["state"], "idle");
-    assert_eq!(c.pushes[1].value["state"]["state"], "running");
-    assert_eq!(c.pushes[2].value, json!({"type": "queue", "inputs": []}));
+    // each `turn` entry goes out before its turn item (S35-fix1)
+    assert_eq!(c.pushes.len(), 5);
+    assert_eq!(c.pushes[0].value["type"], "entry");
+    assert_eq!(c.pushes[1].value["state"]["state"], "idle");
+    assert_eq!(c.pushes[2].value["type"], "entry");
+    assert_eq!(c.pushes[3].value["state"]["state"], "running");
+    assert_eq!(c.pushes[4].value, json!({"type": "queue", "inputs": []}));
     let es = entries(&mut k, "alice", &id);
     let kinds: Vec<_> = es
         .iter()
@@ -434,7 +450,11 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
     // idle: true ends the turn
     let c = k.provider(&id, idle()).unwrap();
     assert_eq!(
-        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
+        c.pushes
+            .iter()
+            .map(|p| p.value.clone())
+            .filter(|v| v["type"] != "entry")
+            .collect::<Vec<_>>(),
         [json!({"type": "turn", "state": {"state": "idle", "stop": {"kind": "completed"}}})]
     );
     // activity is live only: pushed, never stored
@@ -621,7 +641,11 @@ fn ac6_answer_shapes_and_effects() {
         ["a2", "c1"]
     );
     assert_eq!(
-        c.pushes[0].value["state"],
+        c.pushes
+            .iter()
+            .find(|p| p.value["type"] == "turn")
+            .unwrap()
+            .value["state"],
         json!({"state": "waiting", "asks": ["a2"], "expires-at": 6000})
     );
     // the answer writes no decision entry: it is pending until the host resolves the ask
@@ -647,7 +671,14 @@ fn ac6_answer_shapes_and_effects() {
     let c = k
         .answer("alice", &id, "k2", "a2", r#"{"deny":true,"reason":"no"}"#)
         .unwrap();
-    assert_eq!(c.pushes[0].value["state"]["state"], "running");
+    assert_eq!(
+        c.pushes
+            .iter()
+            .find(|p| p.value["type"] == "turn")
+            .unwrap()
+            .value["state"]["state"],
+        "running"
+    );
     assert_eq!(
         rec(&mut k, &id).turn,
         Turn::Running {
@@ -1027,8 +1058,9 @@ fn ac1_interrupt_without_a_replacement_ends_an_active_turn() {
             es[n]["body"],
             json!({"state": "idle", "stop": {"kind": "interrupted"}})
         );
-        assert_eq!(c.pushes.len(), 1);
-        assert_eq!(c.pushes[0].value["type"], "turn");
+        assert_eq!(c.pushes.len(), 2);
+        assert_eq!(c.pushes[0].value["type"], "entry");
+        assert_eq!(c.pushes[1].value["type"], "turn");
         assert_eq!(
             requests(&k)[sent..],
             [Request::Interrupt {
@@ -1078,7 +1110,8 @@ fn ac1_interrupt_with_a_replacement_starts_it_and_the_session_stays_active() {
     assert_eq!(kinds[0].1, "\"idle\"");
     assert_eq!(kinds[1].0, "\"message\"");
     assert_eq!(kinds[2].1, "\"running\"");
-    assert_eq!(c.pushes.len(), 2);
+    // two turn entries and the two turn items (S35-fix1)
+    assert_eq!(c.pushes.len(), 4);
     assert_eq!(
         requests(&k)[sent..],
         [

@@ -230,7 +230,13 @@ fn ac2_the_pass_steps_one_session_per_firing_case_68() {
             assert!(c.pushes.is_empty());
             break;
         }
-        assert_eq!(c.pushes.len(), 1);
+        assert_eq!(
+            c.pushes
+                .iter()
+                .filter(|p| p.value["type"] != "entry")
+                .count(),
+            1
+        );
         assert!(new.contains(&HostCall::TimerAfter {
             id: "restart".into(),
             delay_ms: 0
@@ -299,7 +305,11 @@ fn ac3_the_step_settles_a_claude_turn_case_69() {
     restart_host(&mut k, 2);
     let c = k.timer("restart");
     assert_eq!(
-        c.pushes.iter().map(|p| p.value.clone()).collect::<Vec<_>>(),
+        c.pushes
+            .iter()
+            .map(|p| p.value.clone())
+            .filter(|v| v["type"] != "entry")
+            .collect::<Vec<_>>(),
         [json!({"type": "turn", "state": {"state": "unknown"}})]
     );
     assert_eq!(c.pushes[0].session, id);
@@ -487,7 +497,11 @@ fn ac6_every_session_call_but_delete_steps_a_stale_record_first() {
             "unqueue" => {
                 let c = k.unqueue("alice", &id, 1).unwrap();
                 assert_eq!(
-                    c.pushes[0].value,
+                    c.pushes
+                        .iter()
+                        .find(|p| p.value["type"] == "turn")
+                        .unwrap()
+                        .value,
                     json!({"type": "turn", "state": {"state": "unknown"}})
                 );
             }
@@ -539,14 +553,22 @@ fn ac7_expires_at_is_the_earliest_open_ask_after_one_is_answered() {
         .answer("alice", &id, "k1", "a2", r#"{"allow":true}"#)
         .unwrap();
     assert_eq!(
-        c.pushes[0].value["state"],
+        c.pushes
+            .iter()
+            .find(|p| p.value["type"] == "turn")
+            .unwrap()
+            .value["state"],
         json!({"state": "waiting", "asks": ["a1", "a3"], "expires-at": 8000})
     );
     let c = k
         .answer("alice", &id, "k2", "a3", r#"{"deny":true}"#)
         .unwrap();
     assert_eq!(
-        c.pushes[0].value["state"],
+        c.pushes
+            .iter()
+            .find(|p| p.value["type"] == "turn")
+            .unwrap()
+            .value["state"],
         json!({"state": "waiting", "asks": ["a1"], "expires-at": 9000})
     );
     let none = OpenAsk {
@@ -578,7 +600,12 @@ fn ac2_a_failed_step_or_a_missing_record_does_not_stop_the_pass() {
     let mut firings = 0;
     let mut pushes = 0;
     while Slots::load(&mut k.state).restart.is_some() {
-        pushes += k.timer("restart").pushes.len();
+        pushes += k
+            .timer("restart")
+            .pushes
+            .iter()
+            .filter(|p| p.value["type"] != "entry")
+            .count();
         firings += 1;
         assert!(firings <= 5);
     }

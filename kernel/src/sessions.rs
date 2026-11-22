@@ -550,6 +550,17 @@ fn on_wire(v: &Value) -> Value {
     json!({"_meta": {"watane": v}})
 }
 
+/// The live `entry` item of a stored entry that has no ACP form (9.4); none for a `message` or a
+/// `tool`, which go out as their finishing update.
+fn entry_push(session: &str, i: u64, e: &NewEntry, at: u64, work: &mut Work) {
+    if matches!(e.kind.as_str(), "message" | "tool") {
+        return;
+    }
+    let entry = json!({"v": 1, "i": i, "kind": e.kind, "at": at, "body": e.body});
+    work.pushes
+        .push(Push::of(session, json!({"type": "entry", "entry": entry})));
+}
+
 fn turn_push(t: &Turn) -> Value {
     json!({"type": "turn", "state": t.to_json()})
 }
@@ -1230,6 +1241,20 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(i)
     }
 
+    /// `append`, and the entry goes out live as an `entry` item when it has no ACP form (9.4); a
+    /// `message` or `tool` goes out as its finishing update.
+    fn append_live(
+        &mut self,
+        rec: &mut Record,
+        e: NewEntry,
+        at: u64,
+        work: &mut Work,
+    ) -> Result<u64, KernelError> {
+        let i = self.append(rec, e.clone(), at)?;
+        entry_push(&rec.id, i, &e, at, work);
+        Ok(i)
+    }
+
     /// An entry the provider sends: stored unless the owner or the account is past its quota or the
     /// session is at its chunk cap, keeping the room for one `turn` entry (9.3 Quota, case 53). Not
     /// stored, the active turn ends `stopped {limit: quota}` (`None`).
@@ -1251,6 +1276,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             match stored {
                 Ok(i) => {
                     rec.set_meta(&meta);
+                    entry_push(&rec.id, i, &e, at, work);
                     return Ok(Some(i));
                 }
                 Err(KernelError::Quota(_)) => {}
@@ -1313,7 +1339,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 uuid: None,
                 body: stored.entry_body(),
             };
-            self.append(rec, entry, now)?;
+            self.append_live(rec, entry, now, work)?;
         }
         rec.turn = stored;
         work.pushes.push(Push::of(&rec.id, turn_push(&t)));
@@ -1339,7 +1365,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             uuid: None,
             body: json!({"role": "user", "content": user_content(&input)}),
         };
-        let n = self.append(rec, message, now)?;
+        let n = self.append_live(rec, message, now, work)?;
         let running = Turn::Running {
             since: now,
             activity: None,
@@ -1453,6 +1479,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         i: u64,
         decision: Value,
         now: u64,
+        work: &mut Work,
     ) -> Result<(), KernelError> {
         let body = if past.short(self.state.change().owner) {
             json!({"id": ask.0, "kind": ask.1, "ask-i": i, "decision": decision})
@@ -1471,7 +1498,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             uuid: None,
             body,
         };
-        self.append(rec, entry, now)?;
+        self.append_live(rec, entry, now, work)?;
         Ok(())
     }
 
@@ -1491,10 +1518,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         for o in std::mem::take(&mut rec.open) {
             rec.deadlines.retain(|d| d.what != format!("ask {}", o.id));
             let d = json!({"outcome": "deny", "by": "kernel", "reason": reason});
-            self.write_decision(rec, past, (&o.id, &o.kind), o.i, d, now)?;
+            self.write_decision(rec, past, (&o.id, &o.kind), o.i, d, now, work)?;
         }
         for (id, p) in std::mem::take(&mut rec.pending_answers) {
-            self.write_decision(rec, past, (&id, &p.kind), p.i, p.decision(), now)?;
+            self.write_decision(rec, past, (&id, &p.kind), p.i, p.decision(), now, work)?;
         }
         if any && follow && matches!(rec.turn, Turn::Waiting { .. }) {
             let t = Turn::Running {
@@ -1543,7 +1570,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             },
             _ => json!({"outcome": "deny", "by": "host", "reason": r.by}),
         };
-        self.write_decision(rec, past, (&r.id, &kind), i, decision, now)?;
+        self.write_decision(rec, past, (&r.id, &kind), i, decision, now, work)?;
         if open.is_some() {
             self.close_ask(rec, past, &r.id, now, work)
         } else {
@@ -3248,9 +3275,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                     uuid: None,
                     body: json!({"id": oid, "kind": k, "ask-i": ai, "decision": d}),
                 };
-                Some(self.append(rec, short, now)?)
+                Some(self.append_live(rec, short, now, work)?)
             } else {
-                Some(self.append(rec, NewEntry::from(e), now)?)
+                Some(self.append_live(rec, NewEntry::from(e), now, work)?)
             }
         } else {
             self.append_loose(rec, past, NewEntry::from(e), now, work)?
@@ -3277,7 +3304,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if rec.open.len() + rec.pending_answers.len() >= OPEN_ASKS {
             // Past the cap: denied at once, so a closing call writes at most 64 decisions.
             let d = json!({"outcome": "deny", "by": "kernel", "reason": "busy"});
-            self.write_decision(rec, past, (id, kind), i, d, now)?;
+            self.write_decision(rec, past, (id, kind), i, d, now, work)?;
             self.send_answer(rec, work, id, json!({"deny": true, "reason": "busy"}));
             return Ok(());
         }

@@ -136,7 +136,10 @@ fn case74_a_turn_end_starts_no_queued_input_and_keeps_the_queue() {
             }),
         )
         .unwrap();
-    assert!(c.pushes.iter().all(|p| p.value["type"] == "turn"));
+    assert!(c
+        .pushes
+        .iter()
+        .all(|p| p.value["type"] == "turn" || p.value["type"] == "entry"));
     assert_eq!(rec(&mut k, &id).turn, Turn::default());
     assert_eq!(k.queued("alice", &id).unwrap().len(), 1);
     assert_eq!(requests(&k), sent);
