@@ -32,6 +32,7 @@ mod refuse;
 mod regress_s14;
 mod regress_s25;
 mod regress_s26;
+mod regress_s35;
 mod restart;
 mod revoke;
 mod rules;
