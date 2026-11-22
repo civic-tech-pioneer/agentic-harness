@@ -47,7 +47,7 @@ in the same commit):
   refusal at once), `kernel/examples/check.rs` (the maker's command) and
   `kernel/tests/it/` (the tests)
 - built: `mod.toml` at the root
-- built (S32): `kernel/wasm/wit/world.wit` (2.3 and 9.9, the imports and
+- built (S32): `kernel/wasm/wit/world.wit` (2.3, the imports and
   exports of 2.1) with `kernel/wasm/wit/deps/watane-host/host.wit` (host
   19.1's text, 2.1 "Exact text"); they move to `wit/` at the root, where
   `check-mod.sh` checks them, once the watane-dev that CI installs links host
@@ -71,7 +71,14 @@ in the same commit):
 - `console/` (source) and `ui/` (built from it), 18
 
 A provider repository holds `mods:claude-code` with `src/lib.rs`; the checked
-one also `src/judge.rs` (10: judge call, verdict parse, breaker).
+one also `src/judge.rs` (10: judge call, verdict parse, breaker). Until the
+human answers R-B1 (PLAN, "Waiting on the human"), the unchecked provider is
+built (S35) in `provider/` of this repository as a self-contained mod: its
+own `mod.toml`, `wit/world.wit`, `logic/` crate and tests, no path into
+`kernel/` or `console/`, and its own copy of the provider rows of 14
+(`provider/BOUNDARIES.md`), so a `git subtree split` makes it its own
+repository. The kernel links it as a local provider (`kernel/wasm/deps.json`,
+`kernel/wasm/wit/deps/claude-code/`, written by `watane-dev add`).
 
 A new source file starts with a `//!` line that cites its section here, as
 every watane file does.
@@ -162,9 +169,9 @@ on (3); one made in the call that returns `defer` is dropped with it.
 **Exact text.** watane's host 19.1 (`host/wit/host.wit` in the watane
 checkout) is the exact WIT; the block above names what the kernel uses. The
 kernel's copy is `kernel/wasm/wit/deps/watane-host/host.wit` (1), taken from host 19.1 and
-refreshed when it changes (S32). Until watane gives restart detection (host 18
-Q34; watane S97), the WASM wrapper's `generation` (G1) is the constant 1: stage
-A runs no provider, so no restart step has anything to do.
+refreshed when it changes (S32; S35 takes host 19.1 with `host-info` as
+watane S99 writes it). The WASM wrapper's `generation` (G1) is
+`host-info.generation()` (S35; stage A's constant 1 is gone).
 
 **The kernel's side of the seam** (S32 seam audit, against host 19):
 - An owner stream (9.4) is the kernel's own `streams.open()`, made in the
@@ -172,8 +179,18 @@ A runs no provider, so no restart step has anything to do.
   connection, host 8.2) or `full` (32 per consumer), and `attach` then answers
   `backend("<the host's code>: <cause>")` and writes nothing. A provider
   stream is never opened by the kernel: it is the `stream` of the provider's
-  `start` (2.2); stage A links no provider, so a Claude session's `start` is
-  refused `backend("no Claude Code provider is linked")` and writes nothing.
+  `start` (2.2). A provider `start` that fails (any `start-error`, or the
+  provider is not linked) refuses the session's `start`
+  `backend("<the error's case>")` and writes nothing.
+- **The kernel's calls on a provider stream** (S35). The record keeps whether
+  the stream is `direct` (2.2). On a `direct: true` stream the kernel is the
+  host stream's consumer (after the provider's `hand-off`, 10), so it calls
+  `claude-session.say`, `interrupt` and `answer` itself; on a `direct: false`
+  stream it calls the provider's `sessions` functions of the same name. A turn's
+  input goes to `say` as text: the `text` of its ACP text blocks joined with a
+  blank line (other blocks are left out of the text until a later slice
+  carries them). The owner's `cancel` is `streams.cancel` of the provider
+  stream. Each is a request (7), made after the call's last write.
 - `push` can fail `full` (the owner stream is at its window: 3, 9.4),
   `unknown-stream` or `not-yours` (the stream ended meanwhile: the kernel drops
   its live stream as if `ended` had come, and closes nothing), or `too-large`
@@ -188,7 +205,21 @@ A runs no provider, so no restart step has anything to do.
 - `stream-sink.items` gets a batch: the kernel takes its items in `seq`
   order, drops every item at or below the last `seq` it took on that stream
   (`stream/<id>` keeps it; case 7), and answers `defer` for the whole batch
-  when any item defers (3): the host then rolls the call back whole.
+  when any item defers (3): the host then rolls the call back whole. Each
+  item's `body` is the provider stream's own line (a `claude` stdout line or a
+  host item, 4.5), read by the adapter (9.8, S32 R2); the provider wraps
+  nothing.
+- **A failed call commits nothing** (S32 R1). On watane's host a call that
+  returns an `error` of 2.3 returns normally, and the host commits what it
+  wrote; only a trap rolls back. So the WASM wrapper buffers every state write
+  of a call and puts them only when the crate's call succeeds; an `error`
+  drops them, and with them every host call the crate holds for after the last
+  write (requests, timers). `stream-sink.items` and `ended` trap on a kernel
+  error, as before (3, "Failed batch").
+- `stream-sink.ended` of a provider stream passes its `outcome`: anything but
+  `closed` ends an active turn `idle {failed {error: provider-ended, cause}}`
+  with the outcome's name as `cause` (`no-binary`, `version 2.1.200 < 2.1.295`,
+  `mismatch(tools)`, ...), so the console shows why (18.5).
 
 ### 2.2 Providers (`mods:claude-code@0.1.0`)
 
@@ -209,7 +240,9 @@ provider makes no judge call for a call it refuses (10). `not-owner` and
 `not-direct` (10) are cases of the shared `start-error` and `session-error` of
 `claude-types` (2.1). The kernel's identity is one fixed published value
 `<publisher>/agent`, a constant in each provider's `src/lib.rs`, compared
-exactly; no `local/…` identity and no other publisher's `agent` matches.
+exactly; no `local/…` identity and no other publisher's `agent` matches,
+except the stage B value of 10 ("Unchecked"), `local/agent`, while the kernel
+is unpublished (R-B3).
 
 ### 2.3 Kernel (`mods:agent@0.1.0`)
 
@@ -236,9 +269,6 @@ record queued-input { n: u64, input: string }
 record refusal { field: string, backend: string, model: string, reason: string }
 variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow, behind(u64), too-large(u64), busy }
 
-interface probe {                                    // stage A only (9.9); removed when stage B links a provider
-  start: func(key: string, count: u32, every-ms: u32) -> result<string, error>;
-}
 
 interface offers {                                   // a collect (W34)
   skills: func() -> list<offered-skill>;
@@ -266,7 +296,7 @@ the `id` of the ask entry (9.4; the ask id of the deadlines in 9.3), never the
 tool call id. A check (`kind: "check"`, 9.4) is answered only by the checked
 provider (10); the owner's `answer` to it is refused, `{field: "ask"}`.
 `allow` in `take-back` is the id of an `allow`
-entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5), the session holds 64 pending answers (9.3, `pending-answers`), the active index is full at 1 024 sessions (9.3, A3), or a `probe.start` finds no session timer free (9.9); its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
+entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5), the session holds 64 pending answers (9.3, `pending-answers`), the active index is full at 1 024 sessions (9.3, A3), ; its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
 
 ## 3. Streams (H1)
 
@@ -304,8 +334,8 @@ fields. Each value goes out as one `--flag=value` argument.
 
 | Field | Grammar or rule | Goes to `claude` as |
 |---|---|---|
-| `profile` | the session's kernel profile name (9.2), set by the kernel: 1 to 64 printable ASCII characters (space to `~`) | nothing: the host uses it only in the workspace consent's words (8, "{profile}"), never as an argument (watane S95) |
-| `workspace` | a workspace id the origin client holds (8) | cwd |
+| `profile` | the session's kernel profile name (9.2), set by the kernel: `[A-Za-z0-9._-]{1,64}` as host 19.3 takes it; the kernel leaves the field out for a name outside it | nothing: the host uses it only in the workspace consent's words (8, "{profile}"), never as an argument (watane S95) |
+| `workspace` | a workspace id the origin client holds (8), or `scratch` for a new scratch workspace (4.6) | cwd |
 | `extra-workspaces` | workspace ids, the same rule | `--add-dir=` each |
 | `model` | `[A-Za-z0-9.\-\[\]]{1,64}` | `--model=` |
 | `fallback-models` | the same, at most 4 | `--fallback-model=` |
@@ -478,11 +508,21 @@ and `.husky/**`. No launch can remove them.
   Deleted when the stream ends; all of `runs/` is deleted at open, after the
   recorded process groups are killed.
 - **Scratch workspace** `<home>/scratch/<random>/`, named by the host, owned
-  by a session; a mod sees its id. It asks no consent (8): no participant folder is in it.
-- **Not yet specified:** which call creates a scratch workspace, how a picked
-  folder becomes a workspace id, and how the kernel holds one across a resume.
-  Stage B's first slice (17) adds this to 2.1, 4.1, 4.6 and a 15 row before
-  any build slice of that stage starts.
+  by the origin client; a mod sees its id. It asks no consent (8): no participant folder is in it.
+  As host 19.3 "Folders" states it (watane S99; no WIT change):
+  - **Made by the launch.** `workspace: "scratch"` makes a new one when the
+    start applies; its id is `scratch:<32 hex>`.
+  - **Seen in `initialized`.** The host's `initialized` item names the
+    launch's workspace, `{"type":"initialized","workspace":"<id>"}`. The
+    kernel keeps the first one a session's provider stream gives in the
+    record's `workspace` (9.3), written once (a later one with another id
+    is an `unknown` entry).
+  - **Held across a resume.** A session whose record has a `workspace` launches
+    with `workspace: "<that id>"`; one without launches with `scratch`. In
+    stage B every Claude session is in a scratch workspace; a picked folder
+    needs the workspace consent (stage C) and its 2.1 and 8 rows.
+  - **Lifetime.** It outlives its stream and the session's `delete`; the host
+    deletes it with its owner mod (host 19.3).
 - **Picked workspace:** canonical, symlinks resolved. Refused: `/`, the home
   folder, the watane home and its ancestors, `~/.claude`, `~/.codex`,
   `~/.ssh`, `~/.aws`, `~/Library/Keychains`, the run and scratch trees;
@@ -627,7 +667,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | Key | Value |
 |---|---|
 | `profile/<name>` | a profile (9.2) |
-| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed. `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile may say so). A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
+| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed, with one exception, the console's first run (S35): for the identity `page` only, an absent `access/page` allows the built-in profile `scratch` and nothing else (an unreadable one still allows none). `profile/scratch` absent reads as the built-in `{"backend":"claude","partial":true}`: Claude's default model, no built-in tools, mode `manual`, no allow rule, in a scratch workspace (4.6), which is less than any profile the participant can make. A stored `profile/scratch` or `access/page` replaces it `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile may say so). A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
 | `adopted/<offer id>` | `{content hash, content}` |
 | `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. A `probe.start` keeps its key with `call` `probe` (9.9). The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
 | `session/<id>` | the session record (9.3) |
@@ -640,6 +680,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `quota/<owner>` | `{bytes, sessions, pages}`: the owner's bytes and live session count, the bytes counting every key the owner causes (9.3, Quota), and `pages` the entry count of each `owner/<owner>/<n>` page; later its live session timers (9.3) and its slot counts per kind (9.5), the slot counts tagged with the generation of `slots` (9.3): counts of an older boot read as zero, so the restart pass need not find every owner. Absent reads as all zero |
 | `quota` | `{bytes, sessions}`: the kernel-wide account, bytes and sessions of all owners (9.3); absent reads as zero |
 | `stream/<id>` | `{session, kind, last?}` (`kind`: `provider`, `request`, `job`, `owner`), written in the call that opens or receives the stream, deleted on its `ended` (9.4). `last` is the last item `seq` an items call took on a provider stream (2.1, case 7); absent is 0; one write per batch |
+| `adapter/<stream>` | the Claude adapter's state for a provider stream (9.8, "Adapter state"), written with `stream/<id>`'s `last` and deleted with it; counted in the session's `bytes` |
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
 | `active/<n>`, n 0..3 | A1: page n of the sessions whose turn is `running`, `waiting` or `paused`, each entry the pair `[id, boot]` (not an object, so that 256 entries with 64-byte ids fit the 24 KiB page; `boot`: the generation of the session's last restart step, or of the call that added it). At most 256 entries per page, so at most 1 024 listed sessions; a page is at most 24 KiB (a session id is at most 64 bytes, 9.3). The record's `active-page` names the page that holds the session while it is listed. Kept by every turn change that enters or leaves the index (9.3, A2); it is what the restart pass reads in place of a prefix scan |
 | `slots` | `{provider, request, job: counts; timers; boot; active: four page counts; restart: the pass's page cursor; head, tail}`: the stream slots in use, the live session timers (9.3), the generation (9.3), the entries of each `active/` page, the page where the restart pass goes on, and the ends of the waiting FIFO (9.5) |
@@ -1561,11 +1602,25 @@ objection", never an allow. A client shows a check as a pending check or a
 decision line, with no answer buttons; the kernel offers no answer options for
 it.
 
+**Adapter state** (S35). A mod instance keeps no memory between calls (host
+6: a new store per call), so the Claude adapter's state for a provider
+stream (the tool calls it has seen, thinking so far, whether `result` and
+the idle line came) is kept in `adapter/<stream>` (9.1), read and written once
+per items call with the stream's `last`, and deleted with `stream/<id>`. A
+deferred or failed call rolls it back with the rest. From the items it reads
+the kernel also takes the `initialized` item's `workspace` (4.6) and the
+`system/init` line's `session_id` (the record's `claude-uuid`, for a later
+resume, 9.3 R5); both give no entry.
+
 Libraries: `claude-codes` (types only) and `agent-client-protocol-schema`
 (v1). An unknown Claude line never fails: the adapter falls back to `unknown`
 when `claude-codes` cannot parse it.
 
-### 9.9 The stage A probe
+### 9.9 The stage A probe (removed)
+
+Removed in S35, when stage B linked the unchecked provider: the interface
+`probe` of 2.3, its code and tests, and the console's probe session. The
+rules below are the record of what stage A ran.
 
 Stage A has streams and timers but no provider (17), so no session of 9.3
 can run a turn. The probe gives the console a real kernel stream all the same:
@@ -1602,9 +1657,17 @@ section, and its code).
 
 ## 10. The providers (M1)
 
-- **Unchecked:** `start` calls `claude-code.start`, then `streams.hand-off`,
-  and returns `{stream, direct: true}`. Its other functions return
-  `not-direct`.
+- **Unchecked:** `start` checks the caller (2.2), calls `claude-code.start`
+  with the launch unchanged, then, while it is still the stream's consumer,
+  `claude-session.say` with the input's text (2.1, "The kernel's calls on a
+  provider stream"; none for an input with no text), then `streams.hand-off`,
+  and returns `{stream, direct: true}`. A `start-error` of the host passes
+  through unchanged; a `say` error cancels the stream and is `bad-launch
+  {field: "input", reason: <its case>}`. Its other functions return
+  `not-direct`. The kernel identity it compares with (2.2) is, until the
+  kernel is published, `local/agent`: stage B runs only in previews, where every
+  mod is `local/` (PLAN R-B3, the product owner's; publishing the provider
+  sets the published value first).
 - **Checked:** it forwards every item unchanged (an `ask` item reaches the
   kernel at once; only its answer waits for the verdict, step 6), answers every `check`
   (`none` when safe, `deny` otherwise), judges every `ask` and input, and
@@ -1785,14 +1848,14 @@ stages B and E).
 | No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
-| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` |
-| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` (the exports and owner checks by `caller.identity()`), `kernel/src/sessions.rs` (also the 9.1 stream routing, the probe of 9.9, `stream/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
+| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one, until R-B1: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`) |
+| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
 | A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
-| The console has no power a client lacks | it calls only 2.3 (and 9.9's `probe` in stage A), as the kernel's page identity (18.1) | `wit/world.wit` (staged as `kernel/wasm/wit/world.wit`, 1), `mod.toml`, `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs`, `console/`, `ui/` |
+| The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1); its one first-run default, the built-in `scratch` profile for `page` while `access/page` is absent (9.1), grants less than any profile a participant makes (PLAN R-B4) | `wit/world.wit` (staged as `kernel/wasm/wit/world.wit`, 1), `mod.toml`, `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
 
 Not protected: a revoked `access/` entry does not stop a turn already running: no call of 2.3 writes `access/` today, so the kernel learns of the change only when a call reads the key (9.7, "Revoking"); the slice that adds the call writing `access/` ends the turns of the sessions whose profile it removes (as `cancel`); the judge account reaches any `POST` path of the origin the
@@ -1827,6 +1890,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
 - [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended`; a lag clock from a failed `full` push to `ready` that reaches 10 s ends the stream `lagging`, except a stream its consumer has deferred (2.1, 3; P03).
 - [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7); the host builds each `ask`, `check` and `ask-resolved` item itself and never copies bytes of a `claude` line into one, and `ask-resolved {by: answered}` carries the `outcome` (4.5; accepted, the human, 2026-11-21); the host pushes `ask-resolved {by: expired}` for a check it has not answered at its `expires-at` and writes nothing to stdin for it (4.5; S22; accepted, the human, 2026-11-21).
+- [x] `host/TECHNICAL.md` H2: scratch workspaces (4.6): `workspace: "scratch"` makes one at apply, `initialized` names its id `scratch:<32 hex>`, a later launch names it again, the owner kept in host state (host 19.3 "Folders", watane S99).
 - [ ] `host/TECHNICAL.md` H2: a file tool's ask gives the kernel the path that will run with its symlinks resolved, before the kernel computes a scope key (9.6; stage B's first slice names how, in 4.5); until then no session has a `workspace` (PLAN S33 RISK 2, S34).
 - [ ] `host/TECHNICAL.md` H2: `--strict-mcp-config` admits only the `watane` server, so an `mcp__watane__<tool>` name is always watane's (4.4); a scope key for such a tool (9.6, 14) relies on it (PLAN S33 RISK 3, S34).
 - [ ] `host/TECHNICAL.md` H2: the host's `--settings=` for the shell grant always writes `sandbox.allowUnsandboxedCommands: false`, never leaves it out (Claude's default is `true`); a test reads the settings the host writes (4.1, 4.2, 14; PLAN S33).
@@ -2287,8 +2351,12 @@ say (layout, spacing, words).
   `watane.on` (`{"type":"stream"}` and `{"type":"stream-end"}` of host 8.4;
   `console/kit/watane.ts`). It keeps, per stream, the last `seq` it showed and
   drops any item at or below it, and holds items of a stream whose `attach`
-  has not answered yet. In stage A it opens the owner's newest probe session
-  (`list`), or starts one (`probe.start`, 9.9). Without `window.watane` (the
+  has not answered yet. From stage B (S35) it opens the owner's newest
+  session (`list`); with none, or on New session, it shows the new-session
+  view (the frame `NewSession-2`, narrowed to what stage B has: the profile
+  `scratch`, "A new scratch folder" as the place, no reach choices), and the
+  first Send there is `start(<fresh key>, "scratch", "{}", <input>)`; the
+  page then opens that session. Without `window.watane` (the
   component tests, `npm run dev`) it opens the scripted fake kernel
   (`console/fake/`), which the page never ships as its kernel when served.
   Known limit (S32): a page cannot tell a reconnected `/events` connection
