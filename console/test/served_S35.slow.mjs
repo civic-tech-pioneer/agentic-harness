@@ -33,17 +33,19 @@ const fake = `(() => {
       }
       if (fn === "sessions.attach") {
         const live = localStorage.getItem("input") !== null && !localStorage.getItem("done");
-        const sync = ${J(meta({ type: "synced", through: 0 }))};
+        const queue = ${J(meta({ type: "queue", inputs: [] }))};
         if (live) {
+          // the kernel's attach right after sessions.start: the stored entries, synced, the turn item, the queue
           localStorage.setItem("done", "1");
           const st = "st" + Math.random();
-          push(st, [sync, entries[0], entries[1], turn({ state: "running", since: T })], 1);
-          setTimeout(() => push(st, [chunk({ at: T + 1 })], 5), 600);
-          setTimeout(() => push(st, [chunk({ at: T + 2, i: 3 }), turn({ state: "idle", stop: { kind: "completed" } })], 6), 1200);
+          push(st, [entries[0], entries[1], ${J(meta({ type: "synced", through: 2 }))}, turn({ state: "running", since: T }), queue], 1);
+          // the test steps the turn once it has seen each word (a timer races a loaded machine: 20 browsers run side by side)
+          const steps = [() => push(st, [chunk({ at: T + 1 })], 6), () => push(st, [chunk({ at: T + 2, i: 3 }), turn({ state: "idle", stop: { kind: "completed" } })], 7)];
+          window.__step = () => steps.shift()?.();
           return { ok: st };
         }
         const st = "st" + Math.random();
-        push(st, [...entries, ${J(meta({ type: "synced", through: 4 }))}, turn({ state: "idle", stop: { kind: "completed" } })], 1);
+        push(st, [...entries, ${J(meta({ type: "synced", through: 4 }))}, turn({ state: "idle", stop: { kind: "completed" } }), queue], 1);
         return { ok: st };
       }
       if (fn === "sessions.read") return { ok: { entries: [], last: 4 } };
@@ -89,7 +91,9 @@ try {
   assert.ok(t0.includes("Claude Code (unchecked)") && t0.includes("Scratch folder"), "header facts");
   assert.ok(!/\(1\d\.\d\)/.test(t0), "no section number is shown");
   await page.waitForFunction(() => document.querySelector(".wa-status-word")?.textContent === "Working", null, { timeout: 5000 });
+  await page.evaluate(() => window.__step());
   await page.waitForFunction(() => document.querySelector(".wa-status-word")?.textContent === "Writing", null, { timeout: 5000 });
+  await page.evaluate(() => window.__step());
   await page.waitForFunction(() => document.querySelector(".wa-status-word")?.textContent === "Idle", null, { timeout: 8000 });
   const once = async () => {
     const t = await text();

@@ -19,6 +19,8 @@ const status = (v: SessionView) => render(<StatusLine view={v} now={179525599600
 const word = () => screen.getByRole("status").textContent;
 const shape = () => document.querySelector("[data-shape]")!.getAttribute("data-shape");
 const feed = (n: number) => turn.slice(0, n).reduce<SessionView>(reduce, emptyView);
+// the live fixture's steps: the attach replay (user entry, turn entry, synced, turn running, queue), the delta, the finishing update, turn idle
+const ATTACHED = 5, DELTA = 6, FINISHED = 7, IDLE = 8;
 
 describe("S35-4 AC1", () => {
   it("ac1_wataneKernel_start_calls_sessions_start_and_resolves_the_id", async () => {
@@ -32,7 +34,7 @@ describe("S35-4 AC1", () => {
   });
   it("ac1_the_scripted_fake_starts_a_new_session_that_plays_its_story", async () => {
     const old = JSON.stringify({ v: 1, i: 1, kind: "message", at: 0, body: { role: "user", content: [{ type: "text", text: "old" }] } });
-    const k = fakeKernel([[(turn as string[])[1]!]], { preload: [old] });
+    const k = fakeKernel([[turn[0]!]], { preload: [old] });
     const id = await k.start("k1", "scratch", "{}", "hi");
     expect(id).not.toBe(await k.start("k2", "scratch", "{}", "hi"));
     expect(k.calls[0]).toEqual({ name: "start", args: ["k1", "scratch", "{}", "hi"] });
@@ -44,30 +46,30 @@ describe("S35-4 AC1", () => {
 
 describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
   it("ac3_the_user_message_is_a_right_panel_row", () => {
-    expect(feed(2).rows).toMatchObject([{ kind: "user", text: "hi" }]);
+    expect(feed(ATTACHED).rows).toMatchObject([{ kind: "user", text: "hi" }]);
   });
   it("ac3_running_names_Working_with_the_dot", () => {
-    status(feed(3));
+    status(feed(ATTACHED));
     expect(word()).toBe("Working");
     expect(shape()).toBe("dot");
   });
   it("ac3_a_streaming_thought_is_Thinking", () => {
     const thought = JSON.stringify({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "hm" }, _meta: { watane: { at: 1 } } });
-    status(reduce(feed(3), thought));
+    status(reduce(feed(ATTACHED), thought));
     expect(word()).toBe("Thinking");
   });
   it("ac3_a_chunk_shows_Writing_and_the_entry_replaces_it", () => {
-    const v = feed(4);
+    const v = feed(DELTA);
     expect(v.rows[1]).toMatchObject({ kind: "agent", text: "This is the fake claude.", writing: true });
     status(v);
     expect(word()).toBe("Writing");
     expect(v.rows).toHaveLength(2); // the delta alone: one row
-    const done = feed(5); // 9.4: the finishing update carries the whole message and replaces the streamed text
+    const done = feed(FINISHED); // 9.4: the finishing update carries the whole message and replaces the streamed text
     expect(done.rows[1]).toMatchObject({ kind: "agent", i: 3, text: "This is the fake claude.", writing: false });
     expect(done.rows).toHaveLength(2);
   });
   it("ac3_idle_completed_shows_Idle_with_the_ring", () => {
-    const v = feed(6);
+    const v = feed(IDLE);
     expect(v.turn).toMatchObject({ state: "idle", stop: { kind: "completed" } });
     status(v);
     expect(word()).toBe("Idle");

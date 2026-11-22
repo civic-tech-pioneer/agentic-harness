@@ -1,8 +1,11 @@
 {
+ "_note": "recorded from the kernel (slice/S35 kernel/tests/it/s35_stage_b.rs, start then attach then dev's fake_default.jsonl): live is the attach replay right after sessions.start, then the pushes of the turn; replay is an attach after the turn (a reload)",
  "live": [
-  "{\"_meta\":{\"watane\":{\"type\":\"synced\",\"through\":0}}}",
   "{\"_meta\":{\"watane\":{\"type\":\"entry\",\"entry\":{\"v\":1,\"i\":1,\"kind\":\"message\",\"at\":1795255995001,\"body\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}}}}}",
+  "{\"_meta\":{\"watane\":{\"type\":\"entry\",\"entry\":{\"v\":1,\"i\":2,\"kind\":\"turn\",\"at\":1795255995002,\"body\":{\"state\":\"running\",\"since\":1795255995000}}}}}",
+  "{\"_meta\":{\"watane\":{\"type\":\"synced\",\"through\":2}}}",
   "{\"_meta\":{\"watane\":{\"type\":\"turn\",\"state\":{\"state\":\"running\",\"since\":1795255995000}}}}",
+  "{\"_meta\":{\"watane\":{\"type\":\"queue\",\"inputs\":[]}}}",
   "{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"This is the fake claude.\"},\"_meta\":{\"watane\":{\"at\":1795255995400}}}",
   "{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"This is the fake claude.\"},\"_meta\":{\"watane\":{\"at\":1795255995500,\"i\":3}}}",
   "{\"_meta\":{\"watane\":{\"type\":\"turn\",\"state\":{\"state\":\"idle\",\"stop\":{\"kind\":\"completed\"}}}}}"
@@ -12,6 +15,8 @@
   "{\"_meta\":{\"watane\":{\"type\":\"entry\",\"entry\":{\"v\":1,\"i\":2,\"kind\":\"turn\",\"at\":1795255995002,\"body\":{\"state\":\"running\",\"since\":1795255995000}}}}}",
   "{\"_meta\":{\"watane\":{\"type\":\"entry\",\"entry\":{\"v\":1,\"i\":3,\"kind\":\"message\",\"at\":1795255995003,\"body\":{\"role\":\"agent\",\"content\":[{\"type\":\"text\",\"text\":\"This is the fake claude.\"}]}}}}}",
   "{\"_meta\":{\"watane\":{\"type\":\"entry\",\"entry\":{\"v\":1,\"i\":4,\"kind\":\"turn\",\"at\":1795255995004,\"body\":{\"state\":\"idle\",\"stop\":{\"kind\":\"completed\"}}}}}}",
-  "{\"_meta\":{\"watane\":{\"type\":\"synced\",\"through\":4}}}"
+  "{\"_meta\":{\"watane\":{\"type\":\"synced\",\"through\":4}}}",
+  "{\"_meta\":{\"watane\":{\"type\":\"turn\",\"state\":{\"state\":\"idle\",\"stop\":{\"kind\":\"completed\"}}}}}",
+  "{\"_meta\":{\"watane\":{\"type\":\"queue\",\"inputs\":[]}}}"
  ]
 }
