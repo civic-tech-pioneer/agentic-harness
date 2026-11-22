@@ -356,6 +356,8 @@ limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
 
 ## Deputy decisions
 
+- 2026-11-22 (deputy): R-B2 settled without the human: `codex_env = "watane"` is in `factory/config.toml` since the factory sync (PR #45), and the `watane` Codex environment holds this repository. Removed from Waiting.
+
 - 2026-11-22 S35's user-sim round-2 rejection (an attach mid-message shows Working, not Writing, until the
   entry arrives) is accepted as a polish limit (9.4): setting `synced.writing` costs a state write per delta-only
   call, which case 56 and P09 rule out. Its red test stays `#[ignore]` with that reason.
@@ -525,11 +527,6 @@ S2 writes each into the document that owns it.
   this repository and change 17 (one boundary list instead of two). Meanwhile S35 builds it in
   `provider/` as a self-contained mod (own `mod.toml`, no imports from `kernel/`), so (a) is a
   `git subtree split`. Undo: (a) archive a repo; (b) one 17 row. Blocks only S35's merge.
-- **R-B2 Cross-vendor checks for this repository.** `factory/config.toml` has no `codex_env`, so
-  cloud foremen here implement and validate on Claude only (watane implements in Codex Cloud).
-  Options: (a) add a Codex Cloud environment for this repo and its `codex_env` (rec); (b) keep
-  Claude-only. Undo: one config line.
-
 - **N5 The factory's implementer needs a shell.** The human chose to decide at stage F. Options:
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
   backend in the host, a third native process kind (a new host boundary, costly to remove once
