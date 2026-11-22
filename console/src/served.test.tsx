@@ -96,7 +96,7 @@ describe("S35-fix5: titles and meta", () => {
     const rows = [...document.querySelectorAll(".wa-srow")].map((r) => r.textContent);
     expect(rows).toHaveLength(2);
     expect(rows.some((t) => t!.includes("hi"))).toBe(true);
-    expect(rows.some((t) => t!.includes("New session"))).toBe(true);
+    expect(rows.filter((t) => t!.includes("New session"))).toHaveLength(1); // the open row is "hi", not "New session"
     for (const t of rows) expect(t).toContain("Scratch folder · Claude Code (unchecked)");
     cleanup();
   });
