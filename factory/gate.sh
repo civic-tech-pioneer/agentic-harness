@@ -3,6 +3,7 @@
 # Runs, in order: when kernel/wasm exists, its build to kernel/wasm/logic.wasm (cargo build --release --target wasm32-wasip2);
 # .claude/factory/check-mod.sh (Markdown links; watane-dev when wit/world.wit exists);
 # kernel/ `cargo fmt --check`, `cargo test`, then `cargo clippy --all-targets -- -D warnings` when kernel/Cargo.toml exists;
+# provider/logic `cargo fmt --check`, `cargo test`, `cargo clippy -- -D warnings` when provider/logic/Cargo.toml exists;
 # console/ `npm ci` then `npm test` when console/package.json exists.
 # See factory/PLAN.md, slice S3, outcome 5 and the decision "One gate script".
 set -e
@@ -34,6 +35,17 @@ if [ -f kernel/Cargo.toml ]; then
   (cd kernel && cargo clippy --all-targets -- -D warnings)
 else
   echo "gate: kernel skipped (no kernel/Cargo.toml)"
+fi
+
+if [ -f provider/logic/Cargo.toml ]; then
+  echo "gate: provider cargo fmt --check"
+  (cd provider/logic && cargo fmt --check)
+  echo "gate: provider cargo test"
+  (cd provider/logic && cargo test)
+  echo "gate: provider cargo clippy"
+  (cd provider/logic && cargo clippy -- -D warnings)
+else
+  echo "gate: provider skipped (no provider/logic/Cargo.toml)"
 fi
 
 if [ -f console/package.json ]; then
