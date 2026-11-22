@@ -22,15 +22,15 @@ export const startKey = (): string => `console-${Date.now()}-${Math.random().toS
 /** Served by watane (host 8.1): a `<local>.localhost` origin. Vite's `localhost:<port>` and the slow tests' 127.0.0.1 are not; index.html asks for /watane.js everywhere, so that request does not tell. */
 export const isServed = (host: string): boolean => /^[^.]+\.localhost$/.test(host);
 
-/** The facts the kernel's stream does not carry (18.4): stage B has Claude Code sessions in a scratch folder, which no judge checks. Only a Claude
- * session of the built-in `scratch` runs in a scratch folder, with Claude's default model in mode `manual` (9.1); any other row reads `<backend> · <profile>`. */
+/** The facts the kernel's stream does not carry (18.4): stage B has Claude Code sessions in a scratch folder, which no judge checks. A Claude
+ * session of `scratch` runs in a scratch folder; any other row reads `<backend> · <profile>`. No model or mode: a stored `profile/scratch` lists
+ * as the built-in does, so the console cannot know them until the kernel reports them (S35 r2 F2.5). */
 const infoOf = (s: Listed): SessionInfo => {
   const claude = /claude/i.test(s.backend), scratch = claude && s.profile === "scratch";
   return {
     id: s.id, title: s.title, profile: s.profile,
     provider: claude ? "Claude Code (unchecked)" : s.backend,
     workspace: scratch ? "Scratch folder" : "",
-    ...(scratch ? { model: "default model", mode: "manual" } : {}),
   };
 };
 const rowOf = (s: Listed, firstUser?: string): SidebarSession => { const i = infoOf(s); return { id: s.id, title: titleOf(i.title, firstUser), place: i.workspace || i.profile, meta: metaOf(i), state: shapeOf(s.turn as Parameters<typeof shapeOf>[0]) }; };

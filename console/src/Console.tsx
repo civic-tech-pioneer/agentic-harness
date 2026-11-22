@@ -46,7 +46,7 @@ export function Console({ served }: { served: Served }) {
       setSessions(l.sessions);
       title = l.info(id)?.title ?? title;
     } catch { /* the session is started: the sidebar catches up at the next list */ }
-    setInfo({ id, title, profile: "scratch", provider: "Claude Code (unchecked)", workspace: "Scratch folder", model: "default model", mode: "manual" });
+    setInfo({ id, title, profile: "scratch", provider: "Claude Code (unchecked)", workspace: "Scratch folder" });
   };
   return info
     ? <App kernel={kernel} info={info} sessions={sessions} onNew={() => setInfo(null)} />
