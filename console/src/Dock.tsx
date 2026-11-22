@@ -10,6 +10,8 @@ const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", stroke
 /** 18.6 "Send": the unsent text is kept per session in `sessionStorage` (a page without it works as before). */
 const draftOf = (key?: string): string => { try { return key ? sessionStorage.getItem(key) ?? "" : ""; } catch { return ""; } };
 const keepDraft = (key: string | undefined, text: string) => { try { if (key) { if (text) sessionStorage.setItem(key, text); else sessionStorage.removeItem(key); } } catch { /* no storage: the draft is not kept */ } };
+/** The composer that last wrote each kept draft: a send that settles after another composer of the same key wrote leaves that draft alone (S35 r2 F2.2). */
+const owners = new Map<string, object>();
 
 export function Composer({ queued, actions, busy = false, stopping = false, session, draftKey, placeholder: given, sendLabel }: {
   queued: number; actions: Actions; busy?: boolean; stopping?: boolean; session?: { model?: string; mode?: string };
@@ -17,10 +19,17 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   /** Words for a composer that is not a session's (the new-session view). */ placeholder?: string; sendLabel?: string;
 }) {
   const [text, setText] = useState(() => draftOf(draftKey));
-  // a sent text stays the kept draft until its send succeeds: a reload while it is pending, then a refusal, loses nothing (S35 r1)
-  const pending = useRef<string | null>(null);
+  // a sent text stays the kept draft until its send succeeds: a reload while it is pending, then a refusal, loses nothing (S35 r1);
+  // each send is its own entry, so settling one never settles another of the same words (S35 r2 F2.2)
+  const me = useRef({}).current;
+  const pending = useRef<{ t: string }[]>([]);
   const shown = useRef(text); shown.current = text;
-  useEffect(() => keepDraft(draftKey, text || pending.current || ""), [draftKey, text]);
+  const keep = () => {
+    if (!draftKey) return;
+    owners.set(draftKey, me);
+    keepDraft(draftKey, shown.current || pending.current[pending.current.length - 1]?.t || "");
+  };
+  useEffect(keep, [draftKey, text]);
   const full = queued >= QUEUE_MAX;
   const [refused, setRefused] = useState<string | null>(null);
   const edited = useRef(0); // counts edits and sends: a refusal restores its text only if none came since
@@ -28,10 +37,14 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
     const t = text.trim();
     if (!t || full) return;
     const mark = ++edited.current;
-    pending.current = t;
+    const sent = { t };
+    pending.current.push(sent);
     setRefused(null);
     setText("");
-    const settle = () => { if (pending.current === t) pending.current = null; keepDraft(draftKey, shown.current || pending.current || ""); };
+    const settle = () => {
+      pending.current = pending.current.filter((p) => p !== sent);
+      if (draftKey && owners.get(draftKey) === me) keep();
+    };
     const back = (e: unknown) => {
       settle();
       if (edited.current !== mark) return;
