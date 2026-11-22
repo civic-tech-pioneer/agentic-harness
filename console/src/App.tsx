@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, MEASURE, openAsk, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
-import { Header, type SessionInfo } from "./Header";
+import { Header, titleOf, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
 
 let sent = 0;
@@ -14,6 +14,8 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
   const [sub, setSub] = useState<object | null>(null); // the current subscription's token
   const mine = held.tok === sub && held.id === info.id && held.kernel === kernel;
   const view = mine ? held.view : LOADING; // a new subscription shows Loading until its first view
+  const firstUser = view.rows.find((r) => r.kind === "user");
+  const named = { ...info, title: titleOf(info.title, firstUser?.kind === "user" ? firstUser.text : undefined) };
   const [stopping, setStopping] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const scroller = useRef<HTMLDivElement>(null);
@@ -141,9 +143,9 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
 
   return (
     <div className="wa-app">
-      <Sidebar info={info} turn={view.turn?.state} needs={shown.openAsks.length > 0} sessions={sessions} onNew={onNew} />
+      <Sidebar info={named} turn={view.turn?.state} needs={shown.openAsks.length > 0} sessions={sessions} onNew={onNew} />
       <main className="wa-main">
-        <Header info={info} view={view} actions={actions} />
+        <Header info={named} view={view} actions={actions} />
         <ThreadProvider view={view} actions={actions}>
           <div className={`wa-scroll${behind && !atEnd.current ? " wa-room" : ""}`} ref={scroller}
             // 18.6 Place: while focus is inside a card with an open ask, the transcript does not follow the end.
