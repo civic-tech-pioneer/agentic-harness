@@ -376,11 +376,10 @@ async function main() {
       await sleep(500);
       const again = itemsOf(c2, s2).filter((x) => x.i !== undefined).map((x) => x.i);
       c2.close();
-      // live, a Claude session's items with an index are its finished messages (its turn entries go out as turn items): ascending, none twice;
-      // the reattach after the last of them replays every entry after it, once each, to the end
-      const seen = got.map((x) => x.i).filter((i, k, a) => a.indexOf(i) === k);
-      ensure(seen.every((x, k) => k === 0 || x > seen[k - 1]), () => `the indexes read live are not ascending: ${seen.slice(0, 12).join(",")}`);
-      ensure(again.length === total - last && again.every((x, k) => x === last + 1 + k), () => `reattached after ${last}: indexes ${again.slice(0, 8).join(",")}... (${again.length} of ${total - last})`);
+      // every stored entry goes out live once with its index (9.4, S35-fix1: a message or tool as its finishing update, the rest, turn entries too,
+      // as an `entry` item), so the indexes read live and then reattached are 1..n, each once
+      const all = [...got.map((x) => x.i), ...again];
+      ensure(all.length === total && all.every((x, k) => x === k + 1), () => `read up to ${last} live (${got.length} indexes), then ${again.length} reattached: indexes ${all.slice(Math.max(0, last - 3), last + 4).join(",")} around the join, ${all.length} of ${total}`);
       const es = await transcript(p);
       ensure(total === es.length, `the transcript grew from ${total} to ${es.length} during the check`);
       const bad = ascending(es) ?? items(es, count);
