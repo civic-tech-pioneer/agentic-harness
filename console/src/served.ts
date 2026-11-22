@@ -1,5 +1,6 @@
 // TECHNICAL 18.2: served by watane, the page runs on the real kernel: the owner's newest session (or the new-session view), and the sidebar from `sessions.list`.
 import { wataneKernel, type Kernel, type Watane } from "../kit";
+import { joiner } from "../kit/join";
 import { parse } from "../kit/wire";
 import { metaOf, titleOf, type SessionInfo } from "./Header";
 import { shapeOf, type SidebarSession } from "./Sidebar";
@@ -34,13 +35,30 @@ const infoOf = (s: Listed): SessionInfo => {
 };
 const rowOf = (s: Listed, firstUser?: string): SidebarSession => { const i = infoOf(s); return { id: s.id, title: titleOf(i.title, firstUser), place: i.workspace || i.profile, meta: metaOf(i), state: shapeOf(s.turn as Parameters<typeof shapeOf>[0]) }; };
 
-/** 18.4's title rule for a row the kernel has no title for: its first user message, from the first entries; none (or a failed read) leaves "New session". */
+/** 18.4's title rule for a row the kernel has no title for: its first user message, from the first 8 entries, a message stored as `part` entries
+ * joined first (9.4, S35 r2 F2.3); none (or a failed read) leaves "New session". */
 async function firstUserOf(w: Watane, session: string): Promise<string | undefined> {
   try {
-    const page = await ok(w, "sessions.read", { session, after: 0, before: null, max: 8 });
-    for (const e of (page?.entries ?? []) as string[]) {
-      const m = parse(e);
-      if (m.t === "message" && m.role === "user") return m.text;
+    const join = joiner();
+    let after = 0, seen = 0;
+    // a group is at most 4096 parts (kit/join.ts), so the read stops after 8 joined entries or 4096 + 8 stored ones
+    for (let raw = 0; seen < 8 && raw < 4096 + 8;) {
+      const page = await ok(w, "sessions.read", { session, after, before: null, max: 64 });
+      const entries = (page?.entries ?? []) as string[];
+      if (!entries.length) break;
+      raw += entries.length;
+      for (const e of entries) {
+        for (const out of join.push(e)) {
+          const m = parse(out);
+          if (!("i" in m)) continue;
+          if (m.t === "message" && m.role === "user") return m.text;
+          if (++seen >= 8) return undefined;
+        }
+      }
+      // `last` is the session's high-water index (2.3): the next page starts after this page's last entry
+      let end: unknown; try { end = JSON.parse(entries[entries.length - 1]!).i; } catch { break; }
+      if (typeof end !== "number" || end <= after || end >= (page?.last ?? 0)) break;
+      after = end;
     }
   } catch { /* the row keeps "New session" */ }
   return undefined;
