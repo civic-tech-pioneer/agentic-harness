@@ -13,7 +13,7 @@ gate = ".claude/factory/check-mod.sh"
 cloud_env = "env_01KZVAm2cjSpN4wbfAFeQNPD"
 
 # The Codex Cloud environment that Codex teams run in: its name in the environment picker of
-# chatgpt.com/codex (the PO dispatches through its browser pane; po skill, section 4c). It must hold
+# chatgpt.com/codex (the deputy dispatches through its browser pane; deputy skill, section 4c). It must hold
 # this repository. Leave it out and both teams of a cloud slice are Claude.
 # codex_env = "watane"
 
@@ -27,6 +27,13 @@ spec = ["spec/VISION.md", "spec/FUNCTIONAL.md", "spec/TECHNICAL.md"]
 # or path prefixes, present or planned): the foreman matches a slice's diff against them.
 # A slice whose diff touches one of those files gets the adversary. Empty: no boundaries yet.
 boundaries = "spec/TECHNICAL.md section 6"
+
+# The team. Leave it out for the default (deputy skill, "Who builds, who reviews"): Codex builds
+# two slices in three, the other vendor reviews. Set only what this repository needs otherwise.
+# builder: "codex" or "claude", always this builder. reviewer: the same, always this reviewer.
+# [team]
+# builder = "codex"
+# reviewer = "claude"
 
 [agents]
 # A Claude build team uses the agent named in implementer_cloud; a Codex build team implements itself.
