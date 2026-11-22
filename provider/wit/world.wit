@@ -1,0 +1,26 @@
+package mods:claude-code@0.1.0;
+
+/// The calls of the unchecked Claude Code provider. Only the agent kernel may make them.
+interface sessions {
+  use watane:host/streams@0.1.0.{stream-id};
+  use watane:host/claude-types@0.1.0.{start-error, session-error, decision};
+
+  record started { %stream: stream-id, direct: bool }
+
+  start: func(launch: string, input: string) -> result<started, start-error>;
+  say: func(s: stream-id, content: string) -> result<_, session-error>;
+  answer: func(s: stream-id, ask: string, d: decision) -> result<_, session-error>;
+  interrupt: func(s: stream-id) -> result<_, session-error>;
+  compact: func(s: stream-id) -> result<_, session-error>;
+}
+
+world claude-code {
+  import watane:host/caller@0.1.0;
+  import watane:host/streams@0.1.0;
+  import watane:host/claude-code@0.1.0;
+  import watane:host/claude-session@0.1.0;
+  export sessions;
+  // The host makes a mod the consumer of a stream only when the mod exports `stream-sink`
+  // (host 19.2): `start` is the consumer until it hands the stream off, within the same call.
+  export watane:host/stream-sink@0.1.0;
+}

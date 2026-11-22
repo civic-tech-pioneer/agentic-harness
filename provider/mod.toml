@@ -1,0 +1,2 @@
+name = "Claude Code, unchecked"
+summary = "Starts Claude Code with the participant's account for the agent kernel and checks nothing: no judge, no screening of the launch or the input."
