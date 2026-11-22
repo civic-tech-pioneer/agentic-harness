@@ -25,7 +25,6 @@ mod grammar;
 mod idle;
 mod meter;
 mod overlay;
-mod probe_s32;
 mod quota;
 mod record;
 mod refuse;

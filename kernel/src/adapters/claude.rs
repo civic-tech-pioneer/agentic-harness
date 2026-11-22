@@ -1,6 +1,6 @@
 //! The Claude adapter: stream-json lines and host items to updates and entries (TECHNICAL 9.8, 9.4, 4.5, 9.6).
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use agent_client_protocol_schema::v1::{
     ContentBlock, ContentChunk, Diff, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus,
@@ -10,25 +10,29 @@ use agent_client_protocol_schema::v1::{
 use claude_codes::io::ContentBlock as ClaudeBlock;
 use claude_codes::io::ToolResultContent;
 use claude_codes::ClaudeOutput;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{cut_output, unknown, Entry, Kind, Out, Resolved};
 
-/// Turns one Claude stream item into `Out`s. Its only state is in memory.
-#[derive(Debug, Default)]
+/// Turns one Claude stream item into `Out`s. Its state is its fields; the kernel keeps them
+/// between calls in `adapter/<stream>` (9.8, "Adapter state").
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ClaudeAdapter {
-    tools: HashMap<String, (String, Value)>,
+    tools: BTreeMap<String, (String, Value)>,
     result_seen: bool,
     idle_seen: bool,
     /// Asks and checks the host has not resolved yet, by id, as their entry body.
-    open: HashMap<String, Value>,
-    /// Whether the stream is the host's own (`true`) or a checked provider's (10).
+    open: BTreeMap<String, Value>,
+    /// Whether the stream is the host's own (`true`) or a checked provider's (10); the stream's
+    /// key says so, not the kept state.
+    #[serde(skip)]
     direct: bool,
     /// Thinking of the step so far (9.4 `thought`).
     thinking: Thinking,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct Thinking {
     /// Texts of finished `thinking` blocks.
     blocks: Vec<String>,
@@ -98,6 +102,35 @@ impl ClaudeAdapter {
     /// The checked provider's stream (10): the host's `answered` may be the judge's.
     pub fn checked() -> Self {
         Self::default()
+    }
+
+    /// The state to keep between calls (9.8, "Adapter state"). Past 3 MiB the inputs of the tool
+    /// calls still open are dropped (a result then shows no `rawInput`), so a value never
+    /// exceeds the 4 MiB host state takes.
+    pub fn to_state(&self) -> Vec<u8> {
+        let bytes = serde_json::to_vec(self).expect("adapter state serializes");
+        if bytes.len() <= 3 << 20 {
+            return bytes;
+        }
+        let mut slim = Self {
+            tools: self.tools.iter().map(|(k, (n, _))| (k.clone(), (n.clone(), Value::Null))).collect(),
+            result_seen: self.result_seen,
+            idle_seen: self.idle_seen,
+            open: self.open.clone(),
+            direct: self.direct,
+            thinking: Thinking::default(),
+        };
+        slim.thinking.blocks = self.thinking.blocks.clone();
+        serde_json::to_vec(&slim).expect("adapter state serializes")
+    }
+
+    /// The adapter of a stream whose kept state is `bytes` (`None` or unreadable: a new one).
+    pub fn from_state(bytes: Option<&[u8]>, direct: bool) -> Self {
+        let mut a = bytes
+            .and_then(|b| serde_json::from_slice::<Self>(b).ok())
+            .unwrap_or_default();
+        a.direct = direct;
+        a
     }
 
     /// Adapt one line (a stdout line, or a host item as JSON) seen at `at` ms since the epoch.
@@ -437,6 +470,30 @@ impl ClaudeAdapter {
     }
 }
 
+/// What a stream item says about the session itself (4.6, 9.8 "Adapter state"): the kernel
+/// keeps it in the record and the adapter gives no entry for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Fact {
+    /// The host's `initialized` item: the launch's workspace id.
+    Workspace(String),
+    /// `system/init`'s `session_id`: the Claude session's uuid.
+    Session(String),
+}
+
+/// The `Fact` of a line, when it is one (a line with a top-level key twice is none: the adapter
+/// gives it an `unknown` entry, 9.8 rule 6).
+pub fn fact(line: &[u8]) -> Option<Fact> {
+    let text = std::str::from_utf8(line).ok()?.trim();
+    let v: Value = serde_json::from_str(text).ok()?;
+    let own = |k: &str| str_of(&v, k).filter(|s| !s.is_empty()).map(str::to_string);
+    let fact = match (str_of(&v, "type")?, str_of(&v, "subtype")) {
+        ("initialized", _) => Fact::Workspace(own("workspace")?),
+        ("system", Some("init")) => Fact::Session(own("session_id")?),
+        _ => return None,
+    };
+    (!has_duplicate_key(text)).then_some(fact)
+}
+
 /// The line with each byte that is not valid UTF-8 written as `\xNN` (no lossy decoding).
 fn escape_invalid(line: &[u8]) -> String {
     let mut out = String::new();
@@ -450,7 +507,7 @@ fn escape_invalid(line: &[u8]) -> String {
 }
 
 /// True when `text` is one JSON object with a key twice at its top level (4.5).
-fn has_duplicate_key(text: &str) -> bool {
+pub(crate) fn has_duplicate_key(text: &str) -> bool {
     use serde::de::{Deserializer, IgnoredAny, MapAccess, Visitor};
     struct V;
     impl<'de> Visitor<'de> for V {

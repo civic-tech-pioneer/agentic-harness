@@ -76,11 +76,25 @@ fn opens(k: &K) -> Vec<String> {
     out
 }
 
+/// Gives the session's Claude session id, as `system/init` does, so a later launch can resume it.
+fn init(k: &mut K, id: &str) {
+    let t = rec(k, id).streams[0].clone();
+    let line = br#"{"type":"system","subtype":"init","session_id":"c0ffee00-0000-4000-8000-000000000001"}"#;
+    k.provider_lines(&t, vec![(1, line.to_vec())]).unwrap();
+}
+
+/// Whether the last turn the kernel handed the provider resumes the Claude session: a new
+/// stream's launch names `session {resume}` (4.1), a turn on a live stream says `resume`.
 fn last_resume(k: &K) -> bool {
-    match requests(k).last() {
-        Some(Request::Turn { resume, .. }) => *resume,
-        other => panic!("no turn request: {other:?}"),
-    }
+    let last = k.host.calls.iter().rev().find_map(|c| match c {
+        HostCall::StartProvider { launch, .. } => {
+            let v: Value = serde_json::from_str(launch).unwrap();
+            Some(v["session"]["resume"].is_string())
+        }
+        HostCall::Request(Request::Turn { resume, .. }) => Some(*resume),
+        _ => None,
+    });
+    last.expect("no turn went to the provider")
 }
 
 fn dump(k: &K) -> Vec<(String, Vec<u8>)> {
@@ -147,14 +161,8 @@ fn ac1_start_opens_a_provider_stream_and_records_it() {
     assert_eq!(slots.provider, 1);
     let u = usage(&mut k, "alice");
     assert_eq!((u.provider, u.slots_boot), (1, slots.boot));
-    assert_eq!(
-        requests(&k),
-        [Request::Turn {
-            session: id.clone(),
-            input: IN.into(),
-            resume: false
-        }]
-    );
+    // S35 AC2: the provider's `start` carries the first input, so no turn request goes out.
+    assert!(requests(&k).is_empty());
     // the stream key is charged to the owner and counts in the session's bytes (9.3 Bytes)
     let r = rec(&mut k, &id);
     let charged = "stream/t1".len() + k.state.get("stream/t1").unwrap().len();
@@ -315,7 +323,10 @@ fn ac5_cancel_releases_at_once_and_delete_too() {
     let a = start(&mut k, "alice", "k1");
     let b = start(&mut k, "alice", "k2");
     k.cancel("alice", &a).unwrap();
-    assert!(requests(&k).contains(&Request::Cancel { session: a.clone() }));
+    assert!(requests(&k).contains(&Request::Cancel {
+        session: a.clone(),
+        stream: "t1".into()
+    }));
     assert!(k.state.get("stream/t1").is_none());
     assert!(rec(&mut k, &a).streams.is_empty());
     assert_eq!(Slots::load(&mut k.state).provider, 1);
@@ -334,6 +345,7 @@ fn ac6_a_say_after_ended_cancel_and_restart_resumes() {
     // after Ended
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
+    init(&mut k, &id);
     k.provider(&id, idle(Stop::Completed)).unwrap();
     k.provider_item("t1", ProviderEvent::Ended).unwrap();
     k.say("alice", &id, "s1", "x").unwrap();
@@ -352,6 +364,7 @@ fn ac6_a_say_after_ended_cancel_and_restart_resumes() {
     // after a restart: an idle session of an older boot
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
+    init(&mut k, &id);
     k.provider(&id, idle(Stop::Completed)).unwrap();
     k.host.generation = 2;
     k.say("alice", &id, "s1", "x").unwrap();
@@ -368,6 +381,7 @@ fn ac6_a_say_after_ended_cancel_and_restart_resumes() {
 fn ac6_persist_false_and_resume_lost_start_fresh_and_unknown_resumes() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "np", "{}", IN).unwrap().value;
+    init(&mut k, &id);
     k.provider(&id, idle(Stop::Completed)).unwrap();
     k.provider_item("t1", ProviderEvent::Ended).unwrap();
     k.say("alice", &id, "s1", "x").unwrap();
@@ -376,6 +390,7 @@ fn ac6_persist_false_and_resume_lost_start_fresh_and_unknown_resumes() {
     // resume-lost
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
+    init(&mut k, &id);
     k.provider(&id, ProviderEvent::Turn(Turn::ResumeLost))
         .unwrap();
     k.provider_item("t1", ProviderEvent::Ended).unwrap();
@@ -384,12 +399,14 @@ fn ac6_persist_false_and_resume_lost_start_fresh_and_unknown_resumes() {
     // unknown (R5)
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
+    init(&mut k, &id);
     k.host.generation = 2;
     k.say("alice", &id, "s1", "x").unwrap();
     assert!(last_resume(&k));
     // unknown with `persist: false`: nothing to resume, a fresh session
     let mut k = kernel();
     let id = k.start("alice", "k1", "np", "{}", IN).unwrap().value;
+    init(&mut k, &id);
     k.host.generation = 2;
     k.say("alice", &id, "s1", "x").unwrap();
     assert_eq!(rec(&mut k, &id).streams, ["t2"]);
@@ -400,6 +417,7 @@ fn ac6_persist_false_and_resume_lost_start_fresh_and_unknown_resumes() {
 fn ac6_an_interrupt_replacement_without_a_stream_opens_one_and_resumes() {
     let mut k = kernel();
     let id = start(&mut k, "alice", "k1");
+    init(&mut k, &id);
     k.cancel("alice", &id).unwrap();
     k.interrupt("alice", &id, Some("again")).unwrap();
     assert!(last_resume(&k));

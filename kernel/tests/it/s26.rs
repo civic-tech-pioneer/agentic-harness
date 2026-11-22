@@ -142,6 +142,7 @@ fn ac2_delete_sends_one_cancel_and_a_failed_delete_none() {
     let id = start(&mut k, "alice", "k1");
     k.provider(&id, ask("a1")).unwrap();
     let n = requests(&k).len();
+    let t1 = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
     assert_eq!(k.delete("bob", &id).unwrap_err(), KernelError::NotOwner);
     k.delete("alice", "zz").unwrap_err();
     assert_eq!(requests(&k).len(), n);
@@ -149,7 +150,8 @@ fn ac2_delete_sends_one_cancel_and_a_failed_delete_none() {
     assert_eq!(
         requests(&k)[n..],
         [Request::Cancel {
-            session: id.clone()
+            session: id.clone(),
+            stream: t1
         }]
     );
     // an idle session too
@@ -157,8 +159,15 @@ fn ac2_delete_sends_one_cancel_and_a_failed_delete_none() {
     k.provider(&s2, ProviderEvent::Turn(idle(Stop::Completed)))
         .unwrap();
     let n = requests(&k).len();
+    let t2 = Record::load(&mut k.state, &s2).unwrap().streams[0].clone();
     k.delete("alice", &s2).unwrap();
-    assert_eq!(requests(&k)[n..], [Request::Cancel { session: s2 }]);
+    assert_eq!(
+        requests(&k)[n..],
+        [Request::Cancel {
+            session: s2,
+            stream: t2
+        }]
+    );
 }
 
 #[test]
@@ -290,7 +299,8 @@ fn fix1_ac2_past_quota_closing_asks_move_the_turn_without_entries() {
     assert_eq!(
         turn(&mut k),
         idle(Stop::Failed {
-            error: "provider-ended".into()
+            error: "provider-ended".into(),
+            cause: None
         })
     );
     assert_eq!(turn_pushes(&c), vec![turn(&mut k).to_json()]);

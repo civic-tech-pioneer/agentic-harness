@@ -45,6 +45,23 @@ fn rec(k: &mut K, id: &str) -> Record {
     Record::load(&mut k.state, id).unwrap()
 }
 
+/// The launch and the input of the one provider `start` since the calls were cleared.
+fn start_of(k: &K) -> (Value, String) {
+    let all: Vec<_> = k
+        .host
+        .calls
+        .iter()
+        .filter_map(|c| match c {
+            HostCall::StartProvider { launch, input } => {
+                Some((serde_json::from_str::<Value>(launch).unwrap(), input.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(all.len(), 1, "{all:?}");
+    all.into_iter().next().unwrap()
+}
+
 fn ask(id: &str, expires: u64) -> ProviderEvent {
     ProviderEvent::Out(Out {
         entry: Some(Entry {
@@ -381,16 +398,26 @@ fn ac4_a_step_writes_no_more_than_the_bound() {
 fn ac5_say_on_unknown_resumes() {
     let mut k = kernel();
     let id = started(&mut k, "alice", "k");
+    let mut r = rec(&mut k, &id);
+    r.claude_uuid = Some("11111111-2222-3333-4444-555555555555".into());
+    r.save(&mut k.state).unwrap();
     restart_host(&mut k, 2);
     k.timer("restart");
     assert_eq!(rec(&mut k, &id).turn, Turn::Unknown);
     k.host.calls.clear();
     k.say("alice", &id, "s", "go on").unwrap();
-    assert!(k.host.calls.contains(&HostCall::Request(Request::Turn {
-        session: id.clone(),
-        input: "go on".into(),
-        resume: true
-    })));
+    // S35: the new provider stream's `start` carries the input and the resume (4.1, R5).
+    let (launch, input) = start_of(&k);
+    assert_eq!(input, "go on");
+    assert_eq!(
+        launch["session"],
+        json!({"resume": "11111111-2222-3333-4444-555555555555"})
+    );
+    assert!(!k
+        .host
+        .calls
+        .iter()
+        .any(|c| matches!(c, HostCall::Request(Request::Turn { .. }))));
     assert!(matches!(rec(&mut k, &id).turn, Turn::Running { .. }));
     k.provider(&id, ProviderEvent::Turn(Turn::ResumeLost))
         .unwrap();
@@ -406,11 +433,7 @@ fn ac5_with_inputs_queued_the_oldest_starts_and_the_say_joins_the_end() {
     k.host.calls.clear();
     let n = k.say("alice", &id, "s", "later").unwrap().value;
     assert_eq!(n, 2);
-    assert!(k.host.calls.contains(&HostCall::Request(Request::Turn {
-        session: id.clone(),
-        input: "queued one".into(),
-        resume: true
-    })));
+    assert_eq!(start_of(&k).1, "queued one");
     let q = k.queued("alice", &id).unwrap();
     assert_eq!(q.len(), 1);
     assert_eq!((q[0].n, q[0].input.as_str()), (2, "later"));

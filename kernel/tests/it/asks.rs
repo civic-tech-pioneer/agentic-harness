@@ -353,7 +353,8 @@ fn case73_f_the_streams_end_closes_every_ask() {
         rec(&mut k, &id).turn,
         Turn::Idle {
             stop: Stop::Failed {
-                error: "provider-ended".into()
+                error: "provider-ended".into(),
+                cause: None
             },
             seconds: None,
             tools: None,

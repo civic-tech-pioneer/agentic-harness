@@ -106,7 +106,7 @@ impl Host for Flaky {
     fn open_stream(&mut self) -> Result<String, StreamError> {
         self.inner.open_stream()
     }
-    fn start_provider(&mut self, launch: &str, input: &str) -> Result<String, String> {
+    fn start_provider(&mut self, launch: &str, input: &str) -> Result<Started, String> {
         self.inner.start_provider(launch, input)
     }
     fn cancel_stream(&mut self, stream: &str) {
@@ -176,10 +176,18 @@ fn ac3_no_provider_refuses_a_claude_start_and_writes_nothing() {
 fn ac3_a_provider_start_gives_the_provider_stream() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
-    assert!(k.host.calls.contains(&HostCall::StartProvider {
-        launch: P.into(),
-        input: IN.into()
-    }));
+    // S35: the launch is the document of 4.1, not the profile as stored.
+    let launch = k.host.calls.iter().find_map(|c| match c {
+        HostCall::StartProvider { launch, input } => {
+            assert_eq!(input, IN);
+            Some(serde_json::from_str::<Value>(launch).unwrap())
+        }
+        _ => None,
+    });
+    assert_eq!(
+        launch.unwrap(),
+        json!({"version":1,"profile":"p","workspace":"scratch","mode":"manual","tools":["Read"],"max-turns":20})
+    );
     assert_eq!(rec(&mut k, &id).streams, ["t1"]);
     assert!(k.state.get("stream/t1").is_some());
 }
@@ -497,7 +505,7 @@ fn validator_a_firing_that_arms_a_far_deadline_hops_then_arms_the_rest() {
     // a firing whose next deadline is 50 days out arms 30 days; that firing finds nothing due
     // and arms the 20 days left (7: a nothing-due firing re-arms the rest)
     let mut k = kernel();
-    let id = k.probe_start("alice", "p1", 1, 1000).unwrap().value;
+    let id = k.start("alice", "p1", "p", "{}", IN).unwrap().value;
     let day = 24 * 60 * 60 * 1000;
     let at = 2000 + 50 * day;
     let mut r = rec(&mut k, &id);

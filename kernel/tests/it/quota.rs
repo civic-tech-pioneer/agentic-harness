@@ -555,7 +555,9 @@ fn ac8_a_running_turn_ends_stopped_quota_when_past() {
     assert_eq!(
         reqs[n],
         Request::Interrupt {
-            session: s1.clone()
+            session: s1.clone(),
+            stream: "t1".into(),
+            direct: true
         }
     );
     let r = rec(&mut k, &s1);
@@ -589,13 +591,17 @@ fn ac8_a_waiting_turn_stops_too_and_a_new_ask_is_denied() {
     assert_eq!(
         reqs[n],
         Request::Interrupt {
-            session: s1.clone()
+            session: s1.clone(),
+            stream: "t1".into(),
+            direct: true
         }
     );
     assert_eq!(
         reqs[n + 1],
         Request::Answer {
             session: s1.clone(),
+            stream: "t1".into(),
+            direct: true,
             ask: "a2".into(),
             decision: json!({"deny": true, "reason": "quota"})
         }
@@ -617,6 +623,8 @@ fn ac8_an_idle_session_gets_a_denied_ask_and_no_turn_change() {
         requests(&k).last().unwrap(),
         &Request::Answer {
             session: s1.clone(),
+            stream: "t1".into(),
+            direct: true,
             ask: "a9".into(),
             decision: json!({"deny": true, "reason": "quota"})
         }
@@ -747,7 +755,9 @@ fn ac10_a_session_at_the_chunk_cap_ends_its_turn_case_53() {
     let v: Value = serde_json::from_slice(&line).unwrap();
     assert_eq!(v["kind"], "turn");
     assert!(requests(&k).contains(&Request::Interrupt {
-        session: s1.clone()
+        session: s1.clone(),
+        stream: "t1".into(),
+        direct: true
     }));
     assert_eq!(
         cause(k.say("alice", &s1, "x", "more")),
