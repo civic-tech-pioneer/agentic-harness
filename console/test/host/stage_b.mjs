@@ -280,6 +280,124 @@ async function main() {
     }
     if (started) await ok("sessions.delete", { session: started }).catch(() => {});
 
+    // the states outcome 3 names, on a page of the frames' width (design/frames: 1280 x 820), with folded thinking; screenshots when STAGE_B_SCREENS names a folder
+    await check("states: a session starting, a turn streaming with its thinking folded, finished entries, Working then Idle, the same after a reload", async () => {
+      const shots = process.env.STAGE_B_SCREENS;
+      const shot = async (pg, name) => { if (shots) await pg.screenshot({ path: join(shots, `${name}.png`) }); };
+      const thinkDelta = (t) => JSON.stringify({ type: "stream_event", session_id: "fake", uuid: "fake-uuid", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: t } } });
+      const thinkBlock = (t) => JSON.stringify({ type: "assistant", session_id: "fake", uuid: "fake-think", message: { id: "msg_think", type: "message", role: "assistant", model: "fake-claude", content: [{ type: "thinking", thinking: t, signature: "s" }], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } } });
+      const thought = "The folder is new and empty, so there is nothing to read first. A short answer is enough.";
+      const answer = "The scratch folder is empty. Tell me what to build in it and I will start there.";
+      writeScript([{ do: "expect-user", contains: "What is in this folder?" }, { do: "sleep", ms: 2500 },
+        { do: "raw", line: thinkDelta(thought.slice(0, 40)) }, { do: "sleep", ms: 600 }, { do: "raw", line: thinkDelta(thought.slice(40)) }, { do: "sleep", ms: 2500 },
+        { do: "raw", line: thinkBlock(thought) }, { do: "sleep", ms: 300 },
+        { do: "delta", text: answer.slice(0, 30) }, { do: "sleep", ms: 2500 }, { do: "delta", text: answer.slice(30) }, { do: "sleep", ms: 600 },
+        { do: "message", text: answer }, { do: "result" }, { do: "idle" }]);
+      const pg = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+      pg.on("pageerror", (e) => notes.push(`pageerror: ${e.message}`));
+      let id;
+      try {
+        await pg.goto(preview.url);
+        await pg.getByText("A new scratch folder").waitFor({ timeout: 15_000 });
+        await pg.getByRole("textbox", { name: "Message" }).fill("What is in this folder?");
+        await shot(pg, "1-new-session");
+        await pg.evaluate(WORDS);
+        await pg.keyboard.press("Enter");
+        await pg.waitForFunction(() => document.querySelector(".wa-title")?.textContent !== "New session", null, { timeout: 15_000 });
+        await pg.getByText("What is in this folder?").first().waitFor({ timeout: 10_000 });
+        const startWord = await pg.evaluate(() => document.querySelector(".wa-status-word")?.textContent);
+        ensure(startWord === "Working", `while the session starts the status word is ${JSON.stringify(startWord)}`);
+        await shot(pg, "2-starting-working");
+        await pg.waitForFunction(() => document.querySelector(".wa-thought[aria-busy='true']"), null, { timeout: 15_000 });
+        const busyWord = await pg.evaluate(() => document.querySelector(".wa-status-word")?.textContent);
+        ensure(busyWord === "Thinking", `while the thought streams the status word is ${JSON.stringify(busyWord)}`);
+        await shot(pg, "3-thinking-streams");
+        await pg.waitForFunction((t) => document.body.textContent.includes(t), answer.slice(0, 30), { timeout: 15_000 });
+        const folded = await pg.evaluate(() => { const t = document.querySelector(".wa-thought"); return t && { open: t.getAttribute("data-open"), busy: t.getAttribute("aria-busy"), label: t.querySelector(".wa-fold")?.textContent, body: !!t.querySelector(".wa-fold-body") }; });
+        ensure(folded && !folded.body, `the folded thought shows its text: ${JSON.stringify(folded)}`);
+        ensure(folded && folded.open === "false" && folded.busy !== "true" && /^Thought/.test(folded.label ?? ""), `once the text streams the thought is ${JSON.stringify(folded)}, not folded`);
+        ensure(!(await pg.evaluate((t) => document.body.textContent.includes(t), answer)), "the whole answer showed before its last delta");
+        await shot(pg, "4-text-streams-thought-folded");
+        await pg.waitForFunction(() => document.querySelector(".wa-status-word")?.textContent === "Idle", null, { timeout: 15_000 });
+        ensure(await pg.evaluate((t) => document.body.textContent.includes(t), answer), "the finished answer is not shown");
+        const words = await pg.evaluate(() => window.__words);
+        ensure(words.indexOf("Working") >= 0 && words.lastIndexOf("Idle") > words.indexOf("Working"), `the status words were ${JSON.stringify(words)}`);
+        await shot(pg, "5-finished-idle");
+        const list = await ok("sessions.list", { after: null, max: 256 });
+        for (const l of list) if ((await transcript(l.id)).some((e) => e.kind === "message" && textOf(e) === "What is in this folder?")) id = l.id;
+        ensure(id, "no session holds her message");
+        const es = await transcript(id);
+        const agent = es.filter((e) => e.kind === "message" && e.body?.role === "agent");
+        ensure(agent.length === 1 && agent[0].body?.thought?.text === thought && textOf(agent[0]) === answer, () => `the agent's entries: ${JSON.stringify(agent).slice(0, 300)}`);
+        const before = await pg.evaluate(() => document.querySelector(".wa-transcript").innerText);
+        await pg.reload();
+        await pg.waitForFunction((t) => document.body.textContent.includes(t), answer, { timeout: 15_000 });
+        await pg.waitForFunction(() => document.querySelector(".wa-status-word")?.textContent === "Idle", null, { timeout: 15_000 });
+        await sleep(500);
+        const after = await pg.evaluate(() => document.querySelector(".wa-transcript").innerText);
+        await shot(pg, "6-after-reload");
+        ensure(after.split(answer).length === 2 && after.split("What is in this folder?").length === 2, "after the reload a message shows more than once");
+        const label = await pg.evaluate(() => document.querySelector(".wa-thought .wa-fold")?.textContent);
+        ensure(/^Thought/.test(label ?? ""), `after the reload the thought reads ${JSON.stringify(label)}`);
+        ensure(before.replace(/\s+/g, " ").trim() === after.replace(/\s+/g, " ").trim(), () => `the transcript reads differently after the reload:\n${JSON.stringify(before.slice(0, 300))}\n---\n${JSON.stringify(after.slice(0, 300))}`);
+        say(`  states: words ${words.join(" > ")}; ${es.length} entries${shots ? `; screenshots in ${shots}` : ""}`);
+      } finally { await pg.close(); if (id) await ok("sessions.delete", { session: id }).catch(() => {}); }
+    });
+
+    // case 8: a retried start with the same key makes one session; after delete the key still returns the old result
+    await check("case 8: a start retried with its key gives the same session, one in the list; after delete the key still gives it", async () => {
+      writeScript([{ do: "expect-user" }, { do: "message", text: "Item 1 of 1" }, { do: "result" }, { do: "idle" }]);
+      const key = `k8-${Date.now()}`;
+      const args = { key, profile: "scratch", overlay: "{}", input: "go" };
+      const a = await ok("sessions.start", args), b = await ok("sessions.start", args);
+      ensure(a === b, `the retry gave ${b}, the first ${a}`);
+      const listed = (await ok("sessions.list", { after: null, max: 256 })).filter((s) => s.id === a);
+      ensure(listed.length === 1, `the session is listed ${listed.length} times`);
+      await until(async () => (await itemCount(a)) >= 1, 15_000, "the turn's message");
+      ensure((await itemCount(a)) === 1, "the retry ran the turn again");
+      await ok("sessions.delete", { session: a });
+      const c = await ok("sessions.start", args);
+      ensure(c === a, `after delete the key gave ${c}, not ${a}`);
+      ensure(!(await ok("sessions.list", { after: null, max: 256 })).some((s) => s.id === a), "the deleted session came back");
+    });
+
+    // outcome 1 (S32 R1) and case 12's first half: a refused start commits none of its writes on watane's host
+    await check("R1 and case 12: a start refused for a subagent's permissionMode leaves no session and no key; the key then starts one", async () => {
+      writeScript([{ do: "expect-user" }, { do: "message", text: "Item 1 of 1" }, { do: "result" }, { do: "idle" }]);
+      const before = (await ok("sessions.list", { after: null, max: 256 })).map((s) => s.id).sort();
+      const key = `r1-${Date.now()}`;
+      const overlay = JSON.stringify({ subagents: [{ name: "a", description: "d", prompt: "p", permissionMode: "bypassPermissions" }] });
+      const r = await post("sessions.start", { key, profile: "scratch", overlay, input: "go" });
+      ensure(r && "err" in r, `the start gave ${JSON.stringify(r)}`);
+      ensure(/permissionMode|subagents/.test(JSON.stringify(r.err)), `the refusal names no subagent field: ${JSON.stringify(r.err)}`);
+      const after = (await ok("sessions.list", { after: null, max: 256 })).map((s) => s.id).sort();
+      ensure(JSON.stringify(after) === JSON.stringify(before), `the list went from ${before.length} to ${after.length} sessions`);
+      const s = await ok("sessions.start", { key, profile: "scratch", overlay: "{}", input: "go" });
+      ensure(!before.includes(s), "the key gave an old session");
+      await until(async () => (await itemCount(s)) >= 1, 15_000, "the new session's turn");
+      await ok("sessions.delete", { session: s }).catch(() => {});
+    });
+
+    // case 11 (the say half): a slash command is refused at start and at say, and the turn is not touched
+    await check("case 11: say(\"/x\") and a start with \" /x\" are refused; the session stays Idle and takes a later say", async () => {
+      writeScript([{ do: "expect-user" }, { do: "message", text: "Item 1 of 2" }, { do: "result" }, { do: "idle" }, { do: "expect-user", contains: "next" }, { do: "message", text: "Item 2 of 2" }, { do: "result" }, { do: "idle" }]);
+      const r0 = await post("sessions.start", { key: `k11-${Date.now()}`, profile: "scratch", overlay: "{}", input: " /x" });
+      ensure(r0 && "err" in r0, `a start with " /x" gave ${JSON.stringify(r0)}`);
+      const s = await startClaude();
+      await until(async () => /"idle"/.test(JSON.stringify((await transcript(s)).slice(-2))), 15_000, "the first turn's end");
+      const n = await sessionCount(s);
+      const r = await post("sessions.say", { session: s, key: `say-${Date.now()}`, input: "/x" });
+      ensure(r && "err" in r, `say("/x") gave ${JSON.stringify(r)}`);
+      await sleep(800);
+      ensure((await sessionCount(s)) === n, "the refused say wrote an entry");
+      await ok("sessions.say", { session: s, key: `say2-${Date.now()}`, input: "next" });
+      await until(async () => (await itemCount(s)) >= 2, 15_000, "the later turn's message");
+      const es = await transcript(s);
+      const bad = ascending(es) ?? items(es, 2);
+      ensure(!bad, () => `after the later say: ${bad}`);
+      await ok("sessions.delete", { session: s }).catch(() => {});
+    });
+
     // case 5: an unknown stream-json line is an `unknown` entry and the session goes on (maker script with a `raw` line)
     await check("case 5: a raw line the kernel does not know becomes an unknown entry, and the turn goes on to idle", async () => {
       writeScript([{ do: "expect-user" }, { do: "message", text: "Item 1 of 2" }, { do: "raw", line: JSON.stringify({ type: "not_a_stream_json_line", n: 1 }) }, { do: "message", text: "Item 2 of 2" }, { do: "result" }, { do: "idle" }]);
@@ -436,6 +554,10 @@ async function main() {
   skipped("case 7 a failed batch", "no consumer mod that fails a batch is linked in a preview; host only");
   skipped("case 36 the defer half", "no consumer mod that answers `defer` is linked in a preview; host only");
   skipped("asks, the queue, Stop and Try again on the real kernel", "need asks and restart handling (S36)");
+  skipped("case 9 two answers to one ask", "the Claude adapter does not map can_use_tool into an ask yet (asks are S36)");
+  skipped("case 10 a hook callback that errors or times out", "no stage B launch registers a hook; hook callbacks come with asks and checks (S36, stage E)");
+  skipped("case 11 compact", "the kernel interface has no compact call in stage B");
+  skipped("case 12 depth 0 removes Task", "not built: the kernel does not remove Task at depth 0 yet (no kernel test either); delegation is stage F (9.7)");
 }
 
 let code = 0;
