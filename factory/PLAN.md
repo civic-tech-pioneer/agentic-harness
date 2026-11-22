@@ -29,7 +29,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## Sketched
 
-### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DELIVERED 2026-11-22 16:22 UTC, held: merges after watane S99 merges with the chain fix below, R-B1 and the PO's comparison; routine `trig_01XowNDWUGosFjLtAtbGFBwc`; its watane half is watane S99, in flight)
+### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DELIVERED 2026-11-22 16:22 UTC; watane S99 and S101 merged; continuation on a real serve with screenshots in flight since 20:50 UTC, routine `trig_01NpPnJxwNjH279WAFwnziDk` (builder claude); then a Codex review round, the deputy's design comparison, and the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
 
 Story: Alice runs `watane-dev serve` with the agent kernel and the unchecked provider installed,
 opens the console, starts a session in a scratch workspace (4.6, no consent steps), types a
