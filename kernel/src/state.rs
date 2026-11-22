@@ -101,19 +101,22 @@ impl State for MemState {
 #[derive(Debug)]
 pub struct Buffered<S: State> {
     inner: S,
-    /// `None`: a delete.
-    writes: BTreeMap<String, Option<Vec<u8>>>,
+    /// Each put (`Some`) and delete (`None`), in call order (S35-2 AC5).
+    writes: Vec<(String, Option<Vec<u8>>)>,
+    /// The last write of each key, for `get`.
+    last: BTreeMap<String, usize>,
 }
 
 impl<S: State> Buffered<S> {
     pub fn new(inner: S) -> Self {
         Buffered {
             inner,
-            writes: BTreeMap::new(),
+            writes: Vec::new(),
+            last: BTreeMap::new(),
         }
     }
 
-    /// Puts the buffered writes into the inner state, in key order, and gives it back.
+    /// Puts the buffered puts and deletes into the inner state, in call order, and gives it back.
     pub fn commit(mut self) -> S {
         for (k, v) in std::mem::take(&mut self.writes) {
             match v {
@@ -131,12 +134,17 @@ impl<S: State> Buffered<S> {
     pub fn discard(self) -> S {
         self.inner
     }
+
+    fn write(&mut self, key: &str, value: Option<Vec<u8>>) {
+        self.last.insert(key.to_string(), self.writes.len());
+        self.writes.push((key.to_string(), value));
+    }
 }
 
 impl<S: State> State for Buffered<S> {
     fn get(&mut self, key: &str) -> Option<Vec<u8>> {
-        match self.writes.get(key) {
-            Some(w) => w.clone(),
+        match self.last.get(key) {
+            Some(&n) => self.writes[n].1.clone(),
             None => self.inner.get(key),
         }
     }
@@ -145,11 +153,11 @@ impl<S: State> State for Buffered<S> {
         if value.len() > MAX_VALUE {
             return Err(TooLarge(MAX_VALUE));
         }
-        self.writes.insert(key.to_string(), Some(value));
+        self.write(key, Some(value));
         Ok(())
     }
 
     fn delete(&mut self, key: &str) {
-        self.writes.insert(key.to_string(), None);
+        self.write(key, None);
     }
 }
