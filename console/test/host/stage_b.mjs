@@ -2,8 +2,9 @@
 // view and reads it live and after a reload; and the stage A cases that apply to a Claude session, TECHNICAL 16 cases 5, 6, 20 (the part with no restart
 // of a turn), 21 (the transcript part), 36 and 51 (kernel part) and 58 (host part). Against `watane-dev serve` of a copy of kernel/wasm with ../../provider
 // added (`watane-dev add`). By hand, like the probes (not in the gate nor in test:slow). Run: `npm run test:host` in console/.
-// Exit 0: no FAIL. Exit 1: a failed check. Exit 2: not run, and the line says the cause: `watane-dev` missing or too old, `fake-claude` missing, no provider
-// folder, no Chromium, no IPv6 loopback, or the host cannot link `claude-code` (watane S99 not landed).
+// Exit 0: no FAIL. Exit 1: a failed check, or a failure before the checks (an add or serve error, a first turn that ends provider-ended or does not end).
+// Exit 2: not run, only for a prerequisite the line names: `watane-dev` missing or too old, `fake-claude` missing or not linked (no-binary), no
+// provider folder, no Chromium, no IPv6 loopback, or a host without S99's imports (test/host/outcome.mjs).
 // The fake's script is `<preview>/claude/fake-claude.json`, which each check rewrites (the fake reads it at every start).
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -235,8 +236,9 @@ async function main() {
     writeScript([{ do: "expect-user" }, { do: "delta", text: "This is the fake claude." }, { do: "message", text: "This is the fake claude." }, { do: "result" }, { do: "idle" }]);
     const first = await startClaude("hello");
     const firstLog = await until(async () => { const t = JSON.stringify(await transcript(first)); return /no-binary|provider-ended/.test(t) || /"idle"/.test(t) ? t : null; }, 30_000, "the first turn to end").catch(() => "");
-    if (/no-binary|provider-ended/.test(firstLog)) throw Object.assign(new Error(`the host cannot run claude-code in this preview (the first turn ended ${/no-binary/.test(firstLog) ? "no-binary" : "provider-ended"}): watane S99 (host H2) is not landed here`), { firstTurn: /no-binary/.test(firstLog) ? "no-binary" : "provider-ended", log: firstLog });
-    if (!firstLog) throw Object.assign(new Error("the first fake turn did not end in 30 s: claude-code is not linked in this preview (watane S99)"), { firstTurn: "stalled" });
+    if (/no-binary/.test(firstLog)) throw Object.assign(new Error("the first fake turn ended no-binary: the preview has no fake claude to run"), { firstTurn: "no-binary" });
+    if (/provider-ended/.test(firstLog)) throw Object.assign(new Error(`the first fake turn ended provider-ended: ${firstLog.slice(0, 300)}`), { firstTurn: "provider-ended" });
+    if (!firstLog) throw Object.assign(new Error("the first fake turn did not end in 30 s"), { firstTurn: "stalled" });
     await ok("sessions.delete", { session: first });
 
     // AC5: the page starts a session on the fake claude, her message and the stream, Working then Idle, a reload that shows each entry once
