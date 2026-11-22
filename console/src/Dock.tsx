@@ -17,7 +17,10 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   /** Words for a composer that is not a session's (the new-session view). */ placeholder?: string; sendLabel?: string;
 }) {
   const [text, setText] = useState(() => draftOf(draftKey));
-  useEffect(() => keepDraft(draftKey, text), [draftKey, text]);
+  // a sent text stays the kept draft until its send succeeds: a reload while it is pending, then a refusal, loses nothing (S35 r1)
+  const pending = useRef<string | null>(null);
+  const shown = useRef(text); shown.current = text;
+  useEffect(() => keepDraft(draftKey, text || pending.current || ""), [draftKey, text]);
   const full = queued >= QUEUE_MAX;
   const [refused, setRefused] = useState<string | null>(null);
   const edited = useRef(0); // counts edits and sends: a refusal restores its text only if none came since
@@ -25,14 +28,17 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
     const t = text.trim();
     if (!t || full) return;
     const mark = ++edited.current;
+    pending.current = t;
     setRefused(null);
     setText("");
+    const settle = () => { if (pending.current === t) pending.current = null; keepDraft(draftKey, shown.current || pending.current || ""); };
     const back = (e: unknown) => {
+      settle();
       if (edited.current !== mark) return;
       setText(t);
       setRefused(errorWords(e));
     };
-    try { Promise.resolve(actions.say(t)).catch(back); } catch (e) { back(e); }
+    try { Promise.resolve(actions.say(t)).then(settle, back); } catch (e) { back(e); }
   };
   const placeholder = given ?? (full ? `The queue is full: ${QUEUE_MAX} messages wait. Remove one, or stop the turn.`
     : busy ? "Add a message: it is queued and sent when this turn ends"
