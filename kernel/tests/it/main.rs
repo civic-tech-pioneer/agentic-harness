@@ -34,6 +34,7 @@ mod regress_s25;
 mod regress_s26;
 mod regress_s35;
 mod restart;
+mod review_s35_r1;
 mod revoke;
 mod rules;
 mod runners;
