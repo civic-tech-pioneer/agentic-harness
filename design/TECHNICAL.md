@@ -2386,7 +2386,12 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
   pointer is over the list.
 - **Asks.** The bar is for an ask (`kind: "ask"`) only; a check has none.
   Allow once (primary), Allow `<reach>` this session, Deny… with a
-  reason field, Cancel, and Esc in that field closing it. "Needs you" scrolls
+  reason field, Cancel, and Esc in that field closing it. Opening Deny… puts
+  focus in the reason field and keeps the whole form (the field, Cancel and
+  Deny) in view: where any of it lies outside the transcript's visible part,
+  or under the dock or a pill over the transcript ("Needs you", "New activity
+  below"), the transcript scrolls just enough to show it, and no more (S32
+  PO, against `design/frames/Main-2`). "Needs you" scrolls
   to the first open ask and puts focus on Allow once. A session allow shows
   in the header until the session ends or `take-back`.
 - **Queue.** Up to 3 shown, then "+ n more". Edit takes an input back into
