@@ -819,12 +819,25 @@ impl<S: State, H: Host> Kernel<S, H> {
         let json = self
             .profile_json(&rec.profile)
             .ok_or_else(|| refused("profile", "no such profile"))?;
+        // A later launch is checked as `start` is (9.2, 11, 14).
+        let overlay = rec.overlay.clone().unwrap_or_default();
+        let parsed = parse_profile(&json).0;
+        let backend = parsed
+            .backend
+            .and_then(|b| b.parse::<Backend>().ok())
+            .unwrap_or(Backend::Claude);
+        let model = parsed.model.unwrap_or_else(|| "default".to_string());
+        let overlay_json = serde_json::to_string(&overlay).expect("an overlay serializes");
+        let refusals = check(&json, &overlay_json, backend, &model, None);
+        if !refusals.is_empty() {
+            return Err(KernelError::Refused(refusals));
+        }
         let workspace = rec.workspace.as_deref().unwrap_or(SCRATCH);
         let uuid = rec.claude_uuid.as_deref().filter(|_| resume);
         Ok(Self::compile_launch(
             &rec.profile,
             &json,
-            &rec.overlay.clone().unwrap_or_default(),
+            &overlay,
             workspace,
             uuid,
         ))
@@ -1690,7 +1703,11 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// The console's first run (S35): with no `access/page` at all, the page may use `scratch`.
     fn may_use(&mut self, owner: &str, profile: &str) -> bool {
         match self.state.get(&format!("access/{owner}")) {
-            None => owner == PAGE && profile == SCRATCH,
+            None => {
+                owner == PAGE
+                    && profile == SCRATCH
+                    && self.state.get(&format!("profile/{SCRATCH}")).is_none()
+            }
             Some(b) => serde_json::from_slice::<Vec<String>>(&b)
                 .is_ok_and(|names| names.iter().any(|n| n == profile)),
         }

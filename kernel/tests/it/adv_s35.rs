@@ -111,3 +111,52 @@ fn adv_s35_relaunch_skips_the_refuse_table() {
         "relaunch gave Bash with no sandbox: {launch}"
     );
 }
+
+fn dump(k: &Kernel<MemState, FakeHost>) -> Vec<(String, Vec<u8>)> {
+    k.state
+        .entries()
+        .map(|(a, b)| (a.clone(), b.clone()))
+        .collect()
+}
+
+#[test]
+fn ac2_a_refused_relaunch_by_say_or_interrupt_changes_nothing_and_starts_nothing() {
+    let mut k = kernel();
+    let id = released(&mut k);
+    let edited = r#"{"backend":"claude","model":"sonnet","tools":["Read","Bash"]}"#;
+    k.state
+        .put("profile/p", edited.as_bytes().to_vec())
+        .unwrap();
+    let want = match k.start("alice", "k2", "p", "{}", IN) {
+        Err(KernelError::Refused(r)) => r,
+        other => panic!("{other:?}"),
+    };
+    k.host.calls.clear();
+    let before = dump(&k);
+    match k.say("alice", &id, "s1", "again") {
+        Err(KernelError::Refused(r)) => assert_eq!(r, want),
+        other => panic!("{other:?}"),
+    }
+    match k.interrupt("alice", &id, Some(IN)) {
+        Err(KernelError::Refused(r)) => assert_eq!(r, want),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(dump(&k), before);
+    assert!(last_launch(&k).is_none());
+}
+
+#[test]
+fn ac4_a_stored_profile_scratch_needs_access_page() {
+    let mut k = kernel();
+    k.state
+        .put("profile/scratch", br#"{"model":"haiku"}"#.to_vec())
+        .unwrap();
+    assert!(matches!(
+        k.start("page", "k1", "scratch", "{}", IN),
+        Err(KernelError::Refused(r)) if r[0].field == "profile"
+    ));
+    k.state
+        .put("access/page", br#"["scratch"]"#.to_vec())
+        .unwrap();
+    k.start("page", "k2", "scratch", "{}", IN).unwrap();
+}
