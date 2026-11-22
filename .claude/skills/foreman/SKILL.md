@@ -1,18 +1,19 @@
 ---
 name: foreman
-description: Builds one vertical slice of a factory project (watane or a mod) as its build team. Writes the task briefs, implements each task, opens the slice's pull request, and answers each review round of the other vendor's review team with one push. Use when started as "/foreman <slice id>", or when a brief says "follow .claude/skills/foreman/SKILL.md", in Claude Code or in Codex.
+description: Builds one vertical slice of a factory project (watane or a mod) as its build team. Plans the slice from the deputy's sketch into task briefs, builds them itself or with parallel implementer subagents, opens the slice's pull request, and answers each review round of the other vendor's review team with one push. Use when started as "/foreman <slice id>", or when a brief says "follow .claude/skills/foreman/SKILL.md", in Claude Code or in Codex.
 ---
 
 # /foreman <slice>
 
 You build one slice, in one project: the repository you run in. The deputy gave you its
-sketch (the story, the outcomes, what it touches, the interfaces). You work on branch `slice/<id>`.
+sketch: what to build and why, as a product owner asks it (the story or capability, the outcomes,
+the parts it touches, constraints). How is yours: you plan it (section 1) and build it (section 2). You work on branch `slice/<id>`.
 Do not edit `factory/PLAN.md`; the deputy owns it. Never push `main`, never force-push, never merge: the
 deputy merges.
 
 Read first: `factory/config.toml` (this project's settings), `.claude/factory/README.md` (the
 process), the files of the config's `spec` list in order (why > what > how: the priority of truth),
-and `AGENTS.md`. The config's `[agents]` names the agent for each role below; this text calls them by
+and `AGENTS.md`. The deputy decides why and what; how is yours. The config's `[agents]` names the agent for each role below; this text calls them by
 role.
 
 ## 0. Where you run
@@ -23,9 +24,31 @@ The review team, usually the other vendor, reviews your PR, and the deputy bring
 you (section 6). You do not run the validator, adversary or user-sim; they are the review team's.
 You cannot message the deputy: you report through the PR and the branch.
 
-## 1. Brief each task
+## 1. Plan the slice
 
-At most 4 tasks, cut by folder and by file, in dependency order. Write `factory/tasks/<slice>-<n>.md`:
+Work out what the sketch means for the architecture: read the chain top down for each part it
+touches (the project's `VISION`, `FUNCTIONAL`, `TECHNICAL`, then each subsystem's three, then the
+code; a higher one wins, and a lower one that disagrees is fixed in this slice, in the document
+that owns the fact), and name every component the slice changes and every interface between them. A
+capability like "authorization" reaches further than its sketch says; find where (each entry point,
+each store, each test that assumes the old behaviour). What the sketch did not foresee but the
+slice needs is yours to include; what changes its outcomes or an interface with another project is
+a question (section 4).
+
+**Spike what is risky.** When a part of the plan may not work at all (a library, a performance
+budget, an approach you have not seen hold here), try it first, in isolation, on a local branch
+`spike/<id>-<n>` that is never pushed: the least code that answers the question. Write the answer
+into the briefs that depend on it (`## Spec`: "spike <n>: <what held>"), and delete the branch. A
+spike that fails changes the plan: replan within the sketch, or ask (section 4) when the sketch's
+outcomes no longer hold.
+
+**A spike slice** (its sketch says spike) is one spike for the deputy: no briefs and no tasks. Push
+the throwaway code to `slice/<id>`, open the PR with the write-up as its body (what was tried, what
+held, the recommendation), and end; it gets no review and is never merged.
+
+Then cut tasks, one per component or interface, each one implementer can hold from start to end,
+in dependency order. More than 20 tasks: the slice is too big for one PR; propose a split to the
+deputy (section 4) with the tasks of the first part. Write `factory/tasks/<slice>-<n>.md`:
 ```
 Folder: <path from the project root>|.
 Effort: <low|medium|high|xhigh>
@@ -51,12 +74,18 @@ first; the review team checks the work against them.
 
 ## 2. Build each task
 
-1. Implement each task, test first, in dependency order, by its brief and the standing rules of
-   `.claude/factory/implementer.md`:
-   - Codex Cloud: you implement each task yourself.
-   - Claude cloud: run the agent named by `implementer_cloud` with the task id, one task at a time
-     in this checkout.
-2. After each task: `.claude/factory/check.sh <task> <commit before it>`. `CHECK FAIL`: fix (or
+1. Each task is built test first, by its brief and the standing rules of
+   `.claude/factory/implementer.md`. Choose who builds it:
+   - **yourself**, for one task, or a chain where each task needs the one before;
+   - **an implementer subagent** per task, in parallel, for tasks whose `Depends on` is satisfied and
+     whose `## Files` share nothing. Claude: the agent named by `implementer_cloud`, with the task id,
+     through the Agent tool. Codex: `spawn_agent` with `fork_turns="none"` and the task's brief plus
+     `implementer.md` as its instructions. They share your checkout, so each commits only its own
+     files (`git commit <paths>`), never `-a`; wait for all of a wave before the next.
+   Your context is the slice's: keep it for planning, checking and integrating; hand out the tasks
+   that do not need it.
+2. After each task: `.claude/factory/check.sh <task> <commit before it>` (a parallel wave: the
+   commit the wave started from). `CHECK FAIL`: fix (or
    send the failing part of the log back to the implementer) before the next task. `BLOCKED` or
    `QUESTIONS` from an implementer go to section 4.
 3. A check that only a Mac or other hardware can run (macOS, a device, timing) does not run here

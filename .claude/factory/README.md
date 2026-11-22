@@ -15,7 +15,7 @@ it looks like this; that file is a record, this one is the contract for every pr
 | The deputy | `~/.claude/skills/deputy`, a link to `watane-mods/factory/skills/deputy` | as the pipeline |
 | A project's settings | `<project>/factory/config.toml` | the project |
 | Its plan, briefs and run logs | `<project>/factory/PLAN.md`, `tasks/`, `runs/` (git-ignored) | deputy, foreman, scripts |
-| Its why, what and how | the files `spec` in its config names, in that order | foremen, by the spec chain |
+| Its why, what and how | the files `spec` in its config names, in that order | the deputy plans from why and what; the foreman decides how |
 
 The deputy runs only on the Mac, so it is a user skill and never copied. Every team runs in a
 cloud, in the project's own clone. A cloud session clones only that project and loads no
@@ -84,8 +84,8 @@ builds (the deputy skill, "Who builds, who reviews": Codex two slices in three).
 
 | Team | Who | Does | Ends each round with |
 |---|---|---|---|
-| Build | the foreman (`skills/foreman`): briefs and implementation | pushes `slice/<id>`, opens the PR, answers every finding | one push; last commit `<id> r<r>: answers`, a line `F<r>.<k> fixed in <sha>` or `F<r>.<k> disagree: <why>` per finding |
-| Review | the other vendor, acting as `validator`, `adversary` and `user-sim` (`.claude/agents/`) | reads the PR and runs the programs; pushes nothing | a PR comment: numbered findings, then one line `VERDICT: approve` or `VERDICT: changes (<n>)` |
+| Build | the foreman (`skills/foreman`): plans the slice into task briefs, builds them itself or with parallel `implementer` subagents | pushes `slice/<id>`, opens the PR, answers every finding | one push; last commit `<id> r<r>: answers`, a line `F<r>.<k> fixed in <sha>` or `F<r>.<k> disagree: <why>` per finding |
+| Review | the other vendor, running `validator`, `adversary` and `user-sim` (`.claude/agents/`) as subagents, each in a fresh context | reads the PR and runs the programs; pushes nothing | a PR comment: numbered findings, then one line `VERDICT: approve` or `VERDICT: changes (<n>)` |
 
 ```
 deputy: build brief ──> builder pushes slice/<id>, opens PR
