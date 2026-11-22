@@ -819,14 +819,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         let json = self
             .profile_json(&rec.profile)
             .ok_or_else(|| refused("profile", "no such profile"))?;
-        // A later launch is checked as `start` is (9.2, 11, 14).
+        // A later launch is checked as `start` is (9.2, 11, 14), against the refuse table of the
+        // session's backend: the one its stream runs, whatever the edited profile now says.
         let overlay = rec.overlay.clone().unwrap_or_default();
-        let parsed = parse_profile(&json).0;
-        let backend = parsed
-            .backend
-            .and_then(|b| b.parse::<Backend>().ok())
-            .unwrap_or(Backend::Claude);
-        let model = parsed.model.unwrap_or_else(|| "default".to_string());
+        let backend = rec.backend.parse::<Backend>().unwrap_or(Backend::Claude);
+        let model = parse_profile(&json)
+            .0
+            .model
+            .unwrap_or_else(|| "default".to_string());
         let overlay_json = serde_json::to_string(&overlay).expect("an overlay serializes");
         let refusals = check(&json, &overlay_json, backend, &model, None);
         if !refusals.is_empty() {
