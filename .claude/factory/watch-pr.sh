@@ -1,5 +1,5 @@
 #!/bin/sh
-# .claude/factory/watch-pr.sh <slice id> [<state seen>] [<max seconds>]: the product owner's one watcher
+# .claude/factory/watch-pr.sh <slice id> [<state seen>] [<max seconds>]: the deputy's one watcher
 # for a slice in the two-team loop. Returns when the state of slice/<id> differs from <state seen>: its
 # PR opened, closed or merged, its head moved (the build team pushed) or it got a comment (a review, an
 # answer). Prints the new state on line 1 (pass it back as <state seen> next time), then the head
