@@ -550,15 +550,18 @@ fn on_wire(v: &Value) -> Value {
     json!({"_meta": {"watane": v}})
 }
 
-/// The live `entry` item of a stored entry that has no ACP form (9.4); none for a `message` or a
-/// `tool`, which go out as their finishing update.
-fn entry_push(session: &str, i: u64, e: &NewEntry, at: u64, work: &mut Work) {
+/// The live `entry` items of a stored entry (first indexed `first`) that has no ACP form (9.4): its
+/// stored lines, so one over 256 KiB goes out as its parts; none for a `message` or a `tool`, which
+/// go out as their finishing update.
+fn entry_push(session: &str, first: u64, e: &NewEntry, at: u64, work: &mut Work) {
     if matches!(e.kind.as_str(), "message" | "tool") {
         return;
     }
-    let entry = json!({"v": 1, "i": i, "kind": e.kind, "at": at, "body": e.body});
-    work.pushes
-        .push(Push::of(session, json!({"type": "entry", "entry": entry})));
+    for line in crate::transcript::lines_of(e, at, first) {
+        let entry: Value = serde_json::from_str(&line).expect("a stored line is JSON");
+        work.pushes
+            .push(Push::of(session, json!({"type": "entry", "entry": entry})));
+    }
 }
 
 fn turn_push(t: &Turn) -> Value {
@@ -1250,8 +1253,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         at: u64,
         work: &mut Work,
     ) -> Result<u64, KernelError> {
+        let first = rec.meta().last + 1;
         let i = self.append(rec, e.clone(), at)?;
-        entry_push(&rec.id, i, &e, at, work);
+        entry_push(&rec.id, first, &e, at, work);
         Ok(i)
     }
 
@@ -1268,6 +1272,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Option<u64>, KernelError> {
         if !past.is_past() {
             let mut meta = rec.meta();
+            let first = meta.last + 1;
             let stored = Transcript::new(&mut self.state, &rec.id, &mut meta).append_within(
                 &e,
                 at,
@@ -1276,7 +1281,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             match stored {
                 Ok(i) => {
                     rec.set_meta(&meta);
-                    entry_push(&rec.id, i, &e, at, work);
+                    entry_push(&rec.id, first, &e, at, work);
                     return Ok(Some(i));
                 }
                 Err(KernelError::Quota(_)) => {}

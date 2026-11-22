@@ -411,6 +411,11 @@ fn escaped_len(c: char) -> usize {
     }
 }
 
+/// The stored lines of an entry first indexed `first`: the entry, or its `part` entries (9.4).
+pub fn lines_of(e: &NewEntry, at: u64, first: u64) -> Vec<String> {
+    build_lines(e, at, first).0
+}
+
 /// The stored lines of an entry first indexed `first`, and the index of the whole entry.
 fn build_lines(e: &NewEntry, at: u64, first: u64) -> (Vec<String>, u64) {
     let whole = entry_line(first, e, at);
