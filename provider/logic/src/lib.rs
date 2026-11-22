@@ -23,20 +23,20 @@ trait Host {
     fn cancel(&mut self, s: &str);
 }
 
-/// The text of an input: the `text` of its ACP text blocks joined with a blank line; none when
-/// the input is not a JSON array of blocks or has no text block.
+/// The text of an input, as the kernel reads it: the `text` of the ACP text blocks of a JSON
+/// array joined with a blank line (none when there is none); any other input is its own text
+/// (none when empty).
 fn input_text(input: &str) -> Option<String> {
-    let blocks: Vec<serde_json::Value> = serde_json::from_str(input).ok()?;
-    let texts: Vec<&str> = blocks
-        .iter()
-        .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("text"))
-        .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-        .collect();
-    if texts.is_empty() {
-        None
-    } else {
-        Some(texts.join("\n\n"))
-    }
+    let text = match serde_json::from_str::<serde_json::Value>(input) {
+        Ok(serde_json::Value::Array(blocks)) => blocks
+            .iter()
+            .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("text"))
+            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+        _ => input.to_string(),
+    };
+    (!text.is_empty()).then_some(text)
 }
 
 fn session_error_case(e: &SessionError) -> &'static str {
@@ -216,18 +216,21 @@ mod tests {
 
     #[test]
     fn ac3_no_text_means_no_say() {
-        for input in [
-            "",
-            "plain",
-            "{}",
-            "[]",
-            r#"[{"type":"image"}]"#,
-            r#"[{"type":"text"}]"#,
-        ] {
+        for input in ["", "[]", r#"[{"type":"image"}]"#, r#"[{"type":"text"}]"#] {
             let mut h = Rec::default();
             start_with(&mut h, "L", input).unwrap();
             assert_eq!(h.calls, ["start L", "hand-off S"], "{input:?}");
         }
+    }
+
+    #[test]
+    fn ac1_plain_input_is_its_own_text() {
+        assert_eq!(input_text("hi").as_deref(), Some("hi"));
+        assert_eq!(input_text("{}").as_deref(), Some("{}"));
+        assert_eq!(input_text("").as_deref(), None);
+        let mut h = Rec::default();
+        start_with(&mut h, "L", "hi").unwrap();
+        assert_eq!(h.calls, ["start L", "say S hi", "hand-off S"]);
     }
 
     #[test]
