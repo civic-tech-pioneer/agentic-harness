@@ -61,7 +61,8 @@ export interface Actions {
   /** The asks this console answered that have no decision entry yet (9.4 rule 4), each with the open ask object it was answered for:
    * a card is answered only when its own row's ask is that object (the dock's count reads the same set). */
   answeredAsks?: ReadonlyMap<string, Ask>;
-  say(text: string): void;
+  /** A refused say rejects (2.3); the composer shows it (18.6 "Send"). */
+  say(text: string): void | Promise<unknown>;
   answer(ask: string, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void | Promise<void>;
   /** The card's answer: for the ask object it drew. It goes out only while that object is the open ask of its id (else it is refused, nothing sent). */
   answerDrawn?(drawn: Ask, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void | Promise<void>;
