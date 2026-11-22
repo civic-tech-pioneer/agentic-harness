@@ -1,6 +1,7 @@
 // TECHNICAL 18.2: served by watane, the page runs on the real kernel: the owner's newest session (or the new-session view), and the sidebar from `sessions.list`.
 import { wataneKernel, type Kernel, type Watane } from "../kit";
-import { metaOf, type SessionInfo } from "./Header";
+import { parse } from "../kit/wire";
+import { metaOf, titleOf, type SessionInfo } from "./Header";
 import { shapeOf, type SidebarSession } from "./Sidebar";
 
 interface Listed { id: string; title: string; profile: string; backend: string; turn?: string; updated: number }
@@ -20,19 +21,36 @@ export const startKey = (): string => `console-${Date.now()}-${Math.random().toS
 /** Served by watane (host 8.1): a `<local>.localhost` origin. Vite's `localhost:<port>` and the slow tests' 127.0.0.1 are not; index.html asks for /watane.js everywhere, so that request does not tell. */
 export const isServed = (host: string): boolean => /^[^.]+\.localhost$/.test(host);
 
-/** The facts the kernel's stream does not carry (18.4): stage B has Claude Code sessions in a scratch folder, which no judge checks. */
-const infoOf = (s: Listed): SessionInfo => ({
-  id: s.id, title: s.title, profile: s.profile,
-  provider: /claude/i.test(s.backend) ? "Claude Code (unchecked)" : s.backend,
-  workspace: s.profile === "scratch" ? "Scratch folder" : "",
-});
-const rowOf = (s: Listed): SidebarSession => { const i = infoOf(s); return { id: s.id, title: i.title || "New session", place: i.workspace || i.profile, meta: metaOf(i), state: shapeOf(s.turn as Parameters<typeof shapeOf>[0]) }; };
+/** The facts the kernel's stream does not carry (18.4): stage B has Claude Code sessions in a scratch folder, which no judge checks. Only a Claude
+ * session of `scratch` runs in a scratch folder (9.1); any other row reads `<backend> · <profile>`. */
+const infoOf = (s: Listed): SessionInfo => {
+  const claude = /claude/i.test(s.backend), scratch = claude && s.profile === "scratch";
+  return {
+    id: s.id, title: s.title, profile: s.profile,
+    provider: claude ? "Claude Code (unchecked)" : s.backend,
+    workspace: scratch ? "Scratch folder" : "",
+  };
+};
+const rowOf = (s: Listed, firstUser?: string): SidebarSession => { const i = infoOf(s); return { id: s.id, title: titleOf(i.title, firstUser), place: i.workspace || i.profile, meta: metaOf(i), state: shapeOf(s.turn as Parameters<typeof shapeOf>[0]) }; };
+
+/** 18.4's title rule for a row the kernel has no title for: its first user message, from the first entries; none (or a failed read) leaves "New session". */
+async function firstUserOf(w: Watane, session: string): Promise<string | undefined> {
+  try {
+    const page = await ok(w, "sessions.read", { session, after: 0, before: null, max: 8 });
+    for (const e of (page?.entries ?? []) as string[]) {
+      const m = parse(e);
+      if (m.t === "message" && m.role === "user") return m.text;
+    }
+  } catch { /* the row keeps "New session" */ }
+  return undefined;
+}
 
 export async function served(w: Watane): Promise<Served> {
   const kernel = wataneKernel(w);
   const listed = async () => {
     const list: Listed[] = await ok(w, "sessions.list", { after: null, max: 256 });
-    return { list, sessions: list.map(rowOf), info: (id: string) => { const s = list.find((x) => x.id === id); return s && infoOf(s); } };
+    const firsts = await Promise.all(list.map((s) => (s.title ? undefined : firstUserOf(w, s.id))));
+    return { list, sessions: list.map((s, n) => rowOf(s, firsts[n])), info: (id: string) => { const s = list.find((x) => x.id === id); return s && infoOf(s); } };
   };
   const first = await listed();
   const newest = [...first.list].sort((a, b) => b.updated - a.updated)[0];
