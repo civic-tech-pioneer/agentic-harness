@@ -28,7 +28,7 @@ export type TurnState =
   | { state: "running"; activity?: Activity; since: number }
   | { state: "waiting"; asks: string[]; expiresAt: number }
   | { state: "paused"; until?: number }
-  | { state: "idle"; stop: { kind: "completed" } | { kind: "interrupted" } | { kind: "stopped"; limit: string } | { kind: "failed"; error: string } }
+  | { state: "idle"; stop: { kind: "completed" } | { kind: "interrupted" } | { kind: "stopped"; limit: string } | { kind: "failed"; error: string; cause?: string } }
   | { state: "unknown" } | { state: "resume-lost" };
 export type Row =
   | { kind: "user"; key: string; i?: number; text: string }

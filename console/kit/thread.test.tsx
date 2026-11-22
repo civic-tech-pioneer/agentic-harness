@@ -239,9 +239,9 @@ describe("StatusLine", () => {
     expect(s.actions.stop).not.toHaveBeenCalled();
   };
 
-  it("ac9_running_thinking_with_clock_and_stop", async () => {
+  it("ac9_running_working_with_clock_and_stop", async () => {
     const s = status({ state: "running", since: T });
-    expect(word()).toBe("Thinking");
+    expect(word()).toBe("Working"); // S35-4: no activity named
     expect(shape()).toBe("dot");
     expect(screen.getByRole("img", { name: "Running" })).toBeInTheDocument();
     expect(screen.getByText("· 12 s")).toHaveAttribute("aria-hidden", "true");

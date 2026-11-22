@@ -9,8 +9,9 @@ const browser = await launch();
 let code = 0;
 try {
   const page = await browser.newPage();
-  await page.goto(url.replace("127.0.0.1", "probe.localhost"));
-  await page.waitForFunction(() => document.getElementById("root").textContent.length > 0, null, { timeout: 15000 });
+  await page.goto(url.replace("127.0.0.1", "claude.localhost"));
+  // the frame of index.html shows first (S35 AC4c); main.tsx then replaces it with the cause
+  await page.waitForFunction(() => document.getElementById("root").textContent === "watane.js did not load", null, { timeout: 15000 });
   const text = await page.evaluate(() => document.getElementById("root").textContent);
   assert.equal(text, "watane.js did not load");
   assert.ok(!(await page.evaluate(() => document.body.textContent)).includes("Fix the retry bug"), "the scripted story is not shown");

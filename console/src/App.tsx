@@ -8,7 +8,7 @@ import { Dock } from "./Dock";
 let sent = 0;
 const LOADING: SessionView = { ...emptyView, loading: true };
 
-export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[] }) {
+export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[]; onNew?: () => void }) {
   // the view is tagged with its subscription (a token per run of the openSession effect), and with the session and kernel it was opened on
   const [held, setHeld] = useState<{ tok: object | null; id: string; kernel: Kernel; view: SessionView }>({ tok: null, id: info.id, kernel, view: LOADING });
   const [sub, setSub] = useState<object | null>(null); // the current subscription's token
@@ -141,7 +141,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
 
   return (
     <div className="wa-app">
-      <Sidebar info={info} turn={view.turn?.state} needs={shown.openAsks.length > 0} sessions={sessions} />
+      <Sidebar info={info} turn={view.turn?.state} needs={shown.openAsks.length > 0} sessions={sessions} onNew={onNew} />
       <main className="wa-main">
         <Header info={info} view={view} actions={actions} />
         <ThreadProvider view={view} actions={actions}>
@@ -159,7 +159,7 @@ export function App({ kernel, info, sessions }: { kernel: Kernel; info: SessionI
             }}>
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
           </div>
-          <Dock view={shown} actions={actions} onNeedsYou={needsYou} needsHidden={needsHidden} behind={behind && !atEnd.current} onBehind={toTheEnd} session={{ model: info.model, mode: info.mode }} stopping={stopping}
+          <Dock view={shown} actions={actions} onNeedsYou={needsYou} needsHidden={needsHidden} behind={behind && !atEnd.current} onBehind={toTheEnd} session={{ model: info.model, mode: info.mode }} sessionId={info.id} stopping={stopping}
             status={<StatusLine view={shown} answered={view.openAsks.length - shown.openAsks.length} now={now} stopping={stopping} actions={actions} onNeedsYou={needsYou} />} />
         </ThreadProvider>
       </main>

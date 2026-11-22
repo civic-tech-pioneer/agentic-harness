@@ -128,7 +128,7 @@ describe("S4-fix2 AC3 behind that cannot be paged", () => {
     vi.useFakeTimers();
     try {
       let attaches = 0;
-      const k = { async attach() { attaches++; return { behind: 0 }; }, read: async () => [], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
+      const k = { async attach() { attaches++; return { behind: 0 }; }, read: async () => [], say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
       let last: SessionView | undefined;
       const s = openSession(k, "s1", (v) => { last = v; });
       await vi.advanceTimersByTimeAsync(500);
@@ -154,7 +154,7 @@ describe("S4-fix2 AC3 behind that cannot be paged", () => {
     try {
       for (const behind of [1.5, Number.NaN, 2 ** 60]) {
         let reads = 0;
-        const k = { async attach() { return { behind }; }, read: async () => { reads++; return ["{}"]; }, say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
+        const k = { async attach() { return { behind }; }, read: async () => { reads++; return ["{}"]; }, say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
         let last: SessionView | undefined;
         const s = openSession(k, "s1", (v) => { last = v; });
         await vi.advanceTimersByTimeAsync(30);
@@ -170,7 +170,7 @@ describe("S4-fix3 AC2 reattach policy", () => {
   const mk = (onAttach: (n: number, on: (j: string) => void, end: (r: string) => void) => Promise<{ ok: true } | { behind: number }>) => {
     const c = { attaches: 0 };
     const k = { async attach(_s: string, _a: number, on: (j: string) => void, end: (r: string) => void) { c.attaches++; return onAttach(c.attaches, on, end); },
-      read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
+      read: async () => [] as string[], say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
     return { c, k };
   };
   it("ac2_end_right_after_ok_waits_1s_then_2s", async () => {
@@ -273,7 +273,7 @@ describe("S4-fix3 AC3 old connection", () => {
           return { ok: true } as const;
         },
         read: () => new Promise<string[]>((r) => { release = r; }),
-        say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+        say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
       };
       const views: SessionView[] = [];
       const s = openSession(k, "s1", (v) => views.push(v));
@@ -306,7 +306,7 @@ describe("S4-fix3 AC3 old connection", () => {
           if (n === 2) queueMicrotask(() => end("lost-grant")); // 3 after 1 s
           return { ok: true } as const;
         },
-        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+        read: async () => [] as string[], say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
       };
       const views: SessionView[] = [];
       const s = openSession(k, "s1", (v) => views.push(v));
@@ -332,7 +332,7 @@ describe("S4-fix4", () => {
       let attaches = 0;
       const k = {
         async attach(_s: string, _a: number, on: (j: string) => void, end: (r: string) => void) { attaches++; queueMicrotask(() => { on(synced); end("idle-timeout"); }); return { ok: true } as const; },
-        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+        read: async () => [] as string[], say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
       };
       let last: SessionView | undefined;
       const s = openSession(k, "s1", (v) => { last = v; });
@@ -353,7 +353,7 @@ describe("S4-fix4", () => {
       let end!: (r: string) => void;
       const k = {
         async attach(_s: string, _a: number, on: (j: string) => void, e: (r: string) => void) { attaches++; end = e; queueMicrotask(() => on(synced)); return { ok: true } as const; },
-        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+        read: async () => [] as string[], say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
       };
       const s = openSession(k, "s1", () => {});
       await vi.advanceTimersByTimeAsync(11_000);
@@ -374,7 +374,7 @@ describe("S4-fix4", () => {
       let end!: (r: string) => void;
       const k = {
         async attach(_s: string, _a: number, on: (j: string) => void, e: (r: string) => void) { attaches++; end = e; queueMicrotask(() => on(synced)); return { ok: true } as const; },
-        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+        read: async () => [] as string[], say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
       };
       const s = openSession(k, "s1", () => {});
       await vi.advanceTimersByTimeAsync(9_000);
@@ -400,7 +400,7 @@ describe("S4-fix4", () => {
           queueMicrotask(() => { on(synced); if (ends.length === 1) e("idle-timeout"); });
           return { ok: true } as const;
         },
-        read: async () => [] as string[], say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+        read: async () => [] as string[], say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
       };
       const s = openSession(k, "s1", () => {});
       await vi.advanceTimersByTimeAsync(10);
@@ -424,7 +424,7 @@ describe("S4-fix4 AC2 page budget", () => {
       const k = {
         async attach() { attaches++; return { behind: 2_560 }; }, // budget: ceil(2560 / 256) = 10 pages
         read: async (_s: string, after: number) => { reads++; return [JSON.stringify({ v: 1, i: after + 1, kind: "message", at: 1, body: { role: "user", content: [{ type: "text", text: "x" }] } })]; },
-        say: async () => 0, answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
+        say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {},
       };
       let last: SessionView | undefined;
       const s = openSession(k, "s1", (v) => { last = v; });

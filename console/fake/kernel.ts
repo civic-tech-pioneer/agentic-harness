@@ -26,7 +26,7 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[]; refu
   const store: Rec[] = (opts?.preload ?? []).map((s) => JSON.parse(s));
   const calls: FakeKernel["calls"] = [];
   let stream: { onMessage: (j: string) => void; onEnd: (r: string) => void } | null = null;
-  let next = 0;
+  let next = 0, started = 0;
   const acc = { agent: "", thought: "", thoughtAt: undefined as number | undefined, thoughtEnd: undefined as number | undefined, user: "", tools: new Map<string, Rec>() };
   const items: Record<string, string> = {};
   const last = () => store[store.length - 1]?.i ?? 0;
@@ -88,6 +88,14 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[]; refu
     async read(session, after, max) {
       calls.push({ name: "read", args: [session, after, max] });
       return store.filter((e) => e.i > after).slice(0, Math.min(max, 256)).map((e) => JSON.stringify(e));
+    },
+    /** A new session that answers like the story: its stored entries are cleared and the story's first step plays. */
+    async start(key, profile, overlay, input) {
+      calls.push({ name: "start", args: [key, profile, overlay, input] });
+      store.length = 0; for (const k of Object.keys(items)) delete items[k];
+      acc.agent = acc.thought = acc.user = ""; acc.thoughtAt = acc.thoughtEnd = undefined; acc.tools.clear();
+      setTimeout(() => { if (script[0]) this.play(0); }, 0);
+      return `new${++started}`;
     },
     async say(session, key, input) { calls.push({ name: "say", args: [session, key, input] }); return 0; },
     async answer(session, key, ask, decision) {

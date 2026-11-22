@@ -1,4 +1,4 @@
-// S32-3: the built page, served with a /watane.js that defines a fake window.watane, opens that kernel's session and not the scripted story.
+// S32-3 (S35-4: the owner's newest session): the built page, served with a /watane.js that defines a fake window.watane, opens that kernel's session and not the scripted story.
 // Slow: only the built page shows that its script order (watane.js before the bundle) and main.tsx's served branch work together.
 import assert from "node:assert/strict";
 import { buildOnce, serveUi, launch } from "./slow-kit.mjs";
@@ -10,8 +10,7 @@ const fake = `(() => {
   window.watane = {
     on(h) { hs.push(h); return () => {}; },
     async call(fn, args) {
-      if (fn === "sessions.list") return { ok: [] };
-      if (fn === "probe.start") return { ok: "p1" };
+      if (fn === "sessions.list") return { ok: [{ id: "p1", title: "Items", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 }] };
       if (fn === "sessions.attach") {
         setTimeout(() => hs.forEach((h) => h({ type: "stream", stream: "st1", items: entries.map((body, k) => ({ seq: k + 1, body })).concat([{ seq: 4, body: JSON.stringify({ _meta: { watane: { type: "synced", through: 0 } } }) }]) })), 100);
         return { ok: "st1" };

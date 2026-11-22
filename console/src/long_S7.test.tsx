@@ -46,7 +46,7 @@ let fake: FakeKernel, scroller: HTMLElement, opened = 0, next = 1, stream: Retur
 let top = 0;
 let root: ReturnType<typeof createRoot>;
 const delays: number[] = [];
-let probe: MutationObserver;
+let watcher: MutationObserver;
 const total = () => Number(document.querySelector<HTMLElement>(".wa-transcript")!.dataset.total);
 const scrollTo = (y: number) => { top = Math.max(0, Math.min(y, total() + PAD - VIEW)); fireEvent.scroll(scroller); };
 const results: Record<string, number> = {};
@@ -86,12 +86,12 @@ beforeAll(async () => {
     for (const [w, t] of sent) if (text.includes(w)) { sent.delete(w); delays.push(now() - t); }
   });
   watch.observe(document.body, { subtree: true, childList: true, characterData: true });
-  probe = watch;
+  watcher = watch;
   stream = setInterval(() => { if (next < IDLE) { sent.set(`word${next}`, now()); fake.play(next++); } }, 20);
   // the 5 000 rows reach the runtime after the paint: wait until the main thread is free again (one task takes under 30 ms)
   for (let k = 0; k < 40; k++) { const t = now(); await new Promise((r) => setTimeout(r, 5)); if (k > 2 && now() - t < 30) break; }
 }, TIMED ? 30_000 : 240_000);
-afterAll(() => { clearInterval(stream); probe.disconnect(); root.unmount(); console.log("S7-2 p95 (ms):", JSON.stringify(results), "open end:", Math.round(opened)); });
+afterAll(() => { clearInterval(stream); watcher.disconnect(); root.unmount(); console.log("S7-2 p95 (ms):", JSON.stringify(results), "open end:", Math.round(opened)); });
 
 vi.setConfig({ testTimeout: TIMED ? 5000 : 120_000 }); // no time limit in `npm test`: a loaded machine only runs it slower
 

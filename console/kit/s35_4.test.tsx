@@ -1,0 +1,92 @@
+// S35-4 AC1, AC3, AC4a: `start` on the watane kernel, the status line from the fake claude's recorded turn, the alert sentences.
+import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { emptyView, type SessionView } from "./model";
+import { reduce } from "./reduce";
+import { StatusLine } from "./status";
+import { errorWords } from "./errors";
+import { wataneKernel } from "./watane";
+import { fakeWatane } from "./watane_fake";
+import turn from "./fixtures/fake_claude_turn.json";
+
+afterEach(cleanup);
+const actions = { say: () => {}, answer: () => {}, stop: () => {}, takeBack: () => {} };
+const status = (v: SessionView) => render(<StatusLine view={v} now={1795255996000} stopping={false} actions={actions} onNeedsYou={() => {}} />);
+const word = () => screen.getByRole("status").textContent;
+const shape = () => document.querySelector("[data-shape]")!.getAttribute("data-shape");
+const feed = (n: number) => (turn as string[]).slice(0, n).reduce<SessionView>(reduce, emptyView);
+
+describe("S35-4 AC1", () => {
+  it("ac1_wataneKernel_start_calls_sessions_start_and_resolves_the_id", async () => {
+    const f = fakeWatane({ "sessions.start": () => ({ ok: "sess1" }) });
+    expect(await wataneKernel(f.w).start("k1", "scratch", "{}", "hi")).toBe("sess1");
+    expect(f.calls).toEqual([{ fn: "sessions.start", args: { key: "k1", profile: "scratch", overlay: "{}", input: "hi" } }]);
+  });
+  it("ac1_a_refused_start_rejects_with_its_case", async () => {
+    const f = fakeWatane({ "sessions.start": () => ({ err: { backend: "boom" } }) });
+    await expect(wataneKernel(f.w).start("k", "scratch", "{}", "hi")).rejects.toMatchObject({ kind: "backend", payload: "boom" });
+  });
+});
+
+describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
+  it("ac3_the_user_message_is_a_right_panel_row", () => {
+    expect(feed(2).rows).toMatchObject([{ kind: "user", text: "hi" }]);
+  });
+  it("ac3_running_names_Working_with_the_dot", () => {
+    status(feed(3));
+    expect(word()).toBe("Working");
+    expect(shape()).toBe("dot");
+  });
+  it("ac3_a_streaming_thought_is_Thinking", () => {
+    const thought = JSON.stringify({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "hm" }, _meta: { watane: { at: 1 } } });
+    status(reduce(feed(3), thought));
+    expect(word()).toBe("Thinking");
+  });
+  it("ac3_a_chunk_shows_Writing_and_the_entry_replaces_it", () => {
+    const v = feed(4);
+    expect(v.rows[1]).toMatchObject({ kind: "agent", text: "This is the fake claude.", writing: true });
+    status(v);
+    expect(word()).toBe("Writing");
+    expect(feed(5).rows[1]).toMatchObject({ kind: "agent", i: 2, writing: false });
+  });
+  it("ac3_idle_completed_shows_Idle_with_the_ring", () => {
+    const v = feed(6);
+    expect(v.turn).toMatchObject({ state: "idle", stop: { kind: "completed" } });
+    status(v);
+    expect(word()).toBe("Idle");
+    expect(shape()).toBe("ring");
+    expect(v.rows.filter((r) => r.kind === "agent")).toHaveLength(1);
+  });
+  it("ac3_failed_no_binary_says_it_in_words_with_the_triangle", () => {
+    const v = { ...emptyView, turn: { state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "no-binary" } } } as SessionView;
+    status(v);
+    expect(word()).toBe("Failed: Claude Code is not available here");
+    expect(shape()).toBe("triangle");
+  });
+  it("ac3_failed_with_another_cause_shows_its_text_and_the_wire_keeps_it", () => {
+    const raw = JSON.stringify({ _meta: { watane: { type: "turn", state: { state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "version 2.1.200 < 2.1.295" } } } } });
+    const v = reduce(emptyView, raw);
+    status(v);
+    expect(word()).toBe("Failed: version 2.1.200 < 2.1.295");
+  });
+});
+
+describe("S35-4 AC4a", () => {
+  const e = (kind: string, payload?: unknown) => Object.assign(new Error(`sessions.say: ${kind} ${JSON.stringify(payload) ?? ""}`), { kind, payload });
+  it("ac4a_each_2_3_error_is_a_sentence_never_json", () => {
+    expect(errorWords(e("busy"))).toBe("Claude is busy with another session; try again in a moment.");
+    expect(errorWords(e("backend", "disk full"))).toBe("The kernel could not do that: disk full");
+    const cases: [string, unknown?][] = [["queue-full"], ["quota"], ["paused", 5], ["refused", [{ field: "profile", reason: "not allowed" }]], ["too-large", 100], ["not-owner"], ["unknown-session"],
+      ["unknown-input"], ["unknown-allow"], ["behind", 3], ["host"], ["unreadable"]];
+    for (const [k, p] of cases) {
+      const w = errorWords(Object.assign(e(k, p), { refusals: k === "refused" ? p : undefined }));
+      expect(w, k).toMatch(/^[A-Z][^{}[\]"]*[.:a-z0-9]$/);
+      expect(w, k).not.toMatch(/[{}]/);
+    }
+    expect(errorWords(Object.assign(e("refused", []), { refusals: [{ field: "profile", reason: "not allowed" }] }))).toContain("not allowed");
+  });
+  it("ac4a_a_plain_error_says_its_message", () => {
+    expect(errorWords(new Error("quota: too many"))).toBe("quota: too many");
+    expect(errorWords(undefined)).toBe("Could not send that message.");
+  });
+});

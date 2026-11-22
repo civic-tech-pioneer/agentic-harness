@@ -15,7 +15,7 @@ const elapsed = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); 
 const hhmm = (ms: number) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const file = (p?: string) => p ?? "";
 
-/** The word of a plain running turn: the call or message in flight, else Thinking. */
+/** The word of a plain running turn: the call or message in flight, Thinking while a thought streams, else Working (no activity is named). */
 function runningWord(rows: Row[]): string {
   const last = rows[rows.length - 1];
   if (last?.kind === "agent" && last.writing) return "Writing";
@@ -25,7 +25,7 @@ function runningWord(rows: Row[]): string {
     if (call.kind === "read") return f ? `Reading ${f}` : "Reading";
     if (call.kind === "edit") return f ? `Editing ${f}` : "Editing";
   }
-  return "Thinking";
+  return last?.kind === "thought" && last.streaming ? "Thinking" : "Working";
 }
 
 /** " · Edit src/sync.ts": the first open ask's card name (the card header's own, `cardName`). */
@@ -37,6 +37,12 @@ function askSubject(view: SessionView): string {
     if (r.kind === "tool" && r.ask === open) return ` · ${cardName(r.call, r.ask)}`;
   }
   return "";
+}
+
+/** 18.5: the cause of a failed turn in words: `no-binary` is Claude Code missing; another cause is its own text; none, the error's name. */
+function failedWords(stop: { error: string; cause?: string }): string {
+  if (stop.cause === "no-binary") return "Claude Code is not available here";
+  return stop.cause ?? stop.error;
 }
 
 function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: number): Spec {
@@ -60,7 +66,7 @@ function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: 
     case "paused": return { word: t.until === undefined ? "Paused" : `Paused until ${hhmm(t.until)}`, shape: "bars", act: { label: "Resume now" } };
     case "idle":
       if (t.stop.kind === "stopped") return { word: `Stopped at the ${t.stop.limit}`, shape: "ring" };
-      if (t.stop.kind === "failed") return { word: `Failed: ${t.stop.error}`, shape: "triangle", act: { label: "Try again" } };
+      if (t.stop.kind === "failed") return { word: `Failed: ${failedWords(t.stop)}`, shape: "triangle", act: { label: "Try again" } };
       return { word: "Idle", shape: "ring" };
     case "unknown": return { word: "Not running: watane restarted", shape: "dashed-ring", act: { label: "Continue" } };
     case "resume-lost": return { word: "Claude no longer has this session", shape: "dashed-ring", act: { label: "Continue from a summary" } };

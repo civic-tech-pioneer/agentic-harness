@@ -7,3 +7,4 @@ export { FOCUS_END, focusInOpenAsk, releaseOpenAsk, ThreadProvider, Transcript }
 export { StatusLine } from "./status";
 export { wataneKernel } from "./watane";
 export type { Watane } from "./watane";
+export { errorWords } from "./errors";

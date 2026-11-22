@@ -86,6 +86,6 @@ describe("S7-4", () => {
   it("ac4_the_running_word_never_names_an_ended_call", () => {
     const v = feed([call("t", "read", { title: "x", locations: [{ path: "a.ts" }] }), call("u", "edit", { locations: [{ path: "b.ts" }] }), turn({ state: "unknown" })]);
     status({ ...v, turn: { state: "running", since: 0 } });
-    expect(screen.getByRole("status").textContent).toBe("Thinking");
+    expect(screen.getByRole("status").textContent).toBe("Working");
   });
 });
