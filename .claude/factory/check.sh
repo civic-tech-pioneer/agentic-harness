@@ -1,7 +1,6 @@
 #!/bin/bash
 # .claude/factory/check.sh <task> [<base commit>]: runs the project's gate (factory/config.toml `gate`)
-# for a task, outside the implementer's sandbox, in the current worktree. impl.sh runs it after every
-# Sol run; a cloud foreman after the implementer agent; a validator after its own fixes.
+# for a task, in the current checkout: the build team after each task, the review team once per round.
 # Log: factory/runs/<task>.check.log of the main checkout. Prints `CHECK PASS <commit>` or
 # `CHECK FAIL <commit> (log <path>)`; exits 1 on a failure.
 set -u
