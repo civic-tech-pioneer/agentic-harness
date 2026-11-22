@@ -29,7 +29,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## Sketched
 
-### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DELIVERED 2026-11-22 16:22 UTC; watane S99 and S101 merged; continuation on a real serve with screenshots in flight since 20:50 UTC, routine `trig_01NpPnJxwNjH279WAFwnziDk` (builder claude); then a Codex review round, the deputy's design comparison, and the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
+### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (in flight, builder claude, reviewer codex; continuation DELIVERED 21:31 UTC at 8fc6db6 on watane c2a7d4d (routine `trig_01NpPnJxwNjH279WAFwnziDk`), screenshots in `factory/runs/S35/screens/`; r1: Codex review dispatched 21:40 UTC, https://chatgpt.com/local/6b035f75-9cbc-83eb-953f-4ea568e56065; then the deputy's design comparison and the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
 
 Story: Alice runs `watane-dev serve` with the agent kernel and the unchecked provider installed,
 opens the console, starts a session in a scratch workspace (4.6, no consent steps), types a
@@ -355,6 +355,8 @@ limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
+
+- 2026-11-22 (S35): stage B cases 9 (asks), 10 (hooks) and 11 `compact` move to S36; case 12's depth-0 half (removing Task) moves to stage F (9.7, delegation). S35's continuation named them as not covered; none is a single-turn case S35 needs.
 
 - 2026-11-22 (deputy): R-B2 settled without the human: `codex_env = "watane"` is in `factory/config.toml` since the factory sync (PR #45), and the `watane` Codex environment holds this repository. Removed from Waiting.
 
