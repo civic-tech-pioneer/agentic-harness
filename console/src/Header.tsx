@@ -3,8 +3,10 @@ import type { Actions, SessionView } from "../kit";
 
 export interface SessionInfo { id: string; title: string; profile: string; provider: string; workspace: string;
   place?: string; judge?: boolean; model?: string; mode?: string }
-const OFF = "Not in this console yet (18.8).";
+const OFF = "Not in this console yet.";
 const svg = { width: 13, height: 13, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
+
+export const FOLDER = <svg {...svg}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>;
 
 const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
 
@@ -36,10 +38,7 @@ export function Header({ info, view, actions }: { info: SessionInfo; view: Sessi
           <svg {...svg}><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" /></svg>
           {info.provider} · {info.judge ? "your judge checks calls" : "no judge"}
         </span>
-        <span className="wa-chip" title="Workspace">
-          <svg {...svg}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
-          <b>{info.workspace}</b>
-        </span>
+        {info.workspace ? <span className="wa-chip" title="Workspace">{FOLDER}<b>{info.workspace}</b></span> : null}
         {view.allows.map((a) => (
           <button key={a.id} type="button" className="wa-chip wa-chip-allow grant" onClick={() => actions.takeBack(a.id)}>{a.reach} this session ×</button>
         ))}

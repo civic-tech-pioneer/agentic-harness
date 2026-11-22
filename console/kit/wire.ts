@@ -77,7 +77,7 @@ function parseTurn(o: unknown): { state: TurnState; extra: TurnExtra } | undefin
       if (!isRec(s)) return undefined;
       if (s.kind === "completed" || s.kind === "interrupted") stop = { kind: s.kind };
       else if (s.kind === "stopped" && str(s.limit) !== undefined) stop = { kind: "stopped", limit: s.limit as string };
-      else if (s.kind === "failed" && str(s.error) !== undefined) stop = { kind: "failed", error: s.error as string };
+      else if (s.kind === "failed" && str(s.error) !== undefined) stop = { kind: "failed", error: s.error as string, ...(str(s.cause) !== undefined ? { cause: s.cause as string } : {}) };
       else return undefined;
       const extra: TurnExtra = {};
       for (const k of ["seconds", "tools", "tokens"] as const) { const n = num(o[k]); if (n !== undefined) extra[k] = n; }

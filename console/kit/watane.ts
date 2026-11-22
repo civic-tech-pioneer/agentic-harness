@@ -111,6 +111,11 @@ export function wataneKernel(w: Watane): Kernel {
       if (!o || !Array.isArray(o.entries)) throw fail("unreadable", "sessions.read: no entries");
       return o.entries.map((e) => (typeof e === "string" ? e : JSON.stringify(e)));
     },
+    async start(key, profile, overlay, input) {
+      const r = await call("sessions.start", { key, profile, overlay, input });
+      if (typeof r !== "string") throw fail("unreadable", "sessions.start: the session id is not a string");
+      return r;
+    },
     async say(session, key, input) {
       const r = await call("sessions.say", { session, key, input });
       return typeof r === "number" ? r : 0;

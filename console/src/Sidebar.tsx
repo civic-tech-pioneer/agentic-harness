@@ -39,7 +39,8 @@ function Row({ s, on }: { s: SidebarSession; on?: boolean }) {
   );
 }
 
-export function Sidebar({ info, turn, needs, sessions = [] }: { info: SessionInfo; turn?: TurnState["state"]; needs?: boolean; sessions?: SidebarSession[] }) {
+/** `info` is absent in the new-session view (no session is open); `onNew` makes New session work (served by watane). */
+export function Sidebar({ info, turn, needs, sessions = [], onNew }: { info?: SessionInfo; turn?: TurnState["state"]; needs?: boolean; sessions?: SidebarSession[]; onNew?: () => void }) {
   const [held, setHeld] = useState<Group | null>(null);
   const [over, setOver] = useState(false);
   // React flushes mouseleave at continuous priority, so a leave can still be pending when a sync render runs: the hold effect
@@ -59,8 +60,8 @@ export function Sidebar({ info, turn, needs, sessions = [] }: { info: SessionInf
   // The hold begins once the state is known: a pointer already over the list before the first turn holds nothing.
   useEffect(() => { if (over && overNow.current && turn !== undefined) setHeld((h) => h ?? groupOf(live)); }, [over, turn, needs]);
   const group = held ?? groupOf(live);
-  const cur: SidebarSession = { id: info.id, title: info.title, place: info.place ?? info.workspace, meta: `${info.place ?? info.workspace} · ${info.provider}`, state: live };
-  const others = sessions.filter((s) => s.id !== info.id);
+  const cur: SidebarSession | null = info ? { id: info.id, title: info.title, place: info.place ?? (info.workspace || info.profile), meta: `${info.place ?? (info.workspace || info.profile)} · ${info.provider}`, state: live } : null;
+  const others = sessions.filter((s) => s.id !== info?.id);
   return (
     <nav ref={navRef} className="wa-sidebar" aria-label="Sessions" onMouseEnter={() => setOver(true)} onMouseLeave={() => { setOver(false); setHeld(null); }}>
       <div className="wa-brand">
@@ -69,19 +70,19 @@ export function Sidebar({ info, turn, needs, sessions = [] }: { info: SessionInf
         </span>
         <h2 className="wa-sidebar-title">Agents</h2>
       </div>
-      <button type="button" className="wa-newbtn" aria-disabled="true" aria-describedby="wa-off-new" onClick={(e) => e.preventDefault()}>
+      <button type="button" className="wa-newbtn" {...(onNew ? { onClick: onNew } : { "aria-disabled": true, "aria-describedby": "wa-off-new", onClick: (e: { preventDefault(): void }) => e.preventDefault() })}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         New session
       </button>
-      <span id="wa-off-new" className="wa-sr">{OFF} (18.8)</span>
+      {onNew ? null : <span id="wa-off-new" className="wa-sr">{OFF}</span>}
       {GROUPS.map(([g, label]) => {
         const rows = others.filter((s) => groupOf(s.state) === g);
         const here = group === g;
-        if (!rows.length && !here) return null;
+        if (!rows.length && !(here && cur)) return null;
         return (
           <div className="wa-group" key={g}>
             <div className="wa-glabel">{label}</div>
-            {here ? <Row s={cur} on /> : null}
+            {here && cur ? <Row s={cur} on /> : null}
             {rows.map((s) => <Row key={s.id} s={s} />)}
           </div>
         );
