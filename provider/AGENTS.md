@@ -5,8 +5,8 @@ This is the unchecked Claude Code provider of the agentic harness (`mods:claude-
 `logic/src/lib.rs`) start Claude Code with the participant's `claude-code` grant, then hands the
 stream to the kernel. It checks nothing else. It lives in `provider/` of the agentic-harness
 repository until the human answers R-B1, when a `git subtree split` makes it its own repository.
-It imports nothing from `kernel/` or `console/`, and nothing outside this folder refers into it
-except `BOUNDARIES.md`, which names its source. Native tests: `cargo test` in `logic/`.
+It imports nothing from `kernel/` or `console/`, and no file in this folder refers to a file
+outside it, except that `BOUNDARIES.md` names its source. Native tests: `cargo test` in `logic/`.
 
 # This folder
 
