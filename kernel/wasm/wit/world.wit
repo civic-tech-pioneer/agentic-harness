@@ -1,6 +1,6 @@
 package mods:agent@0.1.0;
 
-// The agent kernel (TECHNICAL 2.3, 9.9). Stage A: no `offers`.
+// The agent kernel (TECHNICAL 2.3). Stage B: the unchecked Claude Code provider; no `offers`.
 
 interface sessions {
   use watane:host/streams@0.1.0.{stream-id};
@@ -27,19 +27,15 @@ interface sessions {
   take-back: func(session: string, allow: string) -> result<_, error>;
 }
 
-interface probe {
-  use sessions.{error};
-
-  start: func(key: string, count: u32, every-ms: u32) -> result<string, error>;
-}
-
 world agent {
   import watane:host/state@0.1.0;
   import watane:host/caller@0.1.0;
   import watane:host/streams@0.1.0;
   import watane:host/timers@0.1.0;
+  import watane:host/host-info@0.1.0;
+  import watane:host/claude-session@0.1.0;
+  import mods:claude-code/sessions@0.1.0;
   export sessions;
-  export probe;
   export watane:host/stream-sink@0.1.0;
   export watane:host/stream-producer@0.1.0;
   export watane:host/timer-sink@0.1.0;

@@ -1,14 +1,18 @@
 //! The glue: the crate's `Host` and `State` over host 19's imports, and the exports (AC4-AC6).
 //! Each call builds a `Kernel` over the imports, runs the one crate call, and maps the result.
 
-use crate::exports::mods::agent::{probe, sessions};
+use crate::exports::mods::agent::sessions;
 use crate::exports::watane::host::{stream_producer, stream_sink, timer_sink};
 use crate::map;
-use crate::watane::host::{caller, state, streams, timers};
+use crate::mods::claude_code::sessions as provider;
+use crate::watane::host::{caller, claude_session, host_info, state, streams, timers};
 use agent_kernel::{
-    Attached, Host, Kernel, KernelError, Outcome, Request, State, StreamError, TooLarge, MAX_VALUE,
+    Attached, Buffered, Host, Kernel, KernelError, Outcome, Request, Started, State, StreamError,
+    TooLarge, MAX_VALUE,
 };
 use serde_json::Value;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 struct Export;
 
@@ -33,15 +37,32 @@ impl State for WitState {
     }
 }
 
-/// The kernel's `Host` over `streams`, `timers` and the clock.
-struct WitHost;
+/// One call's buffer (S32 R1, TECHNICAL 2.1): the kernel's state and the host's `new_id` share it,
+/// so the id counter commits or drops with the call's other writes.
+type Buf = Rc<RefCell<Buffered<WitState>>>;
+
+struct Shared(Buf);
+
+impl State for Shared {
+    fn get(&mut self, key: &str) -> Option<Vec<u8>> {
+        self.0.borrow_mut().get(key)
+    }
+    fn put(&mut self, key: &str, value: Vec<u8>) -> Result<(), TooLarge> {
+        self.0.borrow_mut().put(key, value)
+    }
+    fn delete(&mut self, key: &str) {
+        self.0.borrow_mut().delete(key)
+    }
+}
+
+/// The kernel's `Host` over `streams`, `timers`, `host-info`, the provider and `claude-session`.
+struct WitHost(Buf);
 
 const NEXT_ID: &str = "next-id";
 
 impl Host for WitHost {
-    /// TECHNICAL 2.1, "Exact text": `host-info.generation()` is not in host 19 (watane S97): constant 1.
     fn generation(&mut self) -> u64 {
-        1
+        host_info::generation()
     }
     fn now(&mut self) -> u64 {
         std::time::SystemTime::now()
@@ -50,11 +71,13 @@ impl Host for WitHost {
             .unwrap_or(0)
     }
     fn new_id(&mut self) -> String {
-        let n = state::get(NEXT_ID)
-            .and_then(|b| String::from_utf8(b).ok())
+        let mut b = self.0.borrow_mut();
+        let n = b
+            .get(NEXT_ID)
+            .and_then(|v| String::from_utf8(v).ok())
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(1);
-        state::put(NEXT_ID, (n + 1).to_string().as_bytes());
+        let _ = b.put(NEXT_ID, (n + 1).to_string().into_bytes());
         format!("s{n}")
     }
     fn timer_after(&mut self, id: &str, delay_ms: u64) {
@@ -63,13 +86,61 @@ impl Host for WitHost {
     fn timer_cancel(&mut self, id: &str) {
         timers::cancel(id);
     }
-    /// Unreachable in stage A: no provider stream exists to take a request.
-    fn request(&mut self, _r: Request) {}
+    /// A direct stream takes the request on `claude-session`, a `direct: false` one on the
+    /// provider; a `session-error` is ignored, the turn's end comes on the stream (2.1).
+    fn request(&mut self, r: Request) {
+        match r {
+            Request::Turn {
+                stream,
+                direct,
+                input,
+                ..
+            } => {
+                let text = agent_kernel::input_text(&input);
+                let _ = if direct {
+                    claude_session::say(&stream, &text)
+                } else {
+                    provider::say(&stream, &text)
+                };
+            }
+            Request::Interrupt { stream, direct, .. } => {
+                let _ = if direct {
+                    claude_session::interrupt(&stream)
+                } else {
+                    provider::interrupt(&stream)
+                };
+            }
+            Request::Answer {
+                stream,
+                direct,
+                ask,
+                decision,
+                ..
+            } => {
+                let d = map::decision(&decision);
+                let _ = if direct {
+                    claude_session::answer(&stream, &ask, &d)
+                } else {
+                    provider::answer(&stream, &ask, &d)
+                };
+            }
+            Request::Cancel { stream, .. } => {
+                if !stream.is_empty() {
+                    streams::cancel(&stream);
+                }
+            }
+        }
+    }
     fn open_stream(&mut self) -> Result<String, StreamError> {
         streams::open().map_err(map::stream_error)
     }
-    fn start_provider(&mut self, _launch: &str, _input: &str) -> Result<String, String> {
-        Err("no Claude Code provider is linked".to_string())
+    fn start_provider(&mut self, launch: &str, input: &str) -> Result<Started, String> {
+        provider::start(launch, input)
+            .map(|s| Started {
+                stream: s.stream,
+                direct: s.direct,
+            })
+            .map_err(map::start_error)
     }
     fn cancel_stream(&mut self, stream: &str) {
         streams::cancel(stream);
@@ -86,8 +157,26 @@ impl Host for WitHost {
     }
 }
 
-fn kernel() -> Kernel<WitState, WitHost> {
-    Kernel::new(WitState, WitHost)
+/// Runs one crate call over a `Buffered` state: `Ok` commits its writes in order, `Err` drops them
+/// (S32 R1). Host calls the crate makes go out as it makes them; it holds back those that follow
+/// a failure (2.1).
+fn run<T>(
+    f: impl FnOnce(&mut Kernel<Shared, WitHost>) -> Result<T, KernelError>,
+) -> Result<T, KernelError> {
+    let buf: Buf = Rc::new(RefCell::new(Buffered::new(WitState)));
+    let mut k = Kernel::new(Shared(buf.clone()), WitHost(buf.clone()));
+    let r = f(&mut k);
+    drop(k);
+    let Ok(cell) = Rc::try_unwrap(buf) else {
+        unreachable!("the kernel is dropped")
+    };
+    let b = cell.into_inner();
+    if r.is_ok() {
+        b.commit();
+    } else {
+        b.discard();
+    }
+    r
 }
 
 /// 2.3: the owner is `caller.identity()`, never `who()`.
@@ -102,8 +191,7 @@ impl sessions::Guest for Export {
         overlay: String,
         input: String,
     ) -> Result<String, sessions::Error> {
-        kernel()
-            .start(&me(), &key, &profile, &overlay, &input)
+        run(|k| k.start(&me(), &key, &profile, &overlay, &input))
             .map(|c| c.value)
             .map_err(map::error)
     }
@@ -123,7 +211,7 @@ impl sessions::Guest for Export {
         after: u64,
         _caps: String,
     ) -> Result<streams::StreamId, sessions::Error> {
-        match kernel().attach(&me(), &session, after) {
+        match run(|k| k.attach(&me(), &session, after)) {
             Ok(c) => match c.value {
                 Attached::Live { stream } => Ok(stream),
                 Attached::Behind { through } => Err(sessions::Error::Behind(through)),
@@ -137,8 +225,7 @@ impl sessions::Guest for Export {
         before: Option<u64>,
         max: u32,
     ) -> Result<sessions::Page, sessions::Error> {
-        kernel()
-            .read(&me(), &session, after, before, max)
+        run(|k| k.read(&me(), &session, after, before, max))
             .map(|p| sessions::Page {
                 entries: p.entries,
                 last: p.last,
@@ -146,8 +233,7 @@ impl sessions::Guest for Export {
             .map_err(map::error)
     }
     fn say(session: String, key: String, input: String) -> Result<u64, sessions::Error> {
-        kernel()
-            .say(&me(), &session, &key, &input)
+        run(|k| k.say(&me(), &session, &key, &input))
             .map(|c| c.value)
             .map_err(map::error)
     }
@@ -157,26 +243,23 @@ impl sessions::Guest for Export {
         ask: String,
         decision: String,
     ) -> Result<(), sessions::Error> {
-        kernel()
-            .answer(&me(), &session, &key, &ask, &decision)
+        run(|k| k.answer(&me(), &session, &key, &ask, &decision))
             .map(|_| ())
             .map_err(map::error)
     }
     fn interrupt(session: String, replacement: Option<String>) -> Result<(), sessions::Error> {
-        kernel()
-            .interrupt(&me(), &session, replacement.as_deref())
+        run(|k| k.interrupt(&me(), &session, replacement.as_deref()))
             .map(|_| ())
             .map_err(map::error)
     }
     fn cancel(session: String) {
-        let _ = kernel().cancel(&me(), &session);
+        let _ = run(|k| k.cancel(&me(), &session));
     }
     fn list(
         after: Option<String>,
         max: u32,
     ) -> Result<Vec<sessions::SessionInfo>, sessions::Error> {
-        kernel()
-            .list(&me(), after.as_deref(), max)
+        run(|k| k.list(&me(), after.as_deref(), max))
             .map(|v| {
                 v.into_iter()
                     .map(|i| sessions::SessionInfo {
@@ -192,14 +275,13 @@ impl sessions::Guest for Export {
             .map_err(map::error)
     }
     fn rename(session: String, title: String) -> Result<(), sessions::Error> {
-        kernel().rename(&me(), &session, &title).map_err(map::error)
+        run(|k| k.rename(&me(), &session, &title)).map_err(map::error)
     }
     fn delete(session: String) -> Result<(), sessions::Error> {
-        kernel().delete(&me(), &session).map_err(map::error)
+        run(|k| k.delete(&me(), &session)).map_err(map::error)
     }
     fn queued(session: String) -> Result<Vec<sessions::QueuedInput>, sessions::Error> {
-        kernel()
-            .queued(&me(), &session)
+        run(|k| k.queued(&me(), &session))
             .map(|v| {
                 v.into_iter()
                     .map(|q| sessions::QueuedInput {
@@ -211,24 +293,13 @@ impl sessions::Guest for Export {
             .map_err(map::error)
     }
     fn unqueue(session: String, n: u64) -> Result<(), sessions::Error> {
-        kernel()
-            .unqueue(&me(), &session, n)
+        run(|k| k.unqueue(&me(), &session, n))
             .map(|_| ())
             .map_err(map::error)
     }
     fn take_back(session: String, allow: String) -> Result<(), sessions::Error> {
-        kernel()
-            .take_back(&me(), &session, &allow)
+        run(|k| k.take_back(&me(), &session, &allow))
             .map(|_| ())
-            .map_err(map::error)
-    }
-}
-
-impl probe::Guest for Export {
-    fn start(key: String, count: u32, every_ms: u32) -> Result<String, sessions::Error> {
-        kernel()
-            .probe_start(&me(), &key, count, every_ms)
-            .map(|c| c.value)
             .map_err(map::error)
     }
 }
@@ -240,17 +311,15 @@ fn failed(call: &str, e: KernelError) -> ! {
 
 impl stream_sink::Guest for Export {
     fn items(s: String, items: Vec<streams::Item>) -> streams::SinkOutcome {
-        let batch = items
-            .into_iter()
-            .map(|i| (i.seq, map::provider_event(&i.body)))
-            .collect();
-        match kernel().provider_batch(&s, batch) {
+        let batch = items.into_iter().map(|i| (i.seq, i.body)).collect();
+        match run(|k| k.provider_lines(&s, batch)) {
             Ok(c) => map::sink_outcome(c.value),
             Err(e) => failed("items", e),
         }
     }
-    fn ended(s: String, _outcome: streams::Outcome) {
-        if let Err(e) = kernel().provider_ended(&s) {
+    fn ended(s: String, outcome: streams::Outcome) {
+        let cause = map::ended_cause(&outcome);
+        if let Err(e) = run(|k| k.provider_ended_with(&s, cause)) {
             failed("ended", e);
         }
     }
@@ -258,15 +327,15 @@ impl stream_sink::Guest for Export {
 
 impl stream_producer::Guest for Export {
     fn ready(s: String) {
-        kernel().stream_ready(&s);
+        let _ = run(|k| Ok(k.stream_ready(&s)));
     }
     fn ended(s: String, _outcome: streams::Outcome) {
-        kernel().stream_ended(&s);
+        let _ = run(|k| Ok(k.stream_ended(&s)));
     }
 }
 
 impl timer_sink::Guest for Export {
     fn fired(id: String) {
-        kernel().timer(&id);
+        let _ = run(|k| Ok(k.timer(&id)));
     }
 }
