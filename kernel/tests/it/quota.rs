@@ -543,7 +543,7 @@ fn ac8_a_running_turn_ends_stopped_quota_when_past() {
     assert_eq!(last["kind"], "turn");
     assert_eq!(
         last["body"],
-        json!({"state": "idle", "stop": {"kind": "stopped", "limit": "quota"}})
+        json!({"state": "idle", "stop": {"kind": "stopped", "limit": "quota"}, "seconds": 0})
     );
     assert!(lines
         .iter()

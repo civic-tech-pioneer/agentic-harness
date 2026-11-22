@@ -131,3 +131,108 @@ fn regress_s35_say_slash_command_is_refused() {
         Turn::Idle { .. }
     ));
 }
+
+fn dump(k: &K) -> Vec<(String, Vec<u8>)> {
+    k.state
+        .entries()
+        .map(|(a, b)| (a.clone(), b.clone()))
+        .collect()
+}
+
+fn say_text(k: &mut K, id: &str, key: &str, input: &str) -> Result<(), KernelError> {
+    k.say("alice", id, key, input).map(|_| ())
+}
+
+fn slash_refusal(r: Result<(), KernelError>) {
+    match r {
+        Err(KernelError::Refused(v)) => {
+            assert_eq!(v.len(), 1);
+            assert_eq!(
+                (v[0].field.as_str(), v[0].reason.as_str()),
+                ("input", "slash-command")
+            );
+        }
+        other => panic!("not refused slash-command: {other:?}"),
+    }
+}
+
+/// AC3: the slash rule at `start`, `say` and an `interrupt` replacement, white space as host 19.3.
+#[test]
+fn ac3_slash_rule_at_start_say_and_interrupt() {
+    let refused_inputs = [
+        "/x",
+        " /x",
+        "\u{feff}/x",
+        "\u{200b}/x",
+        "\t/x",
+        "\u{a0}/x",
+        "\u{2028}/x",
+        r#"[{"type":"text","text":" /x"}]"#,
+        r#"[{"type":"image","data":"AA==","mimeType":"image/png"},{"type":"text","text":"/x"}]"#,
+    ];
+    for (n, input) in refused_inputs.iter().enumerate() {
+        let mut k = kernel();
+        let before_start = dump(&k);
+        slash_refusal(k.start("alice", "k9", "p", "{}", input).map(|_| ()));
+        assert!(dump(&k) == before_start, "start wrote for {input:?}");
+        let (id, _, _) = idle_session(&mut k);
+        let before = dump(&k);
+        slash_refusal(say_text(&mut k, &id, &format!("s{n}"), input));
+        assert!(dump(&k) == before, "say wrote for {input:?}");
+        slash_refusal(k.interrupt("alice", &id, Some(input)).map(|_| ()));
+        assert!(dump(&k) == before, "interrupt wrote for {input:?}");
+    }
+    for input in ["a /x", "x/"] {
+        let mut k = kernel();
+        let (id, _, _) = idle_session(&mut k);
+        say_text(&mut k, &id, "s1", input).unwrap();
+        let mut k = kernel();
+        k.start("alice", "k9", "p", "{}", input).unwrap();
+    }
+}
+
+/// AC2: the live `i` set equals `read`'s over two turns, each once; a queued input goes out the same.
+#[test]
+fn ac2_live_indexes_equal_reads_over_two_turns() {
+    let mut k = kernel();
+    let from = k.host.calls.len();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    let t = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    let Attached::Live { stream: o } = k.attach("alice", &id, 0).unwrap().value else {
+        panic!("not live");
+    };
+    let init = format!(r#"{{"type":"initialized","workspace":"{WS}"}}"#);
+    let sys = format!(r#"{{"type":"system","subtype":"init","session_id":"{UUID}"}}"#);
+    let mut batch = vec![(1, init.into_bytes()), (2, sys.into_bytes())];
+    batch.extend((3..).zip(fake_lines().into_iter().skip(1)));
+    k.provider_lines(&t, batch).unwrap();
+    k.say("alice", &id, "s2", "turn two").unwrap();
+    // a queued input: it joins while turn two runs and starts when that ends
+    k.say("alice", &id, "s3", "turn three").unwrap();
+    let batch: Vec<_> = (100..).zip(fake_lines()).collect();
+    k.provider_lines(&t, batch).unwrap();
+    let all = entries(&mut k, &id);
+    let mut live = live_indexes(&k, &o, from);
+    live.sort();
+    let mut read: Vec<u64> = all.iter().map(|e| e["i"].as_u64().unwrap()).collect();
+    read.sort();
+    let kinds: Vec<&str> = all.iter().map(|e| e["kind"].as_str().unwrap()).collect();
+    assert_eq!(live, read, "{kinds:?}");
+    let second = all
+        .iter()
+        .position(|e| e["body"]["content"][0]["text"] == "turn two")
+        .unwrap();
+    assert_eq!(all[second + 1]["kind"], "turn");
+}
+
+/// AC4: an idle turn that ends a running one carries its whole seconds, rounded.
+#[test]
+fn ac4_idle_turn_entry_carries_seconds() {
+    let mut k = kernel();
+    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    k.host.now = 1000 + 3400;
+    k.provider_item("t1", ProviderEvent::Ended).ok();
+    let last = entries(&mut k, &id).pop().unwrap();
+    assert_eq!(last["kind"], "turn");
+    assert_eq!(last["body"]["seconds"], 3);
+}

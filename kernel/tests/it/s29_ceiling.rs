@@ -111,6 +111,16 @@ fn stopped_quota() -> Turn {
         stop: Stop::Stopped {
             limit: "quota".into(),
         },
+        seconds: Some(0),
+        tools: None,
+        tokens: None,
+    }
+}
+
+/// A turn that ended from `waiting` has no `since`, so no `seconds`.
+fn interrupted_waiting() -> Turn {
+    Turn::Idle {
+        stop: Stop::Interrupted,
         seconds: None,
         tools: None,
         tokens: None,
@@ -120,7 +130,7 @@ fn stopped_quota() -> Turn {
 fn interrupted() -> Turn {
     Turn::Idle {
         stop: Stop::Interrupted,
-        seconds: None,
+        seconds: Some(0),
         tools: None,
         tokens: None,
     }
@@ -189,7 +199,7 @@ fn ac1_cancel_at_the_ceiling_succeeds_and_frees() {
         .iter()
         .any(|e| e.id == id));
     let r = rec(&mut k, &id);
-    assert_eq!(r.turn, interrupted());
+    assert_eq!(r.turn, interrupted_waiting());
     assert!(r.open.is_empty() && r.pending_answers.is_empty());
     assert_eq!(decisions(&mut k, &id), d0 + 2);
     assert_eq!(count(&mut k, &id, "turn"), t0 + 1);

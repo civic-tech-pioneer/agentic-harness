@@ -396,7 +396,7 @@ fn ac3_paused_openai_and_settled_sessions_change_only_what_the_table_says() {
         .all(|e: &PageEntry| e.boot == 2));
     assert!(k.state.get("stream/x2").is_none());
     let r = rec(&mut k, &i);
-    assert_eq!((r.boot, r.turn, r.streams.len()), (2, Turn::default(), 0));
+    assert_eq!((r.boot, r.turn, r.streams.len()), (2, idle0(), 0));
     assert!(k.state.get("stream/x3").is_none());
 }
 
@@ -634,4 +634,13 @@ fn ac2_a_failed_step_or_a_missing_record_does_not_stop_the_pass() {
     assert_eq!(Slots::load(&mut k.state).active, [1, 0, 0, 0]);
     let r = rec(&mut k, &ids[2]);
     assert!(r.boot == 1 && matches!(r.turn, Turn::Running { .. }));
+}
+
+fn idle0() -> Turn {
+    Turn::Idle {
+        stop: Stop::Completed,
+        seconds: Some(0),
+        tools: None,
+        tokens: None,
+    }
 }

@@ -140,7 +140,7 @@ fn case74_a_turn_end_starts_no_queued_input_and_keeps_the_queue() {
         .pushes
         .iter()
         .all(|p| p.value["type"] == "turn" || p.value["type"] == "entry"));
-    assert_eq!(rec(&mut k, &id).turn, Turn::default());
+    assert_eq!(rec(&mut k, &id).turn, idle0());
     assert_eq!(k.queued("alice", &id).unwrap().len(), 1);
     assert_eq!(requests(&k), sent);
     assert!(rec(&mut k, &id).active_page.is_none());
@@ -203,4 +203,13 @@ fn case74_the_calls_that_only_read_or_take_power_away_still_work() {
     k.cancel("alice", &id).unwrap();
     k.delete("alice", &id).unwrap();
     assert!(Record::load(&mut k.state, &id).is_none());
+}
+
+fn idle0() -> Turn {
+    Turn::Idle {
+        stop: Stop::Completed,
+        seconds: Some(0),
+        tools: None,
+        tokens: None,
+    }
 }

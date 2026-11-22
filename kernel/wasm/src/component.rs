@@ -202,7 +202,7 @@ impl sessions::Guest for Export {
             field: "profile".into(),
             backend: String::new(),
             model: String::new(),
-            reason: "check is not available in stage A".into(),
+            reason: "check by profile name is not available yet".into(),
         }]
     }
     /// `caps` is not used in stage A: the crate's `attach` takes no capabilities.

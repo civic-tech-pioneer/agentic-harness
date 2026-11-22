@@ -432,12 +432,13 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
         }
     );
     // each `turn` entry goes out before its turn item (S35-fix1)
-    assert_eq!(c.pushes.len(), 5);
+    assert_eq!(c.pushes.len(), 6);
     assert_eq!(c.pushes[0].value["type"], "entry");
     assert_eq!(c.pushes[1].value["state"]["state"], "idle");
-    assert_eq!(c.pushes[2].value["type"], "entry");
-    assert_eq!(c.pushes[3].value["state"]["state"], "running");
-    assert_eq!(c.pushes[4].value, json!({"type": "queue", "inputs": []}));
+    assert_eq!(c.pushes[2].value["entry"]["kind"], "message");
+    assert_eq!(c.pushes[3].value["type"], "entry");
+    assert_eq!(c.pushes[4].value["state"]["state"], "running");
+    assert_eq!(c.pushes[5].value, json!({"type": "queue", "inputs": []}));
     let es = entries(&mut k, "alice", &id);
     let kinds: Vec<_> = es
         .iter()
@@ -455,7 +456,9 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
             .map(|p| p.value.clone())
             .filter(|v| v["type"] != "entry")
             .collect::<Vec<_>>(),
-        [json!({"type": "turn", "state": {"state": "idle", "stop": {"kind": "completed"}}})]
+        [
+            json!({"type": "turn", "state": {"state": "idle", "stop": {"kind": "completed"}, "seconds": 0}})
+        ]
     );
     // activity is live only: pushed, never stored
     k.say("alice", &id, "again", "go").unwrap();
@@ -1111,7 +1114,7 @@ fn ac1_interrupt_with_a_replacement_starts_it_and_the_session_stays_active() {
     assert_eq!(kinds[1].0, "\"message\"");
     assert_eq!(kinds[2].1, "\"running\"");
     // two turn entries and the two turn items (S35-fix1)
-    assert_eq!(c.pushes.len(), 4);
+    assert_eq!(c.pushes.len(), 5);
     assert_eq!(
         requests(&k)[sent..],
         [
@@ -1360,12 +1363,13 @@ fn s35_fix1_an_ask_its_decision_and_a_say_go_out_as_entry_items() {
         .rfind(|e| e["kind"] == "ask" && e["body"]["decision"]["outcome"] == "allow")
         .unwrap();
     assert_eq!(live(&c)[0], ("ask".into(), d["i"].as_u64().unwrap()));
-    // an idle turn: the say's user message is no entry item, its `running` turn entry is
+    // an idle turn: the say's user message and its `running` turn entry both are
     k.provider(&id, idle()).unwrap();
     let c = k.say("alice", &id, "k2", "x").unwrap();
     let es = entries(&mut k, "alice", &id);
     let n = es.last().unwrap()["i"].as_u64().unwrap();
     assert_eq!(es.last().unwrap()["kind"], "turn");
+    assert_eq!(es[es.len() - 2]["kind"], "message");
     let got: Vec<(String, u64)> = c
         .pushes
         .iter()
@@ -1377,7 +1381,7 @@ fn s35_fix1_an_ask_its_decision_and_a_say_go_out_as_entry_items() {
             )
         })
         .collect();
-    assert_eq!(got, [("turn".into(), n)]);
+    assert_eq!(got, [("message".into(), n - 1), ("turn".into(), n)]);
 }
 
 /// S35-fix1 AC1, AC2 (9.4): an entry over 256 KiB goes out live as its `part` entries, each with the
