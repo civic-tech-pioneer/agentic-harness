@@ -25,8 +25,8 @@ AC2. The live `i` set equals `read`'s over a session of two turns (start, the fa
 AC3. Slash rule: `"/x"`, `" /x"`, `"\u{feff}/x"`, `"\u{200b}/x"`, `"\t/x"` and the ACP array
      `[{"type":"text","text":" /x"}]` are refused at `start`, `say` and `interrupt(s, Some(..))`
      with exactly one refusal `{field: "input", reason: "slash-command"}`, the state byte-equal before
-     and after; `"a /x"`, `"x/"` and `[{"type":"image",...},{"type":"text","text":"/x"}]` (first
-     TEXT block starts with `/`: refused) per 4.5 "the first text block". White space: every char
+     and after. `"a /x"` and `"x/"` are taken. `[{"type":"image",...},{"type":"text","text":"/x"}]`
+     is refused (its first text block starts with `/`, 4.5). White space: every char
      JavaScript's `trim` removes plus Unicode categories Z, Cc, Cf (host 19.3, step 5's table); test
      at least U+00A0, U+2028, U+FEFF, U+200B, U+0009.
 AC4. An idle `turn` entry (and the `turn` item) that ends a `running` turn has `seconds` =
