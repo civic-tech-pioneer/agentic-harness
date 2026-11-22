@@ -128,7 +128,7 @@ describe("AC2 rows", () => {
     let v = feed([upd({ sessionUpdate: "agent_message_chunk", content: txt("ab") }), upd({ sessionUpdate: "agent_message_chunk", content: txt("c") })]);
     expect(v.rows).toHaveLength(1);
     expect(v.rows[0]).toMatchObject({ kind: "agent", text: "abc", writing: true });
-    v = feed([upd({ sessionUpdate: "agent_message_chunk", content: txt("d") }, { i: 3 })], v);
+    v = feed([upd({ sessionUpdate: "agent_message_chunk", content: txt("abcd") }, { i: 3 })], v); // 9.4: the finishing update carries the whole message and replaces
     expect(v.rows).toEqual([{ kind: "agent", key: "e3", i: 3, text: "abcd", writing: false }]);
   });
 });
@@ -167,7 +167,7 @@ describe("AC4 mid-message attach", () => {
   it("ac4_without_writing_a_first_chunk_after_synced_streams", () => {
     let v = feed([synced(0), chunk("tail "), chunk("more")]);
     expect(v.rows).toEqual([{ kind: "agent", key: "~a0", text: "tail more", writing: true }]);
-    v = feed([chunk("!", { i: 5 })], v);
+    v = feed([chunk("tail more!", { i: 5 })], v);
     expect(v.rows).toEqual([{ kind: "agent", key: "e5", i: 5, text: "tail more!", writing: false }]);
   });
 });

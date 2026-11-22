@@ -1,4 +1,4 @@
-// TECHNICAL 18.2: the page's top: an open session, or the new-session view; the frame shows before the kernel has answered.
+// TECHNICAL 18.2: the page's top: an open session, or the new-session view; index.html's static frame shows until the kernel has answered (S35 AC4c).
 import { useState } from "react";
 import { App } from "./App";
 import { Composer } from "./Dock";
@@ -8,20 +8,6 @@ import type { Served } from "./served";
 import { startKey } from "./served";
 
 const NEW_KEY = "wa-draft:new";
-
-/** The shell before there is a session: the same sidebar, header and dock as the open session, so nothing blanks (18.2, S35 AC4c). */
-export function Frame() {
-  return (
-    <div className="wa-app" data-frame="loading">
-      <nav className="wa-sidebar" aria-label="Sessions"><div className="wa-brand"><h2 className="wa-sidebar-title">Agents</h2></div></nav>
-      <main className="wa-main">
-        <header className="wa-header"><h1 className="wa-title">&nbsp;</h1></header>
-        <div className="wa-scroll"><div className="wa-column" /></div>
-        <div className="wa-dock"><div className="wa-status"><span role="status" className="wa-status-word">Loading</span></div></div>
-      </main>
-    </div>
-  );
-}
 
 /** 18.2: stage B's new-session view: the profile `scratch`, "A new scratch folder", and the composer whose Send starts the session. */
 export function NewSession({ sessions, onNew, start }: { sessions: SidebarSession[]; onNew: () => void; start: (input: string) => Promise<void> }) {

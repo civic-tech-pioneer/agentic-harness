@@ -50,7 +50,7 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[]; refu
         if (i !== undefined) { put("message", { role: "user", content: [{ type: "text", text: acc.user }] }); acc.user = ""; }
         break;
       case "agent_message_chunk":
-        acc.agent += text;
+        acc.agent = i !== undefined ? text : acc.agent + text; // 9.4: the finishing update carries the whole message
         if (i !== undefined) {
           put("message", { role: "agent", content: [{ type: "text", text: acc.agent }],
             ...(acc.thoughtAt !== undefined ? { thought: { text: acc.thought, seconds: Math.round((acc.thoughtEnd! - acc.thoughtAt) / 1000) } } : {}) });

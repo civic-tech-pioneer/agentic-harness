@@ -1,3 +1,4 @@
+// S35-4: the agent chunk branch follows 9.4 (the finishing update carries the whole message); the rest is the reducer of 5882c51.
 // Test fixture, frozen: console/kit/reduce.ts as it was at 5882c51 (before S7-fix1), the oracle of s7_fix1.test.ts. Never imported by the app; do not edit.
 import { askArg, type Internal, type Row, type SessionView, type ToolCall, type TurnState, type Ask } from "../model";
 import { parse, type CallPatch, type TurnExtra } from "../wire";
@@ -294,7 +295,7 @@ export function reduce(view: SessionView, message: string): SessionView {
         if (m.i !== undefined) finish(v, m.i);
         break;
       }
-      if (last?.kind === "agent" && last.writing) v.rows[v.rows.length - 1] = { ...last, text: last.text + m.text };
+      if (last?.kind === "agent" && last.writing) v.rows[v.rows.length - 1] = { ...last, text: m.i !== undefined ? m.text : last.text + m.text };
       else v.rows.push({ kind: "agent", key: nextKey(x, "~a"), text: m.text, writing: true });
       if (m.i !== undefined) finish(v, m.i);
       break;
