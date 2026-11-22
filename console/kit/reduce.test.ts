@@ -24,7 +24,16 @@ describe("AC2 rows", () => {
     expect(v.rows).toHaveLength(1);
     expect(v.rows[0]).toMatchObject({ kind: "thought", text: "ab", streaming: true });
     v = feed([upd({ sessionUpdate: "agent_message_chunk", content: txt("x") }, { at: 4000 })], v);
-    expect(v.rows[0]).toMatchObject({ kind: "thought", text: "ab", streaming: false, seconds: 3 });
+    // seconds run from the first to the last thought chunk (9.4 `message` row), as the stored entry's do, not to the fold
+    expect(v.rows[0]).toMatchObject({ kind: "thought", text: "ab", streaming: false, seconds: 1 });
+  });
+  it("S35_live_thought_seconds_match_the_entry_after_a_reload", () => {
+    // real serve: chunks at 0 and 0.6 s, the text 3.1 s after the first; the kernel stores 1 s, so the live fold must read 1 s too
+    const live = feed([upd({ sessionUpdate: "agent_thought_chunk", content: txt("a") }, { at: 10_000 }), upd({ sessionUpdate: "agent_thought_chunk", content: txt("b") }, { at: 10_600 }),
+      upd({ sessionUpdate: "agent_message_chunk", content: txt("x") }, { at: 13_100 })]);
+    const stored = feed([entry(1, "message", { role: "agent", content: [txt("x")], thought: { text: "ab", seconds: 1 } })]);
+    expect(live.rows[0]).toMatchObject({ kind: "thought", seconds: 1 });
+    expect(stored.rows[0]).toMatchObject({ kind: "thought", seconds: 1 });
   });
   it("ac2_reads_and_searches_fold_into_one_explored_row_and_a_break_starts_a_new_one", () => {
     let v = feed([call("a", "read"), call("b", "search"), call("c", "read")]);
