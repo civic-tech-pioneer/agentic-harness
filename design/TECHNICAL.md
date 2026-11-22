@@ -787,6 +787,7 @@ The body of a `turn` entry (9.4) and the `state` of a `turn` item (9.4, "The
 wire") are this JSON; the entry has no `activity`.
 
 - `start` and `say` and `answer` check `key/<owner>/<key>` first: the key kept for another call kind, owner or session is refused, one refusal `{field: "key"}`, and a kept result is never overwritten (9.1).
+- An input whose first text block starts with `/` after white space (4.5's rule and its white space, host 19.3) is refused at `start`, `say` and an `interrupt` replacement, one refusal `{field: "input", reason: "slash-command"}`, before any write: the host would refuse the write to `claude` after the call committed, and the turn would never end (S35 user-sim, case 11).
 - `say` while `running` or `waiting` queues; `queue-full` past 32 inputs or 2 MiB. On `paused` with no `until`, `say` resumes (starts the turn); on a timed pause it queues. `say` reads `access/` again, whether it starts a turn or queues (9.7, "Revoking"). `queued`
   lists the queue; `unqueue` removes one input not yet taken, and refuses
   (`unknown-input`) one that is gone. Each change pushes `{"type":"queue",
@@ -1182,8 +1183,9 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 
 - An ACP v1 `SessionUpdate` carries `_meta.watane.at` (ms, the kernel's clock
   when it adapted the line) on every live update, and `_meta.watane.i` on the
-  update that finishes an entry (`message`, `tool`). The update that finishes a
-  `message` carries the whole message, not a last delta: a client replaces
+  update that finishes an entry (`message`, `tool`). A user `message`, which
+  has no live update, goes out as its `entry` item (S35 user-sim). The
+  update that finishes an agent `message` carries the whole message, not a last delta: a client replaces
   the text it streamed for that message with it (so a client that attached
   mid-message shows it whole, and nothing is doubled; S35).
 - An entry with no ACP form (`ask`, `allow`, `verdict`, `turn`, `compaction`,
