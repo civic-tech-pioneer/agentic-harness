@@ -376,6 +376,9 @@ limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
 
 ## Deputy decisions
 
+- 2026-11-22 (the human's answer) Auto-merge is retired: the `codex-push` ruleset (27841001: only
+  `slice/*` without bypass, for the Codex push App) blocks it, so the PO merges each green PR with
+  `gh pr merge <n> --admin --rebase`. Foremen open their PR and do not arm it.
 - 2026-11-21 Stage B is two end-to-end slices (S35 one turn, S36 steering, restart, budgets), each with
   a watane half (S99, S100); S35 builds the unchecked provider in `provider/` as a self-contained mod
   until R-B1 is answered.
