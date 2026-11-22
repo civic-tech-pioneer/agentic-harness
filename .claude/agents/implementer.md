@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Builds one task of a factory project from its brief, test-first. The stand-in for the Sol implementer (Codex) where .claude/factory/impl.sh cannot run, such as a cloud session. Use with the task id and the worktree to work in.
+description: Builds one task of a factory project from its brief, test-first. Run by a Claude build team in the cloud (a Codex build team implements itself). Use with the task id and the worktree to work in.
 model: sonnet
 ---
 Input: the task id and the worktree to work in.

@@ -9,21 +9,16 @@ repo = "civic-tech-pioneer/<name>"
 # A watane mod: the factory's mod gate (watane-dev doctor, then its contract tests).
 gate = ".claude/factory/check-mod.sh"
 
-# Run by the product owner on the Mac after each merge, in the main checkout, for what CI cannot run
-# (timing tests, say). Empty: nothing.
-main_check = ""
-
-# Run once in each new worktree before the foreman starts (an APFS clone of build output, say).
-worktree_prep = ""
-
 # The Anthropic cloud environment for cloud foremen.
 cloud_env = "env_01KZVAm2cjSpN4wbfAFeQNPD"
 
-# The model a local or cloud foreman runs on.
-foreman_model = "claude-opus-5-5"
+# The Codex Cloud environment that Codex teams run in: its name in the environment picker of
+# chatgpt.com/codex (the PO dispatches through its browser pane; po skill, section 4c). It must hold
+# this repository. Leave it out and both teams of a cloud slice are Claude.
+# codex_env = "watane"
 
-# Slices that need the Mac stay local: a path prefix here in a sketch's Touches keeps it local.
-local_only = ""
+# The model a Claude team runs on.
+foreman_model = "claude-opus-5-5"
 
 # The spec chain, why > what > how: the priority of truth, highest first. Code comes after.
 spec = ["spec/VISION.md", "spec/FUNCTIONAL.md", "spec/TECHNICAL.md"]
@@ -34,9 +29,7 @@ spec = ["spec/VISION.md", "spec/FUNCTIONAL.md", "spec/TECHNICAL.md"]
 boundaries = "spec/TECHNICAL.md section 6"
 
 [agents]
-# codex: Sol through .claude/factory/impl.sh (local only); or the name of an agent in .claude/agents.
-# A cloud foreman, which has no Codex, always uses the agent named in implementer_cloud.
-implementer = "codex"
+# A Claude build team uses the agent named in implementer_cloud; a Codex build team implements itself.
 implementer_cloud = "implementer"
 validator = "validator"
 acceptance = "user-sim"

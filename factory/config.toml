@@ -9,17 +9,14 @@ repo = "civic-tech-pioneer/agentic-harness"
 # Runs check-mod.sh (links, mod contract), then the kernel crate and the console when they exist.
 gate = "factory/gate.sh"
 
-# Run once in each new worktree before the foreman starts (an APFS clone of build output, say).
-worktree_prep = ""
-
 # The Anthropic cloud environment for cloud foremen.
 cloud_env = "env_01KZVAm2cjSpN4wbfAFeQNPD"
 
-# The model a local or cloud foreman runs on.
-foreman_model = "claude-opus-5-5"
+# The Codex Cloud environment Codex teams run in: its name in the picker of chatgpt.com/codex.
+codex_env = "watane"
 
-# Slices that need the Mac stay local: a path prefix here in a sketch's Touches keeps it local.
-local_only = ""
+# The model a Claude team runs on.
+foreman_model = "claude-opus-5-5"
 
 # The spec chain, why > what > how: the priority of truth, highest first. Code comes after.
 spec = ["design/VISION.md", "design/FUNCTIONAL.md", "design/TECHNICAL.md"]
@@ -29,9 +26,7 @@ spec = ["design/VISION.md", "design/FUNCTIONAL.md", "design/TECHNICAL.md"]
 boundaries = "design/TECHNICAL.md section 14"
 
 [agents]
-# codex: Sol through .claude/factory/impl.sh (local only); or the name of an agent in .claude/agents.
-# A cloud foreman, which has no Codex, always uses the agent named in implementer_cloud.
-implementer = "codex"
+# A Claude build team uses the agent named in implementer_cloud; a Codex build team implements itself.
 implementer_cloud = "implementer"
 validator = "validator"
 acceptance = "user-sim"

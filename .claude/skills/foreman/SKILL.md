@@ -1,39 +1,27 @@
 ---
 name: foreman
-description: Delivers one vertical slice of a factory project (watane or a mod) end to end. Writes the task briefs, has the implementer build each task, has the validator cross-check each result, has the adversary and user-sim accept the slice, opens a self-merging pull request, and reports to the product owner. Use when started as "/foreman <slice id>", in the slice's own worktree.
+description: Builds one vertical slice of a factory project (watane or a mod) as its build team. Writes the task briefs, implements each task, opens the slice's pull request, and answers each review round of the other vendor's review team with one push. Use when started as "/foreman <slice id>", or when a brief says "follow .claude/skills/foreman/SKILL.md", in Claude Code or in Codex.
 ---
 
 # /foreman <slice>
 
-You deliver one slice, end to end, in one project: the repository you run in. The product owner
-gave you its sketch (the story, the outcomes, what it touches, the interfaces). You work in the
-slice's worktree on branch `slice/<id>`. You do not write product code or tests; the implementer
-and the validator do. Do not edit `factory/PLAN.md`; the product owner owns it.
+You build one slice, in one project: the repository you run in. The product owner (PO) gave you its
+sketch (the story, the outcomes, what it touches, the interfaces). You work on branch `slice/<id>`.
+Do not edit `factory/PLAN.md`; the PO owns it. Never push `main`, never force-push, never merge: the
+PO merges.
 
 Read first: `factory/config.toml` (this project's settings), `.claude/factory/README.md` (the
-process), the files of the config's `spec` list in order (why > what > how: the priority of
-truth), and `AGENTS.md`. The config's `[agents]` names the agent for each role below; this text
-calls them by role.
+process), the files of the config's `spec` list in order (why > what > how: the priority of truth),
+and `AGENTS.md`. The config's `[agents]` names the agent for each role below; this text calls them by
+role.
 
-## In the cloud
+## 0. Where you run
 
-When `CLAUDE_CODE_REMOTE` is `true`, you run in an Anthropic cloud container: Linux, no Codex,
-and no way to message the product owner. Everything below holds, with these changes:
-- Implementer: run the agent named by `implementer_cloud` in the background with the task id and
-  its worktree. For a `RETURN`, send the list to that same agent with `SendMessage` (it keeps its
-  context). Count its runs per task yourself. After each run, run `.claude/factory/check.sh
-  <task> <commit before its first run>` in its worktree, and treat the result as section 2, step 2.
-- Rebase on `origin/main` (`git fetch` first).
-- `gh` is missing: open the PR and arm its auto-merge with the GitHub tools this session has
-  (the GitHub MCP server), else write `no PR: <why>` in the report.
-- Reports go through git. Push your work to `slice/<id>`, or to the branch this session was
-  given if that push is refused. Then add an empty commit
-  `git commit --allow-empty -m "DELIVERED <id>" -m "<the section 5 report>"`, or
-  `-m "BLOCKED <id>" -m "<the section 4 question>"`, and push it. Only after that open the PR
-  and arm auto-merge (section 5), with the report as its body, and end your turn: the merge can
-  come within seconds, drops the empty commit and deletes the branch. Before a
-  `BLOCKED`, commit and push all work, the briefs too: the product owner answers by starting a
-  new cloud foreman that continues from `slice/<id>`.
+In a cloud, always: a Claude Code cloud session (`CLAUDE_CODE_REMOTE` is `true`) or a Codex Cloud
+task. You are the build team: you brief and build (sections 1 and 2), deliver (section 5), and end.
+The review team, usually the other vendor, reviews your PR, and the PO brings each review back to
+you (section 6). You do not run the validator, adversary or user-sim; they are the review team's.
+You cannot message the PO: you report through the PR and the branch.
 
 ## 1. Brief each task
 
@@ -52,114 +40,107 @@ Slice: <id> — <story>
                    asserts after; "none" only after you searched the tests, slow ones too
 ## Out of scope    what a later slice does
 ```
-Effort (Sol): `medium` unless a rule says otherwise. `low` for mechanical work (a fixture, a
-rename, a test for existing behaviour). `high` only when the task decides something the spec
-leaves open at a security boundary; name that decision in the Goal. `xhigh` only after two
-failures at `high`. Raise effort after a failed run, never up front.
+Effort: `medium` unless a rule says otherwise. `low` for mechanical work (a fixture, a rename, a
+test for existing behaviour). `high` only when the task decides something the spec leaves open at a
+security boundary; name that decision in the Goal. `xhigh` only after two failures at `high`. Raise
+effort after a failed run, never up front.
 
-A task depends on another only if it needs that task's code to compile or its tests to run. Cut
-the briefs so most say `none`, and fix the interface in both briefs' `## Interface`.
+A task depends on another only if it needs that task's code to compile or its tests to run. Cut the
+briefs so most say `none`, and fix the interface in both briefs' `## Interface`. Commit the briefs
+first; the review team checks the work against them.
 
-## 2. Build and validate one task
+## 2. Build each task
 
-1. Implementer `codex`: `.claude/factory/impl.sh <task>` in the background. Another name: run
-   that agent with the task id and the worktree. Start every task whose `Depends on` is done at
-   once. At most one agent works in a worktree at a time, so give each extra task its own:
-   `git worktree add -b slice/<id>-<n> ../<id>-<n>`, then the config's `worktree_prep` there (if
-   any; cloud: `cp -R`, never `cp -c`). After `PASS`, rebase that branch onto `slice/<id>`,
-   fast-forward `slice/<id>` to it, and remove the worktree and branch.
-2. Read its last message. `BLOCKED` or `QUESTIONS` go to section 4 first. Its last line is
-   `CHECK PASS` or `CHECK FAIL` (the project's gate). On a `CHECK FAIL`, send the failing part of
-   the log back (`impl.sh <task> resume` with it on stdin, or `SendMessage` to the agent) before
-   any validator; this does not count as a round. After two failed checks in a row, run the
-   validator anyway with the log.
-3. Run the validator with the task id, the round and the commit range.
-   - `PASS`: the task is done.
-   - `RETURN` in round 1: back to the same implementer session with the RETURN list, then
-     validate again (round 2).
-   - From round 2 the validator fixes most things itself. After round 3 without `PASS`: split the
-     task, raise the effort, or treat it as a question (section 4).
-   - `ESCALATE`: section 4.
+1. Implement each task, test first, in dependency order, by its brief and the standing rules of
+   `.claude/factory/implementer.md`:
+   - Codex Cloud: you implement each task yourself.
+   - Claude cloud: run the agent named by `implementer_cloud` with the task id, one task at a time
+     in this checkout.
+2. After each task: `.claude/factory/check.sh <task> <commit before it>`. `CHECK FAIL`: fix (or
+   send the failing part of the log back to the implementer) before the next task. `BLOCKED` or
+   `QUESTIONS` from an implementer go to section 4.
+3. A check that only a Mac or other hardware can run (macOS, a device, timing) does not run here
+   or on the human's Mac: it becomes a CI job (`.claude/factory/README.md`, "Nothing runs on the
+   Mac"), as a task of this slice.
 4. Past 3 implementer runs on one task, a flake past one diagnosis, or a slice in flight for more
    than a working day: weigh what it protects (`.claude/factory/README.md`, "Time and value")
    before the next round, and write the answer as a decision line.
 
-## 3. Attack and accept the slice
+## 3. The adversary rule (the review team applies it)
 
-**The adversary rule.** Skip this step only if the config's `adversary` is empty or `boundaries`
-is empty; write `adversary: not run (<which>)`. Otherwise read the section `boundaries` names.
-The slice touches a boundary if any of these holds; check all three:
+The review team runs the adversary when this rule holds; you name in your report what it matched.
+
+Skip the adversary only if the config's `adversary` is empty or `boundaries` is
+empty; write `adversary: not run (<which>)`. Otherwise read the section `boundaries` names. The slice
+touches a boundary if any of these holds; check all three:
 - a brief has `Effort: high`; or
 - the sketch or a brief names a boundary of that section; or
 - `git diff --name-only main...slice/<id>` lists a file that section names for a boundary.
-If it does, run the adversary before user-sim, with the slice id, the branch, the boundaries that
-matched, and the base commit. If none holds, write `adversary: not run (no boundary)`; never skip
-it for time.
-- `HELD`: go on to user-sim.
-- `BREACHED`: each red test becomes a fix task (`<slice>-fix<n>`; its acceptance is "the red test
-  passes, nothing else changes"). Run section 2 on it, then the adversary once more on the fix
-  commits only, with its earlier `HELD` list. The same breach twice goes to section 4.
-- `RISK`: a section 4 question; a security boundary is the product owner's to decide.
+If it does, the adversary runs before user-sim, on the boundaries that matched. If none holds:
+`adversary: not run (no boundary)`; never skip it for time. A `BREACHED` or `REJECTED` comes back to
+you as findings with red tests (section 6); a fix that touches files the adversary attacked keeps
+its `HELD` attacks holding.
 
 A file that holds a boundary and is missing from that section: add it in the same commit.
 
 **A documents-only slice** (no code in its diff): the adversary is `not run (no code)`, unless the
 slice changes the boundaries section itself; then it reads the change for a weakened boundary and
-reports in its format, with checks instead of tests. The user-sim checks each outcome by reading
-and by shell checks (`grep`, `.claude/factory/check-docs.sh`); a failure is a quoted check that
-fails, committed nowhere, and becomes a fix task like a red test.
-
-Then run the acceptance agent (user-sim) with the slice id and its outcomes.
-- `ACCEPTED`: go to section 5.
-- `REJECTED`: each red test becomes a fix task, as above. A fix task that touches files the adversary
-  attacked lists its `HELD` attacks as acceptance criteria too, so the fix cannot reopen one. Then run it again. After two rejections
-  of the same outcome, go to section 4.
+reports in its format, with checks instead of tests. The user-sim checks each outcome by reading and
+by shell checks (`grep`, `.claude/factory/check-docs.sh`).
 
 ## 4. Questions
 
-Decide yourself what stays inside this slice and is cheap to undo: a choice inside one folder, a
-spec that is unclear but whose intent is plain. Edit the spec that owns the fact, in place, and
-note the decision for your report.
+Decide yourself what stays inside this slice and is cheap to undo: a choice inside one folder, a spec
+that is unclear but whose intent is plain. Edit the spec that owns the fact, in place, and note the
+decision for your report.
 
-Contact the product owner (the session named in your prompt; `SendMessage` to that name) only for
-what stops your progress: a public interface, a format on disk or on the wire, a security
-boundary, an interface with another project, or anything outside the sketch, that no option you
-can build keeps open. Give one question, its options, your recommendation and the cost to undo
-each. Every other such question you settle yourself: build the option that keeps the others
-open, and list it under decisions. If no product owner session exists, ask the human.
+Ask the PO only for what stops your progress: a public interface, a format on disk or on the wire, a
+security boundary, an interface with another project, or anything outside the sketch, that no option
+you can build keeps open. One question, its options, your recommendation and the cost to undo each.
+Every other such question you settle yourself: build the option that keeps the others open, and list
+it under decisions. To ask: commit and push all work, the briefs too, then push an empty commit
+`git commit --allow-empty -m "BLOCKED <id>" -m "<the question>"` to `slice/<id>` and end. The PO
+answers in a new round on that branch.
 
-**Time.** You do not feel time pass: run `date` when you start and write the start time in your
-first brief's commit message; every time you report is `date` minus that, never an estimate.
+**Time.** You do not feel time pass: run `date` when you start and write the start time in your first
+brief's commit message; every time you report is `date` minus that, never an estimate.
 
 Send no progress updates. While a background run works, end your turn with no message.
 
 ## 5. Deliver
 
-Every slice reaches `main` through a pull request that merges itself when CI is green. Nobody
-merges by hand.
-1. Rebase `slice/<id>` on `main`. Run the project's whole test set once, the slow tests too
-   (`AGENTS.md` says how), and the gate; they must pass.
-2. Push `slice/<id>`, open its PR and arm auto-merge:
-   `gh pr create --base main --head slice/<id> --title "<id>: <outcome>" --body "<the report>"`,
-   then `gh pr merge <n> --auto --rebase`. The ruleset holds it until the required checks pass.
-   A sketch marked `PO arms` (a page or UI the product owner compares with its design): open the
-   PR without auto-merge, say so in the report; the product owner arms it after the comparison.
-   If `gh` is missing or not signed in, say `no PR: <why>` in the report; the product owner opens
-   it and arms it.
-3. Report to the product owner:
-   - `DELIVERED <id>`, the project, the branch and the PR link;
-   - what a person can now do (one line), and the user-sim result;
-   - the adversary result (`HELD`, the breaches fixed, or `not run (...)`);
+1. Rebase `slice/<id>` on `origin/main` (`git fetch` first). Run the project's whole test set once,
+   the slow tests too (`AGENTS.md` says how), and the gate; they must pass.
+2. Push `slice/<id>` and open its PR, base `main`, title `<id>: <outcome>`, body the report below:
+   `gh pr create`, or this session's GitHub tools (a Claude cloud session: the GitHub MCP server; a
+   Codex task: its GitHub integration). Never arm auto-merge: the PO merges. If no tool can open a
+   PR, put `no PR: <why>` and the report in the body of your last commit; the PO opens it.
+3. The report:
+   - `DELIVERED <id>`, the project, the branch, the builder (`claude` or `codex`);
+   - what a person can now do (one line);
+   - the boundaries your briefs or diff touch, for the review team's adversary rule (section 3);
+   - each check that needs a Mac or hardware, and the CI job that runs it;
    - decisions you made, one line each;
    - friction: one line each, for anything in the process that got in the way;
    - implementer runs per task (`factory/runs/ledger.jsonl`, or your own count);
    - suite times, default and slow, before and after, and the hours the slice was in flight.
-4. Local: stay until the PR is merged. Run `gh pr checks <n> --watch --fail-fast` with Bash
-   `run_in_background`.
-   - Green: the PR merges itself. Send the product owner `MERGED <id>` and end.
-   - Red on a test that passed in your own runs: rerun the failed jobs once
-     (`gh run rerun <run> --failed`). Red again, or red in a build or lint step: it is real.
-   - Real red: brief a fix task as for a user-sim failure, push to the same branch, and watch
-     again. Auto-merge stays armed. Report the fix as a decision line with `MERGED <id>`.
-   - Not mergeable (a conflict with a newer `main`): rebase, run the touched tests, push.
-   Cloud: you end your turn after the `DELIVERED` commit; the product owner watches the PR.
+4. End. The PO watches CI and brings a red job back to you as a finding.
+
+## 6. Answer a review round
+
+The PO starts you with an answer brief: the PR, the round `r`, and the review (a PR comment that
+ends with `VERDICT: changes (n)`, its findings numbered `F<r>.<k>`).
+1. `git pull` `slice/<id>`; read the review and the earlier rounds on the PR (the thread is the
+   memory of a fresh session).
+2. Answer every finding, none skipped:
+   - **fix it**: a finding that carries a red test: commit the test first, unchanged, then the fix;
+     or
+   - **disagree**: only with a reason from the spec chain or the brief (the review team may be
+     wrong; say where).
+3. Run the touched tests and the gate (`check.sh`); they must pass.
+4. Push once per round. The last commit's subject is `<id> r<r>: answers`; its body has one line
+   per finding: `F<r>.<k> fixed in <sha>` or `F<r>.<k> disagree: <why>`. Post the same lines as a PR
+   comment too, if this session can comment. Then end. Your push starts the next review.
+
+Never argue with the verdict line itself, never resolve or hide a review comment, and never push
+twice in one round: a second push races the review that the first one started.
