@@ -6,13 +6,11 @@ use crate::exports::watane::host::{stream_producer, stream_sink, timer_sink};
 use crate::map;
 use crate::mods::claude_code::sessions as provider;
 use crate::watane::host::{caller, claude_session, host_info, state, streams, timers};
+use agent_kernel::call::{self, CallKernel};
 use agent_kernel::{
-    Attached, Buffered, Host, Kernel, KernelError, Outcome, Request, Started, State, StreamError,
-    TooLarge, MAX_VALUE,
+    Attached, Host, KernelError, Outcome, Request, Started, State, StreamError, TooLarge, MAX_VALUE,
 };
 use serde_json::Value;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 struct Export;
 
@@ -37,28 +35,9 @@ impl State for WitState {
     }
 }
 
-/// One call's buffer (S32 R1, TECHNICAL 2.1): the kernel's state and the host's `new_id` share it,
-/// so the id counter commits or drops with the call's other writes.
-type Buf = Rc<RefCell<Buffered<WitState>>>;
-
-struct Shared(Buf);
-
-impl State for Shared {
-    fn get(&mut self, key: &str) -> Option<Vec<u8>> {
-        self.0.borrow_mut().get(key)
-    }
-    fn put(&mut self, key: &str, value: Vec<u8>) -> Result<(), TooLarge> {
-        self.0.borrow_mut().put(key, value)
-    }
-    fn delete(&mut self, key: &str) {
-        self.0.borrow_mut().delete(key)
-    }
-}
-
 /// The kernel's `Host` over `streams`, `timers`, `host-info`, the provider and `claude-session`.
-struct WitHost(Buf);
-
-const NEXT_ID: &str = "next-id";
+/// Its `new_id` is never called: `call::run` keeps the counter in the call's buffer.
+struct WitHost;
 
 impl Host for WitHost {
     fn generation(&mut self) -> u64 {
@@ -71,14 +50,7 @@ impl Host for WitHost {
             .unwrap_or(0)
     }
     fn new_id(&mut self) -> String {
-        let mut b = self.0.borrow_mut();
-        let n = b
-            .get(NEXT_ID)
-            .and_then(|v| String::from_utf8(v).ok())
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(1);
-        let _ = b.put(NEXT_ID, (n + 1).to_string().into_bytes());
-        format!("s{n}")
+        unreachable!("call::run counts ids")
     }
     fn timer_after(&mut self, id: &str, delay_ms: u64) {
         let _ = timers::after(id, delay_ms);
@@ -157,26 +129,11 @@ impl Host for WitHost {
     }
 }
 
-/// Runs one crate call over a `Buffered` state: `Ok` commits its writes in order, `Err` drops them
-/// (S32 R1). Host calls the crate makes go out as it makes them; it holds back those that follow
-/// a failure (2.1).
+/// Runs one crate call (S32 R1, `call::run`): `Ok` commits its writes, `Err` drops them.
 fn run<T>(
-    f: impl FnOnce(&mut Kernel<Shared, WitHost>) -> Result<T, KernelError>,
+    f: impl FnOnce(&mut CallKernel<WitState, WitHost>) -> Result<T, KernelError>,
 ) -> Result<T, KernelError> {
-    let buf: Buf = Rc::new(RefCell::new(Buffered::new(WitState)));
-    let mut k = Kernel::new(Shared(buf.clone()), WitHost(buf.clone()));
-    let r = f(&mut k);
-    drop(k);
-    let Ok(cell) = Rc::try_unwrap(buf) else {
-        unreachable!("the kernel is dropped")
-    };
-    let b = cell.into_inner();
-    if r.is_ok() {
-        b.commit();
-    } else {
-        b.discard();
-    }
-    r
+    call::run(WitState, WitHost, f).0
 }
 
 /// 2.3: the owner is `caller.identity()`, never `who()`.
