@@ -1193,7 +1193,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   replay every entry goes out as an `entry` item; a client also accepts a bare
   entry object. An ask goes out once, as its `entry` item: there is no separate
   `ask` update.
-- `synced` ends the replay. `writing` is true when a message was being written
+- `synced` ends the replay (accepted limit, S35: the Claude kernel does not set `writing` yet, since knowing that a message is being written would cost a state write on a delta-only item call, which case 56 and P09 rule out; an attach mid-message shows the turn's activity, Working, until the message's entry arrives; `kernel/tests/it/regress_s35.rs` `regress_s35_attach_mid_message_says_writing` keeps it, ignored, for the product owner). `writing` is true when a message was being written
   at the attach (18.3, "Writing…"), absent otherwise.
 - Right after `synced`, before any live update, `attach` pushes the current
   `turn` item, the `queue` item, the last `usage` item when there was one, and
