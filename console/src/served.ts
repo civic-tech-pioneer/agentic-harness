@@ -22,13 +22,14 @@ export const startKey = (): string => `console-${Date.now()}-${Math.random().toS
 export const isServed = (host: string): boolean => /^[^.]+\.localhost$/.test(host);
 
 /** The facts the kernel's stream does not carry (18.4): stage B has Claude Code sessions in a scratch folder, which no judge checks. Only a Claude
- * session of `scratch` runs in a scratch folder (9.1); any other row reads `<backend> · <profile>`. */
+ * session of the built-in `scratch` runs in a scratch folder, with Claude's default model in mode `manual` (9.1); any other row reads `<backend> · <profile>`. */
 const infoOf = (s: Listed): SessionInfo => {
   const claude = /claude/i.test(s.backend), scratch = claude && s.profile === "scratch";
   return {
     id: s.id, title: s.title, profile: s.profile,
     provider: claude ? "Claude Code (unchecked)" : s.backend,
     workspace: scratch ? "Scratch folder" : "",
+    ...(scratch ? { model: "default model", mode: "manual" } : {}),
   };
 };
 const rowOf = (s: Listed, firstUser?: string): SidebarSession => { const i = infoOf(s); return { id: s.id, title: titleOf(i.title, firstUser), place: i.workspace || i.profile, meta: metaOf(i), state: shapeOf(s.turn as Parameters<typeof shapeOf>[0]) }; };
