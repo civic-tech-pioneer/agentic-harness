@@ -93,6 +93,15 @@ describe("S35-4 AC4", () => {
     render(<Console served={await served(setup({ "sessions.list": () => ({ ok: [] }) }).w)} />);
     expect(box().value).toBe("");
   });
+  it("r1_f1_4_a_pending_start_keeps_the_draft_over_a_reload", async () => {
+    const f = setup({ "sessions.start": () => new Promise(() => {}) });
+    const first = render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "pending message" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    first.unmount();
+    render(<Console served={await served(f.w)} />);
+    expect(box().value).toBe("pending message");
+  });
   it("ac4b_a_session_keeps_its_own_draft", async () => {
     const f = setup({ "sessions.list": () => ({ ok: [{ id: "s", title: "T", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 }] }) });
     const a = render(<Console served={await served(f.w)} />);
@@ -122,5 +131,23 @@ describe("S35-4 AC4", () => {
     await tick();
     expect(document.body.innerHTML).not.toMatch(/\(1\d\.\d\)|18\.8/);
     expect(document.getElementById("wa-off-menu")?.textContent).toBe("Not in this console yet.");
+  });
+});
+
+describe("S35 r1 F1.5 every row's title and meta", () => {
+  const user = (i: number, text: string) => JSON.stringify({ v: 1, i, kind: "message", at: 1000 * i, body: { role: "user", content: [{ type: "text", text }] } });
+  it("r1_f1_5_an_untitled_older_row_reads_its_first_user_message", async () => {
+    const f = setup({
+      "sessions.list": () => ({ ok: [{ id: "o", title: "", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 }, { id: "z", title: "Newest", profile: "scratch", backend: "claude-code", turn: "idle", updated: 7 }] }),
+      "sessions.read": (a: { session: string }) => ({ ok: { entries: a.session === "o" ? [user(1, "Earlier question about the folder")] : [], last: a.session === "o" ? 1 : 0 } }),
+    });
+    render(<Console served={await served(f.w)} />);
+    expect(await screen.findByRole("button", { name: /Earlier question/ }))
+      .toBeInTheDocument();
+  });
+  it("r1_f1_5_an_openai_scratch_session_is_not_a_claude_scratch_folder", async () => {
+    const openAiScratch = setup({ "sessions.list": () => ({ ok: [{ id: "a", title: "T", profile: "scratch", backend: "openai", turn: "idle", updated: 1 }] }) });
+    expect((await served(openAiScratch.w)).sessions[0]?.meta)
+      .toBe("openai · scratch");
   });
 });
