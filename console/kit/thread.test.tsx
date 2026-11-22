@@ -42,20 +42,22 @@ describe("rows", () => {
     expect(screen.getByText("Thinking…")).toBeInTheDocument();
     expect(screen.getByText("pondering")).toBeInTheDocument();
     a.unmount();
-    const done = reduce(live, upd({ sessionUpdate: "agent_message_chunk", content: text("ok") }, 2, 4000));
+    // seconds run from the first to the last thought chunk (9.4 `message` row)
+    const more = reduce(live, upd({ sessionUpdate: "agent_thought_chunk", content: text(" more") }, undefined, 4000));
+    const done = reduce(more, upd({ sessionUpdate: "agent_message_chunk", content: text("ok") }, 2, 4100));
     show(done);
     const b = screen.getByRole("button", { name: "Thought for 3 s" });
     expect(b).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("pondering")).toBeNull();
+    expect(screen.queryByText("pondering more")).toBeNull();
     const u = userEvent.setup();
     await u.click(b);
-    expect(screen.getByText("pondering")).toBeInTheDocument();
+    expect(screen.getByText("pondering more")).toBeInTheDocument();
     await u.click(b);
     b.focus();
     await u.keyboard("{Enter}");
-    expect(screen.getByText("pondering")).toBeInTheDocument();
+    expect(screen.getByText("pondering more")).toBeInTheDocument();
     await u.keyboard(" ");
-    expect(screen.queryByText("pondering")).toBeNull();
+    expect(screen.queryByText("pondering more")).toBeNull();
   });
 
   it("ac3_explored_line_counts_and_lists", async () => {

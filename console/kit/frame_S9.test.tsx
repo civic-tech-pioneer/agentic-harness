@@ -213,7 +213,8 @@ describe("S9-1", () => {
 
   it("ac5_fold_buttons_have_chevrons_and_names_unchanged", async () => {
     const t = feed(upd({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "hm" } }, undefined, 1000),
-      upd({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } }, 2, 4000));
+      upd({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "m" } }, undefined, 4000),
+      upd({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } }, 2, 4100));
     show(t);
     const b = screen.getByRole("button", { name: "Thought for 3 s" });
     expect(b.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
