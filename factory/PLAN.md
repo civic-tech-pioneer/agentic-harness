@@ -29,7 +29,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## Sketched
 
-### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (in flight (cloud), routine `trig_01XowNDWUGosFjLtAtbGFBwc`; its watane half is watane S99, in flight)
+### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DELIVERED 2026-11-22 16:22 UTC, held: merges after watane S99 merges with the chain fix below, R-B1 and the PO's comparison; routine `trig_01XowNDWUGosFjLtAtbGFBwc`; its watane half is watane S99, in flight)
 
 Story: Alice runs `watane-dev serve` with the agent kernel and the unchecked provider installed,
 opens the console, starts a session in a scratch workspace (4.6, no consent steps), types a
@@ -356,6 +356,11 @@ limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
 
 ## Deputy decisions
 
+- 2026-11-22 S35's user-sim round-2 rejection (an attach mid-message shows Working, not Writing, until the
+  entry arrives) is accepted as a polish limit (9.4): setting `synced.writing` costs a state write per delta-only
+  call, which case 56 and P09 rule out. Its red test stays `#[ignore]` with that reason.
+- 2026-11-22 R-B3 (S35): the provider compares its caller with `local/agent` while the kernel is unpublished;
+  the publisher's name replaces it when the kernel is published (one 2.2 line).
 - 2026-11-22 (the human's answer) Auto-merge is retired: the `codex-push` ruleset (27841001: only
   `slice/*` without bypass, for the Codex push App) blocks it, so the PO merges each green PR with
   `gh pr merge <n> --admin --rebase`. Foremen open their PR and do not arm it.
@@ -508,6 +513,11 @@ S2 writes each into the document that owns it.
 
 ## Waiting on the human
 
+- **R-B4 The built-in `scratch` profile (S35, TECHNICAL 14 row).** On first run, while `access/page` is absent,
+  the console's page may start sessions with a built-in profile: Claude's default model, no tools, mode manual,
+  a scratch folder; a stored profile needs access. Options: (a) keep it (rec: no tools and a scratch folder give
+  Claude no reach; it makes the first run work); (b) require `access/page` from the first run (one more setup
+  step). Undo: one 14 row and the profile. Blocks nothing; S35 is built with (a).
 - **R-B1 The unchecked provider's own repository** (TECHNICAL 17 stage B: "its own repository,
   built only with its `factory/config.toml` `boundaries` pointing at 14"). It does not exist;
   creating a GitHub repository and adopting it is yours. Options: (a) create
