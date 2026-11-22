@@ -21,6 +21,23 @@ describe("S32_fix4", () => {
     fireEvent.change(box, { target: { value: "hi!" } });
     expect(document.querySelector(".wa-send-err")).toBeNull();
   });
+  it("ac2_alert_clears_on_next_send", async () => {
+    const kernel = longKernel(5);
+    let refuse = true;
+    kernel.say = () => (refuse ? Promise.reject(new Error("paused")) : Promise.resolve(1));
+    render(<App kernel={kernel} info={longInfo(5)} />);
+    const box = document.querySelector<HTMLTextAreaElement>(".wa-composer textarea")!;
+    fireEvent.change(box, { target: { value: "hi" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await tick();
+    expect(document.querySelector(".wa-send-err")?.textContent).toBe("paused");
+    refuse = false;
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(document.querySelector(".wa-send-err")).toBeNull();
+    await tick();
+    expect(box.value).toBe("");
+    expect(document.querySelector(".wa-send-err")).toBeNull();
+  });
   it("ac2_typed_since_keeps_typed", async () => {
     const kernel = longKernel(5);
     let fail!: (e: Error) => void;
