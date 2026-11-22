@@ -18,7 +18,7 @@ export function NewSession({ sessions, onNew, start }: { sessions: SidebarSessio
         <header className="wa-header">
           <h1 className="wa-title">New session</h1>
           <div className="wa-chips">
-            <span className="wa-chip" title="Profile">Profile <b>Scratch</b></span>
+            <span className="wa-chip" title="Profile">Profile <b>scratch</b></span>
             <span className="wa-chip" title="Place">{FOLDER}<b>A new scratch folder</b></span>
           </div>
         </header>
@@ -46,7 +46,7 @@ export function Console({ served }: { served: Served }) {
       setSessions(l.sessions);
       title = l.info(id)?.title ?? title;
     } catch { /* the session is started: the sidebar catches up at the next list */ }
-    setInfo({ id, title, profile: "scratch", provider: "Claude Code (unchecked)", workspace: "Scratch folder" });
+    setInfo({ id, title, profile: "scratch", provider: "Claude Code (unchecked)", workspace: "Scratch folder", model: "default model", mode: "manual" });
   };
   return info
     ? <App kernel={kernel} info={info} sessions={sessions} onNew={() => setInfo(null)} />

@@ -28,7 +28,7 @@ describe("S35-4 AC2 the new-session view", () => {
     const f = setup();
     render(<Console served={await served(f.w)} />);
     expect(screen.getByRole("heading", { name: "New session" })).toBeInTheDocument();
-    expect(text()).toContain("Scratch");
+    expect(screen.getByTitle("Profile").textContent).toBe("Profile scratch"); // the stored name, as the session header shows it (S35 r1 D1.1)
     expect(text()).toContain("A new scratch folder");
     expect(box()).toHaveAttribute("placeholder", "Message Claude…");
     expect(screen.getByRole("button", { name: "Start session" })).toBeDisabled();
@@ -149,5 +149,36 @@ describe("S35 r1 F1.5 every row's title and meta", () => {
     const openAiScratch = setup({ "sessions.list": () => ({ ok: [{ id: "a", title: "T", profile: "scratch", backend: "openai", turn: "idle", updated: 1 }] }) });
     expect((await served(openAiScratch.w)).sessions[0]?.meta)
       .toBe("openai · scratch");
+  });
+});
+
+describe("S35 r1 D1.1, D1.2: the profile's one spelling; model and mode on the real serve", () => {
+  it("r1_d1_1_the_new_session_view_and_the_header_spell_the_profile_alike", async () => {
+    const f = setup();
+    render(<Console served={await served(f.w)} />);
+    const before = screen.getByTitle("Profile").textContent;
+    fireEvent.change(box(), { target: { value: "hi" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    await tick();
+    expect(screen.getByTitle("Profile").textContent).toBe(before);
+  });
+  it("r1_d1_2_a_claude_scratch_session_shows_its_model_and_mode_and_no_meter_without_usage", async () => {
+    const f = setup({ "sessions.list": () => ({ ok: [{ id: "s", title: "T", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 }] }) });
+    render(<Console served={await served(f.w)} />);
+    await tick();
+    expect(document.querySelector(".wa-irow")?.textContent).toContain("default model· manual");
+    expect(document.querySelector(".wa-meter, [aria-label^='Context']")).toBeNull();
+  });
+  it("r1_d1_2_a_session_started_in_place_shows_them_too", async () => {
+    const f = setup();
+    render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "hi" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    await tick();
+    expect(document.querySelector(".wa-irow")?.textContent).toContain("default model· manual");
+  });
+  it("r1_d1_2_another_profile_or_backend_shows_no_guessed_model", async () => {
+    const f = setup({ "sessions.list": () => ({ ok: [{ id: "a", title: "T", profile: "scratch", backend: "openai", turn: "idle", updated: 1 }] }) });
+    expect((await served(f.w)).info?.model).toBeUndefined();
   });
 });

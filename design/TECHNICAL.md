@@ -2418,6 +2418,13 @@ The frames give layout, spacing and words; these values are fixed:
 - Sidebar 260 px (hidden under 760 px); header with title, profile, provider,
   workspace and any session allow; transcript column at most 780 px; the
   dock: Needs you, plan, queue, status line, input.
+- The profile reads as its stored name (`scratch`) in the header and in the
+  new-session view alike. The input's model-and-mode line names the profile's
+  model and mode; the console knows them only for a Claude session of the
+  built-in `scratch` (9.1): `default model · manual`; another session shows no
+  line until the kernel reports them. The header's context meter shows once
+  the session's stream carries a `usage` item (9.4); the kernel pushes `usage`
+  from stage D (9.7, the stages table), so a stage B session has no meter.
 - The manager's look: Inter, JetBrains Mono for code; light and dark token
   sets of the frames (`--bg #F6F6F4`, `--panel #FFFFFF`, `--ink #18181B`,
   `--muted #5D5E66`, `--line #E3E3DF`, `--accent #3355D6`, and their dark
