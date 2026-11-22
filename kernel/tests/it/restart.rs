@@ -312,6 +312,14 @@ fn ac3_the_step_settles_a_claude_turn_case_69() {
             .collect::<Vec<_>>(),
         [json!({"type": "turn", "state": {"state": "unknown"}})]
     );
+    // a timer firing's entries go out live too (S35-fix1 AC3): each decision, then the turn entry
+    let live: Vec<&Value> = c
+        .pushes
+        .iter()
+        .filter(|p| p.value["type"] == "entry")
+        .map(|p| &p.value["entry"]["kind"])
+        .collect();
+    assert_eq!(live, ["ask", "ask", "ask", "turn"], "{:?}", c.pushes);
     assert_eq!(c.pushes[0].session, id);
     let r = rec(&mut k, &id);
     assert_eq!((r.boot, r.turn.clone()), (2, Turn::Unknown));

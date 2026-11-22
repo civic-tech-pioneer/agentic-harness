@@ -1310,3 +1310,101 @@ fn ac1_ac2_interrupt_and_cancel_do_the_r6_step_first() {
         }]
     );
 }
+
+/// S35-fix1 AC2, AC3: an ask entry, its decision when the host resolves it and a `say`'s `turn` entry go
+/// out live as `entry` items with the index `read` gives them.
+#[test]
+fn s35_fix1_an_ask_its_decision_and_a_say_go_out_as_entry_items() {
+    let live = |c: &Called<()>| -> Vec<(String, u64)> {
+        c.pushes
+            .iter()
+            .filter(|p| p.value["type"] == "entry")
+            .map(|p| {
+                let e = &p.value["entry"];
+                (
+                    e["kind"].as_str().unwrap().to_string(),
+                    e["i"].as_u64().unwrap(),
+                )
+            })
+            .collect()
+    };
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let c = k.provider(&id, ask("a1", "ask", 9000)).unwrap();
+    let es = entries(&mut k, "alice", &id);
+    let i = es.iter().find(|e| e["kind"] == "ask").unwrap()["i"]
+        .as_u64()
+        .unwrap();
+    // the ask entry, then the `waiting` turn entry
+    assert_eq!(live(&c), [("ask".into(), i), ("turn".into(), i + 1)]);
+    let c = k.provider(&id, resolved("a1", "expired", None)).unwrap();
+    let es = entries(&mut k, "alice", &id);
+    let d = es
+        .iter()
+        .find(|e| e["kind"] == "ask" && e["i"] != i)
+        .unwrap();
+    assert_eq!(d["body"]["decision"]["by"], "host");
+    let got = live(&c);
+    assert_eq!(got[0], ("ask".into(), d["i"].as_u64().unwrap()), "{got:?}");
+    assert!(got.iter().all(|(_, n)| *n > i + 1), "{got:?}");
+    // an adapter's entry that carries the decision of an open ask goes out live as well
+    k.provider(&id, ask("a2", "ask", 9000)).unwrap();
+    let mut decided = ask("a2", "ask", 9000);
+    if let ProviderEvent::Out(Out { entry: Some(e), .. }) = &mut decided {
+        e.body["decision"] = json!({"outcome": "allow", "by": "host"});
+    }
+    let c = k.provider(&id, decided).unwrap();
+    let es = entries(&mut k, "alice", &id);
+    let d = es
+        .iter()
+        .rfind(|e| e["kind"] == "ask" && e["body"]["decision"]["outcome"] == "allow")
+        .unwrap();
+    assert_eq!(live(&c)[0], ("ask".into(), d["i"].as_u64().unwrap()));
+    // an idle turn: the say's user message is no entry item, its `running` turn entry is
+    k.provider(&id, idle()).unwrap();
+    let c = k.say("alice", &id, "k2", "x").unwrap();
+    let es = entries(&mut k, "alice", &id);
+    let n = es.last().unwrap()["i"].as_u64().unwrap();
+    assert_eq!(es.last().unwrap()["kind"], "turn");
+    let got: Vec<(String, u64)> = c
+        .pushes
+        .iter()
+        .filter(|p| p.value["type"] == "entry")
+        .map(|p| {
+            (
+                p.value["entry"]["kind"].as_str().unwrap().to_string(),
+                p.value["entry"]["i"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(got, [("turn".into(), n)]);
+}
+
+/// S35-fix1 AC1, AC2 (9.4): an entry over 256 KiB goes out live as its `part` entries, each with the
+/// index `read` gives it, as replay pushes it.
+#[test]
+fn s35_fix1_a_large_ask_goes_out_live_as_its_parts() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let n0 = rec(&mut k, &id).meta().last;
+    let mut big = ask("a1", "ask", 9000);
+    if let ProviderEvent::Out(Out { entry: Some(e), .. }) = &mut big {
+        e.body["input"] = json!({"file_path": "/w/a.rs", "content": "x".repeat(300 * 1024)});
+    }
+    let c = k.provider(&id, big).unwrap();
+    let stored: Vec<Value> = k
+        .read("alice", &id, n0, None, 256)
+        .unwrap()
+        .entries
+        .iter()
+        .map(|e| serde_json::from_str(e).unwrap())
+        .collect();
+    let live: Vec<Value> = c
+        .pushes
+        .iter()
+        .filter(|p| p.value["type"] == "entry")
+        .map(|p| p.value["entry"].clone())
+        .collect();
+    assert_eq!(live[0]["kind"], "part");
+    assert_eq!(live, stored);
+}
