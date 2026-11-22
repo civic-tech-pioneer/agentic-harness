@@ -554,7 +554,8 @@ fn on_wire(v: &Value) -> Value {
 /// stored lines, so one over 256 KiB goes out as its parts; none for a `message` or a `tool`, which
 /// go out as their finishing update.
 fn entry_push(session: &str, first: u64, e: &NewEntry, at: u64, work: &mut Work) {
-    if matches!(e.kind.as_str(), "message" | "tool") {
+    let user = e.kind == "message" && e.body["role"] == "user";
+    if matches!(e.kind.as_str(), "message" | "tool") && !user {
         return;
     }
     for line in crate::transcript::lines_of(e, at, first) {
@@ -566,6 +567,34 @@ fn entry_push(session: &str, first: u64, e: &NewEntry, at: u64, work: &mut Work)
 
 fn turn_push(t: &Turn) -> Value {
     json!({"type": "turn", "state": t.to_json()})
+}
+
+/// Whether `c` is white space for the slash rule: what JavaScript's `trim` removes plus Unicode
+/// categories Z, Cc and Cf (host 19.3, 4.5 step 5).
+fn slash_space(c: char) -> bool {
+    let u = c as u32;
+    c.is_whitespace()
+        || matches!(u,
+            0..=0x1F | 0x7F..=0x9F | 0xA0 | 0xAD | 0x600..=0x605 | 0x61C | 0x6DD | 0x70F
+            | 0x890..=0x891 | 0x8E2 | 0x1680 | 0x180E | 0x2000..=0x200F | 0x2028..=0x202F
+            | 0x205F..=0x2064 | 0x2066..=0x206F | 0x3000 | 0xFEFF | 0xFFF9..=0xFFFB
+            | 0x110BD | 0x110CD | 0x13430..=0x1343F | 0x1BCA0..=0x1BCA3 | 0x1D173..=0x1D17A
+            | 0xE0001 | 0xE0020..=0xE007F)
+}
+
+/// 9.3: an input whose first text block starts with `/` after white space is refused.
+fn check_slash(input: &str) -> Result<(), KernelError> {
+    let blocks = user_content(input);
+    let text = blocks
+        .as_array()
+        .and_then(|b| b.iter().find(|b| b["type"] == "text"))
+        .and_then(|b| b["text"].as_str());
+    match text {
+        Some(t) if t.trim_start_matches(slash_space).starts_with('/') => {
+            Err(refused("input", "slash-command"))
+        }
+        _ => Ok(()),
+    }
 }
 
 /// The `message` body of a user input: ACP content blocks as given, or the text as one block.
@@ -1343,6 +1372,16 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Turn::Running { activity, .. } = &mut stored {
             *activity = None;
         }
+        // 9.3: an idle turn that ends a running one carries its whole seconds, rounded.
+        if let (Turn::Running { since, .. }, Turn::Idle { seconds, .. }) = (&rec.turn, &mut stored)
+        {
+            seconds.get_or_insert(now.saturating_sub(*since).saturating_add(500) / 1000);
+        }
+        let t = if let Turn::Idle { .. } = t {
+            stored.clone()
+        } else {
+            t
+        };
         if stored == rec.turn {
             if t != stored {
                 work.pushes.push(Push::of(&rec.id, turn_push(&t)));
@@ -1775,6 +1814,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             });
         }
         check_input(input)?;
+        check_slash(input)?;
         // 9.1: the profiles this caller may use; absent or unreadable allows none.
         if !self.may_use(caller, profile) {
             return Err(Self::revoked());
@@ -1904,6 +1944,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             });
         }
         check_input(input)?;
+        check_slash(input)?;
         let mut rec = self.load_owned(caller, session)?;
         if !self.may_use(caller, &rec.profile) {
             return Err(Self::revoked());
@@ -2203,6 +2244,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let past = acct.past;
         if let Some(input) = replacement {
             check_input(input)?;
+            check_slash(input)?;
             if !self.may_use(caller, &rec.profile) {
                 return Err(Self::revoked());
             }

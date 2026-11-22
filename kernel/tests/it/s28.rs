@@ -53,13 +53,31 @@ fn rec(k: &mut K, id: &str) -> Record {
     Record::load(&mut k.state, id).unwrap()
 }
 
+/// A turn that ended from `waiting` has no `since`, so no `seconds`.
+fn failed_waiting() -> Turn {
+    match failed() {
+        Turn::Idle {
+            stop,
+            tools,
+            tokens,
+            ..
+        } => Turn::Idle {
+            stop,
+            seconds: None,
+            tools,
+            tokens,
+        },
+        t => t,
+    }
+}
+
 fn failed() -> Turn {
     Turn::Idle {
         stop: Stop::Failed {
             error: "provider-ended".into(),
             cause: None,
         },
-        seconds: None,
+        seconds: Some(0),
         tools: None,
         tokens: None,
     }
@@ -154,8 +172,8 @@ fn ac2_asks_first_then_one_turn_entry() {
     let new: Vec<Value> = entries(&mut k, &id).split_off(n);
     let ks: Vec<&str> = new.iter().map(|e| e["kind"].as_str().unwrap()).collect();
     assert_eq!(ks, ["ask", "ask", "turn"]);
-    assert_eq!(new[2]["body"], failed().entry_body());
-    assert_eq!(rec(&mut k, &id).turn, failed());
+    assert_eq!(new[2]["body"], failed_waiting().entry_body());
+    assert_eq!(rec(&mut k, &id).turn, failed_waiting());
 }
 
 #[test]
@@ -167,12 +185,12 @@ fn ac3_past_quota_one_turn_entry_and_its_push() {
     k.limits.owner_bytes = Usage::load(&mut k.state, "quota/alice").bytes;
     let n = turns(&mut k, &id);
     let c = k.provider_item("t1", ProviderEvent::Ended).unwrap();
-    assert_eq!(rec(&mut k, &id).turn, failed());
+    assert_eq!(rec(&mut k, &id).turn, failed_waiting());
     assert_eq!(turns(&mut k, &id), n + 1);
     assert!(c
         .pushes
         .iter()
-        .any(|p| p.value["type"] == "turn" && p.value["state"] == failed().to_json()));
+        .any(|p| p.value["type"] == "turn" && p.value["state"] == failed_waiting().to_json()));
 }
 
 #[test]
@@ -219,7 +237,7 @@ fn ac5_the_next_say_starts_a_turn() {
 fn ac6_inactive_turns_are_unchanged() {
     let done = Turn::Idle {
         stop: Stop::Completed,
-        seconds: None,
+        seconds: Some(0),
         tools: None,
         tokens: None,
     };
@@ -334,7 +352,7 @@ fn ac2_ended_at_the_ceiling_closes_the_asks_and_charges_what_it_wrote() {
     let (d0, t0) = (decisions(&mut k, &id), turns(&mut k, &id));
     k.provider_item("t1", ProviderEvent::Ended).unwrap();
     let r = rec(&mut k, &id);
-    assert_eq!(r.turn, failed());
+    assert_eq!(r.turn, failed_waiting());
     assert!(r.open.is_empty() && r.pending_answers.is_empty());
     assert_eq!(decisions(&mut k, &id), d0 + 2);
     assert_eq!(turns(&mut k, &id), t0 + 1);

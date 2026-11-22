@@ -339,7 +339,7 @@ fn ac4_the_fake_default_turn_as_a_batch_and_as_single_lines() {
         assert_eq!(live[1]["_meta"]["watane"]["i"], messages[0]["i"]);
         assert_eq!(
             live[3]["_meta"]["watane"]["state"],
-            json!({"state":"idle","stop":{"kind":"completed"}})
+            json!({"state":"idle","stop":{"kind":"completed"},"seconds":0})
         );
         let turns: Vec<&Value> = read.iter().filter(|e| e["kind"] == "turn").collect();
         assert_eq!(turns.last().unwrap()["body"]["state"], "idle");
@@ -652,7 +652,7 @@ fn ac8_an_ended_stream_with_a_cause_fails_the_turn_with_it() {
                 error: "provider-ended".into(),
                 cause: Some("no-binary".into())
             },
-            seconds: None,
+            seconds: Some(0),
             tools: None,
             tokens: None
         }
@@ -660,7 +660,7 @@ fn ac8_an_ended_stream_with_a_cause_fails_the_turn_with_it() {
     let es = entries(&mut k, &id);
     assert_eq!(
         es.last().unwrap()["body"],
-        json!({"state":"idle","stop":{"kind":"failed","error":"provider-ended","cause":"no-binary"}})
+        json!({"state":"idle","stop":{"kind":"failed","error":"provider-ended","cause":"no-binary"},"seconds":0})
     );
     // no cause: as before
     let mut k = kernel();
@@ -668,7 +668,7 @@ fn ac8_an_ended_stream_with_a_cause_fails_the_turn_with_it() {
     k.provider_ended_with(&t, None).unwrap();
     assert_eq!(
         entries(&mut k, &id).last().unwrap()["body"],
-        json!({"state":"idle","stop":{"kind":"failed","error":"provider-ended"}})
+        json!({"state":"idle","stop":{"kind":"failed","error":"provider-ended"},"seconds":0})
     );
 }
 
@@ -928,7 +928,7 @@ fn ac3_entries_stored_outside_an_items_call_go_out_live() {
             })
             .collect()
     };
-    // say on a live stream: the user message goes out as no entry item; a cancel stores a turn
+    // say on a live stream: the user message goes out as its entry item; a cancel stores a turn
     let mut k = kernel();
     let (id, _, o) = session(&mut k);
     let from = k.host.calls.len();
