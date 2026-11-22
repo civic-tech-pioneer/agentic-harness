@@ -265,7 +265,8 @@ fn ac3_items_go_by_stream_id() {
     assert_eq!(k.state.counts().puts, 0);
     // a known id acts on its session
     let c = k.provider_item("t1", idle(Stop::Completed)).unwrap();
-    assert_eq!(c.pushes.len(), 1);
+    // the `turn` entry, then the turn item
+    assert_eq!(c.pushes.len(), 2);
     assert_eq!(c.pushes[0].session, id);
     assert!(matches!(rec(&mut k, &id).turn, Turn::Idle { .. }));
 }

@@ -316,7 +316,12 @@ fn ac4_the_fake_default_turn_as_a_batch_and_as_single_lines() {
             .collect();
         assert_eq!(
             kinds,
-            ["agent_message_chunk", "agent_message_chunk", "turn"],
+            [
+                "agent_message_chunk",
+                "agent_message_chunk",
+                "entry",
+                "turn"
+            ],
             "{live:?}"
         );
         assert_eq!(live[0]["content"]["text"], "This is the fake claude.");
@@ -333,7 +338,7 @@ fn ac4_the_fake_default_turn_as_a_batch_and_as_single_lines() {
         // the update that finishes the entry carries its index
         assert_eq!(live[1]["_meta"]["watane"]["i"], messages[0]["i"]);
         assert_eq!(
-            live[2]["_meta"]["watane"]["state"],
+            live[3]["_meta"]["watane"]["state"],
             json!({"state":"idle","stop":{"kind":"completed"}})
         );
         let turns: Vec<&Value> = read.iter().filter(|e| e["kind"] == "turn").collect();
@@ -816,4 +821,131 @@ fn ac10_r1_only_the_failed_call_is_discarded() {
         .map(|(a, b)| (a.clone(), b.clone()))
         .collect();
     assert_eq!(after, before);
+}
+
+// S35-fix1: every entry the kernel stores goes out live once, with its index (9.4)
+
+const UNKNOWN: &str = r#"{"type":"made_up_by_case_5","x":1}"#;
+
+fn indexes_on(k: &K, stream: &str) -> Vec<u64> {
+    k.host
+        .calls
+        .iter()
+        .filter_map(|c| match c {
+            HostCall::Push { stream: s, value } if s == stream => {
+                let w = &value["_meta"]["watane"];
+                if w["type"] == "entry" {
+                    w["entry"]["i"].as_u64()
+                } else {
+                    w["i"].as_u64()
+                }
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn ac1_every_stored_entry_goes_out_live_once_as_a_batch_and_per_line() {
+    for batched in [true, false] {
+        let mut k = kernel();
+        let (id, t, o) = session(&mut k);
+        let mut raw = fake_lines();
+        raw.insert(raw.len().min(2), UNKNOWN.as_bytes().to_vec());
+        let items: Vec<(u64, Vec<u8>)> = raw
+            .into_iter()
+            .enumerate()
+            .map(|(i, l)| (i as u64 + 1, l))
+            .collect();
+        if batched {
+            k.provider_lines(&t, items).unwrap();
+        } else {
+            for it in items {
+                k.provider_lines(&t, vec![it]).unwrap();
+            }
+        }
+        let read: Vec<u64> = entries(&mut k, &id)
+            .iter()
+            .map(|e| e["i"].as_u64().unwrap())
+            .collect();
+        assert_eq!(read, [1, 2, 3, 4, 5], "batched {batched}");
+        let mut live = indexes_on(&k, &o);
+        live.sort();
+        assert_eq!(live, read, "batched {batched}: each once");
+    }
+}
+
+#[test]
+fn ac2_an_entry_without_an_acp_form_is_an_entry_item_and_the_turn_item_follows_it() {
+    let mut k = kernel();
+    let (_, t, o) = session(&mut k);
+    let from = k.host.calls.len();
+    let mut items: Vec<(u64, Vec<u8>)> = vec![(1, UNKNOWN.as_bytes().to_vec())];
+    items.extend(
+        fake_lines()
+            .into_iter()
+            .enumerate()
+            .map(|(i, l)| (i as u64 + 2, l)),
+    );
+    k.provider_lines(&t, items).unwrap();
+    let kinds: Vec<String> = k.host.calls[from..]
+        .iter()
+        .filter_map(|c| match c {
+            HostCall::Push { stream, value } if *stream == o => {
+                let w = &value["_meta"]["watane"];
+                Some(match value["sessionUpdate"].as_str() {
+                    Some(u) => u.to_string(),
+                    None if w["type"] == "entry" => format!("entry:{}", w["entry"]["kind"]),
+                    None => w["type"].as_str().unwrap().to_string(),
+                })
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "entry:\"unknown\"",
+            "agent_message_chunk",
+            "agent_message_chunk",
+            "entry:\"turn\"",
+            "turn"
+        ]
+    );
+}
+
+#[test]
+fn ac3_entries_stored_outside_an_items_call_go_out_live() {
+    let live_entries = |k: &K, o: &str, from: usize| -> Vec<String> {
+        k.host.calls[from..]
+            .iter()
+            .filter_map(|c| match c {
+                HostCall::Push { stream, value } if stream == o => {
+                    let w = &value["_meta"]["watane"];
+                    (w["type"] == "entry").then(|| w["entry"]["kind"].as_str().unwrap().to_string())
+                }
+                _ => None,
+            })
+            .collect()
+    };
+    // say on a live stream: the user message goes out as no entry item; a cancel stores a turn
+    let mut k = kernel();
+    let (id, _, o) = session(&mut k);
+    let from = k.host.calls.len();
+    k.cancel("alice", &id).unwrap();
+    assert_eq!(live_entries(&k, &o, from), ["turn"]);
+    let last = rec(&mut k, &id).meta().last;
+    assert_eq!(*indexes_on(&k, &o).iter().max().unwrap(), last);
+    // interrupt
+    let mut k = kernel();
+    let (id, _, o) = session(&mut k);
+    let from = k.host.calls.len();
+    k.interrupt("alice", &id, None).unwrap();
+    assert_eq!(live_entries(&k, &o, from), ["turn"]);
+    // the provider's end
+    let mut k = kernel();
+    let (_, t, o) = session(&mut k);
+    let from = k.host.calls.len();
+    k.provider_ended_with(&t, Some("boom".into())).unwrap();
+    assert_eq!(live_entries(&k, &o, from), ["turn"]);
 }
