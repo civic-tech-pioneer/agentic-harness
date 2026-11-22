@@ -228,11 +228,21 @@ fn ac2_live_indexes_equal_reads_over_two_turns() {
 /// AC4: an idle turn that ends a running one carries its whole seconds, rounded.
 #[test]
 fn ac4_idle_turn_entry_carries_seconds() {
-    let mut k = kernel();
-    let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
-    k.host.now = 1000 + 3400;
-    k.provider_item("t1", ProviderEvent::Ended).ok();
-    let last = entries(&mut k, &id).pop().unwrap();
-    assert_eq!(last["kind"], "turn");
-    assert_eq!(last["body"]["seconds"], 3);
+    // (ms the turn ran, its whole seconds rounded): 3 400 ms gives 3, 3 500 ms gives 4
+    for (ms, seconds) in [(3400, 3), (3500, 4)] {
+        let mut k = kernel();
+        let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+        let t = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+        k.host.now = 1000 + ms;
+        let c = k.provider_item(&t, ProviderEvent::Ended).unwrap();
+        let last = entries(&mut k, &id).pop().unwrap();
+        assert_eq!(last["kind"], "turn");
+        assert_eq!(last["body"]["seconds"], seconds, "entry after {ms} ms");
+        // the `turn` item carries it too
+        let item = c.pushes.iter().find(|p| p.value["type"] == "turn").unwrap();
+        assert_eq!(
+            item.value["state"]["seconds"], seconds,
+            "item after {ms} ms"
+        );
+    }
 }

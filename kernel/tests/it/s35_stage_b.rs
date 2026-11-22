@@ -928,7 +928,8 @@ fn ac3_entries_stored_outside_an_items_call_go_out_live() {
             })
             .collect()
     };
-    // say on a live stream: the user message goes out as its entry item; a cancel stores a turn
+    // a cancel stores a turn (a say's user message as its entry item: sessions.rs,
+    // `s35_fix1_an_ask_its_decision_and_a_say_go_out_as_entry_items`)
     let mut k = kernel();
     let (id, _, o) = session(&mut k);
     let from = k.host.calls.len();
