@@ -548,6 +548,29 @@ fn ac7_say_with_no_live_stream_starts_one_in_the_same_workspace_and_resumes() {
 }
 
 #[test]
+fn ac7_a_later_launch_keeps_the_overlay_of_the_first() {
+    let mut k = kernel();
+    let overlay = r#"{"tools-":["Read"],"deny+":["Bash"],"max-turns":3}"#;
+    let id = k.start("alice", "k1", "p", overlay, IN).unwrap().value;
+    let t = rec(&mut k, &id).streams[0].clone();
+    let (first, _) = launches(&k).pop().unwrap();
+    assert_eq!(first["tools"], json!([]));
+    let init = format!(r#"{{"type":"initialized","workspace":"{WS}"}}"#);
+    let sys = format!(r#"{{"type":"system","subtype":"init","session_id":"{UUID}"}}"#);
+    let mut batch = vec![(1, init.into_bytes()), (2, sys.into_bytes())];
+    batch.extend((3..).zip(fake_lines().into_iter().skip(1)));
+    k.provider_lines(&t, batch).unwrap();
+    k.provider_ended(&t).unwrap();
+    k.host.calls.clear();
+    k.say("alice", &id, "s1", "again").unwrap();
+    let (later, _) = launches(&k).pop().unwrap();
+    let mut expected = first;
+    expected["workspace"] = json!(WS);
+    expected["session"] = json!({ "resume": UUID });
+    assert_eq!(later, expected, "never wider than the first launch");
+}
+
+#[test]
 fn ac7_a_profile_with_persist_false_resumes_nothing_and_no_workspace_means_scratch() {
     let mut k = kernel();
     k.state

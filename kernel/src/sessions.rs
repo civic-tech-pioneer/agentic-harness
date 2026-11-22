@@ -12,7 +12,7 @@ use crate::broker;
 use crate::check::check;
 use crate::error::{KernelError, Refusal};
 use crate::launch::launch;
-use crate::overlay::{apply_overlay, parse_overlay};
+use crate::overlay::{apply_overlay, parse_overlay, Overlay};
 use crate::profile::{parse_profile, Backend};
 use crate::queue::{check_input, Queue, Queued};
 use crate::quota::{segment, Change, Limits, Metered, Past, Usage};
@@ -790,17 +790,17 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn compile_launch(
         name: &str,
         json: &str,
-        overlay: &str,
+        overlay: &Overlay,
         workspace: &str,
         resume: Option<&str>,
     ) -> String {
         let base = parse_profile(json).0;
-        let compiled = apply_overlay(&base, &parse_overlay(overlay).0).0;
+        let compiled = apply_overlay(&base, overlay).0;
         launch(name, &compiled, !base.tools.is_empty(), workspace, resume)
     }
 
-    /// The launch of a session that needs a new provider stream (9.5): its profile with no
-    /// overlay (the record keeps none), in its workspace, resuming the Claude session it kept.
+    /// The launch of a session that needs a new provider stream (9.5): its profile with the
+    /// overlay its `start` took, in its workspace, resuming the Claude session it kept.
     fn launch_of(&mut self, rec: &Record, resume: bool) -> Result<String, KernelError> {
         let json = self
             .profile_json(&rec.profile)
@@ -810,7 +810,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(Self::compile_launch(
             &rec.profile,
             &json,
-            "{}",
+            &rec.overlay.clone().unwrap_or_default(),
             workspace,
             uuid,
         ))
@@ -1780,10 +1780,13 @@ impl<S: State, H: Host> Kernel<S, H> {
             owner_page: n as u32,
             ..Record::default()
         };
+        // A later launch narrows as this one does (9.2).
+        let narrowing = parse_overlay(overlay).0;
+        rec.overlay = (narrowing != Overlay::default()).then(|| narrowing.clone());
         // The provider's `start` comes before the first write (2.1): none linked, nothing written.
         let started = match backend {
             Backend::Claude => {
-                let launch = Self::compile_launch(profile, &json, overlay, SCRATCH, None);
+                let launch = Self::compile_launch(profile, &json, &narrowing, SCRATCH, None);
                 Some(self.start_provider(&launch, input)?)
             }
             _ => None,
