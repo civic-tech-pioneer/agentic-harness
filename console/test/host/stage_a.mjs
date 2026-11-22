@@ -5,6 +5,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,7 +45,7 @@ function serve() {
   if (r.status !== 0 || !res) {
     const e = r.json?.errors?.[0] ?? r.json?.error;
     const text = e ? `${e.code ?? ""} ${e.message ?? ""}`.trim() : (r.err || r.out).trim().split("\n")[0];
-    throw Object.assign(new Error(text || `watane-dev serve exited ${r.status}`), { serveFailed: true });
+    throw Object.assign(new Error(text || `watane-dev serve exited ${r.status}`), { serveFailed: true, code: e?.code });
   }
   const page = res.pages[res.pages.length - 1];
   preview = { url: page.url, home: res.home, log: res.log, api: res.api, reused: res.reused };
@@ -71,30 +72,43 @@ async function ok(fn, args, connection) {
   if (v && typeof v === "object" && "ok" in v) return v.ok;
   throw new Error(`${fn} refused: ${JSON.stringify(v)}`);
 }
-/** A raw /events client. `stop()` pauses reading the socket; `go()` resumes it. */
+/** A raw /events client on a bare socket (node:http keeps reading a paused response): `stop()` stops reading the socket; `go()` resumes it. */
 function events() {
   const p = parts();
   const c = { msgs: [], ended: false, endedAt: null, buf: "", connection: null, error: null };
+  let raw = Buffer.alloc(0), head = true, chunked = false;
+  const sse = (text) => {
+    c.buf += text;
+    for (let i; (i = c.buf.indexOf("\n\n")) >= 0;) {
+      const block = c.buf.slice(0, i); c.buf = c.buf.slice(i + 2);
+      const line = block.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      const m = JSON.parse(line.slice(6)); c.msgs.push(m);
+      if (m.type === "connection") { c.connection = m.id; c.resolve(c); }
+    }
+  };
   c.ready = new Promise((resolve, reject) => {
-    const req = http.request({ host: "127.0.0.1", port: p.port, path: "/events", agent: false, headers: { Host: p.host, Accept: "text/event-stream" } }, (res) => {
-      c.res = res; c.status = res.statusCode; res.setEncoding("utf8");
-      res.on("data", (d) => {
-        c.buf += d;
-        for (let i; (i = c.buf.indexOf("\n\n")) >= 0;) {
-          const block = c.buf.slice(0, i); c.buf = c.buf.slice(i + 2);
-          const line = block.split("\n").find((l) => l.startsWith("data: "));
-          if (!line) continue;
-          const m = JSON.parse(line.slice(6)); c.msgs.push(m);
-          if (m.type === "connection") { c.connection = m.id; resolve(c); }
-        }
-      });
-      res.on("end", () => { c.ended = true; c.endedAt = Date.now(); });
-      res.on("error", () => { c.ended = true; });
+    c.resolve = resolve;
+    const s = net.connect({ host: "127.0.0.1", port: p.port });
+    c.sock = s;
+    s.on("connect", () => s.write(`GET /events HTTP/1.1\r\nHost: ${p.host}\r\nAccept: text/event-stream\r\n\r\n`));
+    s.on("data", (d) => {
+      raw = Buffer.concat([raw, d]);
+      if (head) { const i = raw.indexOf("\r\n\r\n"); if (i < 0) return; const h = raw.subarray(0, i).toString(); c.status = Number(h.split(" ")[1]); chunked = /transfer-encoding:\s*chunked/i.test(h); raw = raw.subarray(i + 4); head = false; }
+      if (!chunked) { sse(raw.toString("utf8")); raw = Buffer.alloc(0); return; }
+      for (;;) {
+        const i = raw.indexOf("\r\n"); if (i < 0) return;
+        const n = parseInt(raw.subarray(0, i).toString(), 16);
+        if (n === 0) { c.ended = true; c.endedAt = Date.now(); return; }
+        if (raw.length < i + 2 + n + 2) return;
+        sse(raw.subarray(i + 2, i + 2 + n).toString("utf8")); raw = raw.subarray(i + 2 + n + 2);
+      }
     });
-    req.on("error", (e) => { c.error = e; c.ended = true; reject(e); });
-    req.end(); c.req = req;
+    s.on("end", () => { c.ended = true; c.endedAt ??= Date.now(); });
+    s.on("close", () => { c.ended = true; c.endedAt ??= Date.now(); });
+    s.on("error", (e) => { c.error = e; c.ended = true; reject(e); });
   });
-  c.stop = () => c.res.pause(); c.go = () => c.res.resume(); c.close = () => c.req.destroy();
+  c.stop = () => c.sock.pause(); c.go = () => c.sock.resume(); c.close = () => c.sock.destroy();
   return c;
 }
 const indexOf = (body) => { try { return JSON.parse(body).i; } catch { return undefined; } };
@@ -161,6 +175,7 @@ async function main() {
   cpSync(join(root, "ui"), join(wasmSrc, "ui"), { recursive: true });
   cpSync(wasmSrc, wasmDir, { recursive: true });
 
+  const browser = await launch(); // before serve: launch exits 2 without Playwright, which would skip the stop of the preview
   // ---- serve (AC1) ----
   serve();
   say(`served page: ${preview.url}`);
@@ -168,7 +183,6 @@ async function main() {
   const logOffset = () => (existsSync(preview.log) ? statSync(preview.log).size : 0);
   const logSince = (n) => readFileSync(preview.log, "utf8").slice(n);
 
-  const browser = await launch();
   try {
     // AC2 live, AC3 reload, AC4 replaced: one probe, items every 200 ms
     const p1 = await startProbe(90, 200);
@@ -229,9 +243,10 @@ async function main() {
       const stream = await ok("sessions.attach", { session: p, after: 0, caps: "{}" }, c.connection);
       await until(() => itemsOf(c, stream).some((x) => x.i >= 3), 10_000, "the first items");
       c.stop();
-      const t0 = Date.now();
+      const t0 = Date.now(), readAtStop = c.sock.bytesRead;
       await until(async () => (await sessionCount(p)) >= count, 60_000, "the probe's end");
       await sleep(500);
+      const pausedMs = Date.now() - t0;
       c.go(); await sleep(1000);
       const ends = c.msgs.filter((m) => m.type === "stream-end" && m.stream === stream);
       const got = itemsOf(c, stream).filter((x) => x.kind === "message");
@@ -239,7 +254,7 @@ async function main() {
       let what;
       if (ends.length) what = `the stream ended ${JSON.stringify(ends[0].outcome)} with ${got.length} items read`;
       else if (c.ended) what = `the connection ended with no stream-end (after ${got.length} items read)`;
-      else what = `the stream did not end; the socket buffers took all ${got.length} items of ${count} (${Math.round((Date.now() - t0) / 1000)} s); the probe's items (about 150 bytes) cannot reach the host's in-flight limit (256 items or 4 MiB) or the 16 MiB per connection, so the reattach is checked after the client closes the connection`;
+      else what = `the stream did not end: the client read ${readAtStop} bytes, stopped reading the socket for ${Math.round(pausedMs / 1000)} s while the probe pushed to ${count}, and the host and loopback buffers held the rest (${got.length} items, ${c.sock.bytesRead} bytes in all, about ${Math.round(c.sock.bytesRead / Math.max(1, got.length))} bytes an item); within the probe's caps (9.9: 1 000 items at 100 ms, about ${Math.round(c.sock.bytesRead / Math.max(1, got.length) * 1000 / 1024)} KB a stream) this host takes every item off the stream, so neither the in-flight limit (256 items or 4 MiB) nor the 16 MiB per connection is reached (4 probes of 1 000 on one connection did not end either); the reattach is checked after the client closes the connection`;
       say(`  lagging: ${what}`);
       notes.push(`lagging (36, 51): ${what}`);
       c.close();
@@ -329,8 +344,9 @@ catch (e) {
   if (e.serveFailed && /cannot bind loopback port/.test(e.message)) {
     say("NOT RUN test:host: the host binds 127.0.0.1 and [::1] both (host 8.1) and this machine has no IPv6 loopback");
     code = 2;
-  } else if (e.notRun || (e.serveFailed && /streams/.test(e.message))) {
-    say(`NOT RUN test:host: ${e.notRun ? e.message : `watane-dev refuses the kernel's world (watane:host/streams): ${e.message.slice(0, 200)}; install watane-dev from watane rev 4f105a9 or later`}`);
+  } else if (e.notRun || (e.serveFailed && e.code === "mod.invalid" && /watane:host\/streams/.test(e.message))) {
+    // v0.1.0 answers mod.invalid "[wit] interface not found in package" at the world's `use watane:host/streams` line
+    say(`NOT RUN test:host: ${e.notRun ? e.message : `watane-dev refuses the kernel's world (watane:host/streams): ${e.message.split("\n")[0].slice(0, 200)}; install watane-dev from watane rev 4f105a9 or later`}`);
     code = 2;
   } else { fail++; say(`FAIL setup: ${e instanceof Error ? e.stack ?? e.message : String(e)}`); }
 } finally {
