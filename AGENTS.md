@@ -54,7 +54,7 @@ Each behaviour is proven at the lowest level that shows it
 | Kernel component | `cargo build --release --target wasm32-wasip2 -p agent-mod` in `kernel/`, copied to `kernel/wasm/logic.wasm` (prebuilt logic, watane dev 7.1; git-ignored); the gate does both. `watane-dev test --json` in `kernel/wasm/` needs `ui/` copied there and a watane-dev that links host 19 (not before watane S96) |
 | Console views | `npm test` in `console/` (in the gate) |
 | Console page (slow) | `npm run test:slow` in `console/`: Chromium layout and open-at-the-end checks; run before a console slice delivers |
-| Stage A on watane's real host | `npm run test:host` in `console/`: needs `watane-dev` and `watane` of watane rev 4f105a9 or later on `PATH` and an IPv6 loopback; exit 2 means not run; by hand, not in the gate (CI installs v0.1.0) |
+| Stage A on watane's real host | `npm run test:host` in `console/`: needs `watane-dev` and `watane` of watane rev c2a7d4d or later on `PATH` (S101: a machine with no IPv6 loopback is served on 127.0.0.1 alone); exit 2 means not run; by hand, not in the gate (CI installs v0.1.0) |
 | Probes of the real programs | `proto/claude-probes/probes.py`, `proto/agent-spike/chatgpt-probes.py` (by hand, after a `claude` update) |
 
 ## Do not touch
