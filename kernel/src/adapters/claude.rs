@@ -113,7 +113,11 @@ impl ClaudeAdapter {
             return bytes;
         }
         let mut slim = Self {
-            tools: self.tools.iter().map(|(k, (n, _))| (k.clone(), (n.clone(), Value::Null))).collect(),
+            tools: self
+                .tools
+                .iter()
+                .map(|(k, (n, _))| (k.clone(), (n.clone(), Value::Null)))
+                .collect(),
             result_seen: self.result_seen,
             idle_seen: self.idle_seen,
             open: self.open.clone(),

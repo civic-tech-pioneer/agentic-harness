@@ -1790,7 +1790,15 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         let mut work = Work::default();
         // The provider's `start` carries the first turn's input (10): no `Request::Turn`.
-        self.start_turn(&mut rec, past, input.to_string(), false, None, now, &mut work)?;
+        self.start_turn(
+            &mut rec,
+            past,
+            input.to_string(),
+            false,
+            None,
+            now,
+            &mut work,
+        )?;
         if let Some(t) = started {
             self.open_provider(t, &mut rec, &mut slots, &mut acct)?;
         }
@@ -1904,7 +1912,15 @@ impl<S: State, H: Host> Kernel<S, H> {
                         &mut work,
                     )?,
                     Some((oldest, n)) => {
-                        self.start_turn(&mut rec, past, oldest.input, resume, send, now, &mut work)?;
+                        self.start_turn(
+                            &mut rec,
+                            past,
+                            oldest.input,
+                            resume,
+                            send,
+                            now,
+                            &mut work,
+                        )?;
                         q.save(&mut self.state, &rec.id)?;
                         work.pushes.push(Push::of(&rec.id, q.push_value()));
                         n
@@ -2186,7 +2202,15 @@ impl<S: State, H: Host> Kernel<S, H> {
                 Some(_) => None,
                 None => live,
             };
-            self.start_turn(&mut rec, past, input.to_string(), resume, send, now, &mut work)?;
+            self.start_turn(
+                &mut rec,
+                past,
+                input.to_string(),
+                resume,
+                send,
+                now,
+                &mut work,
+            )?;
         }
         if let Some(t) = started {
             self.open_provider(t, &mut rec, &mut slots, &mut acct)?;

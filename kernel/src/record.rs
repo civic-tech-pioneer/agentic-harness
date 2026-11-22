@@ -32,7 +32,9 @@ pub enum Activity {
 pub enum Stop {
     Completed,
     Interrupted,
-    Stopped { limit: String },
+    Stopped {
+        limit: String,
+    },
     Failed {
         error: String,
         /// Why the provider's stream ended, when it ended other than `closed` (2.1).

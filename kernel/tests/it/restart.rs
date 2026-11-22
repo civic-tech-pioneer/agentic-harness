@@ -52,9 +52,10 @@ fn start_of(k: &K) -> (Value, String) {
         .calls
         .iter()
         .filter_map(|c| match c {
-            HostCall::StartProvider { launch, input } => {
-                Some((serde_json::from_str::<Value>(launch).unwrap(), input.clone()))
-            }
+            HostCall::StartProvider { launch, input } => Some((
+                serde_json::from_str::<Value>(launch).unwrap(),
+                input.clone(),
+            )),
             _ => None,
         })
         .collect();
