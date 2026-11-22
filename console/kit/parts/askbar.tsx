@@ -11,7 +11,9 @@ const revealForm = (form: HTMLElement | null) => {
   const bottom = pill && pill.top > s.top && pill.top < s.bottom ? pill.top : s.bottom;
   let by = Math.max(0, f.bottom - bottom);
   if (f.top - by < s.top) by = f.top - s.top; // the form is taller than the visible part, or above it: its top wins
-  if (by) sc.scrollTop += by;
+  if (!by) return;
+  sc.scrollTop += by;
+  sc.dispatchEvent(new Event("scroll")); // tell the transcript now: its anchor moves with the reveal, so the next commit holds the new place, not the old one
 };
 
 const QUESTION: Record<string, string> = { edit: "Allow this edit?", execute: "Allow this command?" };
