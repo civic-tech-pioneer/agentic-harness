@@ -85,13 +85,14 @@ builds (the deputy skill, "Who builds, who reviews": Codex two slices in three).
 | Team | Who | Does | Ends each round with |
 |---|---|---|---|
 | Build | the foreman (`skills/foreman`): plans the slice into task briefs, builds them itself or with parallel `implementer` subagents | pushes `slice/<id>`, opens the PR, answers every finding | one push; last commit `<id> r<r>: answers`, a line `F<r>.<k> fixed in <sha>` or `F<r>.<k> disagree: <why>` per finding |
-| Review | the other vendor, running `validator`, `adversary` and `user-sim` (`.claude/agents/`) as subagents, each in a fresh context | reads the PR and runs the programs; pushes nothing | a PR comment: numbered findings, then one line `VERDICT: approve` or `VERDICT: changes (<n>)` |
+| Review | the other vendor: a review lead running `validator`, `adversary` and `user-sim` (`.claude/agents/`) as subagents, each in a fresh context, then triaging their findings against the vision | reads the PR and runs the programs; pushes nothing | a PR comment: blocking findings, polish, proposed accepted risks, the trend and the lead's call, then one line `VERDICT: approve` or `VERDICT: changes (<n> blocking)` |
 
 ```
 deputy: build brief ──> builder pushes slice/<id>, opens PR
 deputy: review brief r ──> reviewer posts review r ──┬─ VERDICT: approve + CI green ──> deputy: gh pr merge --admin --rebase
                                                   └─ VERDICT: changes (n) ──> deputy: answer brief r ──> builder pushes once ──> r+1
-                                                     after review 5 without approve ──> the human
+                                                     no fixed cap: the review lead calls another round, merge or stalled;
+                                                     from round 4 the deputy writes why one more is worth it; stalled ──> deputy rules or the human
 ```
 
 - **Dispatch.** Claude side: a one-off claude.ai routine (`RemoteTrigger`), later rounds of a team

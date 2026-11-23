@@ -8,16 +8,19 @@
 ID=$1 SEEN=${2:-} MAX=${3:-0} T0=$(date +%s)
 state() {
   for B in "slice/$ID" "slice/$(echo "$ID" | tr '[:upper:]' '[:lower:]')"; do  # watane: S95 on slice/s95
+    # A failed lookup (network, DNS, gh) is no state: say `error`, and the loop below tries again.
     S=$(gh pr list --head "$B" --state all --json number,state,headRefOid,comments \
-        --jq '.[0] // empty | "PR \(.number) \(.state) \(.headRefOid) \(.comments|length)"' 2>/dev/null)
+        --jq '.[0] // empty | "PR \(.number) \(.state) \(.headRefOid) \(.comments|length)"' 2>/dev/null) \
+      || { echo error; return; }
     [ -n "$S" ] && { echo "$S"; return; }
-    H=$(git ls-remote origin "refs/heads/$B" | cut -c1-40); [ -n "$H" ] && { echo "nopr $B $H"; return; }
+    H=$(git ls-remote origin "refs/heads/$B") || { echo error; return; }
+    H=$(echo "$H" | cut -c1-40); [ -n "$H" ] && { echo "nopr $B $H"; return; }
   done
   echo none
 }
 while :; do
   S=$(state)
-  if [ "$S" != "$SEEN" ]; then
+  if [ "$S" != error ] && [ "$S" != "$SEEN" ]; then
     echo "$S"; set -- $S
     case $1 in
       PR) gh pr view "$2" --json commits,comments \
