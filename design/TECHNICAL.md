@@ -2553,23 +2553,32 @@ out. Stop shows "Stopping…" until a `turn` update says idle, or shows another 
   PO, against `design/frames/Main-2`). "Needs you" scrolls
   to the first open ask and puts focus on Allow once. A session allow shows
   in the header until the session ends or `take-back`.
-- **Queue.** Up to 3 shown, then "+ n more". The queue keeps an item until
-  its transfer is accepted (S36 r2, the deputy's rule): Edit puts the input
-  in the composer and takes it out of the queue (`unqueue`) only once the
-  composer's `say` of it, as she edited it, is accepted (clearing the
-  composer drops that link, and the item stays queued); Stop and send calls
-  `interrupt` with the input, then `unqueue` (the replacement runs before
-  queued inputs, 2.3); remove has Undo for 6 s, whose line and Undo stay
-  when its `say` is refused. So a refusal changes nothing, nothing is
-  restored, and a newer draft in the composer is left alone; no recovery
-  state lives in the dock across a session switch or a remount. Edit while
-  the composer holds text does nothing but say "Finish or clear your message
-  first"; `unknown-input` says "That message was already sent". The controls
-  are off under "Another tab". A full queue turns Send off and says why (the
-  placeholder, or the line above the composer while it holds text): 32
-  inputs, or a `say` refused `queue-full` (the 2 MiB limit), also one that
-  ends after she typed again, which keeps Send off until the queue's length
-  changes or the turn ends (S36 r1, r2). Every queue action stays in its
+- **Queue.** Up to 3 shown, then "+ n more". Take it back first (the
+  deputy's rule, S36 r3, which replaces S36 r2's): a queue action calls
+  `unqueue(n)` first, the kernel's one atomic take (9.3), so no turn can
+  take the item after it, and the original and its replacement are never
+  both alive. `unknown-input` (a turn took it first) says "That message was
+  already sent" and changes nothing else. Edit, once `unqueue` succeeds, puts
+  the input in the composer, and she sends it as an ordinary `say` (its slot
+  is free, also in a full queue); a refused `say` comes back as "Send" says.
+  Stop and send calls `unqueue`, then `interrupt` with the input (the
+  replacement runs before queued inputs, 2.3); a refused `interrupt` puts the
+  text in the composer with the error, as "Send" does. Edit and Stop and send
+  while the composer holds text do nothing but say "Finish or clear your
+  message first"; if she types while the take is out, her text stays and the
+  taken input waits on the line under the queue with Undo; if she left the
+  session meanwhile, it becomes that session's kept draft when that is empty.
+  Remove is `unqueue` and has Undo for 6 s: one `say` in flight at a time,
+  and a refused Undo keeps its line and its Undo until used. Known cost: a
+  refused re-send loses the item's place in the queue, and its text lives
+  only in the composer, under the composer's known limit after a reload
+  ("Send"). The controls are off under "Another tab". A full queue turns
+  Send off and says why (the placeholder, or the line above the composer
+  while it holds text): 32 inputs, or a `say` refused `queue-full` (the
+  2 MiB limit), also one that ends after she typed again, which keeps Send
+  off until the queue's length changes or the turn ends; a refusal that ends
+  after either changed since its `say` describes a queue that is gone and
+  changes nothing (S36 r1, r2, r3). Every queue action stays in its
   session: the dock is the shown session's (App keys it by the session), and
   a call that ends after she switched acts on its own session alone.
 - **Send.** A `say` that fails (any error of 2.3: `refused`, `queue-full`,
