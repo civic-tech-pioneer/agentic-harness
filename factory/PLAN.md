@@ -55,7 +55,7 @@ Touches: `kernel/`, `provider/` (see Waiting: its own repository), `wit/`, `mod.
 `ui/`, `design/TECHNICAL.md` (2.1, 4.1, 4.6, the 15 row 4.6 names). Fakes nothing once S99
 merges; until then it builds against S99's branch. Protects: *core*. `PO arms`. Cloud.
 
-### S36: stage B, end to end: Alice steers a turn (in flight, cloud, builder claude, reviewer codex; handed out 2026-11-23 after S35 merged at 042b0dd; routine `trig_0184S7g9auvX4raMDZLWTrYS`, 17:39 UTC; DELIVERED as PR #50 (+2404 -252) against watane slice/s100 at ff6428c; r1 to Codex https://chatgpt.com/local/6b048603-4b28-83eb-a045-6edb4806e05e; r1: 8/3 (blocking/polish; adversary BREACHED: an answer can grant a scope the ask never offered; user-sim REJECTED 3 outcomes; call: another round); answer round to Claude 19:03 UTC)
+### S36: stage B, end to end: Alice steers a turn (in flight, cloud, builder claude, reviewer codex; handed out 2026-11-23 after S35 merged at 042b0dd; routine `trig_0184S7g9auvX4raMDZLWTrYS`, 17:39 UTC; DELIVERED as PR #50 (+2404 -252) against watane slice/s100 at ff6428c; r1 to Codex https://chatgpt.com/local/6b048603-4b28-83eb-a045-6edb4806e05e; r1: 8/3 (blocking/polish; adversary BREACHED: an answer can grant a scope the ask never offered; user-sim REJECTED 3 outcomes; call: another round); answer round to Claude 19:03 UTC; r1 answered at aa3432a (all 8 blocking; the adversary's two F1.1 follow-up breaches fixed; load measured in Chromium, within budget); r2 to Codex)
 
 Story: in the same session Alice answers an ask, queues a second message while the first runs,
 presses Stop, restarts `watane-dev serve` and finds the session where she left it. Covers asks
@@ -107,6 +107,13 @@ reviewer claude. Cloud.
 
 ### Upkeep
 
+- **Polish from S36's review r1 (2026-11-23):** P1.1 `kernel/tests/it/s36_firing.rs:49, :96` (assert the write delta,
+  the retry delay and a later successful call; the ceiling fixture at the actual ceiling); P1.2
+  `console/src/replaced_S36_3.test.tsx` (exact replay cursor, notice timing, enabled controls around takeover, session
+  switch on one mounted app); P1.3 the rest of `console/test/host/stage_b.mjs` browser assertions (card input and expiry,
+  scoped grant and removal, Deny with reason, queue and Stop transitions).
+- **Felt wrong in S36's user-sim:** queue rows show a whole 255 KiB message; Edit and Undo re-queue at the end; Stop and
+  send is offered on a queued row while the session reads Not running.
 - **Polish, low priority (the human, 2026-11-23):** a sent message's text stays recoverable until the kernel
   has accepted it, even across a reload (S35's composer ruling dropped this; Codex F1.4 to F4.3). Pick it up only
   when cheap, e.g. alongside other composer work.
