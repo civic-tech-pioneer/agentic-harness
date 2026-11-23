@@ -281,4 +281,51 @@ describe("S35 r3 F3.1", () => {
     render(<Console served={await served(f.w)} />);
     expect(box().value).toBe(""); // actual: "pending message"
   });
+  const pendingSay = () => {
+    const h: { accept: (r: unknown) => void; reject: (e: Error) => void } = { accept: () => {}, reject: () => {} };
+    const f = setup({
+      "sessions.list": () => ({ ok: [
+        { id: "s", title: "Session", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 },
+      ] }),
+      "sessions.say": () => new Promise((resolve, reject) => { h.accept = resolve; h.reject = reject; }),
+    });
+    return { f, h };
+  };
+  it("r3_f3_1_the_inheriting_composer_shows_the_accepted_text_cleared_too", async () => {
+    const { f, h } = pendingSay();
+    const first = render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "pending message" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    first.unmount();
+    render(<Console served={await served(f.w)} />);
+    await act(async () => h.accept({ ok: 1 }));
+    expect(box().value).toBe("");
+  });
+  it("r3_f3_1_a_newer_edit_in_the_inheriting_composer_outlives_the_acceptance", async () => {
+    const { f, h } = pendingSay();
+    const first = render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "pending message" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    first.unmount();
+    const second = render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "pending message, and more" } });
+    await act(async () => h.accept({ ok: 1 }));
+    expect(box().value).toBe("pending message, and more");
+    second.unmount();
+    render(<Console served={await served(f.w)} />);
+    expect(box().value).toBe("pending message, and more");
+  });
+  it("r3_f3_1_a_refusal_after_a_reload_keeps_the_inherited_text", async () => {
+    const { f, h } = pendingSay();
+    const first = render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "pending message" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    first.unmount();
+    const second = render(<Console served={await served(f.w)} />);
+    await act(async () => h.reject(new Error("refused")));
+    expect(box().value).toBe("pending message");
+    second.unmount();
+    render(<Console served={await served(f.w)} />);
+    expect(box().value).toBe("pending message");
+  });
 });
