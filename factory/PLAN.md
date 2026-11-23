@@ -65,7 +65,7 @@ detection through `host-info.generation`, the rest of 17's stage B cases, and th
 left after S99: interrupt, host ask items 4.5, the load test's fake). Carry: S34 RISK 3, S26/S28
 limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
 
-### S37: spike: what can enforce a profile's local-network setting for the shell grant (V27) (in flight, cloud, builder codex, no review round (spike: the deputy reads it, closes the PR unmerged, and puts the answer under V27); Codex task https://chatgpt.com/local/6b03eab5-4b88-83eb-8f84-d9cc7bb8606e, 2026-11-23 ~07:15 UTC)
+### S37: spike: what can enforce a profile's local-network setting for the shell grant (V27) (DONE 2026-11-23: report read, PR #48 closed unmerged, answer under V27; was in flight, cloud, builder codex, no review round (spike: the deputy reads it, closes the PR unmerged, and puts the answer under V27); Codex task https://chatgpt.com/local/6b03eab5-4b88-83eb-8f84-d9cc7bb8606e, 2026-11-23 ~07:15 UTC)
 
 Question: which mechanisms can enforce a profile setting "local network access: denied (default) / allowed" for
 the shell grant, on macOS and Linux? Local network means loopback (127.0.0.0/8, ::1), private ranges (10/8,
@@ -567,14 +567,31 @@ S2 writes each into the document that owns it.
   the decision from there." Read as: a profile setting for local network access (loopback, private and link-local
   ranges), denied by default. Spike S37 reports the mechanisms; V27 is decided after it.
 
+- **2026-11-23, the human, on N5:** "I'm leaning towards B as Well. But let's revisit this only once we have actually
+  started at E stage E, that is." A leaning, not a decision: (b), a `codex app-server` backend in the host, keeps a
+  second vendor for cross-checking. Revisit when stage E starts.
+
 ## Waiting on the human
 
-- **N5 The factory's implementer needs a shell.** The human chose to decide at stage F. Options:
+- **N5 The factory's implementer needs a shell (revisit when stage E starts; the human leans to (b)).** Options:
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
   backend in the host, a third native process kind (a new host boundary, costly to remove once
-  mods use it). Rec: (a). Blocks only stage F.
+  mods use it). Rec was (a). Not raised in reports before stage E starts; build nothing that assumes either option.
 
-- **V27 (decide after the S37 spike report; the human wants a profile setting for local network access, denied by default):
+- **V27: the S37 spike report is in; your decision** (the human wants a profile setting for local network access, denied
+  by default). Report: `design/SPIKE-local-network.md` at 5f7392a on `slice/S37` (PR #48, closed unmerged). Its findings:
+  (A) the kernel refusing allowlist entries (`localhost`, `*.localhost`, local IP literals incl. IPv4-mapped) is cheap
+  and probed, but misses DNS names that resolve local, rebinding, and direct dials; (B) Claude's sandbox: on macOS
+  `["localhost"]` reached loopback through the sandbox proxy (S1, probed); Anthropic's sandbox-runtime has a
+  resolved-address guard at dial time (loopback, link-local, metadata by default; private and ULA ranges need extra
+  config) but whether the pinned Claude build exposes it is unverified; (C) a watane host egress broker that resolves
+  once and dials only a checked address covers rebinding, mixed answers, IPv6 and the metadata address (probed in a
+  Linux fixture), at the cost of a host component that must own both proxy paths; (D) OS egress rules (Linux cgroup or
+  nftables, macOS Network Extension) or a filtering resolver: costlier, admin-level, or partial. Recommendation: keep
+  the domain allowlist, add (A) as a first line, and call the setting enforced only with a dial-time address check (B if
+  the Claude build exposes it, else C); if neither is available, fail closed for a profile that promises local denial,
+  or label it best effort with the gaps named. Decide in stage C, with the probes in CI on Linux and macOS.
+  Was: V27 (decide after the S37 spike report; the human wants a profile setting for local network access, denied by default):
   the shell grant's network allowlist reaches loopback through Claude's sandbox proxy**
   (S1, PR #37, security boundary). With `allowedDomains: ["localhost"]`, a command reaches a
   loopback server through the sandbox's own proxy (direct connections stay blocked); the proxy also
