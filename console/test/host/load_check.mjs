@@ -9,9 +9,10 @@ export function isInterrupted(state) {
 }
 
 /** The common window in which every source loaded: from the latest first load line to `end` (the first Stop, ms). The window must
- * last `minSeconds`, and each source must write at least `share` of `rate` deltas and entries per second in every shared subwindow
- * of about `step` seconds that tiles it (S36 r3 F3.5: a total over the window lets one early line and a short burst pass); else a
- * fault each (the first short subwindow of each source and kind). */
+ * last `minSeconds`, and each source must write at least `share` of `rate` deltas and entries per second in every window
+ * [t, t + `step` s) inside it, with t at the window's start, at each of the source's stamps, and at `end` - `step` s (S36 r4
+ * F4.3, the deputy's rule: sliding windows, no bins, so no gap between stamps can hide); else a fault each (the first short
+ * window of each source and kind). */
 export function loadWindow(by, end, rate, minSeconds, share = 0.8, step = 2) {
   const faults = [];
   let from = -Infinity;
@@ -23,15 +24,18 @@ export function loadWindow(by, end, rate, minSeconds, share = 0.8, step = 2) {
   const seconds = (end - from) / 1000;
   if (!(seconds >= minSeconds)) faults.push(`the common load window is ${Number.isFinite(seconds) ? seconds.toFixed(1) : 0} s, under ${minSeconds} s`);
   else {
-    const parts = Math.max(1, Math.floor(seconds / step)), len = (end - from) / parts; // equal subwindows that cover it exactly
-    for (const [name, xs] of by) for (const kind of ["deltas", "entries"]) {
-      const want = Math.floor(rate[kind] * (len / 1000) * share);
-      for (let k = 0; k < parts; k++) {
-        const a = from + k * len, z = k === parts - 1 ? end : a + len;
-        const got = xs.filter((x) => x.at >= a && x.at < z && x.kind === (kind === "deltas" ? "delta" : "entry")).length;
-        if (got < want) {
-          faults.push(`${name} wrote ${got} ${kind} in ${((a - from) / 1000).toFixed(1)}-${((z - from) / 1000).toFixed(1)} s of the common ${seconds.toFixed(1)} s, under ${want} (${share * 100}% of ${rate[kind]}/s)`);
-          break;
+    const len = step * 1000;
+    for (const [name, xs] of by) {
+      const starts = [from, ...xs.map((x) => x.at), end - len].filter((t) => t >= from && t + len <= end);
+      for (const kind of ["deltas", "entries"]) {
+        const want = Math.floor(rate[kind] * step * share);
+        const ats = xs.filter((x) => x.kind === (kind === "deltas" ? "delta" : "entry")).map((x) => x.at);
+        for (const t of starts) {
+          const got = ats.filter((at) => at >= t && at < t + len).length;
+          if (got < want) {
+            faults.push(`${name} wrote ${got} ${kind} in ${((t - from) / 1000).toFixed(2)}-${((t + len - from) / 1000).toFixed(2)} s of the common ${seconds.toFixed(1)} s, under ${want} (${share * 100}% of ${rate[kind]}/s)`);
+            break;
+          }
         }
       }
     }

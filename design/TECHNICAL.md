@@ -2346,9 +2346,11 @@ machine. A stage is done only within its budgets.
   test mod `local/loadclient` (its `access/` seeded into the stopped preview, a test-only reach),
   all started together, each on the fake's `load` at 50 deltas and 5 entries of 4 096 bytes a
   second for 8 s, then Stop. Latency counts only once all 8 fakes wrote at least 80% of that
-  rate in every 2 s subwindow of a common window of at least 6 s ending at the first Stop (7.9 to 8.0 s in
-  each pass), and only for the items written in it (S36 r2 F2.3: a run with one idle client fails;
-  S36 r3 F3.5: sources that load in turn, not together, fail). Each page session is paired with its fake by identity (the fake's
+  rate in every window [t, t + 2 s) of a common window of at least 6 s ending at the first Stop (7.9 to 8.0 s in
+  each pass), with t at the common window's start, at each of the fake's stamps and at 2 s before its end (sliding
+  windows, no bins: no gap between stamps longer than the rate allows passes), and only for the items written in it
+  (S36 r2 F2.3: a run with one idle client fails; S36 r3 F3.5: sources that load in turn, not together, fail; S36 r4
+  F4.3: bursts at the edges of 2 s bins around an idle 2 s fail). Each page session is paired with its fake by identity (the fake's
   first input, `load <k>`, which a test-only wrapper that stamps each stdout write records), and
   every line its fake wrote before Stop reached its page exactly once (about 1 750 per run, none
   missing, none twice, none from another session). Item delay, the fake's stdout write to the
@@ -2364,7 +2366,9 @@ machine. A stage is done only within its budgets.
   grow with them, are the crate's. The first record (S36) timed raw Node socket arrivals and
   paired sessions with fakes by their delays; S36 r1 (F1.8) replaced it with these browser
   measurements; S36 r2 added the common-window rate check and remeasured; S36 r3 made it hold in every 2 s
-  subwindow and remeasured (watane `slice/s100` at fdb3d9a).
+  subwindow and remeasured (watane `slice/s100` at fdb3d9a); S36 r4 made the windows slide
+  (`console/test/host/load_check.mjs`, a pure function with its test), and the figures above were not remeasured under it
+  (no `watane-dev` on that build machine; the review r4 isolated run measured 32.4 ms item p95 and 19.4 ms Stop p95).
 
 ## 17. Build plan
 
