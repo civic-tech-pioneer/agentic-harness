@@ -28,12 +28,12 @@ needs more adds it to the backend sections first (17).
 | pkg | pkg 4.5, 5.1, 7.2 | import and export rows, two grant kinds (15) |
 | dev | `dev/` | a fake `claude` and a scripted Responses server, which also serves a judge origin (the judge fake, 16), for previews and tests (12) |
 | M2 Kernel | mod `mods:agent`, this repository (R1, the human, 2026-11-20) | profiles, offers, sessions, transcripts, broker, OpenAI loop, delegation (9) |
-| M1 Providers | two mods `mods:claude-code`, from two publishers, each in its own repository (R1) | unchecked: start and hand off; checked: judge then forward (10) |
+| M1 Providers | two mods `mods:claude-code`, from two publishers: the unchecked one in `provider/` of this repository (R-B1, the human, 2026-11-23), the checked one in its own repository (R1) | unchecked: start and hand off; checked: judge then forward (10) |
 | C1 Console | the kernel's page, `ui/`, built from `console/` in this repository | starting sessions, the transcript, the status line, asks, the queue, the session list (18) |
 
 **This repository** is the kernel `mods:agent` and its console (R1, the human,
-2026-11-20). Each provider, the unchecked and the checked, lives in its own
-repository, not here. The kernel's pure logic is a plain Rust crate, `kernel/`
+2026-11-20), and the unchecked provider in `provider/` (R-B1, the human,
+2026-11-23); the checked provider lives in its own repository. The kernel's pure logic is a plain Rust crate, `kernel/`
 (`agent-kernel`, serde only), with its own tests; the WASM mod wraps the crate
 later (PLAN, deputy decision "The kernel's pure logic is a plain Rust crate").
 Layout: the files marked built exist; the others are planned (the first build
@@ -70,14 +70,14 @@ in the same commit):
   `caller.identity()` (9.3) are in `kernel/wasm/src/lib.rs` (S32, 14)
 - `console/` (source) and `ui/` (built from it), 18
 
-A provider repository holds `mods:claude-code` with `src/lib.rs`; the checked
-one also `src/judge.rs` (10: judge call, verdict parse, breaker). Until the
-human answers R-B1 (PLAN, "Waiting on the human"), the unchecked provider is
-built (S35) in `provider/` of this repository as a self-contained mod: its
-own `mod.toml`, `wit/world.wit`, `logic/` crate and tests, no path into
-`kernel/` or `console/`, and its own copy of the provider rows of 14
-(`provider/BOUNDARIES.md`), so a `git subtree split` makes it its own
-repository. The kernel links it as a local provider (`kernel/wasm/deps.json`,
+A provider holds `mods:claude-code` with `src/lib.rs`; the checked one, in
+its own repository, also `src/judge.rs` (10: judge call, verdict parse,
+breaker). The unchecked provider is `provider/` of this repository (S35,
+R-B1), a self-contained mod: its own `mod.toml`, `wit/world.wit`, `logic/`
+crate and tests, no path into `kernel/` or `console/`. Its boundaries are
+the provider rows of 14, in this repository's one boundary list
+(`factory/config.toml` `boundaries`); `provider/BOUNDARIES.md` is a copy of
+those rows beside it. The kernel links it as a local provider (`kernel/wasm/deps.json`,
 `kernel/wasm/wit/deps/claude-code/`, written by `watane-dev add`).
 
 A new source file starts with a `//!` line that cites its section here, as
@@ -1841,11 +1841,13 @@ Each row names the files that hold it: "watane" paths are in the watane
 checkout, the others in this repository (layout in 1). A slice whose diff
 touches a file of this repository named here gets the adversary step; a slice
 that adds or moves such a file updates sections 1 and 14 in the same commit.
-Each provider repository keeps a copy of the provider rows of this section
+The unchecked provider is in this repository (`provider/`, R-B1), so this one
+list covers its files; `provider/BOUNDARIES.md` is a copy of its rows. The
+checked provider's repository keeps a copy of the provider rows of this section
 (with this repository's commit it copied, refreshed when they change) and its
 `factory/config.toml` `boundaries` points at that copy, so its slices that
-touch a provider file named here get the adversary step; a provider repository is built only with that in place (17,
-stages B and E).
+touch a provider file named here get the adversary step; it is built only with that in place (17,
+stage E).
 
 | Property | Holds by | Files |
 |---|---|---|
@@ -1857,7 +1859,7 @@ stages B and E).
 | No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
-| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one, until R-B1: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`) |
+| A mod in the middle gains no authority | consent per origin client (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent per origin client, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`) |
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/src/call.rs` (a failed call commits no write, id or timer, 2.1), `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
@@ -2306,7 +2308,7 @@ length. A long session cannot hold the slot.
 | Stage | Backend | Console shows | Repository | Done when |
 |---|---|---|---|---|
 | A | H1 streams, H5 durable requests, H7 timers; the V8 three-layer prototype (16, "Probes named here") | the page skeleton (18.4 layout, theme) attached to a kernel stream, numbered items arriving: a probe session (9.9) in the transcript, live and after a reload | watane: host, pkg (H1, H5, H7); this repository: the kernel stream and the probe (9.9), the WASM wrapper and `wit/world.wit` (1), the console on the real kernel in `watane-dev serve` (18.2) | cases 20, 21 pass (case 7's kernel part needs a provider stream: stage B, and `cargo test` until then); cases 36 and 51 for the host part (3); case 58 (host part); the budgets of stage A; V8 measured and recorded in 16, "V8 record" |
-| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `host-info.generation` (2.1, G1), dev's fake `claude`, pkg; the unchecked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 7, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72, 73, 74; the budgets of stage B |
+| B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `host-info.generation` (2.1, G1), dev's fake `claude`, pkg; this repository (one boundary list, its `factory/config.toml` `boundaries` pointing at 14, which names `provider/`): the unchecked provider in `provider/` (R-B1), kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 7, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72, 73, 74; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts), 70; the budgets of stage D |
 | E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
