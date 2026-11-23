@@ -27,6 +27,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
     const mark = ++edited.current;
     setRefused(null);
     setText("");
+    keepDraft(draftKey, ""); // rule 2: out of the kept draft before the send is dispatched, not in the effect after
     const back = (e: unknown) => {
       if (edited.current !== mark) return;
       setText(t);
