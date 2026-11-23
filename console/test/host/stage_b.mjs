@@ -507,6 +507,183 @@ async function main() {
       ensure(!bad, () => `sessions.read: ${bad}`);
     });
 
+
+    // ---- S36-4: Alice steers a turn (asks, queue, Stop, restart), on watane's host and dev's fake claude ----
+    const logPath = () => join(dirname(scriptPath()), "fake-claude.log");
+    const fakeLog = () => (existsSync(logPath()) ? readFileSync(logPath(), "utf8").split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return {}; } }) : []);
+    const stdinSince = (n) => fakeLog().slice(n).filter((l) => typeof l.stdin === "string").map((l) => { try { return JSON.parse(l.stdin); } catch { return {}; } });
+    const asksOf = (es) => es.filter((e) => e.kind === "ask");
+    const openAsk = async (s) => { const es = await transcript(s); const a = asksOf(es); return a.find((e) => !e.body?.decision && !a.some((d) => d.body?.id === e.body?.id && d.body?.decision)); };
+    const decisionsOf = (es, id) => asksOf(es).filter((e) => e.body?.id === id && e.body?.decision);
+    const lastTurn = (es) => [...es].reverse().find((e) => e.kind === "turn")?.body;
+    const idleAfter = async (s, n, what) => until(async () => { const es = await transcript(s); const t = lastTurn(es); return es.length > n && t?.state === "idle" ? es : null; }, 20_000, what);
+    const answer = (session, ask, decision) => post("sessions.answer", { session, key: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ask, decision: JSON.stringify(decision) });
+    const isErr = (v) => v && typeof v === "object" && "err" in v;
+    const askTurn = (file) => [{ do: "expect-user" }, { do: "ask", tool: "Read", input: { file_path: file }, await: true }, { do: "message", text: `read ${file}` }, { do: "result" }, { do: "idle" }];
+
+    let steerSession = null;
+    await check("asks (cases 9, 28, 29, 63, 73 a): allow once, a second answer refused; allow for the session, the next ask answered by the kernel; take-back asks again; deny with a reason ends the turn", async () => {
+      writeScript([...askTurn("a.txt"), ...askTurn("b.txt"), ...askTurn("c.txt"), ...askTurn("d.txt")]);
+      const mark = fakeLog().length;
+      const s = await startClaude("read a"); steerSession = s;
+      let a = await until(() => openAsk(s), 15_000, "the first ask to open");
+      ensure(/^Read\(\/.+\/\*\*\)$/.test(a.body.reach ?? ""), `the ask's reach is ${a.body.reach}: no Read(<folder>/**) offered`);
+      ensure(typeof a.body.path === "string" && a.body.path.endsWith("/a.txt"), `the ask's path is ${a.body.path}`);
+      const exp = a.body["expires-at"];
+      ensure(Number.isInteger(exp) && Math.abs(exp - (Date.now() + 600_000)) < 30_000, `expires-at ${exp} is not about 10 minutes from now`);
+      const turn = lastTurn(await transcript(s));
+      ensure(turn?.state === "waiting" && turn.asks?.includes(a.body.id), `the turn is ${JSON.stringify(turn)}, not waiting on the ask`);
+      const first = await answer(s, a.body.id, { allow: true });
+      ensure(!isErr(first), `allow once refused: ${JSON.stringify(first)}`);
+      const second = await answer(s, a.body.id, { allow: true });
+      ensure(isErr(second), "a second answer to the same ask was accepted (case 9)");
+      let es = await idleAfter(s, 0, "the first turn to end after the allow");
+      const d1 = decisionsOf(es, a.body.id);
+      ensure(d1.length === 1 && d1[0].body.decision.outcome === "allow" && d1[0].body.decision.by === "owner", `decisions of the first ask: ${JSON.stringify(d1.map((d) => d.body.decision))}`);
+      const responses = () => stdinSince(mark).filter((l) => l.type === "control_response");
+      ensure(responses().length === 1 && responses()[0].response?.response?.behavior === "allow", `the fake got ${responses().length} answers: ${JSON.stringify(responses()).slice(0, 300)}`);
+      // allow for the session
+      await ok("sessions.say", { session: s, key: `k-${Date.now()}`, input: "read b" });
+      a = await until(() => openAsk(s), 15_000, "the second ask to open");
+      ensure(!isErr(await answer(s, a.body.id, { allow: true, for: "session" })), "allow for the session refused");
+      es = await idleAfter(s, es.length, "the second turn to end");
+      const allowEntry = es.find((e) => e.kind === "allow");
+      ensure(allowEntry, "no allow entry for the session allow");
+      // the next matching ask is answered by the kernel: no open ask, no waiting turn
+      await ok("sessions.say", { session: s, key: `k-${Date.now()}-c`, input: "read c" });
+      es = await idleAfter(s, es.length, "the third turn (session allow) to end");
+      const third = asksOf(es).filter((e) => e.body?.path?.endsWith("/c.txt"));
+      ensure(third.some((e) => e.body.decision?.by === "session-allow" && e.body.decision.outcome === "allow"), `the third ask's decisions: ${JSON.stringify(third.map((e) => e.body.decision))}`);
+      ensure(!stdinSince(mark).some((l) => JSON.stringify(l).includes("updatedPermissions")), "the fake received updatedPermissions");
+      // take-back, then the same call asks again; deny it with a reason
+      ensure(!isErr(await post("sessions.take-back", { session: s, allow: String(allowEntry.i) })), "take-back refused");
+      await ok("sessions.say", { session: s, key: `k-${Date.now()}-d`, input: "read d" });
+      a = await until(() => openAsk(s), 15_000, "the fourth ask to open after take-back");
+      ensure(!isErr(await answer(s, a.body.id, { deny: true, reason: "not now" })), "deny refused");
+      es = await idleAfter(s, es.length, "the fourth turn to end after the deny");
+      const denied = stdinSince(mark).filter((l) => l.type === "control_response" && l.response?.response?.behavior === "deny");
+      ensure(denied.length === 1 && /not now/.test(denied[0].response.response.message ?? ""), `the fake's denies: ${JSON.stringify(denied).slice(0, 300)}`);
+      const d4 = decisionsOf(es, a.body.id);
+      ensure(d4.length === 1 && d4[0].body.decision.outcome === "deny", `decisions of the denied ask: ${JSON.stringify(d4.map((d) => d.body.decision))}`);
+    });
+
+    await check("page: the ask card offers Allow once and Allow Read(<folder>/**) this session; Allow once lets the turn go on to Idle", async () => {
+      writeScript([...askTurn("page.txt")]);
+      const page = await openPage(browser);
+      try {
+        await page.getByRole("button", { name: /new session/i }).first().click().catch(() => {});
+        const s = await startClaude("read page");
+        await page.reload();
+        await page.getByText(/read page/).first().click().catch(() => {});
+        await until(() => openAsk(s), 15_000, "the ask to open");
+        const once = page.getByRole("button", { name: "Allow once" });
+        await once.waitFor({ timeout: 15_000 });
+        const scoped = await page.getByRole("button", { name: /^Allow Read\(\/.+\/\*\*\) this session$/ }).count();
+        ensure(scoped === 1, "no Allow Read(<folder>/**) this session button");
+        await once.click();
+        await until(async () => (await page.locator(".wa-status-word").textContent()) === "Idle", 15_000, "the status line to read Idle after Allow once");
+      } finally { await page.close(); }
+    });
+
+    await check("queue (cases 27, 45): a message sent while a turn runs is queued, listed, runs once after it; unqueue of a taken input is unknown-input", async () => {
+      writeScript([{ do: "expect-user" }, { do: "long-turn", entries: 12, "every-ms": 250 }, { do: "expect-user", contains: "second" }, { do: "message", text: "got second" }, { do: "result" }, { do: "idle" }]);
+      const mark = fakeLog().length;
+      const s = await startClaude("first");
+      await until(async () => (await transcript(s)).some((e) => /^entry 1 /.test(textOf(e) ?? "")), 15_000, "the long turn's first entry");
+      const n = await ok("sessions.say", { session: s, key: `q-${Date.now()}`, input: "second" });
+      const q = await ok("sessions.queued", { session: s });
+      ensure(q.length === 1 && /second/.test(q[0].input), `queued: ${JSON.stringify(q)}`);
+      const es = await until(async () => { const es = await transcript(s); return es.some((e) => textOf(e) === "got second") && lastTurn(es)?.state === "idle" ? es : null; }, 30_000, "the queued input's turn");
+      const seconds = stdinSince(mark).filter((l) => l.type === "user" && JSON.stringify(l).includes("second"));
+      ensure(seconds.length === 1, `the fake received "second" ${seconds.length} times`);
+      const un = await post("sessions.unqueue", { session: s, n: Number(n) });
+      ensure(isErr(un) && JSON.stringify(un).includes("unknown-input"), `unqueue of a taken input gave ${JSON.stringify(un)}`);
+      ensure(es.filter((e) => e.kind === "message" && e.body?.role === "user" && textOf(e) === "second").length === 1, "the queued message is not one entry");
+    });
+
+    await check("Stop (case 31, interrupt): a running turn ends idle {interrupted} within 1 s; an open ask is closed with one deny; the next say works", async () => {
+      writeScript([{ do: "expect-user" }, { do: "ask", tool: "Read", input: { file_path: "x.txt" }, await: true }, { do: "message", text: "not reached" }, { do: "result" }, { do: "idle" },
+        { do: "expect-user" }, { do: "long-turn", entries: 200, "every-ms": 100 }, { do: "expect-user", contains: "after" }, { do: "message", text: "after stop" }, { do: "result" }, { do: "idle" }]);
+      const s = await startClaude("ask then stop");
+      const a = await until(() => openAsk(s), 15_000, "the ask to open");
+      await ok("sessions.interrupt", { session: s, replacement: null });
+      let es = await idleAfter(s, 0, "the asked turn to end on Stop");
+      ensure(lastTurn(es)?.stop?.kind === "interrupted", `the turn ended ${JSON.stringify(lastTurn(es))}`);
+      const d = decisionsOf(es, a.body.id);
+      ensure(d.length === 1 && d[0].body.decision.outcome === "deny", `decisions of the interrupted ask: ${JSON.stringify(d.map((x) => x.body.decision))}`);
+      await ok("sessions.say", { session: s, key: `k-${Date.now()}`, input: "long" });
+      await until(async () => (await transcript(s)).some((e) => /^entry 2 /.test(textOf(e) ?? "")), 15_000, "the long turn's second entry");
+      const t0 = Date.now();
+      await ok("sessions.interrupt", { session: s, replacement: null });
+      es = await until(async () => { const es = await transcript(s); const t = lastTurn(es); return t?.state === "idle" && t.stop?.kind === "interrupted" && es.length > 0 && es.filter((e) => e.kind === "turn" && e.body?.stop?.kind === "interrupted").length === 2 ? es : null; }, 5_000, "the long turn to end interrupted");
+      const took = Date.now() - t0;
+      ensure(took <= 1000, `interrupt to idle {interrupted} took ${took} ms (budget 1 s)`);
+      await ok("sessions.say", { session: s, key: `k-${Date.now()}-n`, input: "after" });
+      await until(async () => (await transcript(s)).some((e) => textOf(e) === "after stop"), 15_000, "the say after Stop to be answered");
+      say(`  Stop: interrupt to idle {interrupted} in ${took} ms`);
+    });
+
+    await check("Stop and send: interrupt with a replacement ends the turn and runs the replacement next", async () => {
+      writeScript([{ do: "expect-user" }, { do: "long-turn", entries: 200, "every-ms": 100 }, { do: "expect-user", contains: "instead" }, { do: "message", text: "did instead" }, { do: "result" }, { do: "idle" }]);
+      const s = await startClaude("long");
+      await until(async () => (await transcript(s)).some((e) => /^entry 1 /.test(textOf(e) ?? "")), 15_000, "the long turn's first entry");
+      await ok("sessions.interrupt", { session: s, replacement: "do this instead" });
+      await until(async () => (await transcript(s)).some((e) => textOf(e) === "did instead"), 15_000, "the replacement's turn");
+    });
+
+    await check("cases 62, 64: an ask-shaped, a non-UTF-8, a duplicate-type and a verdict line on stdout are each an unknown entry, no ask, the turn never waiting", async () => {
+      writeScript([{ do: "expect-user" }, { do: "raw", line: '{"type":"ask","id":"x","tool":"Bash","input":{}}' }, { do: "raw", hex: "7b22747970" + "65223a2278ff227d" }, { do: "raw", line: '{"type":"assistant","type":"ask"}' }, { do: "raw", line: '{"type":"verdict","on":"x","safe":true}' }, { do: "message", text: "done raw" }, { do: "result" }, { do: "idle" }]);
+      const s = await startClaude("raw lines");
+      const es = await until(async () => { const es = await transcript(s); return es.some((e) => textOf(e) === "done raw") && lastTurn(es)?.state === "idle" ? es : null; }, 15_000, "the raw turn to end");
+      const unknown = es.filter((e) => e.kind === "unknown");
+      ensure(unknown.length === 4, `${unknown.length} unknown entries: ${JSON.stringify(unknown.map((e) => e.body)).slice(0, 300)}`);
+      ensure(!asksOf(es).length, "an ask entry was made");
+      ensure(!es.some((e) => e.kind === "turn" && e.body?.state === "waiting"), "the turn went waiting");
+    });
+
+    await check("case 11 compact (kernel part): claude's compact_boundary line is one compaction entry (2.3 has no client call that compacts a Claude session)", async () => {
+      writeScript([{ do: "expect-user" }, { do: "raw", line: JSON.stringify({ type: "system", subtype: "compact_boundary", session_id: "fake-session", uuid: "c1", compact_metadata: { trigger: "auto", pre_tokens: 1200 } }) }, { do: "message", text: "after compact" }, { do: "result" }, { do: "idle" }]);
+      const s = await startClaude("compact");
+      const es = await until(async () => { const es = await transcript(s); return es.some((e) => textOf(e) === "after compact") && lastTurn(es)?.state === "idle" ? es : null; }, 15_000, "the compact turn to end");
+      const c = es.filter((e) => e.kind === "compaction");
+      ensure(c.length === 1, `${c.length} compaction entries`);
+    });
+
+    await check("restart (cases 68, 69, 71): with a turn running and one input queued, a host restart leaves the session Not running: watane restarted, its ask denied by the kernel, the queue kept; Continue resumes the Claude session and the queued input runs", async () => {
+      writeScript([{ do: "expect-user" }, { do: "ask", tool: "Read", input: { file_path: "r.txt" }, await: true }, { do: "long-turn", entries: 400, "every-ms": 100 }]);
+      const s = await startClaude("before restart");
+      const a = await until(() => openAsk(s), 15_000, "the ask to open");
+      await ok("sessions.say", { session: s, key: `k-${Date.now()}`, input: "queued one" });
+      const pid = Number(JSON.parse(readFileSync(join(preview.home, "run.json"), "utf8")).pid);
+      process.kill(pid, "SIGTERM");
+      await until(async () => { try { process.kill(pid, 0); return false; } catch { return true; } }, 15_000, "the host to stop");
+      writeScript([{ do: "expect-user" }, { do: "message", text: "resumed one" }, { do: "result" }, { do: "idle" }, { do: "expect-user" }, { do: "message", text: "resumed two" }, { do: "result" }, { do: "idle" }]);
+      const mark = fakeLog().length;
+      serve();
+      const listed = await ok("sessions.list", { after: null, max: 256 });
+      const row = listed.find((x) => x.id === s);
+      ensure(row && /unknown/.test(row.turn), `the session lists as ${row?.turn}`);
+      let es = await transcript(s);
+      ensure(lastTurn(es)?.state === "unknown", `the last turn entry is ${JSON.stringify(lastTurn(es))}`);
+      const d = decisionsOf(es, a.body.id);
+      ensure(d.length === 1 && d[0].body.decision.by === "kernel" && d[0].body.decision.reason === "restart", `the open ask's decisions: ${JSON.stringify(d.map((x) => x.body.decision))}`);
+      const q = await ok("sessions.queued", { session: s });
+      ensure(q.length === 1 && /queued one/.test(q[0].input), `the queue after the restart: ${JSON.stringify(q)}`);
+      const page = await openPage(browser);
+      try {
+        await page.getByText(/before restart/).first().click().catch(() => {});
+        await until(async () => (await page.locator(".wa-status-word").textContent().catch(() => "")) === "Not running: watane restarted", 15_000, "the status line to read Not running: watane restarted");
+      } finally { await page.close(); }
+      await ok("sessions.say", { session: s, key: `k-${Date.now()}-c`, input: "Continue" });
+      es = await until(async () => { const es = await transcript(s); return es.some((e) => textOf(e) === "resumed two") && lastTurn(es)?.state === "idle" ? es : null; }, 30_000, "both resumed turns");
+      const args = fakeLog().slice(mark).find((l) => Array.isArray(l.args))?.args ?? [];
+      ensure(args.some((x) => x.startsWith("--resume=")), `the fake was started without --resume: ${args.join(" ").slice(0, 300)}`);
+      const users = es.filter((e) => e.kind === "message" && e.body?.role === "user").map(textOf);
+      ensure(users.slice(-2).join("|") === "queued one|Continue", `the user messages end ${users.slice(-3).join("|")}: the oldest queued input must start first`);
+      const bad = ascending(es);
+      ensure(!bad, () => `after the restart: ${bad}`);
+    });
+
     // case 20 (the part with no turn to restart): what a deleted or interrupted Claude session leaves behind across a host kill
     await check("case 20: a deleted session stays gone and an interrupted one stays as it was after a kill -9 and restart, no error in watane.log", async () => {
       const d = await startItems(20, 3000), x = await startItems(20, 3000);
@@ -551,14 +728,12 @@ async function main() {
       say(`  case 21: transcript lengths after each restart: ${lens.join(",")}`);
     });
   } finally { await browser.close(); }
-  skipped("case 20 timer due during downtime", "a Claude session's timers are an ask's expiry and the 10-minute idle deadline; a fake turn makes neither due without an ask and a restarted turn (S36)");
-  skipped("case 21 the effect of an answer after a kill, and the turn going on to its count", "needs an ask to answer and a turn that resumes after a restart (S36)");
+  skipped("case 20 timer due during downtime", "a Claude session's timers are the 10-minute idle deadline (an ask's expiry is the host's); making one due across a downtime needs a 10-minute wait");
+  skipped("case 21 the effect of an answer after a kill, and the turn going on to its count", "an answer is a host request applied after the commit; the host's own tests kill between commit and effect (watane S100); the restart check above covers the kernel part");
   skipped("case 7 a failed batch", "no consumer mod that fails a batch is linked in a preview; host only");
   skipped("case 36 the defer half", "no consumer mod that answers `defer` is linked in a preview; host only");
-  skipped("asks, the queue, Stop and Try again on the real kernel", "need asks and restart handling (S36)");
-  skipped("case 9 two answers to one ask", "the Claude adapter does not map can_use_tool into an ask yet (asks are S36)");
-  skipped("case 10 a hook callback that errors or times out", "no stage B launch registers a hook; hook callbacks come with asks and checks (S36, stage E)");
-  skipped("case 11 compact", "the kernel interface has no compact call in stage B");
+  skipped("case 10 a hook callback that errors or times out, and a check's expiry (case 29, 73 e)", "no stage B launch sets pre-tool-check, so the host answers every hook_callback deny and pushes no check (host 19.3); checks come with the checked provider (stage E); watane S100's host tests cover the host part");
+  skipped("case 11 compact (client part)", "2.3 has no call that compacts a Claude session; the compact_boundary entry is checked above");
   skipped("case 12 depth 0 removes Task", "not built: the kernel does not remove Task at depth 0 yet (no kernel test either); delegation is stage F (9.7)");
 }
 
