@@ -463,14 +463,25 @@ and `.husky/**`. No launch can remove them.
 
 | Line | Item |
 |---|---|
-| `control_request` `can_use_tool` | `{"type":"ask","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
-| `control_request` `hook_callback` (PreToolUse) | `{"type":"check","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"expires-at":<ms>}` |
+| `control_request` `can_use_tool` | `{"type":"ask","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"path":<absolute path>?,"expires-at":<ms>}` |
+| `control_request` `hook_callback` (PreToolUse) | `{"type":"check","id":<host id>,"tool_use_id":<the request's tool_use_id>,"tool":…,"input":…,"path":<absolute path>?,"expires-at":<ms>}` |
 | `control_cancel_request` | `{"type":"ask-resolved","id":…,"by":"cancelled"}` |
 | an `answer` the host accepted, whoever called it | `{"type":"ask-resolved","id":…,"by":"answered","outcome":"allow"\|"deny"\|"none"}`: `outcome` is the answer the host sent to `claude`, `none` only for a check (step 5) |
 | an ask the host denied at its `expires-at`, or a check it has not answered at its `expires-at` | `{"type":"ask-resolved","id":…,"by":"expired"}` (step 5) |
 | a line whose top-level `type` is any watane item type that can share the stream: `ask`, `check`, `ask-resolved`, `initialized`, `wrapped`, `consent-pending`, and the checked provider's `verdict` and `checking` (10); a slice that adds an item type to any of these streams adds it here | never passed through: the host pushes `{"type":"wrapped","line":"<the line, as a JSON string>"}` instead |
 | a line that is not valid UTF-8, not exactly one JSON object, or that has a duplicate key at the top level | the same `wrapped` item (a byte that is not UTF-8 becomes U+FFFD in `line`; the kernel keeps this `line` as it is; the `\xNN` form of 9.8 is only for bytes that reach the kernel without the host, as in its fixtures): the host decides on the parsed value, so the kernel and the host never read one line two ways |
 | any other line, known or not | the line unchanged |
+
+   **`path`** (watane S100; host 19.3 step 4): an `ask` or `check` of `Read`,
+   `Glob`, `Grep`, `Edit`, `Write` or `NotebookEdit` carries `"path"` after
+   `input`: the tool's own path input (`file_path` for `Read`, `Edit`, `Write`;
+   `path` for `Glob`, `Grep`; `notebook_path` for `NotebookEdit`), resolved by
+   the host with its symlinks resolved, absolute. An absent input path means
+   the working folder only for `Glob` and `Grep`; for the other four it gives
+   no `path`, as does an input that holds another of those keys, a path the
+   host cannot resolve, and one its rules refuse. `input` stays as `claude`
+   sent it. The kernel keeps `path` on the ask entry (9.4) and computes a file
+   key only from it (9.6); a `path` that is not a string is not kept.
 
    `expires-at` is on the host's clock: for an ask, the time the host pushed
    the item plus 10 minutes, the same instant at which it denies the ask
@@ -524,6 +535,14 @@ and `.husky/**`. No launch can remove them.
     kernel keeps the first one a session's provider stream gives in the
     record's `workspace` (9.3), written once (a later one with another id
     is an `unknown` entry).
+  - **Its folder, from `system/init`.** The id is not a path. The workspace's
+    own folder is the `cwd` of the stream's first `system/init` line: `claude`
+    reports its process folder, which the host set to the workspace folder
+    (host 19.3 "Folders"), as `getcwd` gives it (symlinks resolved, as the
+    host resolves an item's `path`, 4.5 step 4). The kernel keeps it once in
+    the record's `folder` (9.3) when it is a plain absolute folder; a later
+    `system/init` with another `cwd` changes nothing, and neither writes an
+    entry. This is the one place the kernel learns the folder (9.6, 14).
   - **Held across a resume.** A session whose record has a `workspace` launches
     with `workspace: "<that id>"`; one without launches with `scratch`. In
     stage B every Claude session is in a scratch workspace; a picked folder
@@ -734,7 +753,7 @@ once; `check` runs only this step.
 ### 9.3 Sessions
 
 Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `profile`, `backend`, `title`,
-`handle`, `workspace`, `claude-uuid`, `parent?`, `children`, `turn`,
+`handle`, `workspace`, `folder` (the workspace's own folder: the `cwd` of the provider stream's first `system/init`, kept once when it is a plain absolute folder, 4.6; absent until then), `claude-uuid`, `parent?`, `children`, `turn`,
 `boot` (the generation of the session's last restart step, or of its creation; "Restart" below), `owner-page` (the `owner/<owner>/<n>` page that lists it, 9.1), `bytes` (the bytes of the session's keys other than its record, 9.3 Quota, so `delete` frees them without reading them), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
 (session allows `{id, tool, key}`, 9.6), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {i, toolCallId, kind, outcome, by, for?, reason?, input?}}`, the pending answers of 9.8 rule 4; `toolCallId` is the ask's call, kept so a later ask on the call is compared without reading every ask (9.8); `input` is the changed input an `allow` carried (2.3), shown in the decision entry and not counted in the 1 KiB; `i` and `kind` are the ask entry's index and its `ask` or `check`, so the decision entry can repeat the ask, and follow the kind rules of 9.8 rule 4, after a restart without the adapter; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
@@ -1013,11 +1032,14 @@ The body of an `ask`:
 ```json
 {"id":"<ask id>","kind":"ask","toolCallId":"<the call's own id>",
  "toolCall":{"toolCallId":"<the same>","title":"…","rawInput":{}},
- "input":{},"expires-at":1763600060000,"reach":"Edit(<workspace>/**)"}
+ "input":{},"path":"<absolute path>","expires-at":1763600060000,
+ "reach":"Edit(<workspace folder>/**)"}
 ```
 
 `kind` is `ask` or `check`. `toolCall` is the ACP ToolCall, its `rawInput` the
-input; `input` is the full input. `reach` is the session allow that
+input; `input` is the full input. `path` is the host's resolved path of a file
+tool's call (4.5 step 4), present only when the item had one (a non-string is
+dropped); the file key comes from it, never from `input` (9.6). `reach` is the session allow that
 `{"allow":true,"for":"session"}` would add (9.6): `<tool>(<key>)` from the
 tool's scope function; it is absent when none is offered (a check, an
 `agent:` owner, a tool or input with no scope key). A decision is a later `ask` entry that
@@ -1309,17 +1331,18 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 - **Session allows: scope keys** (the human, 2026-11-21: "Session allows
   use a scope key per tool: a pure scope function turns a call's input into
   the smallest part that decides what it can reach and that a person can
-  judge at a glance (Bash: the exact command; file edits: the workspace; a
+  judge at a glance (Bash: the exact command; file edits: the workspace folder; a
   web fetch: the host; a skill: its name). A tool without one, or an input
   that cannot be scoped safely, gets no key and always asks. The kernel
   computes the key from the input that will run and shows it on the ask;
   'allow for this session' stores (tool, key); a later call is allowed only
   when its fresh key equals a stored pair exactly; take-back and session end
-  remove it."). Each tool may have a scope function `scope(tool, input) ->
+  remove it."). Each tool may have a scope function `scope(tool, folder, input, path) ->
   key or none`, pure, in `kernel/src/broker.rs`; the table below is the whole
   list, and a tool it does not name has none. The kernel computes the key
   when it stores a Claude ask, from that ask's `input` (the input that will
-  run), and shows it on the ask as `reach` (9.4): `<Tool>(<key>)`, or the
+  run) and, for a file tool, its `path` under the record's `folder` (S36),
+  and shows it on the ask as `reach` (9.4): `<Tool>(<key>)`, or the
   bare `<Tool>` for an empty key. An answer `{allow, for: session}` stores
   the pair (tool, key) in the session's `allows`. A later ask is answered
   `allow, by: session-allow`, by the kernel, only when the key computed
@@ -1332,7 +1355,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   | Tool | Input keys it knows | Key |
   |---|---|---|
   | `Bash` | `command`, `description`, `timeout`, `run_in_background` | the exact command; then `; timeout=<n>` and `; run_in_background=<true\|false>` when the input has them (pinned, S33) |
-  | `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Read`, `Glob`, `Grep` | the fields of that tool's input (below) | the workspace, `<ws>/**` |
+  | `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Read`, `Glob`, `Grep` | the fields of that tool's input (below), and the ask's `path` | the workspace folder, `<ws>/**` |
   | `WebFetch` | `url`, `prompt` | `domain:<host>`, the URL's host after one parse |
   | `Skill` | `skill`, `args` | the skill's name |
   | `TodoWrite` | `todos` | empty (reach `TodoWrite`): it reaches nothing outside the session |
@@ -1344,11 +1367,15 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   with a key the tool's scope function does not know gets no key (file
   tools too: the `_host` key that `claude` adds to run a tool on an attached
   machine, PLAN S33 RISK 1), as does any value outside the rules below.
-  **Stage B's host** (15): the file keys assume that the path in the ask is
-  the path that runs, symlinks resolved, before the key is computed (a link
-  `<ws>/l -> /etc` would otherwise put `/etc` under `<ws>/**`); stage B's
-  first slice says how the host gives the kernel a resolved path (4.5) and
-  until then no `workspace` is set, so no file key is offered. A key for an
+  **Stage B's host** (15): the file keys need the path that runs, symlinks
+  resolved, before the key is computed (a link `<ws>/l -> /etc` would
+  otherwise put `/etc` under `<ws>/**`). Since watane S100 the host gives
+  each file-tool `ask` and `check` item a top-level `path` so (4.5 step 4);
+  the kernel reads that and never the `input`'s path. The workspace's own
+  folder, which `<ws>/**` needs and the record's `workspace` (the host's id)
+  does not hold, is the record's `folder` (4.6): the `cwd` of the stream's
+  first `system/init`. With no `folder`, or no `path` on the ask, no file
+  key is offered and the ask still asks. A key for an
   `mcp__watane__<tool>` would rely on the host's `--strict-mcp-config`
   admitting only the `watane` server (4.4, 15), so that no other server's
   tool can carry that name.
@@ -1377,15 +1404,18 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
       `path`, `glob`, `type`, `output_mode`, `-A`, `-B`, `-C`, `-n`, `-i`,
       `multiline`, `head_limit`, `offset`. Values of keys that are not part
       of the key are not read.
-    - *Files.* The path (`file_path`; `notebook_path`; `path` for `Glob` and
-      `Grep`, required) is a string under the record's `workspace` (an
-      absolute path, no trailing `/`, no `(`, `)` or control character),
-      with no empty, `.` or `..` segment after it; a `Glob` also needs a
+    - *Files.* The ask's `path` (the item's top-level `path`, 4.5 step 4;
+      never `file_path`, `notebook_path` or `path` of the `input`, which are
+      only checked as known keys) is a string under the record's `folder`
+      (an absolute path, no trailing `/`, no `(`, `)` or control character),
+      with no empty, `.` or `..` segment after it. A `Glob` or `Grep` whose
+      `path` equals the `folder` (its path input absent: the working folder)
+      has the key too; the other file tools get none for it. A `Glob` also needs a
       `pattern` that is a string not starting with `/` or `~`, with no `\`
       and no `..` segment (split on `/`), since `claude` searches an absolute
       pattern's own folder and ignores `path` (adversary, S33-fix1). For
       `Write`, `Edit`, `MultiEdit` and `NotebookEdit` no segment after the
-      workspace starts with `.` (`.git/config`, `.claude/`, `.mcp.json`,
+      folder starts with `.` (`.git/config`, `.claude/`, `.mcp.json`,
       `.vscode/`, `.husky/`: a write there can make code run later) or holds
       a byte outside printable ASCII (a file system that folds Unicode case
       or drops ignorable code points opens `Ma\u{212A}efile` as `Makefile`
@@ -1496,7 +1526,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 | `assistant` `tool_use` of `TodoWrite` | `Plan`, with its entries and their status; also a `tool` entry |
 | `assistant` `tool_use` | `ToolCall` (pending) |
 | `user` `tool_result` | `ToolCallUpdate` (completed or failed); a `tool` entry |
-| `ask`, `check`, `ask-resolved` items | an `ask` entry (9.4), pushed live as its `entry` item; its tool call id is the item's `tool_use_id`, its `expires-at` the item's; an `ask-resolved` that closes an ask or check gives its one decision entry (9.8 rule 4); an item that breaks a rule below the table (1–6) is `unknown` |
+| `ask`, `check`, `ask-resolved` items | an `ask` entry (9.4), pushed live as its `entry` item; its tool call id is the item's `tool_use_id`, its `expires-at` the item's, its `path` the item's when that is a string; an `ask-resolved` that closes an ask or check gives its one decision entry (9.8 rule 4); an item that breaks a rule below the table (1–6) is `unknown` |
 | `system/compact_boundary` | a `compaction` entry |
 | `result` | usage into the counters; `idle {completed}` only when `claude` is idle |
 | Responses `response.output_text.delta` | `AgentMessageChunk` |
@@ -1504,7 +1534,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 | Responses `reasoning` summaries | `AgentThoughtChunk` |
 | anything else | an `unknown` entry |
 
-Give nothing (no update, no entry): Claude `system` `init`, `status`,
+Give nothing (no update, no entry): Claude `system` `init` (its facts go to the record, below), `status`,
 `session_state_changed` (read for idle, 4.5 step 6), `hook_started`,
 `hook_response`, `tool_progress`, `task_progress`, `rate_limit_event`,
 `stream_event` other than text and thinking deltas; Responses
@@ -1622,7 +1652,8 @@ per items call with the stream's `last`, and deleted with `stream/<id>`. A
 deferred or failed call rolls it back with the rest. From the items it reads
 the kernel also takes the `initialized` item's `workspace` (4.6) and the
 `system/init` line's `session_id` (the record's `claude-uuid`, for a later
-resume, 9.3 R5); both give no entry.
+resume, 9.3 R5) and `cwd` (the record's `folder`, once, 4.6; S36); none gives
+an entry.
 
 Libraries: `claude-codes` (types only) and `agent-client-protocol-schema`
 (v1). An unknown Claude line never fails: the adapter falls back to `unknown`
@@ -1865,7 +1896,7 @@ stage E).
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/src/call.rs` (a failed call commits no write, id or timer, 2.1), `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
-| A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
+| A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first (the kernel reads only the item's resolved `path`, under the record's `folder` from `system/init`'s `cwd`, never the input's path; no `folder` or no `path`, no key) and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
 | The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1); its one first-run default, the built-in `scratch` profile for `page` while `access/page` is absent (9.1), grants less than any profile a participant makes (PLAN R-B4) | `wit/world.wit` (staged as `kernel/wasm/wit/world.wit`, 1), `mod.toml`, `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
 
@@ -1902,7 +1933,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` H1: `stream-sink.items` returns `taken` or `defer`; `streams.resume`; a deferred batch is not a failure; `stream-producer.ended`; a lag clock from a failed `full` push to `ready` that reaches 10 s ends the stream `lagging`, except a stream its consumer has deferred (2.1, 3; P03).
 - [ ] `host/TECHNICAL.md` H2: the `initialized` item after `initialize` passes, never before the workspace consent is held (4.5, 10; P04); `claude-session.say`, `answer`, `interrupt` and `compact` are requests, applied after the call commits, so a deferred or failed call sends nothing to `claude` (2.1, 7); the host builds each `ask`, `check` and `ask-resolved` item itself and never copies bytes of a `claude` line into one, and `ask-resolved {by: answered}` carries the `outcome` (4.5; accepted, the human, 2026-11-21); the host pushes `ask-resolved {by: expired}` for a check it has not answered at its `expires-at` and writes nothing to stdin for it (4.5; S22; accepted, the human, 2026-11-21).
 - [x] `host/TECHNICAL.md` H2: scratch workspaces (4.6): `workspace: "scratch"` makes one at apply, `initialized` names its id `scratch:<32 hex>`, a later launch names it again, the owner kept in host state (host 19.3 "Folders", watane S99).
-- [ ] `host/TECHNICAL.md` H2: a file tool's ask gives the kernel the path that will run with its symlinks resolved, before the kernel computes a scope key (9.6; stage B's first slice names how, in 4.5); until then no session has a `workspace` (PLAN S33 RISK 2, S34).
+- [x] `host/TECHNICAL.md` H2: a file tool's ask gives the kernel the path that will run with its symlinks resolved, before the kernel computes a scope key: the item's top-level `path` (4.5 step 4; host 19.3 step 4, watane S100), which the kernel scopes under the record's `folder` (4.6; S36).
 - [ ] `host/TECHNICAL.md` H2: `--strict-mcp-config` admits only the `watane` server, so an `mcp__watane__<tool>` name is always watane's (4.4); a scope key for such a tool (9.6, 14) relies on it (PLAN S33 RISK 3, S34).
 - [ ] `host/TECHNICAL.md` H2: the host's `--settings=` for the shell grant always writes `sandbox.allowUnsandboxedCommands: false`, never leaves it out (Claude's default is `true`); a test reads the settings the host writes (4.1, 4.2, 14; PLAN S33).
 - [ ] `host/TECHNICAL.md` H1: byte budgets for queued items (512 MiB host, 128 MiB per origin client, 16 MiB per page connection; `full`; a page connection past its budget ends `lagging`) (3; P11).
@@ -2498,6 +2529,16 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
   unmounted is lost from the composer, and the transcript shows no such
   message; accepted, since the host refuses a `say` only on `busy` or a
   slash command (S35 r4, the deputy's rule).
+- **Another tab.** When the attach stream ends `replaced` (9.4: another
+  tab attached to the session), the tab does not reattach by itself. It
+  shows one line above the composer (`role="status"`): "This session is open
+  in another tab." with a button "Use here", which attaches again after the
+  last index shown (and so replaces the other tab, which then says the same).
+  The notice goes once that attach syncs. While it shows, Send, Stop and
+  every ask button (Allow once, Allow ... this session, Deny...) are
+  `disabled`, and the status line keeps its last word. Switching to another
+  session and back clears it (`console/kit/kernel.ts`,
+  `console/src/replaced_S36_3.test.tsx`).
 - **Plan.** It folds to one line while an ask waits or inputs are queued,
   unless the participant opened it.
 - **Keys.** Enter sends, Shift+Enter is a new line, Esc in the composer

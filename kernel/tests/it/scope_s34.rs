@@ -55,9 +55,21 @@ fn feed(k: &mut K, a: &mut ClaudeAdapter, id: &str, line: Value) {
     }
 }
 
+/// The path the host would resolve for an input: its own file or search path, as given (the
+/// tests keep no symlinks; S36-1 tests the resolved path apart).
+fn path_of(input: &Value) -> Option<&str> {
+    ["file_path", "notebook_path", "path"]
+        .iter()
+        .find_map(|k| input.get(*k).and_then(Value::as_str))
+}
+
 fn line(kind: &str, id: &str, tool: &str, input: Value) -> Value {
-    json!({"type": kind, "id": id, "tool": tool, "input": input,
-        "tool_use_id": format!("t-{id}"), "expires-at": 9000})
+    let mut v = json!({"type": kind, "id": id, "tool": tool, "input": input,
+        "tool_use_id": format!("t-{id}"), "expires-at": 9000});
+    if let Some(p) = path_of(&v["input"]) {
+        v["path"] = json!(p);
+    }
+    v
 }
 
 fn bash(k: &mut K, a: &mut ClaudeAdapter, s: &str, id: &str, cmd: &str) {
@@ -73,7 +85,7 @@ fn resolved(id: &str, by: &str, outcome: Option<&str>) -> Value {
 }
 
 fn r(tool: &str, input: Value) -> Option<String> {
-    reach("alice", Some("/w"), "ask", tool, &input)
+    reach("alice", Some("/w"), "ask", tool, &input, path_of(&input))
 }
 
 #[test]
@@ -95,7 +107,7 @@ fn ac1_bash_keys() {
         Some("Bash(ls; timeout=5; run_in_background=true)")
     );
     assert_eq!(
-        scope("Bash", None, &json!({"command":"ls"})).as_deref(),
+        scope("Bash", None, &json!({"command":"ls"}), None).as_deref(),
         Some("ls")
     );
     for bad in [
@@ -150,7 +162,7 @@ fn ac2_file_tools_key_is_the_workspace() {
             assert_eq!(r(tool, x), None, "{tool} {bad}");
         }
         assert_eq!(
-            reach("alice", None, "ask", tool, &input),
+            reach("alice", None, "ask", tool, &input, path_of(&input)),
             None,
             "{tool} no ws"
         );
@@ -272,7 +284,8 @@ fn ac5_todo_and_unknown_tools() {
             Some("/w"),
             "check",
             "TodoWrite",
-            &json!({"todos":[]})
+            &json!({"todos":[]}),
+            None
         ),
         None
     );
@@ -282,7 +295,8 @@ fn ac5_todo_and_unknown_tools() {
             Some("/w"),
             "ask",
             "TodoWrite",
-            &json!({"todos":[]})
+            &json!({"todos":[]}),
+            None
         ),
         None
     );
@@ -552,7 +566,7 @@ fn fix1_ac2_a_session_allow_does_not_reach_a_dot_path() {
     let mut k = kernel();
     let s = started(&mut k);
     let mut w = rec(&mut k, &s);
-    w.workspace = Some("/w".into());
+    w.folder = Some("/w".into());
     w.save(&mut k.state).unwrap();
     let mut a = ClaudeAdapter::new();
     ask_in(

@@ -54,9 +54,21 @@ fn feed(k: &mut K, a: &mut ClaudeAdapter, id: &str, line: Value) {
     }
 }
 
+/// The path the host would resolve for an input: its own file or search path, as given (no
+/// symlinks here; S36-1's tests feed the resolved path apart).
+fn path_of(input: &Value) -> Option<&str> {
+    ["file_path", "notebook_path", "path"]
+        .iter()
+        .find_map(|k| input.get(*k).and_then(Value::as_str))
+}
+
 fn line(kind: &str, id: &str, tool: &str, input: Value) -> Value {
-    json!({"type": kind, "id": id, "tool": tool, "input": input,
-        "tool_use_id": format!("t-{id}"), "expires-at": 9000})
+    let mut v = json!({"type": kind, "id": id, "tool": tool, "input": input,
+        "tool_use_id": format!("t-{id}"), "expires-at": 9000});
+    if let Some(p) = path_of(&v["input"]) {
+        v["path"] = json!(p);
+    }
+    v
 }
 
 fn bash(k: &mut K, a: &mut ClaudeAdapter, s: &str, id: &str, cmd: &str) {
@@ -187,7 +199,7 @@ fn ac2_a_different_ask_goes_to_the_owner() {
     let mut k = kernel();
     let s = started(&mut k);
     let mut r = rec(&mut k, &s);
-    r.workspace = Some("/w".into());
+    r.folder = Some("/w".into());
     r.save(&mut k.state).unwrap();
     let mut a = ClaudeAdapter::new();
     feed(

@@ -44,7 +44,7 @@ fn started(k: &mut K, owner: &str, key: &str) -> String {
 /// The session's workspace is `/w`, so an `Edit` of `/w/a.rs` has a reach (9.6).
 fn in_workspace(k: &mut K, id: &str) {
     let mut r = Record::load(&mut k.state, id).unwrap();
-    r.workspace = Some("/w".into());
+    r.folder = Some("/w".into());
     r.save(&mut k.state).unwrap();
 }
 
@@ -82,7 +82,7 @@ fn ask(id: &str, kind: &str, expires: u64) -> ProviderEvent {
             kind: Kind::Ask,
             uuid: None,
             body: json!({"id": id, "kind": kind, "toolCallId": "t", "toolCall": {"toolCallId": "t", "title": "Edit"},
-                "input": {"file_path": "/w/a.rs"}, "expires-at": expires}),
+                "input": {"file_path": "/w/a.rs"}, "path": "/w/a.rs", "expires-at": expires}),
         }),
         ..Out::default()
     })

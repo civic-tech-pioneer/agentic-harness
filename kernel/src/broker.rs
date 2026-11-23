@@ -8,15 +8,16 @@ use serde_json::Value;
 /// `<Tool>(<key>)` (bare `<Tool>` for an empty key), or none (9.6).
 pub fn reach(
     owner: &str,
-    workspace: Option<&str>,
+    folder: Option<&str>,
     kind: &str,
     tool: &str,
     input: &Value,
+    path: Option<&str>,
 ) -> Option<String> {
     if kind != "ask" || owner.starts_with("agent:") {
         return None;
     }
-    scope(tool, workspace, input).map(|key| render(tool, &key))
+    scope(tool, folder, input, path).map(|key| render(tool, &key))
 }
 
 /// `<tool>(<key>)`, or the bare tool name for an empty key.
@@ -28,70 +29,74 @@ pub fn render(tool: &str, key: &str) -> String {
     }
 }
 
+/// Whether `folder` is a plain absolute folder: `/`-led, not `/`-ended, with no `(`, `)` or
+/// control character. The record keeps a `cwd` only if it is one (9.3 `folder`).
+pub fn plain_folder(folder: &str) -> bool {
+    folder.starts_with('/')
+        && !folder.ends_with('/')
+        && !folder.contains(['(', ')'])
+        && !folder.chars().any(char::is_control)
+}
+
 /// The scope key of a call: the smallest part of its input that decides what it can reach (9.6).
-/// A tool without a scope function, and an input its function does not know, get none.
-pub fn scope(tool: &str, workspace: Option<&str>, input: &Value) -> Option<String> {
-    let (known, path_key): (&[&str], &str) = match tool {
+/// A file tool's key comes from `path` (the item's path, which the host resolved) under the
+/// record's `folder`, never from `input`. A tool without a scope function, and an input its
+/// function does not know, get none.
+pub fn scope(
+    tool: &str,
+    folder: Option<&str>,
+    input: &Value,
+    path: Option<&str>,
+) -> Option<String> {
+    let known: &[&str] = match tool {
         "Bash" => return bash(input),
         "WebFetch" => return web_fetch(input),
         "Skill" => return skill(input),
         "TodoWrite" => return only_keys(input, &["todos"]).then(String::new),
-        "Read" => (&["file_path", "offset", "limit", "pages"], "file_path"),
-        "Write" => (&["file_path", "content"], "file_path"),
-        "Edit" => (
-            &["file_path", "old_string", "new_string", "replace_all"],
-            "file_path",
-        ),
-        "MultiEdit" => (&["file_path", "edits"], "file_path"),
-        "NotebookEdit" => (
-            &[
-                "notebook_path",
-                "new_source",
-                "cell_id",
-                "cell_type",
-                "edit_mode",
-            ],
+        "Read" => &["file_path", "offset", "limit", "pages"],
+        "Write" => &["file_path", "content"],
+        "Edit" => &["file_path", "old_string", "new_string", "replace_all"],
+        "MultiEdit" => &["file_path", "edits"],
+        "NotebookEdit" => &[
             "notebook_path",
-        ),
-        "Glob" => (&["pattern", "path"], "path"),
-        "Grep" => (
-            &[
-                "pattern",
-                "path",
-                "glob",
-                "type",
-                "output_mode",
-                "-A",
-                "-B",
-                "-C",
-                "-n",
-                "-i",
-                "multiline",
-                "head_limit",
-                "offset",
-            ],
+            "new_source",
+            "cell_id",
+            "cell_type",
+            "edit_mode",
+        ],
+        "Glob" => &["pattern", "path"],
+        "Grep" => &[
+            "pattern",
             "path",
-        ),
+            "glob",
+            "type",
+            "output_mode",
+            "-A",
+            "-B",
+            "-C",
+            "-n",
+            "-i",
+            "multiline",
+            "head_limit",
+            "offset",
+        ],
         _ => return None,
     };
     if !only_keys(input, known) {
         return None;
     }
-    let ws = workspace?;
-    if !ws.starts_with('/')
-        || ws.ends_with('/')
-        || ws.contains(['(', ')'])
-        || ws.chars().any(char::is_control)
-    {
-        return None;
-    }
+    let ws = folder.filter(|f| plain_folder(f))?;
     if tool == "Glob" {
         let pat = input.get("pattern")?.as_str()?;
         if pat.starts_with(['/', '~']) || pat.contains('\\') || pat.split('/').any(|s| s == "..") {
             return None;
         }
     }
-    let path = input.get(path_key)?.as_str()?;
+    let path = path?;
+    // `Glob` and `Grep` with no path input search the working folder itself.
+    if path == ws && matches!(tool, "Glob" | "Grep") {
+        return Some(format!("{ws}/**"));
+    }
     let rest = path.strip_prefix(ws)?.strip_prefix('/')?;
     if rest
         .split('/')

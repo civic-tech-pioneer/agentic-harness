@@ -409,11 +409,15 @@ impl ClaudeAdapter {
         if let Some(diffs) = diffs_of(tool, &input) {
             tool_call["content"] = json!(diffs);
         }
-        let body = json!({
+        let mut body = json!({
             "id": id, "kind": kind, "toolCallId": call_id,
             "toolCall": tool_call,
             "input": input, "expires-at": expires,
         });
+        // The host's resolved path (4.5 step 4), kept for the broker (9.6) beside the input.
+        if let (Some(path), Some(o)) = (str_of(v, "path"), body.as_object_mut()) {
+            o.insert("path".into(), Value::String(path.to_string()));
+        }
         self.open.insert(id.to_string(), body.clone());
         vec![ask_entry(body)]
     }
@@ -482,20 +486,31 @@ pub enum Fact {
     Workspace(String),
     /// `system/init`'s `session_id`: the Claude session's uuid.
     Session(String),
+    /// `system/init`'s `cwd`: the process folder of `claude` (9.3 `folder`).
+    Folder(String),
 }
 
 /// The `Fact` of a line, when it is one (a line with a top-level key twice is none: the adapter
 /// gives it an `unknown` entry, 9.8 rule 6).
-pub fn fact(line: &[u8]) -> Option<Fact> {
-    let text = std::str::from_utf8(line).ok()?.trim();
-    let v: Value = serde_json::from_str(text).ok()?;
-    let own = |k: &str| str_of(&v, k).filter(|s| !s.is_empty()).map(str::to_string);
-    let fact = match (str_of(&v, "type")?, str_of(&v, "subtype")) {
-        ("initialized", _) => Fact::Workspace(own("workspace")?),
-        ("system", Some("init")) => Fact::Session(own("session_id")?),
-        _ => return None,
+pub fn facts(line: &[u8]) -> Vec<Fact> {
+    let Some(v) = std::str::from_utf8(line)
+        .ok()
+        .map(str::trim)
+        .filter(|t| !has_duplicate_key(t))
+        .and_then(|t| serde_json::from_str::<Value>(t).ok())
+    else {
+        return vec![];
     };
-    (!has_duplicate_key(text)).then_some(fact)
+    let own = |k: &str| str_of(&v, k).filter(|s| !s.is_empty()).map(str::to_string);
+    match (str_of(&v, "type"), str_of(&v, "subtype")) {
+        (Some("initialized"), _) => own("workspace").map(Fact::Workspace).into_iter().collect(),
+        (Some("system"), Some("init")) => own("session_id")
+            .map(Fact::Session)
+            .into_iter()
+            .chain(own("cwd").map(Fact::Folder))
+            .collect(),
+        _ => vec![],
+    }
 }
 
 /// The line with each byte that is not valid UTF-8 written as `\xNN` (no lossy decoding).

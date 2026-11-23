@@ -6,7 +6,7 @@
 //! inputs name: no listing of keys.
 
 use crate::active::{self, Slots};
-use crate::adapters::claude::{fact, ClaudeAdapter, Fact};
+use crate::adapters::claude::{facts, ClaudeAdapter, Fact};
 use crate::adapters::{self, Kind};
 use crate::broker;
 use crate::check::check;
@@ -333,6 +333,9 @@ pub enum ProviderEvent {
     Workspace(String),
     /// The Claude session id of `system/init` (9.8 "Adapter state"): the record's `claude-uuid`.
     ClaudeSession(String),
+    /// The `cwd` of `system/init` (9.3 `folder`): kept once in the record, when it is a plain
+    /// absolute folder.
+    Folder(String),
     /// The provider's stream ended: every open or pending ask closes (9.8 rule 4).
     Ended,
 }
@@ -2764,14 +2767,20 @@ impl<S: State, H: Host> Kernel<S, H> {
                 continue;
             }
             prev = seq;
-            let events = match fact(&body) {
-                Some(Fact::Workspace(id)) => vec![ProviderEvent::Workspace(id)],
-                Some(Fact::Session(uuid)) => vec![ProviderEvent::ClaudeSession(uuid)],
-                None => {
-                    let at = self.host.now();
-                    let outs = adapter.line(&body, at);
-                    outs.into_iter().map(ProviderEvent::Out).collect()
-                }
+            let facts = facts(&body);
+            let events: Vec<ProviderEvent> = if facts.is_empty() {
+                let at = self.host.now();
+                let outs = adapter.line(&body, at);
+                outs.into_iter().map(ProviderEvent::Out).collect()
+            } else {
+                facts
+                    .into_iter()
+                    .map(|f| match f {
+                        Fact::Workspace(id) => ProviderEvent::Workspace(id),
+                        Fact::Session(uuid) => ProviderEvent::ClaudeSession(uuid),
+                        Fact::Folder(cwd) => ProviderEvent::Folder(cwd),
+                    })
+                    .collect()
             };
             for event in events {
                 self.open_meter();
@@ -3148,6 +3157,11 @@ impl<S: State, H: Host> Kernel<S, H> {
                 }
             },
             ProviderEvent::ClaudeSession(uuid) => rec.claude_uuid = Some(uuid),
+            ProviderEvent::Folder(cwd) => {
+                if rec.folder.is_none() && broker::plain_folder(&cwd) {
+                    rec.folder = Some(cwd);
+                }
+            }
             ProviderEvent::Ended => {
                 self.close_all_with(&mut rec, past, "ended", now, &mut work, false)?;
                 if matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. }) {
@@ -3270,7 +3284,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let tool = body.pointer("/toolCall/title").and_then(Value::as_str)?;
         let input = body.get("input").unwrap_or(&Value::Null);
-        let key = broker::scope(tool, rec.workspace.as_deref(), input)?;
+        let path = body.get("path").and_then(Value::as_str);
+        let key = broker::scope(tool, rec.folder.as_deref(), input, path)?;
         Some((tool.to_string(), key))
     }
 
@@ -3280,7 +3295,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         let tool = body.pointer("/toolCall/title").and_then(Value::as_str);
         let reach = tool.and_then(|t| {
             let input = body.get("input").unwrap_or(&Value::Null);
-            broker::reach(&rec.owner, rec.workspace.as_deref(), kind, t, input)
+            let path = body.get("path").and_then(Value::as_str);
+            broker::reach(&rec.owner, rec.folder.as_deref(), kind, t, input, path)
         });
         if let Some(o) = body.as_object_mut() {
             match reach {
@@ -3570,9 +3586,10 @@ fn may_activate(e: &ProviderEvent) -> bool {
     match e {
         ProviderEvent::Turn(t) => t.is_active(),
         ProviderEvent::Out(o) => o.entry.as_ref().is_some_and(|e| e.kind == Kind::Ask),
-        ProviderEvent::Workspace(_) | ProviderEvent::ClaudeSession(_) | ProviderEvent::Ended => {
-            false
-        }
+        ProviderEvent::Workspace(_)
+        | ProviderEvent::ClaudeSession(_)
+        | ProviderEvent::Folder(_)
+        | ProviderEvent::Ended => false,
     }
 }
 
