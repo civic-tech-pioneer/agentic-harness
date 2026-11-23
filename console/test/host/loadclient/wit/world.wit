@@ -4,6 +4,7 @@ package mods:loadclient@0.1.0;
 /// same name, made as this mod (`local/loadclient`); an error is the kernel error's JSON debug text.
 interface api {
   start: func(key: string, input: string) -> result<string, string>;
+  say: func(session: string, key: string, input: string) -> result<u64, string>;
   interrupt: func(session: string) -> result<_, string>;
   cancel: func(session: string);
 }
