@@ -65,7 +65,7 @@ detection through `host-info.generation`, the rest of 17's stage B cases, and th
 left after S99: interrupt, host ask items 4.5, the load test's fake). Carry: S34 RISK 3, S26/S28
 limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
 
-### S37: spike: what can enforce a profile's local-network setting for the shell grant (V27)
+### S37: spike: what can enforce a profile's local-network setting for the shell grant (V27) (in flight, cloud, builder codex, reviewer claude)
 
 Question: which mechanisms can enforce a profile setting "local network access: denied (default) / allowed" for
 the shell grant, on macOS and Linux? Local network means loopback (127.0.0.0/8, ::1), private ranges (10/8,
