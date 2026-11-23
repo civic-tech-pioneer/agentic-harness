@@ -13,6 +13,8 @@ export interface Kernel {
   say(session: string, key: string, input: string): Promise<number>;
   answer(session: string, key: string, ask: string, decision: string): Promise<void>;
   interrupt(session: string, replacement?: string): Promise<void>;
+  /** 2.3 `unqueue`: takes input `n` out of the queue; `unknown-input` rejects when a turn took it first. */
+  unqueue(session: string, n: number): Promise<void>;
   takeBack(session: string, allow: string): Promise<void>;
 }
 

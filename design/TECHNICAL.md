@@ -2516,7 +2516,10 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
   in the header until the session ends or `take-back`.
 - **Queue.** Up to 3 shown, then "+ n more". Edit takes an input back into
   the composer (`unqueue`); remove has Undo for 6 s; Stop and send interrupts
-  with it. A full queue turns Send off and the placeholder says why.
+  with it (`unqueue`, then `interrupt` with the input). Edit while the composer
+  holds text does nothing but say "Finish or clear your message first";
+  `unknown-input` says "That message was already sent". The controls are off
+  under "Another tab". A full queue turns Send off and the placeholder says why.
 - **Send.** A `say` that fails (any error of 2.3: `refused`, `queue-full`,
   `quota`, `paused`, `busy`, `backend`, ...) puts its text back into the
   composer, unless the participant has typed since, and shows the error's

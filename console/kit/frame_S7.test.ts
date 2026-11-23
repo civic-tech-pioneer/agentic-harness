@@ -8,7 +8,7 @@ import { safeReduce } from "./reduce";
 const j = JSON.stringify;
 const synced = j({ _meta: { watane: { type: "synced", through: 0 } } });
 const delta = (k: number) => j({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `d${k} ` } });
-const base = { say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, takeBack: async () => {} };
+const base = { say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, unqueue: async () => {}, takeBack: async () => {} };
 /** A kernel that hands `msgs` to the stream at attach and keeps the stream open so a test can push more. */
 function kernelOf(msgs: string[]) {
   let push: (m: string) => void = () => {};

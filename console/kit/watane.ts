@@ -122,6 +122,7 @@ export function wataneKernel(w: Watane): Kernel {
     },
     async answer(session, key, ask, decision) { await call("sessions.answer", { session, key, ask, decision }); },
     async interrupt(session, replacement) { await call("sessions.interrupt", { session, replacement: replacement ?? null }); },
+    async unqueue(session, n) { await call("sessions.unqueue", { session, n }); },
     async takeBack(session, allow) { await call("sessions.take-back", { session, allow }); },
   };
 }

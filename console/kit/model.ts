@@ -69,6 +69,10 @@ export interface Actions {
   /** The card's answer: for the ask object it drew. It goes out only while that object is the open ask of its id (else it is refused, nothing sent). */
   answerDrawn?(drawn: Ask, decision: { outcome: "allow"|"deny"; for?: "session"; reason?: string }): void | Promise<void>;
   stop(): void;
+  /** 2.3 `unqueue` of queued input `n`; `unknown-input` rejects when a turn took it first (18.6 "Queue"). */
+  unqueue?(n: number): Promise<void>;
+  /** 2.3 `interrupt` with the replacement input that starts the next turn (18.6 "Queue": Stop and send). */
+  interrupt?(replacement: string): Promise<void>;
   takeBack(allowId: string): void;
 }
 /** 2.3: did the kernel refuse an `answer` because the ask is already decided (a refusal whose field is `ask`, case 9)? */

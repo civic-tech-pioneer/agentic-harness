@@ -22,7 +22,7 @@ export function partsOf(entry: object, size: number): string[] {
 }
 
 /** `script` is steps of stream messages; `opts.preload` are entries (JSON) already stored; `opts.refuseAnswer` makes `answer` reject the way a kernel refusal does (`busy`, or a refusal whose field is `ask`: already decided). */
-export function fakeKernel(script: string[][], opts?: { preload?: string[]; refuseAnswer?: "busy" | "ask" }): FakeKernel {
+export function fakeKernel(script: string[][], opts?: { preload?: string[]; refuseAnswer?: "busy" | "ask"; refuseUnqueue?: boolean }): FakeKernel {
   const store: Rec[] = (opts?.preload ?? []).map((s) => JSON.parse(s));
   const calls: FakeKernel["calls"] = [];
   let stream: { onMessage: (j: string) => void; onEnd: (r: string) => void } | null = null;
@@ -103,6 +103,16 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[]; refu
       if (opts?.refuseAnswer === "ask") throw Object.assign(new Error("refused"), { kind: "refused", refusals: [{ field: "ask", reason: "the ask is already decided" }] });
     },
     async interrupt(session, replacement) { calls.push({ name: "interrupt", args: [session, replacement] }); },
+    async unqueue(session, n) {
+      calls.push({ name: "unqueue", args: [session, n] });
+      if (opts?.refuseUnqueue) throw Object.assign(new Error("unknown-input"), { kind: "unknown-input" });
+      const q = items.queue ? JSON.parse(items.queue) : undefined;
+      const w = q?._meta?.watane;
+      if (!w || !Array.isArray(w.inputs)) return;
+      w.inputs = w.inputs.filter((x: Rec) => x.n !== n);
+      items.queue = JSON.stringify(q);
+      stream?.onMessage(items.queue);
+    },
     async takeBack(session, allow) { calls.push({ name: "takeBack", args: [session, allow] }); },
     drop() { const s = stream; stream = null; s?.onEnd("dropped"); },
     play(step) {

@@ -64,7 +64,7 @@ describe("S36-3", () => {
     act(() => ends[0]!("replaced"));
     await settle();
     expect(bar().every((b) => b && b.hasAttribute("disabled"))).toBe(true);
-    const stop = screen.queryByRole("button", { name: /Stop/ });
+    const stop = screen.queryByRole("button", { name: /^Stop(ping…)?$/ });
     if (stop) expect(stop).toBeDisabled();
     expect(send()).toBeDisabled();
     await userEvent.setup().click(screen.getByRole("button", { name: "Use here" }));

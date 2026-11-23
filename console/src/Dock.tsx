@@ -1,9 +1,10 @@
 // TECHNICAL 18.5, 18.6: the dock: Needs you, plan, queue, status line, input.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { errorWords, type Actions, type SessionView } from "../kit";
 
 export const QUEUE_MAX = 32;
 const SHOWN = 3;
+const UNDO_MS = 6000;
 
 const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
 
@@ -11,9 +12,10 @@ const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", stroke
 const draftOf = (key?: string): string => { try { return key ? sessionStorage.getItem(key) ?? "" : ""; } catch { return ""; } };
 const keepDraft = (key: string | undefined, text: string) => { try { if (key) { if (text) sessionStorage.setItem(key, text); else sessionStorage.removeItem(key); } } catch { /* no storage: the draft is not kept */ } };
 
-export function Composer({ queued, actions, busy = false, stopping = false, session, draftKey, placeholder: given, sendLabel }: {
+export function Composer({ queued, actions, busy = false, stopping = false, session, draftKey, placeholder: given, sendLabel, ctl }: {
   queued: number; actions: Actions; busy?: boolean; stopping?: boolean; session?: { model?: string; mode?: string };
   /** Where the unsent text is kept (`sessionStorage`); none keeps nothing. */ draftKey?: string;
+  /** Filled with a hold on the text (the queue's Edit reads and sets it). */ ctl?: MutableRefObject<{ text(): string; take(t: string): void } | null>;
   /** Words for a composer that is not a session's (the new-session view). */ placeholder?: string; sendLabel?: string;
 }) {
   const [text, setText] = useState(() => draftOf(draftKey));
@@ -21,6 +23,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   const full = queued >= QUEUE_MAX;
   const [refused, setRefused] = useState<string | null>(null);
   const edited = useRef(0); // counts edits and sends: a refusal restores its text only if none came since
+  if (ctl) ctl.current = { text: () => text, take: (t) => { edited.current++; setRefused(null); setText(t); } };
   const off = !!actions.off; // 18.6 "Another tab": the stream is not this tab's
   const send = () => {
     const t = text.trim();
@@ -70,6 +73,39 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   const { view } = props;
   const [opened, setOpened] = useState<boolean | null>(null);
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
+  const { actions } = props;
+  const off = !!actions.off;
+  const ctl = useRef<{ text(): string; take(t: string): void } | null>(null);
+  const [note, setNote] = useState<{ text: string; undo?: string } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const say = (text: string, undo?: string) => { clearTimeout(timer.current); setNote({ text, ...(undo !== undefined ? { undo } : {}) }); if (undo !== undefined) timer.current = setTimeout(() => setNote(null), UNDO_MS); };
+  const fail = (e: unknown) => say((e as { kind?: unknown } | null)?.kind === "unknown-input" ? "That message was already sent" : errorWords(e));
+  /** 18.6 "Queue": takes input `q` out of the queue; false (and a line) when the kernel refuses. */
+  const unqueue = async (q: { n: number }) => {
+    try { await actions.unqueue!(q.n); return true; } catch (e) { fail(e); return false; }
+  };
+  const edit = async (q: { n: number; input: string }) => {
+    if (ctl.current?.text().trim()) return say("Finish or clear your message first");
+    if (!(await unqueue(q))) return;
+    if (ctl.current?.text().trim()) { // she typed while the call ran: the input goes back to the queue
+      say("Finish or clear your message first");
+      try { await actions.say(q.input); } catch (e) { fail(e); }
+      return;
+    }
+    clearTimeout(timer.current); setNote(null);
+    ctl.current?.take(q.input);
+  };
+  const remove = async (q: { n: number; input: string }) => { if (await unqueue(q)) say("Removed.", q.input); };
+  const undo = (input: string) => {
+    clearTimeout(timer.current); setNote(null);
+    try { Promise.resolve(actions.say(input)).catch(fail); } catch (e) { fail(e); }
+  };
+  const stopAndSend = async (q: { n: number; input: string }) => {
+    if (!(await unqueue(q))) return;
+    clearTimeout(timer.current); setNote(null);
+    try { await actions.interrupt!(q.input); } catch (e) { fail(e); }
+  };
   const folded = !(opened ?? !(view.openAsks.length > 0 || view.queue.length > 0));
   return (
     <div className="wa-dock">
@@ -97,15 +133,27 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
       ) : null}
       {view.queue.length ? (
         <section className="wa-queue" aria-label="Queue">
-          <ul>{view.queue.slice(0, SHOWN).map((q) => <li key={q.n}>{q.input}</li>)}</ul>
+          <ul>{view.queue.slice(0, SHOWN).map((q, k) => (
+            <li key={q.n}>
+              <span className="wa-queue-text">{q.input}</span>
+              <span className="wa-queue-ctl">
+                <button type="button" className="wa-chip" aria-label={`Edit queued message ${k + 1}`} disabled={off} onClick={() => edit(q)}>Edit</button>
+                <button type="button" className="wa-chip" aria-label={`Remove queued message ${k + 1}`} disabled={off} onClick={() => remove(q)}>Remove</button>
+                <button type="button" className="wa-chip" aria-label={`Stop and send queued message ${k + 1}`} disabled={off} onClick={() => stopAndSend(q)}>Stop and send</button>
+              </span>
+            </li>
+          ))}</ul>
           {view.queue.length > SHOWN ? <p className="wa-queue-more">+ {view.queue.length - SHOWN} more</p> : null}
         </section>
+      ) : null}
+      {note ? (
+        <p className="wa-queue-note" role="status">{note.text}{note.undo !== undefined ? <> <button type="button" className="wa-chip" disabled={off} onClick={() => undo(note.undo!)}>Undo</button></> : null}</p>
       ) : null}
       {props.status}
       {props.replaced ? (
         <p className="wa-replaced" role="status">This session is open in another tab. <button type="button" className="wa-chip" onClick={props.onUseHere}>Use here</button></p>
       ) : null}
-      <Composer key={props.sessionId} draftKey={props.sessionId === undefined ? undefined : `wa-draft:${props.sessionId}`} queued={view.queue.length} actions={props.actions} session={props.session} stopping={props.stopping}
+      <Composer key={props.sessionId} ctl={ctl} draftKey={props.sessionId === undefined ? undefined : `wa-draft:${props.sessionId}`} queued={view.queue.length} actions={props.actions} session={props.session} stopping={props.stopping}
         busy={view.turn?.state === "running" || view.turn?.state === "waiting"} />
     </div>
   );
