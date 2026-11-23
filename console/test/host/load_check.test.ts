@@ -5,10 +5,13 @@ import { assert, describe, expect, it } from "vitest";
 import { isInterrupted, loadWindow } from "./load_check.mjs";
 
 const RATE = { deltas: 50, entries: 5 };
-/** A fake's stamps: `deltas` and `entries` per second from `from` to `to` (ms). */
+/** A fake's stamps at the rates: a delta every 20 ms and an entry every 200 ms from `from` to `to` (ms). */
 const source = (from: number, to: number) => {
   const xs: { at: number; kind: string; n: number }[] = [];
-  for (let t = from, n = 0; t < to; t += 20, n++) xs.push({ at: t, kind: n % 10 === 9 ? "entry" : "delta", n });
+  for (let t = from, n = 0; t < to; t += 20, n++) {
+    xs.push({ at: t, kind: "delta", n: xs.length });
+    if (n % 10 === 9) xs.push({ at: t + 1, kind: "entry", n: xs.length });
+  }
   return xs;
 };
 
