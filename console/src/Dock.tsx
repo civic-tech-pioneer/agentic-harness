@@ -10,8 +10,11 @@ const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", stroke
 /** 18.6 "Send": the unsent text is kept per session in `sessionStorage` (a page without it works as before). */
 const draftOf = (key?: string): string => { try { return key ? sessionStorage.getItem(key) ?? "" : ""; } catch { return ""; } };
 const keepDraft = (key: string | undefined, text: string) => { try { if (key) { if (text) sessionStorage.setItem(key, text); else sessionStorage.removeItem(key); } } catch { /* no storage: the draft is not kept */ } };
-/** The composer that last wrote each kept draft: a send that settles after another composer of the same key wrote leaves that draft alone (S35 r2 F2.2). */
+/** The composer that last edited or sent under each kept draft: a send that settles after another composer of the same key wrote leaves that draft alone (S35 r2 F2.2).
+ * A composer claims a key by an edit or a send, never by mounting: one that only inherited a pending send's text leaves it to that send (S35 r3 F3.1). */
 const owners = new Map<string, object>();
+/** The composers showing each key's inherited, unchanged text: an accepted send of that text clears them (S35 r3 F3.1). */
+const inheritors = new Map<string, Set<(t: string) => void>>();
 
 export function Composer({ queued, actions, busy = false, stopping = false, session, draftKey, placeholder: given, sendLabel }: {
   queued: number; actions: Actions; busy?: boolean; stopping?: boolean; session?: { model?: string; mode?: string };
@@ -24,34 +27,47 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   const me = useRef({}).current;
   const pending = useRef<{ t: string }[]>([]);
   const shown = useRef(text); shown.current = text;
-  const keep = () => {
+  const edited = useRef(0); // counts edits and sends: a refusal restores its text only if none came since; none yet means the text is inherited
+  const write = () => {
     if (!draftKey) return;
-    owners.set(draftKey, me);
-    keepDraft(draftKey, shown.current || pending.current[pending.current.length - 1]?.t || "");
+    const last = pending.current[pending.current.length - 1];
+    keepDraft(draftKey, shown.current || last?.t || "");
   };
-  useEffect(keep, [draftKey, text]);
+  const claim = () => { if (draftKey) owners.set(draftKey, me); };
+  useEffect(() => { if (owners.get(draftKey ?? "") === me) write(); }, [draftKey, text]);
+  useEffect(() => {
+    if (!draftKey) return;
+    const clear = (t: string) => { if (edited.current === 0 && shown.current === t) setText(""); };
+    const set = inheritors.get(draftKey) ?? new Set();
+    inheritors.set(draftKey, set.add(clear));
+    return () => { set.delete(clear); };
+  }, [draftKey]);
   const full = queued >= QUEUE_MAX;
   const [refused, setRefused] = useState<string | null>(null);
-  const edited = useRef(0); // counts edits and sends: a refusal restores its text only if none came since
   const send = () => {
     const t = text.trim();
     if (!t || full) return;
     const mark = ++edited.current;
+    claim();
     const sent = { t };
     pending.current.push(sent);
     setRefused(null);
     setText("");
-    const settle = () => {
+    const settle = (ok: boolean) => {
       pending.current = pending.current.filter((p) => p !== sent);
-      if (draftKey && owners.get(draftKey) === me) keep();
+      if (!draftKey || owners.get(draftKey) !== me) return;
+      // a refused send's text stays kept unless this composer was edited since (it shows that edit, or gets the text back)
+      if (!ok && edited.current === mark && !shown.current) keepDraft(draftKey, t);
+      else write();
+      if (ok) inheritors.get(draftKey)?.forEach((clear) => clear(t));
     };
     const back = (e: unknown) => {
-      settle();
+      settle(false);
       if (edited.current !== mark) return;
       setText(t);
       setRefused(errorWords(e));
     };
-    try { Promise.resolve(actions.say(t)).then(settle, back); } catch (e) { back(e); }
+    try { Promise.resolve(actions.say(t)).then(() => settle(true), back); } catch (e) { back(e); }
   };
   const placeholder = given ?? (full ? `The queue is full: ${QUEUE_MAX} messages wait. Remove one, or stop the turn.`
     : busy ? "Add a message: it is queued and sent when this turn ends"
@@ -61,7 +77,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
     <form className="wa-composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
       {refused ? <p className="wa-send-err" role="alert">{refused}</p> : null}
       <textarea aria-label="Message" rows={2} value={text} placeholder={placeholder}
-        onChange={(e) => { edited.current++; setRefused(null); setText(e.target.value); }}
+        onChange={(e) => { edited.current++; claim(); setRefused(null); setText(e.target.value); }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
           else if (e.key === "Escape") actions.stop();
