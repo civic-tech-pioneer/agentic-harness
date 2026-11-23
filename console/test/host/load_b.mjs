@@ -100,9 +100,10 @@ function arrivals(c, stream) {
   for (const m of c.msgs) if (m.type === "stream" && m.stream === stream) for (const it of m.items) {
     let o; try { o = JSON.parse(it.body); } catch { continue; }
     const w = o._meta?.watane;
-    const text = o.update?.content?.text ?? w?.entry?.body?.content?.[0]?.text;
-    const d = /^delta (\d+) $/.exec(o.update?.sessionUpdate === "agent_message_chunk" ? text ?? "" : "");
-    const e = /^entry (\d+) /.exec(w?.type === "entry" && w.entry?.kind === "message" ? text ?? "" : "");
+    // an ACP update is the item itself (`sessionUpdate`); a finished message comes as an update with `_meta.watane.i`, or as an `entry` item
+    const text = o.content?.text ?? w?.entry?.body?.content?.[0]?.text ?? "";
+    const d = /^delta (\d+) $/.exec(text);
+    const e = /^entry (\d+) /.exec(text);
     if (d) out.push({ kind: "delta", n: +d[1], at: m.at });
     else if (e) out.push({ kind: "entry", n: +e[1], at: m.at });
     else if (w?.type === "turn" || w?.entry?.kind === "turn") out.push({ kind: "turn", state: w.state ?? w.entry?.body, at: m.at });
@@ -187,12 +188,21 @@ async function main() {
   const files = stamps(claudeDir);
   if (files.length !== 2 * SESSIONS) throw new Error(`${files.length} stamped fakes, expected ${2 * SESSIONS}`);
   const delays = [], stops = [], lines = [];
+  // each page session's fake: the stamp file its arrivals fit (no arrival before its write, the smallest median delay); the start
+  // order alone can swap two fakes that start close together
+  const fit = (got, file) => { const w = new Map(file.map((x) => [`${x.kind} ${x.n}`, x.at])); const ds = got.filter((a) => a.kind !== "turn" && w.has(`${a.kind} ${a.n}`)).map((a) => a.at - w.get(`${a.kind} ${a.n}`)).sort((a, b) => a - b); return ds.length && ds[0] >= -2 ? ds[ds.length >> 1] : Infinity; };
+  const taken = new Set();
   for (let k = 0; k < SESSIONS; k++) {
-    const written = new Map(files[2 * k].map((x) => [`${x.kind} ${x.n}`, x.at]));
     const got = arrivals(conns[k], streams[k]);
+    const f = files.map((file, j) => [j, taken.has(j) ? Infinity : fit(got, file)]).sort((a, b) => a[1] - b[1])[0][0];
+    taken.add(f);
+    const written = new Map(files[f].map((x) => [`${x.kind} ${x.n}`, x.at]));
     let missing = 0, n = 0;
-    for (const a of got) if (a.kind !== "turn") { const w = written.get(`${a.kind} ${a.n}`); if (w === undefined) missing++; else { delays.push(a.at - w); n++; } }
-    lines.push(`  session ${k}: ${files[2 * k].length} lines written, ${n} matched at the page, ${missing} unmatched`);
+    const mine = [];
+    for (const a of got) if (a.kind !== "turn") { const w = written.get(`${a.kind} ${a.n}`); if (w === undefined) missing++; else { mine.push(a.at - w); n++; } }
+    delays.push(...mine);
+    const late = mine.findIndex((d) => d > BUDGET.delay);
+    lines.push(`  session ${k}: ${files[f].length} lines written, ${n} matched at the page, ${missing} unmatched; p95 ${p95(mine)} ms, max ${Math.max(...mine)} ms${late >= 0 ? `, first over ${BUDGET.delay} ms at item ${late + 1}` : ""}`);
     const end = got.find((a) => a.kind === "turn" && a.at >= stopAt[k] && JSON.stringify(a.state).includes("interrupted"));
     stops.push(end ? end.at - stopAt[k] : Infinity);
   }

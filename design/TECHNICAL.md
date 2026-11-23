@@ -2331,6 +2331,26 @@ and the machine. Whether to change 7 is the human's.
 each stage A–F, the p95 numbers of the budget table in 17, the date and the
 machine. A stage is done only within its budgets.
 
+- **Stage B** (S36, 2026-11-23; `Linux 6.18.44-fc-v726 x86_64`, 4 cpus, a cloud VM with a
+  real fsync, load average 1.9 to 2.5 from the run itself; watane `slice/s100` at ff6428c).
+  `npm run test:load` in `console/` (`console/test/host/load_b.mjs`): 8 sessions on dev's fake
+  `claude` in `watane-dev serve`, 4 for `page` (each on its own page connection) and 4 for the
+  test mod `local/loadclient` (its `access/` seeded into the stopped preview, a test-only reach),
+  each on the fake's `load` at 50 deltas and 5 entries of 4 096 bytes a second for 8 s, then
+  `interrupt`. Every line the fakes wrote reached the page once (about 1 920 per run on the
+  page's 4 sessions). Item delay, the fake's stdout write (stamped by a test-only wrapper) to the
+  page connection, p95 over the page's sessions: 3, 39, 3, 11 ms in four passes in a row (max
+  82 to 260 ms; budget 100). `interrupt` to `idle {interrupted}` at the page, p95: 8, 4, 4, 5 ms
+  (budget 1 000). State bytes read and written per finished entry (kernel crate,
+  `cargo test -- --ignored s36_load`, the mean over 30 entries of 4 KiB after 10 deltas each):
+  74 613 at 10 entries, 81 257 at 10 000 (ratio 1.09; budget 2 MiB, within 10%), after the fix
+  that a text delta reads no record (case 56, P09). The writer busy share is the host's, measured
+  by watane S100 at this load (20%, host 15, "Stage B host record"; budget 50%). Transcripts of
+  10 000 entries were not run on the host: the per-entry state bytes, the one figure that could
+  grow with them, are the crate's. One earlier pass read 1 046 ms because the script paired a page
+  session with another session's fake by start order; the script now pairs each session with the
+  stamps its arrivals fit.
+
 ## 17. Build plan
 
 Each stage is one or more vertical slices; each works before the next
