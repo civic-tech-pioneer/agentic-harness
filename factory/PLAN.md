@@ -55,7 +55,7 @@ Touches: `kernel/`, `provider/` (see Waiting: its own repository), `wit/`, `mod.
 `ui/`, `design/TECHNICAL.md` (2.1, 4.1, 4.6, the 15 row 4.6 names). Fakes nothing once S99
 merges; until then it builds against S99's branch. Protects: *core*. `PO arms`. Cloud.
 
-### S36: stage B, end to end: Alice steers a turn (in flight, cloud, builder claude, reviewer codex; handed out 2026-11-23 after S35 merged at 042b0dd; routine `trig_0184S7g9auvX4raMDZLWTrYS`, 17:39 UTC)
+### S36: stage B, end to end: Alice steers a turn (in flight, cloud, builder claude, reviewer codex; handed out 2026-11-23 after S35 merged at 042b0dd; routine `trig_0184S7g9auvX4raMDZLWTrYS`, 17:39 UTC; DELIVERED as PR #50 (+2404 -252) against watane slice/s100 at ff6428c; r1 to Codex https://chatgpt.com/local/6b048603-4b28-83eb-a045-6edb4806e05e)
 
 Story: in the same session Alice answers an ask, queues a second message while the first runs,
 presses Stop, restarts `watane-dev serve` and finds the session where she left it. Covers asks
