@@ -198,6 +198,9 @@ pub struct Record {
     /// The workspace's own folder: the `cwd` of the stream's first `system/init`, kept once (9.3).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
+    /// True once the stream's first `system/init` was read: only that init sets `folder` (S36 r1).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub init_seen: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claude_uuid: Option<String>,
     /// The overlay `start` took (9.2), so a later launch of the session narrows as its first
@@ -247,6 +250,7 @@ impl Default for Record {
             handle: None,
             workspace: None,
             folder: None,
+            init_seen: false,
             claude_uuid: None,
             overlay: None,
             parent: None,

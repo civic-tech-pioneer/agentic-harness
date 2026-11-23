@@ -143,7 +143,7 @@ fn ac2_system_init_sets_the_folder_once() {
     }
     assert_eq!(
         facts(init("/w").as_bytes()),
-        [Fact::Session(UUID.into()), Fact::Folder("/w".into())]
+        [Fact::Session(UUID.into()), Fact::Folder(Some("/w".into()))]
     );
 }
 

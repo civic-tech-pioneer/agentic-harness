@@ -486,8 +486,9 @@ pub enum Fact {
     Workspace(String),
     /// `system/init`'s `session_id`: the Claude session's uuid.
     Session(String),
-    /// `system/init`'s `cwd`: the process folder of `claude` (9.3 `folder`).
-    Folder(String),
+    /// A `system/init` line and its `cwd`, when it names one: the process folder of `claude`
+    /// (9.3 `folder`). Only the first init decides the folder, even one that names none (S36 r1).
+    Folder(Option<String>),
 }
 
 /// The `Fact` of a line, when it is one (a line with a top-level key twice is none: the adapter
@@ -508,10 +509,17 @@ pub fn facts(line: &[u8]) -> Vec<Fact> {
             .filter(|id| is_uuid(id))
             .map(Fact::Session)
             .into_iter()
-            .chain(own("cwd").map(Fact::Folder))
+            .chain([Fact::Folder(own("cwd"))])
             .collect(),
         _ => vec![],
     }
+}
+
+/// True for a line with a key twice that may be a `system/init` (it holds `"init"`): it is no
+/// fact (an `unknown` entry), but it uses up the first init with no folder, so a later init never
+/// names the folder (9.3 `folder`, S36 r1).
+pub fn unread_init(line: &[u8]) -> bool {
+    std::str::from_utf8(line).is_ok_and(|t| t.contains("\"init\"") && has_duplicate_key(t.trim()))
 }
 
 /// A uuid as host 19.3 takes a launch's `session` (`8-4-4-4-12` hex digits): an id that is not one
