@@ -55,7 +55,7 @@ Touches: `kernel/`, `provider/` (see Waiting: its own repository), `wit/`, `mod.
 `ui/`, `design/TECHNICAL.md` (2.1, 4.1, 4.6, the 15 row 4.6 names). Fakes nothing once S99
 merges; until then it builds against S99's branch. Protects: *core*. `PO arms`. Cloud.
 
-### S36: stage B, end to end: Alice steers a turn (sketch, after S35)
+### S36: stage B, end to end: Alice steers a turn (in flight, cloud, builder claude, reviewer codex; handed out 2026-11-23 after S35 merged at 042b0dd)
 
 Story: in the same session Alice answers an ask, queues a second message while the first runs,
 presses Stop, restarts `watane-dev serve` and finds the session where she left it. Covers asks
@@ -63,7 +63,12 @@ presses Stop, restarts `watane-dev serve` and finds the session where she left i
 detection through `host-info.generation`, the rest of 17's stage B cases, and the stage B budgets
 (8 fake sessions, 2 owners, 10 and 10 000 entries). Watane half (watane S100, if any host work is
 left after S99: interrupt, host ask items 4.5, the load test's fake). Carry: S34 RISK 3, S26/S28
-limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
+limits on the real rollback, the felt-wrong second-tab freeze. Also S35's moved cases: 9 (asks), 10 (hooks), 11
+`compact` (Deputy decisions, 2026-11-22). Cloud.
+Watane half: watane S100 (PR #15) is not merged yet (its last answer round runs). Build against its interface as written
+on watane `slice/s100` (host 19.3: ask/check items with the top-level `path`, `answer` and `ask-resolved {id, outcome}`,
+expiry, interrupt, `host-info.generation`); the user-sim runs on the real `watane-dev serve` built from watane
+`slice/s100` until S100 merges, then on main. Do not merge before S100 merges. The deputy merges (no auto-merge).
 
 ### S37: spike: what can enforce a profile's local-network setting for the shell grant (V27) (DONE 2026-11-23: report read, PR #48 closed unmerged, answer under V27; was in flight, cloud, builder codex, no review round (spike: the deputy reads it, closes the PR unmerged, and puts the answer under V27); Codex task https://chatgpt.com/local/6b03eab5-4b88-83eb-8f84-d9cc7bb8606e, 2026-11-23 ~07:15 UTC)
 
