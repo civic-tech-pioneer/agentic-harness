@@ -33,7 +33,13 @@ const infoOf = (s: Listed): SessionInfo => {
     workspace: scratch ? "Scratch folder" : "",
   };
 };
-const rowOf = (s: Listed, firstUser?: string): SidebarSession => { const i = infoOf(s); return { id: s.id, title: titleOf(i.title, firstUser), place: i.workspace || i.profile, meta: metaOf(i), state: shapeOf(s.turn as Parameters<typeof shapeOf>[0]) }; };
+/** 2.3 `list`: a session's `turn` is the turn JSON of 9.3 (`{"state":"running",...}`); its `state` names the sidebar's shape (a bare word is read as one too). */
+const stateOf = (turn?: string): Parameters<typeof shapeOf>[0] => {
+  if (turn === undefined) return undefined;
+  try { const o = JSON.parse(turn); if (o && typeof o === "object" && typeof o.state === "string") return o.state; } catch { /* a bare word */ }
+  return turn as Parameters<typeof shapeOf>[0];
+};
+const rowOf = (s: Listed, firstUser?: string): SidebarSession => { const i = infoOf(s); return { id: s.id, title: titleOf(i.title, firstUser), place: i.workspace || i.profile, meta: metaOf(i), state: shapeOf(stateOf(s.turn)) }; };
 
 /** 18.4's title rule for a row the kernel has no title for: its first user message, from the first 8 entries, a message stored as `part` entries
  * joined first (9.4, S35 r2 F2.3); none (or a failed read) leaves "New session". */
