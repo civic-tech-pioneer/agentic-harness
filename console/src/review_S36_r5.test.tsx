@@ -81,7 +81,7 @@ describe("S36 r5", () => {
     await settle();
     act(() => { vi.advanceTimersByTime(6001); });
     expect(takenOf("s1").map((x) => x.text)).toEqual(["first one"]);
-    expect(screen.queryByRole("button", { name: "Undo", exact: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     expect(takenText()).toContain("first one");
   });
   it("regress_s36_undo_deadline_holds_after_a_reload (F5.3)", async () => {

@@ -1,48 +1,59 @@
-// TECHNICAL 18.6 "Queue" (S36 r4, the deputy's rule): what the queue's actions took, per session, outside the dock's state, so a
-// reply that ends after she switched sessions still writes to it; and each session's capacity epoch. The list is kept in
-// `sessionStorage` (back after a reload, as the kept draft is), in memory when the page has none.
+// TECHNICAL 18.6 "Queue" (S36 r4, r5, the deputy's rules): what the queue's actions took, per session, outside the dock's
+// state, so a reply that ends after she switched sessions still writes to it. Memory is the list's truth while the page lives;
+// `sessionStorage` is only a mirror, written after memory (a failed write leaves memory as it is), read once per session on the
+// page's first look, so the list is back after a reload as the kept draft is.
 import { useSyncExternalStore } from "react";
 
-/** A taken input: its text, what was being tried with it, and the error of its last refusal. `out`: a call is in flight. */
-export type Taken = { id: string; text: string; tried: "edit" | "stop" | "undo"; error?: string; out?: boolean };
+/** A taken input: its text, what was being tried with it, the error of its last refusal, and for Remove's item the absolute
+ * time (ms) its ordinary Undo ends. `out`: a call is in flight. */
+export type Taken = { id: string; text: string; tried: "edit" | "stop" | "undo"; error?: string; until?: number; out?: boolean };
 type Kept = Omit<Taken, "out">;
 
-const UNDO_MS = 6000;
-const memory = new Map<string, string>(); // a page with no `sessionStorage`
+export const UNDO_MS = 6000;
+const lists = new Map<string, Kept[]>(); // the truth while the page lives
 const out = new Set<string>(); // calls in flight are this page's, never kept
 const listeners = new Set<() => void>();
-const epochs = new Map<string, number>();
 let ids = 0;
 const keyOf = (session: string) => `wa-taken:${session}`;
-const read = (session: string): string => { try { return sessionStorage.getItem(keyOf(session)) ?? ""; } catch { return memory.get(session) ?? ""; } };
+const loaded = (session: string): Kept[] => {
+  try {
+    const xs: unknown = JSON.parse(sessionStorage.getItem(keyOf(session)) || "[]");
+    return Array.isArray(xs) ? xs.filter((x): x is Kept => !!x && typeof x.id === "string" && typeof x.text === "string") : [];
+  } catch { return []; }
+};
+const kept = (session: string): Kept[] => {
+  let xs = lists.get(session);
+  if (!xs) { xs = loaded(session); lists.set(session, xs); }
+  return xs;
+};
 const write = (session: string, xs: Kept[]) => {
-  const raw = xs.length ? JSON.stringify(xs) : "";
-  try { if (raw) sessionStorage.setItem(keyOf(session), raw); else sessionStorage.removeItem(keyOf(session)); }
-  catch { if (raw) memory.set(session, raw); else memory.delete(session); }
+  lists.set(session, xs);
+  try { if (xs.length) sessionStorage.setItem(keyOf(session), JSON.stringify(xs)); else sessionStorage.removeItem(keyOf(session)); }
+  catch { /* the mirror failed: memory stands */ }
   listeners.forEach((f) => f());
 };
-const kept = (session: string): Kept[] => { try { const xs: unknown = JSON.parse(read(session) || "[]"); return Array.isArray(xs) ? xs as Kept[] : []; } catch { return []; } };
 
-const snaps = new Map<string, { raw: string; out: string; xs: Taken[] }>();
+const snaps = new Map<string, { xs: Kept[]; out: string; shown: Taken[] }>();
 /** The session's list (the same array while it is unchanged, for React). */
 export function takenOf(session: string): Taken[] {
-  const raw = read(session), flying = [...out].join(" "), s = snaps.get(session);
-  if (s && s.raw === raw && s.out === flying) return s.xs;
-  const xs = kept(session).map((x) => (out.has(x.id) ? { ...x, out: true } : x));
-  snaps.set(session, { raw, out: flying, xs });
-  return xs;
+  const xs = kept(session), flying = [...out].join(" "), s = snaps.get(session);
+  if (s && s.xs === xs && s.out === flying) return s.shown;
+  const shown = xs.map((x) => (out.has(x.id) ? { ...x, out: true } : x));
+  snaps.set(session, { xs, out: flying, shown });
+  return shown;
 }
 const has = (session: string, id: string) => kept(session).some((t) => t.id === id);
 
-/** An input enters when its `unqueue` succeeded. Remove's (`tried: "undo"`) shows its Undo for 6 s: the timer only hides an
- * Undo that was never refused and is not in flight. Nothing else removes an item but `drop`. */
+/** An input enters when its `unqueue` succeeded. Remove's (`tried: "undo"`) carries the absolute end of its ordinary Undo. No
+ * timer touches the list: an item leaves only by `drop` (its `say` or `interrupt` accepted, or her Discard). */
 export function take(session: string, text: string, tried: Taken["tried"], flying = false): string {
   const id = `${Date.now().toString(36)}.${++ids}`;
   if (flying) out.add(id);
-  write(session, [...kept(session), { id, text, tried }]);
-  if (tried === "undo") setTimeout(() => { const x = kept(session).find((t) => t.id === id); if (x && !out.has(id) && x.error === undefined) drop(session, id); }, UNDO_MS);
+  write(session, [...kept(session), { id, text, tried, ...(tried === "undo" ? { until: Date.now() + UNDO_MS } : {}) }]);
   return id;
 }
+/** Whether item `x` shows its Undo at time `now`: all but a Remove's that is past its deadline, never refused and not in flight. */
+export const undoShown = (x: Taken, now = Date.now()) => x.tried !== "undo" || x.error !== undefined || !!x.out || x.until === undefined || now < x.until;
 /** Marks a call of item `id` in flight (one at a time: false when one is). */
 export function send(session: string, id: string): boolean {
   if (out.has(id) || !has(session, id)) return false;
@@ -54,15 +65,15 @@ export function refused(session: string, id: string, error?: string) {
   out.delete(id);
   write(session, kept(session).map((t) => (t.id === id ? { ...t, error } : t)));
 }
-/** Leaves the list: its `say` or `interrupt` was accepted, the open composer took it, or she discarded it. */
+/** Leaves the list: its `say` or `interrupt` was accepted, or she discarded it. */
 export function drop(session: string, id: string) {
   out.delete(id);
-  write(session, kept(session).filter((t) => t.id !== id));
+  if (has(session, id)) write(session, kept(session).filter((t) => t.id !== id));
+  else listeners.forEach((f) => f());
 }
 
 const subscribe = (f: () => void) => { listeners.add(f); return () => { listeners.delete(f); }; };
 export const useTaken = (session: string) => useSyncExternalStore(subscribe, () => takenOf(session));
 
-/** The session's capacity epoch: one more for every queue or turn update the console receives (F4.2). */
-export const epochOf = (session: string) => epochs.get(session) ?? 0;
-export const bump = (session: string) => { epochs.set(session, epochOf(session) + 1); };
+/** Tests: the page's memory goes, as on a reload; `sessionStorage` stays. */
+export function forgetTaken() { lists.clear(); snaps.clear(); out.clear(); }
