@@ -59,7 +59,7 @@ merges; until then it builds against S99's branch. Protects: *core*. `PO arms`. 
 
 Story: in the same session Alice answers an ask, queues a second message while the first runs,
 presses Stop, restarts `watane-dev serve` and finds the session where she left it. Covers asks
-(9.4, `answered.outcome`, checks closed `expired`), the queue, session allows, interrupt, restart
+(9.4, `answered.outcome`, checks closed `expired`), the resolved `path` on a file-tool ask (Deputy decisions, 2026-11-23), the queue, session allows, interrupt, restart
 detection through `host-info.generation`, the rest of 17's stage B cases, and the stage B budgets
 (8 fake sessions, 2 owners, 10 and 10 000 entries). Watane half (watane S100, if any host work is
 left after S99: interrupt, host ask items 4.5, the load test's fake). Carry: S34 RISK 3, S26/S28
@@ -355,6 +355,8 @@ limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
+
+- 2026-11-23 (watane S100, for S36): the host gives the resolved path (9.6's open point) as a top-level `"path"` on a file-tool `ask`/`check` item (absolute, symlinks resolved; `input` as `claude` sent it; absent when unresolvable or refused). S36 writes it into 4.5's item table and has the kernel offer a file key only from `path`. A request before `system/init` passed is denied by the host and pushes nothing.
 
 - 2026-11-22 (S35): stage B cases 9 (asks), 10 (hooks) and 11 `compact` move to S36; case 12's depth-0 half (removing Task) moves to stage F (9.7, delegation). S35's continuation named them as not covered; none is a single-turn case S35 needs.
 
