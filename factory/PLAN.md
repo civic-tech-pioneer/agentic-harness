@@ -571,6 +571,10 @@ S2 writes each into the document that owns it.
   started at E stage E, that is." A leaning, not a decision: (b), a `codex app-server` backend in the host, keeps a
   second vendor for cross-checking. Revisit when stage E starts.
 
+- **2026-11-23, the human, on S35-MERGE:** "Merge": merge PR #43 once CI on 8a9e512 is green, with no seventh review;
+  then hand out S36. (CI green; the merge itself is held: the deputy's merge was refused by its permission check because
+  the approval came relayed through another session, so the user is asked to confirm.)
+
 ## Waiting on the human
 
 - **S35-MERGE: PR #43 after the extra round (r6: `changes (2)`, adversary HELD, user-sim ACCEPTED, F5.1 closed, CI gate
