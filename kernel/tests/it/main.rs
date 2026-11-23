@@ -44,6 +44,7 @@ mod s29_ceiling;
 mod s29_short;
 mod s35_stage_b;
 mod s36_firing;
+mod s36_host;
 mod s36_load;
 mod s36_path;
 mod scope_s34;
