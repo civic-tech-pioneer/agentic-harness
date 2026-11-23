@@ -16,7 +16,12 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
   const view = mine ? held.view : LOADING; // a new subscription shows Loading until its first view
   const firstUser = view.rows.find((r) => r.kind === "user");
   const named = { ...info, title: titleOf(info.title, firstUser?.kind === "user" ? firstUser.text : undefined) };
-  const [stopping, setStopping] = useState(false);
+  // 18.5: Stopping… names the turn it stopped (its `since`; none when it was not running): it ends when that turn ends, also when
+  // the interrupted update and the replacement's running one reach the view in one frame (S36 r1)
+  const [stopped, setStopped] = useState<{ since?: number } | null>(null);
+  const setStopping = (on: boolean) => setStopped(on ? { since: viewRef.current.turn?.state === "running" ? viewRef.current.turn.since : undefined } : null);
+  const ended = (t: SessionView["turn"]) => t?.state === "idle" || (t?.state === "running" && t.since !== stopped?.since);
+  const stopping = !!stopped && !ended(view.turn);
   const [now, setNow] = useState(() => Date.now());
   const scroller = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
@@ -61,7 +66,7 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
     return () => ro.disconnect();
   }, [toEnd]);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  useEffect(() => { if (view.turn?.state === "idle") setStopping(false); }, [view.turn]);
+  useEffect(() => { if (stopped && ended(view.turn)) setStopped(null); }, [view.turn, stopped]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 9.4 rule 4: an ask with an answer sent counts as decided: Needs you, its target and the status subject skip it
   // it also ends when the row's ask gets its decision entry or is replaced by another ask under the same id (a later stream reuses ids);
