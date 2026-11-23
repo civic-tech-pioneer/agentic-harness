@@ -12,18 +12,27 @@ const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", stroke
 const draftOf = (key?: string): string => { try { return key ? sessionStorage.getItem(key) ?? "" : ""; } catch { return ""; } };
 const keepDraft = (key: string | undefined, text: string) => { try { if (key) { if (text) sessionStorage.setItem(key, text); else sessionStorage.removeItem(key); } } catch { /* no storage: the draft is not kept */ } };
 
+/** The composer's text, held for the queue's actions. */
+type Ctl = { text(): string; take(t: string, refusal?: unknown): void };
+
 export function Composer({ queued, actions, busy = false, stopping = false, session, draftKey, placeholder: given, sendLabel, ctl }: {
   queued: number; actions: Actions; busy?: boolean; stopping?: boolean; session?: { model?: string; mode?: string };
   /** Where the unsent text is kept (`sessionStorage`); none keeps nothing. */ draftKey?: string;
-  /** Filled with a hold on the text (the queue's Edit reads and sets it). */ ctl?: MutableRefObject<{ text(): string; take(t: string): void } | null>;
+  /** Filled with a hold on the text (the queue's Edit reads and sets it; a refusal `e` shows as a send's would). */ ctl?: MutableRefObject<Ctl | null>;
   /** Words for a composer that is not a session's (the new-session view). */ placeholder?: string; sendLabel?: string;
 }) {
   const [text, setText] = useState(() => draftOf(draftKey));
   useEffect(() => keepDraft(draftKey, text), [draftKey, text]);
-  const full = queued >= QUEUE_MAX;
+  // 18.6 "Queue": a `queue-full` refusal (the 2 MiB limit) keeps Send off until the queue's length changes or the turn ends
+  const [fullAt, setFullAt] = useState<number | null>(null);
+  const count = useRef(queued); count.current = queued;
+  useEffect(() => { setFullAt((f) => (f === null || f === queued ? f : null)); }, [queued]);
+  useEffect(() => { if (!busy) setFullAt(null); }, [busy]);
+  const full = queued >= QUEUE_MAX || fullAt !== null;
   const [refused, setRefused] = useState<string | null>(null);
+  const refuse = (e: unknown) => { setRefused(errorWords(e)); if ((e as { kind?: unknown } | null)?.kind === "queue-full") setFullAt(count.current); };
   const edited = useRef(0); // counts edits and sends: a refusal restores its text only if none came since
-  if (ctl) ctl.current = { text: () => text, take: (t) => { edited.current++; setRefused(null); setText(t); } };
+  if (ctl) ctl.current = { text: () => text, take: (t, e) => { edited.current++; setRefused(null); setText(t); if (e !== undefined) refuse(e); } };
   const off = !!actions.off; // 18.6 "Another tab": the stream is not this tab's
   const send = () => {
     const t = text.trim();
@@ -35,11 +44,12 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
     const back = (e: unknown) => {
       if (edited.current !== mark) return;
       setText(t);
-      setRefused(errorWords(e));
+      refuse(e);
     };
     try { Promise.resolve(actions.say(t)).catch(back); } catch (e) { back(e); }
   };
-  const placeholder = given ?? (full ? `The queue is full: ${QUEUE_MAX} messages wait. Remove one, or stop the turn.`
+  const placeholder = given ?? (queued >= QUEUE_MAX ? `The queue is full: ${QUEUE_MAX} messages wait. Remove one, or stop the turn.`
+    : full ? "The queue is full: the messages that wait hold all the text it takes. Remove one, or stop the turn."
     : busy ? "Add a message: it is queued and sent when this turn ends"
     : "Message the agent  ·  Enter to send, Shift+Enter for a new line");
   const tags = [session?.model, session?.mode].filter((x): x is string => !!x);
@@ -75,7 +85,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
   const { actions } = props;
   const off = !!actions.off;
-  const ctl = useRef<{ text(): string; take(t: string): void } | null>(null);
+  const ctl = useRef<Ctl | null>(null);
   const [note, setNote] = useState<{ text: string; undo?: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   // 18.6 "Queue": the dock is one session's (App keys it by the session): a call that ends after it left acts on that session alone
