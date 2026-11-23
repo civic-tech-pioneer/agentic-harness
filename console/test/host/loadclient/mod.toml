@@ -1,0 +1,2 @@
+name = "Load client"
+summary = "Test-only (S36-5): a second owner of agent sessions for the stage B load test."
