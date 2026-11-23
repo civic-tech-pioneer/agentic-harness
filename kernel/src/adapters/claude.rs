@@ -515,11 +515,14 @@ pub fn facts(line: &[u8]) -> Vec<Fact> {
     }
 }
 
-/// True for a line with a key twice that may be a `system/init` (it holds `"init"`): it is no
-/// fact (an `unknown` entry), but it uses up the first init with no folder, so a later init never
-/// names the folder (9.3 `folder`, S36 r1).
+/// True for a line the kernel cannot read as one JSON object (not UTF-8, not JSON, a key twice):
+/// it is no fact (an `unknown` entry), and since it may be a `system/init` however it is spelled,
+/// it uses up the first init with no folder, so a later init never names the folder (9.3
+/// `folder`, S36 r1; fail closed: such a line costs file keys, never widens them).
 pub fn unread_init(line: &[u8]) -> bool {
-    std::str::from_utf8(line).is_ok_and(|t| t.contains("\"init\"") && has_duplicate_key(t.trim()))
+    std::str::from_utf8(line).map(str::trim).map_or(true, |t| {
+        has_duplicate_key(t) || !serde_json::from_str::<Value>(t).is_ok_and(|v| v.is_object())
+    })
 }
 
 /// A uuid as host 19.3 takes a launch's `session` (`8-4-4-4-12` hex digits): an id that is not one

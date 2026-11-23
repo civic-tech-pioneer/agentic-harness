@@ -541,8 +541,10 @@ and `.husky/**`. No launch can remove them.
     (host 19.3 "Folders"), as `getcwd` gives it (symlinks resolved, as the
     host resolves an item's `path`, 4.5 step 4). The kernel keeps it once in
     the record's `folder` (9.3) when it is a plain absolute folder. The
-    first `system/init` decides, even one with no usable `cwd` (or one the
-    kernel cannot read, a key twice: it is an `unknown` entry): the record's
+    first `system/init` decides, even one with no usable `cwd`; a line the
+    kernel cannot read as one JSON object (not UTF-8, not JSON, a key twice:
+    an `unknown` entry) may be an init however it is spelled, so before the
+    first init it decides too, with no folder (fail closed: no file keys): the record's
     `init-seen` is then set, and a later `system/init` with another `cwd`
     changes nothing; neither writes an entry. This is the one place the
     kernel learns the folder (9.6, 14).
