@@ -34,3 +34,22 @@ describe("S36 r2 load checks", () => {
     expect(isInterrupted({ state: "running", note: "interrupted" })).toBe(false);
   });
 });
+
+describe("S36 r3 load checks", () => {
+  it("regress_S36_r3_load_rejects_disjoint_bursts (F3.5)", () => {
+    // Codex's control: one stamp at 0 for each of 8 sources, then 320 deltas and 32 entries per source in disjoint bursts
+    const by = new Map<string, { at: number; kind: string; n: number }[]>();
+    for (let k = 0; k < 8; k++) {
+      const xs = [{ at: 0, kind: "delta", n: 0 }];
+      const at = 1000 + (k < 4 ? 0 : 3500); // the two owners' sources load in turn, never together
+      for (let n = 0; n < 352; n++) xs.push({ at: at + n * 3, kind: n % 11 === 10 ? "entry" : "delta", n: n + 1 });
+      by.set(`source ${k}`, xs);
+    }
+    expect(loadWindow(by, 8000, RATE, 6).faults.length).toBeGreaterThan(0);
+  });
+  it("regress_S36_r3_steady_sources_pass_the_subwindow_check (F3.5)", () => {
+    const by = new Map<string, unknown[]>();
+    for (let k = 0; k < 8; k++) by.set(`source ${k}`, source(0, 8000));
+    expect(loadWindow(by, 8000, RATE, 6).faults).toEqual([]);
+  });
+});
