@@ -1,7 +1,7 @@
 # Boundaries of the unchecked provider
 
 The provider rows of `design/TECHNICAL.md` section 14 of this repository (agentic-harness, which holds
-this provider in `provider/`, R-B1), copied at its commit `866d325` (refresh them, and this commit, when
+this provider in `provider/`, R-B1), copied at its commit `3629c5c` (refresh them, and this commit, when
 they change). Section 14 is the one boundary list (`factory/config.toml` `boundaries`); this is a copy.
 Paths in "Files" are relative to the repository root or to the watane checkout, as there.
 
