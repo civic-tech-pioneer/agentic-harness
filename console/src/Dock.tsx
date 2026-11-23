@@ -1,10 +1,10 @@
 // TECHNICAL 18.5, 18.6: the dock: Needs you, plan, queue, status line, input.
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { errorWords, type Actions, type SessionView } from "../kit";
+import { bump, drop, epochOf, refused, send, take, useTaken, type Taken } from "./taken";
 
 export const QUEUE_MAX = 32;
 const SHOWN = 3;
-const UNDO_MS = 6000;
 
 const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
 
@@ -16,8 +16,8 @@ const keepDraft = (key: string | undefined, text: string) => { try { if (key) { 
  * send does) and says whether it did; a composer with text keeps it. */
 type Ctl = { text(): string; put(t: string, error?: unknown): boolean };
 
-export function Composer({ queued, actions, busy = false, stopping = false, session, draftKey, placeholder: given, sendLabel, ctl }: {
-  queued: number; actions: Actions; busy?: boolean; stopping?: boolean; session?: { model?: string; mode?: string };
+export function Composer({ queued, actions, busy = false, stopping = false, session, draftKey, placeholder: given, sendLabel, ctl, epoch }: {
+  queued: number; /** The session's capacity epoch (taken.ts); none: the queue's length and the turn stand for it. */ epoch?: () => number; actions: Actions; busy?: boolean; stopping?: boolean; session?: { model?: string; mode?: string };
   /** Where the unsent text is kept (`sessionStorage`); none keeps nothing. */ draftKey?: string;
   /** Filled with a hold on the text (the queue's Edit reads and sets it). */ ctl?: MutableRefObject<Ctl | null>;
   /** Words for a composer that is not a session's (the new-session view). */ placeholder?: string; sendLabel?: string;
@@ -25,7 +25,8 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   const [text, setText] = useState(() => draftOf(draftKey));
   useEffect(() => keepDraft(draftKey, text), [draftKey, text]);
   // 18.6 "Queue": a `queue-full` refusal (the 2 MiB limit) keeps Send off until the queue's length changes or the turn ends;
-  // a refusal that ends after either changed describes a queue that is gone, so it changes nothing (S36 r3)
+  // a refusal applies only in the capacity epoch its `say` was sent in: after any queue or turn update since, it describes a
+  // queue that is gone, so it changes nothing, even if the same length and turn state come back (S36 r3, r4 F4.2)
   const [fullAt, setFullAt] = useState<number | null>(null);
   const count = useRef(queued); count.current = queued;
   const running = useRef(busy); running.current = busy;
@@ -34,9 +35,10 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   const full = queued >= QUEUE_MAX || fullAt !== null;
   const [refused, setRefused] = useState<string | null>(null);
   /** The capacity a send saw: a `queue-full` refusal applies only while it still holds. */
-  const capacity = () => ({ queued: count.current, busy: running.current });
-  const full_ = (e: unknown, at: { queued: number; busy: boolean }) => {
-    if ((e as { kind?: unknown } | null)?.kind === "queue-full" && running.current === at.busy && count.current === at.queued) setFullAt(at.queued);
+  const epochNow = () => epoch?.();
+  const capacity = () => ({ queued: count.current, busy: running.current, epoch: epochNow() });
+  const full_ = (e: unknown, at: ReturnType<typeof capacity>) => {
+    if ((e as { kind?: unknown } | null)?.kind === "queue-full" && epochNow() === at.epoch && running.current === at.busy && count.current === at.queued) setFullAt(at.queued);
   };
   const refuse = (e: unknown, at = capacity()) => { setRefused(errorWords(e)); full_(e, at); };
   const edited = useRef(0); // counts edits and sends: a refusal restores its text only if none came since
@@ -99,19 +101,18 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   const { actions } = props;
   const off = !!actions.off;
   const ctl = useRef<Ctl | null>(null);
-  // the line under the queue; `undo` is the input its Undo puts back: Remove's for 6 s, a refused one's until used
-  type Note = { text: string; undo?: string };
-  const [note, setNote] = useState<Note | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const sid = props.sessionId ?? "";
+  // 18.6 "Queue" (S36 r4 F4.2): every queue or turn update received is a new capacity epoch of this session
+  const seen = useRef<unknown[]>([]);
+  if (seen.current[0] !== view.queue || seen.current[1] !== view.turn) { seen.current = [view.queue, view.turn]; bump(sid); }
+  // 18.6 "Queue" (S36 r4 F4.1): what the actions took is the session's list (taken.ts), outside this component; `note` is only a
+  // line with no text of hers in it (a refused take, "Finish or clear ...")
+  const taken = useTaken(sid);
+  const [note, setNote] = useState<string | null>(null);
   const live = useRef(true); // set again on setup: Strict Mode runs the cleanup and the setup once more
-  useEffect(() => { live.current = true; return () => { live.current = false; clearTimeout(timer.current); }; }, []);
-  const say = (text: string, undo?: string, timed = undo !== undefined) => {
-    clearTimeout(timer.current);
-    setNote({ text, undo });
-    if (timed) timer.current = setTimeout(() => setNote(null), UNDO_MS);
-  };
-  const clearNote = () => { clearTimeout(timer.current); setNote(null); };
-  const fail = (e: unknown) => say((e as { kind?: unknown } | null)?.kind === "unknown-input" ? "That message was already sent" : errorWords(e));
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  const fail = (e: unknown) => setNote((e as { kind?: unknown } | null)?.kind === "unknown-input" ? "That message was already sent" : errorWords(e));
+  const busyComposer = () => !!ctl.current?.text().trim();
   const draftKey = props.sessionId === undefined ? undefined : `wa-draft:${props.sessionId}`;
   // 18.6 "Queue" (the deputy's rule, S36 r3): take it back first. Edit, Stop and send and Remove call `unqueue(n)` first, the
   // kernel's one atomic take, so a turn can no longer take the item; `unknown-input` (a turn took it) leaves everything alone. The
@@ -120,34 +121,35 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   const unqueue = async (q: { n: number }) => {
     try { await actions.unqueue!(q.n); return true; } catch (e) { fail(e); return false; }
   };
-  /** Puts a taken input in the composer (with `e`'s line, as Send does); a composer that holds her text keeps it, and the input
-   * waits on the line with Undo. After she left this session, it becomes the session's kept draft if that is empty. */
-  const place = (t: string, e?: unknown) => {
-    if (live.current && ctl.current) { if (ctl.current.put(t, e)) return; }
-    else if (!draftOf(draftKey)) { keepDraft(draftKey, t); return; }
-    say(e === undefined ? "Taken out to edit: your message is in the composer." : errorWords(e), t, false);
+  /** Hands taken item `id` to this session's open composer when that is empty (with `e`'s line, as Send does): the composer holds
+   * it from then on. Else it stays on the list with the error. */
+  const place = (id: string, t: string, e?: unknown) => {
+    if (live.current && ctl.current?.put(t, e)) drop(sid, id);
+    else refused(sid, id, e === undefined ? undefined : errorWords(e));
+  };
+  const interrupt = async (id: string, t: string) => {
+    try { await actions.interrupt!(t); drop(sid, id); } catch (e) { place(id, t, e); } // refused: to the composer, as Send's, or it stays
   };
   const edit = async (q: { n: number; input: string }) => {
-    if (ctl.current?.text().trim()) return say("Finish or clear your message first");
-    clearNote();
-    if (await unqueue(q)) place(q.input); // she sends it as an ordinary `say`; a refused one comes back as Send's does
+    if (busyComposer()) return setNote("Finish or clear your message first");
+    setNote(null);
+    if (await unqueue(q)) place(take(sid, q.input, "edit", true), q.input); // she sends it as an ordinary `say`
   };
-  const remove = async (q: { n: number; input: string }) => { if (await unqueue(q)) say("Removed.", q.input); };
-  const undoing = useRef(false); // one Undo `say` in flight
-  const [restoring, setRestoring] = useState(false);
-  const undo = async (input: string) => {
-    if (undoing.current) return;
-    undoing.current = true; setRestoring(true);
-    clearTimeout(timer.current); // the line stays while its `say` is out
-    try { await actions.say(input); clearNote(); } catch (e) { say(errorWords(e), input, false); } // refused: the line and its Undo stay
-    finally { undoing.current = false; setRestoring(false); }
-  };
+  const remove = async (q: { n: number; input: string }) => { setNote(null); if (await unqueue(q)) take(sid, q.input, "undo"); };
   const stopAndSend = async (q: { n: number; input: string }) => {
-    if (ctl.current?.text().trim()) return say("Finish or clear your message first"); // a refused interrupt's text needs the composer
-    clearNote();
+    if (busyComposer()) return setNote("Finish or clear your message first"); // a refused interrupt's text needs the composer
+    setNote(null);
     if (!(await unqueue(q))) return; // a turn took it: the current turn is left alone
-    try { await actions.interrupt!(q.input); } catch (e) { place(q.input, e); } // refused: the text goes to the composer, as Send's
+    await interrupt(take(sid, q.input, "stop", true), q.input);
   };
+  /** An item's Undo puts it back in the queue (a `say`); a Stop and send's can also be tried again. One call in flight at a time;
+   * a refused one stays with its error. */
+  const again = async (x: Taken, how: "say" | "interrupt") => {
+    if (!send(sid, x.id)) return;
+    if (how === "interrupt") return interrupt(x.id, x.text);
+    try { await actions.say(x.text); drop(sid, x.id); } catch (e) { refused(sid, x.id, errorWords(e)); }
+  };
+  const kept = (x: Taken) => x.error !== undefined || x.tried !== "undo"; // all but a Remove's own 6 s Undo show the text and Discard
   const folded = !(opened ?? !(view.openAsks.length > 0 || view.queue.length > 0));
   return (
     <div className="wa-dock">
@@ -188,14 +190,23 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
           {view.queue.length > SHOWN ? <p className="wa-queue-more">+ {view.queue.length - SHOWN} more</p> : null}
         </section>
       ) : null}
-      {note ? (
-        <p className="wa-queue-note" role="status">{note.text}{note.undo !== undefined ? <> <button type="button" className="wa-chip" disabled={off || restoring} onClick={() => void undo(note.undo!)}>Undo</button></> : null}</p>
+      {note ? <p className="wa-queue-note" role="status">{note}</p> : null}
+      {taken.length ? (
+        <ul className="wa-taken" aria-label="Taken from the queue">{taken.map((x) => (
+          <li key={x.id} className="wa-queue-note" role="status">
+            {x.error ?? (x.tried === "undo" ? "Removed." : x.tried === "edit" ? "Taken out to edit; the composer holds your newer message." : "Taken out to send.")}
+            {kept(x) ? <> <q className="wa-taken-text">{x.text}</q></> : null}
+            {" "}<button type="button" className="wa-chip" disabled={off || !!x.out} onClick={() => void again(x, "say")}>Undo</button>
+            {x.tried === "stop" ? <> <button type="button" className="wa-chip" disabled={off || !!x.out} onClick={() => void again(x, "interrupt")}>Stop and send</button></> : null}
+            {kept(x) ? <> <button type="button" className="wa-chip" disabled={!!x.out} onClick={() => drop(sid, x.id)}>Discard</button></> : null}
+          </li>
+        ))}</ul>
       ) : null}
       {props.status}
       {props.replaced ? (
         <p className="wa-replaced" role="status">This session is open in another tab. <button type="button" className="wa-chip" onClick={props.onUseHere}>Use here</button></p>
       ) : null}
-      <Composer key={props.sessionId} ctl={ctl} draftKey={draftKey} queued={view.queue.length} actions={props.actions} session={props.session} stopping={props.stopping}
+      <Composer key={props.sessionId} ctl={ctl} epoch={() => epochOf(sid)} draftKey={draftKey} queued={view.queue.length} actions={props.actions} session={props.session} stopping={props.stopping}
         busy={view.turn?.state === "running" || view.turn?.state === "waiting"} />
     </div>
   );
