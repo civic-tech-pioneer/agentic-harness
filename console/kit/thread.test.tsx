@@ -341,7 +341,12 @@ describe("StatusLine", () => {
     const s = status({ state: "unknown" });
     expect(word()).toBe("Not running: watane restarted");
     expect(shape()).toBe("dashed-ring");
-    noKernel(s, "Continue");
+    // S36 r1 F1.3: Continue sends `say` with the text `Continue` (18.5, 9.3 R5)
+    const b = screen.getByRole("button", { name: "Continue" });
+    expect(b).toBeEnabled();
+    b.click();
+    expect(s.actions.say).toHaveBeenCalledWith("Continue");
+    expect(s.actions.stop).not.toHaveBeenCalled();
   });
 
   it("ac9_resume_lost_dashed_ring_continue_from_summary", () => {
