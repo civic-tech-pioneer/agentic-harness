@@ -215,7 +215,7 @@ async function main() {
     const pageStops = stopAt.filter((x) => x !== null);
     const win = loadWindow(new Map(names.map((n) => [n, files.get(n)])), pageStops.length ? Math.min(...pageStops) : -Infinity, RATE, WINDOW);
     const delays = [], stops = [], lines = [], faults = [...win.faults];
-    if (!win.faults.length) say(`all 8 sources at the rate over a common ${win.seconds.toFixed(1)} s before the first Stop`);
+    if (!win.faults.length) say(`all 8 sources at the rate in every 2 s subwindow of a common ${win.seconds.toFixed(1)} s before the first Stop`);
     for (let k = 0; k < SESSIONS; k++) {
       if (stopAt[k] === null) { faults.push(`page ${k} had no Stop button (its turn was not running)`); continue; }
       const attached = await pages[k].evaluate(() => window.__attached);
