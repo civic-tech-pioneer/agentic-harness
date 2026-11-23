@@ -226,6 +226,10 @@ pub struct Record {
     pub deadlines: Vec<Deadline>,
     pub open: Vec<OpenAsk>,
     pub pending_answers: BTreeMap<String, PendingAnswer>,
+    /// The `idle` lines `claude` still owes for turns `interrupt` already ended (9.3, S36): each
+    /// such line ends nothing more. Zeroed when the provider stream is released or opened.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub owed_idles: u32,
     pub next_index: u64,
     pub created: u64,
     pub updated: u64,
@@ -260,6 +264,7 @@ impl Default for Record {
             deadlines: Vec::new(),
             open: Vec::new(),
             pending_answers: BTreeMap::new(),
+            owed_idles: 0,
             next_index: 1,
             created: 0,
             updated: 0,
@@ -364,4 +369,8 @@ pub fn check_title(title: &str) -> Result<(), KernelError> {
         return Err(KernelError::TooLarge(TITLE_BYTES as u64));
     }
     Ok(())
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
