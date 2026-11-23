@@ -86,12 +86,25 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   const { actions } = props;
   const off = !!actions.off;
   const ctl = useRef<Ctl | null>(null);
-  const [note, setNote] = useState<{ text: string; undo?: string } | null>(null);
+  // the line under the queue; `undo` holds the inputs its Undo puts back; a `kept` line holds a refused message and stays until its Undo
+  type Note = { text: string; undo: string[]; kept: boolean };
+  const [note, setNoteState] = useState<Note | null>(null);
+  const noteRef = useRef<Note | null>(null);
+  const setNote = (n: Note | null) => { noteRef.current = n; setNoteState(n); };
   const timer = useRef<ReturnType<typeof setTimeout>>();
   // 18.6 "Queue": the dock is one session's (App keys it by the session): a call that ends after it left acts on that session alone
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; clearTimeout(timer.current); }, []);
-  const say = (text: string, undo?: string, keep = false) => { clearTimeout(timer.current); setNote({ text, ...(undo !== undefined ? { undo } : {}) }); if (undo !== undefined && !keep) timer.current = setTimeout(() => setNote(null), UNDO_MS); };
+  /** A new line; the inputs of a kept line carry over into it (one Undo puts them all back), so no later action loses them. */
+  const say = (text: string, undo?: string, keep = false) => {
+    clearTimeout(timer.current);
+    const carried = noteRef.current?.kept ? noteRef.current.undo : [];
+    const n: Note = { text, undo: [...carried, ...(undo !== undefined ? [undo] : [])], kept: keep || carried.length > 0 };
+    setNote(n);
+    if (n.undo.length && !n.kept) timer.current = setTimeout(() => setNote(null), UNDO_MS);
+  };
+  /** Clears the line, unless it keeps refused messages. */
+  const clearNote = () => { if (noteRef.current?.kept) return; clearTimeout(timer.current); setNote(null); };
   const fail = (e: unknown) => say((e as { kind?: unknown } | null)?.kind === "unknown-input" ? "That message was already sent" : errorWords(e));
   /** 18.6 "Queue": takes input `q` out of the queue; false (and a line) when the kernel refuses. */
   const unqueue = async (q: { n: number }) => {
@@ -106,24 +119,24 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
       try { await actions.say(q.input); } catch (e) { fail(e); }
       return;
     }
-    clearTimeout(timer.current); setNote(null);
+    clearNote();
     ctl.current?.take(q.input);
   };
   /** 18.6 "Queue": a message a queue action took out is never lost to a refusal: back in the empty composer, else the error with Undo (kept). */
   const recover = (input: string, e: unknown) => {
     if (!alive.current) { try { Promise.resolve(actions.say(input)).catch(() => {}); } catch { /* the session is no longer shown */ } return; }
     const c = ctl.current;
-    if (c && !c.text().trim()) { clearTimeout(timer.current); setNote(null); c.take(input, e); }
+    if (c && !c.text().trim()) { clearNote(); c.take(input, e); }
     else say(errorWords(e), input, true);
   };
   const remove = async (q: { n: number; input: string }) => { if (await unqueue(q)) say("Removed.", q.input); };
-  const undo = (input: string) => {
+  const undo = async (inputs: string[]) => {
     clearTimeout(timer.current); setNote(null);
-    try { Promise.resolve(actions.say(input)).catch((e) => recover(input, e)); } catch (e) { recover(input, e); }
+    for (const input of inputs) { try { await actions.say(input); } catch (e) { recover(input, e); } }
   };
   const stopAndSend = async (q: { n: number; input: string }) => {
     if (!(await unqueue(q))) return;
-    clearTimeout(timer.current); setNote(null);
+    clearNote();
     try { await actions.interrupt!(q.input); } catch (e) { recover(q.input, e); }
   };
   const folded = !(opened ?? !(view.openAsks.length > 0 || view.queue.length > 0));
@@ -167,7 +180,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
         </section>
       ) : null}
       {note ? (
-        <p className="wa-queue-note" role="status">{note.text}{note.undo !== undefined ? <> <button type="button" className="wa-chip" disabled={off} onClick={() => undo(note.undo!)}>Undo</button></> : null}</p>
+        <p className="wa-queue-note" role="status">{note.text}{note.undo.length ? <> <button type="button" className="wa-chip" disabled={off} onClick={() => void undo(note.undo)}>Undo</button></> : null}</p>
       ) : null}
       {props.status}
       {props.replaced ? (
