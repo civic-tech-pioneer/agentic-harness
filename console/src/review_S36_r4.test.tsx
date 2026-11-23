@@ -36,7 +36,9 @@ describe("S36 r4", () => {
     await u.click(screen.getByRole("button", { name: "Edit queued message 1" })); // another row frees room
     await settle();
     act(() => { vi.advanceTimersByTime(7000); });
-    expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1);
+    // r5 (the deputy's rule): the Edit's item stays listed too, until its send is accepted; the refused Undo keeps its row and Undo
+    const row = [...document.querySelectorAll(".wa-taken li")].find((li) => li.textContent?.includes("first one"));
+    expect(row?.querySelector("button")?.textContent).toBe("Undo");
   });
   it("regress_s36_refused_interrupt_after_a_switch_keeps_the_taken_text (F4.1)", async () => {
     const f = fakeKernel([...story, [queueOf(["first one", "second one"])]]);

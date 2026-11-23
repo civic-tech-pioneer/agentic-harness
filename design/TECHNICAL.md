@@ -2569,34 +2569,41 @@ out. Stop shows "Stopping…" until a `turn` update says idle, or shows another 
   the input in the composer, and she sends it as an ordinary `say` (its slot
   is free, also in a full queue); a refused `say` comes back as "Send" says.
   Stop and send calls `unqueue`, then `interrupt` with the input (the
-  replacement runs before queued inputs, 2.3); a refused `interrupt` puts the
-  text in the composer with the error, as "Send" does. Edit and Stop and send
+  replacement runs before queued inputs, 2.3); a refused `interrupt` copies the
+  text into an empty composer with the error, as "Send" does. Edit and Stop and send
   while the composer holds text do nothing but say "Finish or clear your
   message first". What a queue action took is kept on a list per session,
-  outside the dock and in `sessionStorage` (the deputy's rule, S36 r4): an
-  item (its text, and what was tried: edit, stop and send, or Remove's undo)
-  enters when `unqueue` succeeds and leaves only when its `say` or
-  `interrupt` is accepted, when the open composer of its session takes it
-  (Edit, or a refused `interrupt`, into an empty composer: the composer holds
-  it from then on, as her own text), or when she discards it. Nothing else
-  removes or overwrites one: not a timer, another queue action, a newer
-  draft, or a session switch; a reply that ends after she switched writes to
-  its own session's list. Each item under the queue shows its text, its last
-  error, Undo (a `say` that puts it back in the queue), Stop and send again
-  for a stop and send's, and Discard; one call in flight at a time. Remove
-  is `unqueue`, and its item shows only "Removed." with Undo for 6 s: the
-  timer hides only an Undo that was never refused and is not in flight; a
-  refused Undo keeps its item. Known cost: a refused re-send loses the
+  outside the dock (the deputy's rules, S36 r4 and r5): an item (its text,
+  and what was tried: edit, stop and send, or Remove's undo) enters when
+  `unqueue` succeeds and leaves only when the kernel accepts its `say` or
+  `interrupt`, or when she discards it. Copying its text into the composer
+  (Edit, or a refused `interrupt`, into an empty composer) does not remove
+  it: the composer remembers the item it copied while it holds that text,
+  and a send of it (edited or not) that the kernel accepts removes the item.
+  Nothing else removes or overwrites one: not a timer, another queue action,
+  a newer draft, a refused send, two calls that end together, or a session
+  switch; a reply that ends after she switched writes to its own session's
+  list. Memory is the list's truth while the page lives; `sessionStorage` is
+  only a mirror, written after memory and read once on the page's first look
+  (back after a reload): a failed write leaves memory as it is. Each item
+  under the queue shows its text, its last error, Undo (a `say` that puts it
+  back in the queue), Stop and send again for a stop and send's, and
+  Discard; one call in flight at a time. Remove is `unqueue`, and its item
+  stores the absolute time 6 s on, when its ordinary Undo ends: past it
+  (also after a reload) Undo is hidden, unless it was refused or is in
+  flight, and the item stays with Discard. Known cost: a refused re-send loses the
   item's place in the queue. The controls are off under "Another tab". A
   full queue turns Send off and says why (the placeholder, or the line above
   the composer while it holds text): 32 inputs, or a `say` refused
   `queue-full` (the 2 MiB limit), also one that ends after she typed again,
   which keeps Send off until the queue's length changes or the turn ends.
   Each session has a capacity epoch, one more for every queue or turn update
-  the console receives; a `say` records it when sent, and its `queue-full`
-  refusal turns Send off only if the epoch is unchanged: a refusal from an
-  earlier epoch describes a queue that is gone and changes nothing, even when
-  the same length and turn state come back (S36 r1 to r4). Every queue action
+  the console receives, bumped by the kernel client on receipt
+  (`kit/kernel.ts`), before the page is told; a `say` records it when sent,
+  and its `queue-full` refusal turns Send off only if the epoch is unchanged:
+  a refusal from an earlier epoch describes a queue that is gone and changes
+  nothing, even when the same length and turn state come back. The lock
+  stores the epoch it was set in and holds only in it (S36 r1 to r5). Every queue action
   stays in its session: the dock is the shown session's (App keys it by the
   session), and a call that ends after she switched acts on its own session
   alone.

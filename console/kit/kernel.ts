@@ -67,6 +67,11 @@ export function governor() {
   };
 }
 
+/** TECHNICAL 18.6 "Queue" (S36 r5 F5.4, the deputy's rule): each session's capacity epoch, one more for every queue or turn
+ * update the client receives, bumped here on receipt, before the page is told (a refusal that lands between the two is stale). */
+const epochs = new Map<string, number>();
+export const epochOf = (session: string) => epochs.get(session) ?? 0;
+
 /** Opens a session: attaches after the last index shown, pages when behind, reattaches when the stream drops. */
 export function openSession(rawKernel: Kernel, session: string, onView: (v: SessionView) => void, onReplaced: (replaced: boolean) => void = () => {}): { close(): void; reattach(): void } {
   const gov = governor();
@@ -128,6 +133,7 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
     onView(v);
   };
   const show = (v: SessionView, now = false, fetch = true) => {
+    if (v.queue !== view.queue || v.turn !== view.turn) epochs.set(session, epochOf(session) + 1);
     view = v;
     if (closed) return;
     // a message the view saw only in part: fetch its entry, which replaces the row
