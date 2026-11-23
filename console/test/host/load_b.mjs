@@ -4,7 +4,9 @@
 // Item delay: the fake's stdout write to the item's arrival in the Chromium page that shows its session (the page's `watane.on`
 // handler, before the console's own), p95 over the page's 4 sessions, budget 100 ms. Stop: the page's Stop button to
 // `idle {interrupted}` in that page, p95, budget 1 s. Each page session is paired with its fake by identity (the fake's first input,
-// `load <k>`, which its stamp file names), and every line its fake wrote before Stop must reach its page exactly once.
+// `load <k>`, which its stamp file names), and every line its fake wrote before Stop must reach its page exactly once. Latency counts
+// only once all 8 fakes wrote 80% of the rate over a common window of at least 6 s ending at the first Stop, and only the items
+// written in it; Stop ends at exactly `idle {interrupted}` (S36 r2 F2.3, test/host/load_check.mjs).
 // The state bytes per entry are the kernel crate's (kernel/tests/it/s36_load.rs). By hand: `npm run test:load` in console/. Exit 0
 // within budget, 1 over or failed, 2 not run (a prerequisite missing: watane-dev, fake-claude, cargo, python3, Chromium).
 //
@@ -18,6 +20,7 @@ import { tmpdir, loadavg, cpus } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
+import { isInterrupted, loadWindow } from "./load_check.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -31,6 +34,7 @@ const say = (s) => console.log(s);
 class NotRun extends Error {}
 const SESSIONS = 4, SECONDS = 10, RATE = { deltas: 50, entries: 5, bytes: 4096, seconds: SECONDS };
 const BUDGET = { delay: 100, stop: 1000 };
+const WINDOW = 6; // seconds all 8 sources must overlap at the rate, before Stop
 
 function dev(args, dir) {
   const r = spawnSync("watane-dev", [...args, "--json", "--dir", dir], { env, encoding: "utf8", timeout: 900_000 });
@@ -152,7 +156,7 @@ function stamps(dir) {
   }
   return by;
 }
-const p95 = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(s.length * 0.95))]; };
+const p95 = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * 0.95))] : NaN; };
 
 async function main() {
   for (const [p, a] of [["watane-dev", ["--version"]], ["cargo", ["--version"]], ["python3", ["--version"]]]) if (spawnSync(p, a).error) throw new NotRun(`${p} cannot run`);
@@ -207,7 +211,11 @@ async function main() {
 
     const files = stamps(claudeDir);
     for (const k of [...Array(SESSIONS).keys()]) for (const name of [`load ${k}`, `load client ${k}`]) if (!files.has(name)) throw new Error(`no stamped fake got the input ${name}`);
-    const delays = [], stops = [], lines = [], faults = [];
+    const names = [...Array(SESSIONS).keys()].flatMap((k) => [`load ${k}`, `load client ${k}`]);
+    const pageStops = stopAt.filter((x) => x !== null);
+    const win = loadWindow(new Map(names.map((n) => [n, files.get(n)])), pageStops.length ? Math.min(...pageStops) : -Infinity, RATE, WINDOW);
+    const delays = [], stops = [], lines = [], faults = [...win.faults];
+    if (!win.faults.length) say(`all 8 sources at the rate over a common ${win.seconds.toFixed(1)} s before the first Stop`);
     for (let k = 0; k < SESSIONS; k++) {
       if (stopAt[k] === null) { faults.push(`page ${k} had no Stop button (its turn was not running)`); continue; }
       const attached = await pages[k].evaluate(() => window.__attached);
@@ -222,7 +230,7 @@ async function main() {
         const key = `${a.kind} ${a.n}`, w = written.get(key);
         seen.set(key, (seen.get(key) ?? 0) + 1);
         if (w === undefined) faults.push(`page ${k}: ${key} arrived but its fake never wrote it`);
-        else if (seen.get(key) === 1) mine.push(a.at - w);
+        else if (seen.get(key) === 1 && w >= win.from && w < win.to) mine.push(a.at - w); // only items written while all 8 loaded
       }
       const twice = [...seen].filter(([, c]) => c > 1).map(([key]) => key);
       if (twice.length) faults.push(`page ${k}: ${twice.length} items arrived more than once (${twice.slice(0, 3).join(", ")})`);
@@ -231,8 +239,8 @@ async function main() {
       if (mine.some((d) => d < -2)) faults.push(`page ${k}: an item arrived before its write`);
       delays.push(...mine);
       const late = mine.findIndex((d) => d > BUDGET.delay);
-      lines.push(`  page ${k} (session ${pageSessions[k]}): ${file.length} lines written, ${mine.length} arrived once, ${file.length - mine.length} after Stop not delivered; p95 ${p95(mine).toFixed(1)} ms, max ${Math.max(...mine).toFixed(1)} ms${late >= 0 ? `, first over ${BUDGET.delay} ms at item ${late + 1}` : ""}`);
-      const end = got.find((a) => a.kind === "turn" && a.at >= stopAt[k] && JSON.stringify(a.state).includes("interrupted"));
+      lines.push(`  page ${k} (session ${pageSessions[k]}): ${file.length} lines written, ${mine.length} written in the common window arrived once; p95 ${p95(mine).toFixed(1)} ms, max ${Math.max(...mine).toFixed(1)} ms${late >= 0 ? `, first over ${BUDGET.delay} ms at item ${late + 1}` : ""}`);
+      const end = got.find((a) => a.kind === "turn" && a.at >= stopAt[k] && isInterrupted(a.state));
       stops.push(end ? end.at - stopAt[k] : Infinity);
     }
     for (const l of lines) say(l);
@@ -241,7 +249,8 @@ async function main() {
     say(`item delay, the fake's write to the Chromium page: p95 ${dp95.toFixed(1)} ms over ${delays.length} items (budget ${BUDGET.delay}); max ${Math.max(...delays).toFixed(1)} ms`);
     say(`Stop in the page to idle {interrupted} in the page: p95 ${sp95.toFixed(1)} ms (budget ${BUDGET.stop}); each ${stops.map((x) => x.toFixed(1)).join(", ")} ms`);
     say(`machine: ${process.platform} ${cpus().length} cpus, load average ${loadavg().map((x) => x.toFixed(2)).join(" ")}`);
-    if (faults.length) throw new Error(`${faults.length} completeness or identity faults`);
+    if (faults.length) throw new Error(`${faults.length} load, completeness or identity faults`);
+    if (!delays.length) throw new Error("no item was measured");
     return dp95 <= BUDGET.delay && sp95 <= BUDGET.stop;
   } finally { await browser.close(); }
 }
