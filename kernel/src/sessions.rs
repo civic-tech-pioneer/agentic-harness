@@ -2882,6 +2882,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                 .put(&adapter_key(stream), a)
                 .map_err(|e| KernelError::TooLarge(e.0 as u64))?;
         }
+        // P09, case 56: a batch whose writes changed no byte count (a text delta: `last` of the
+        // same width, the adapter unchanged) charges nothing, so it reads no record or account.
+        let c = self.state.change();
+        if c.owner == 0 && c.session == 0 {
+            self.state.close();
+            return Ok(());
+        }
         match Record::load(&mut self.state, &key.session) {
             Some(mut rec) => {
                 let mut acct = self.accounts(&rec.owner);
