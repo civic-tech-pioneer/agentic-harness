@@ -696,8 +696,12 @@ async function main() {
       try {
         await page.getByText(/before restart/).first().click().catch(() => {});
         await until(async () => (await page.locator(".wa-status-word").textContent().catch(() => "")) === "Not running: watane restarted", 15_000, "the status line to read Not running: watane restarted");
+        // S36 r1 F1.3: Alice's own Continue, in the page (18.5: `say` with the text `Continue`)
+        const go = page.locator(".wa-status").getByRole("button", { name: "Continue", exact: true });
+        ensure(await go.isEnabled(), "Continue is disabled");
+        await go.click();
+        await until(async () => (await page.locator(".wa-status-word").textContent().catch(() => "")) !== "Not running: watane restarted", 15_000, "the status line to leave Not running");
       } finally { await page.close(); }
-      await ok("sessions.say", { session: s, key: `k-${Date.now()}-c`, input: "Continue" });
       es = await until(async () => { const es = await transcript(s); return es.some((e) => textOf(e) === "resumed two") && lastTurn(es)?.state === "idle" ? es : null; }, 30_000, "both resumed turns");
       const args = fakeLog().slice(mark).find((l) => Array.isArray(l.args))?.args ?? [];
       ensure(args.some((x) => x.startsWith("--resume=")), `the fake was started without --resume: ${args.join(" ").slice(0, 300)}`);
