@@ -2551,7 +2551,14 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
   with it (`unqueue`, then `interrupt` with the input). Edit while the composer
   holds text does nothing but say "Finish or clear your message first";
   `unknown-input` says "That message was already sent". The controls are off
-  under "Another tab". A full queue turns Send off and the placeholder says why.
+  under "Another tab". A full queue turns Send off and the placeholder says why:
+  32 inputs, or a `say` refused `queue-full` (the 2 MiB limit), which keeps
+  Send off until the queue's length changes or the turn ends (S36 r1). Every
+  queue action stays in its session: the dock is the shown session's, and a
+  call that ends after she switched acts on its own session alone. A message
+  a queue action took out is never lost to a refusal: a refused Stop and
+  send, or a refused Undo, puts the input in the composer when it is empty,
+  else shows the error with Undo again (S36 r1).
 - **Send.** A `say` that fails (any error of 2.3: `refused`, `queue-full`,
   `quota`, `paused`, `busy`, `backend`, ...) puts its text back into the
   composer, unless the participant has typed since, and shows the error's
