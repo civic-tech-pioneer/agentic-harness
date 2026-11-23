@@ -3490,7 +3490,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut acct = self.accounts(&rec.owner);
         let past = acct.past;
         let boot = rec.boot;
-        self.settle(&mut rec, past, slots, work)?;
+        if self.settle(&mut rec, past, slots, work).is_err() {
+            self.lost_step(id, &mut acct);
+            return Ok(());
+        }
         let now = self.host.now();
         if !rec.deadlines.iter().any(|d| d.at <= now) {
             // Nothing due (an early firing, or a deadline over 30 days ahead, 7): the timer is set
@@ -3516,12 +3519,34 @@ impl<S: State, H: Host> Kernel<S, H> {
         // Due deadlines of later stages stay (and keep the count); the timer follows the rest.
         self.sync_timer(&rec, slots, &mut acct, &before, now, true);
         slots.save(&mut self.state)?;
-        // A restart step `settle` ran is charged as the early path does (9.3 "Past").
-        let stepped = rec.boot != boot;
-        self.finish_as(Some(&mut rec), &mut acct, stepped)?;
+        // A firing cannot fail (9.3 "Past"): what it wrote is charged, past the reserve too.
+        self.finish_as(Some(&mut rec), &mut acct, true)?;
         // After the last write (7): the live owner stream gets the entry, or is dropped `lagging`.
         self.deliver(&work.pushes, rec.live.as_deref());
         Ok(())
+    }
+
+    /// A firing whose restart step failed (9.3 R6): the session's timer is set again (for its next
+    /// deadline, or, when only a due one is left, a retry after the idle delay), and what the step
+    /// wrote is charged to the stored record and both accounts, as `restart_firing` does. The
+    /// record stays of its older boot, so a later call does its step.
+    fn lost_step(&mut self, id: &str, acct: &mut Acct) {
+        let now = self.host.now();
+        if let Some(mut held) = Record::load(&mut self.state, id) {
+            let delay = next_due(&held.deadlines, now).map_or(IDLE_MS, |at| at - now);
+            if !held.deadlines.is_empty() {
+                self.set_timer(&format!("s/{id}"), delay);
+            }
+            let lost = self.state.change().session - self.sealed;
+            if lost != 0 {
+                held.bytes = add_signed(held.bytes, lost);
+                let _ = held.save(&mut self.state);
+            }
+        }
+        let c = self.state.close();
+        acct.owner.add(c.owner);
+        acct.account.add(c.owner);
+        let _ = self.save_accounts(acct);
     }
 
     /// One firing of the pass (R2): the next session of an older boot does its step, or the pass ends.
