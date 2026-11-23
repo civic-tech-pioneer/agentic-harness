@@ -121,14 +121,22 @@ fn regress_s36_session_allow_pushes_in_transcript_order() {
     let mut k = kernel();
     let (s, t) = started(&mut k);
     let mut n = 0;
-    feed(&mut k, &t, &mut n, &[init(Some("/w")), read("a1", "/w/a.txt")]);
+    feed(
+        &mut k,
+        &t,
+        &mut n,
+        &[init(Some("/w")), read("a1", "/w/a.txt")],
+    );
     let pushes = k.answer("alice", &s, "k1", "a1", SESSION).unwrap().pushes;
     let entries: Vec<(u64, String)> = pushes
         .iter()
         .filter(|p| p.value["type"] == "entry")
         .map(|p| {
             let e = &p.value["entry"];
-            (e["i"].as_u64().unwrap(), e["kind"].as_str().unwrap().to_string())
+            (
+                e["i"].as_u64().unwrap(),
+                e["kind"].as_str().unwrap().to_string(),
+            )
         })
         .collect();
     assert!(entries.iter().any(|(_, k)| k == "allow"), "{entries:?}");
@@ -136,4 +144,23 @@ fn regress_s36_session_allow_pushes_in_transcript_order() {
     let mut sorted = is.clone();
     sorted.sort();
     assert_eq!(is, sorted, "{entries:?}");
+}
+
+/// F1.1: an init the kernel cannot read (a key twice) still uses up the first init.
+#[test]
+fn regress_s36_an_unread_init_uses_up_the_first_init() {
+    let mut k = kernel();
+    let (s, t) = started(&mut k);
+    let mut n = 0;
+    let dup = r#"{"type":"system","subtype":"init","cwd":"/x","cwd":"/x"}"#.to_string();
+    feed(&mut k, &t, &mut n, &[dup, init(Some("/w")), read("a1", "/w/a.txt")]);
+    assert_eq!(rec(&mut k, &s).folder, None);
+    assert!(stored_ask(&mut k, &s, "a1").get("reach").is_none());
+    let unknown = k
+        .read("alice", &s, 0, None, 512)
+        .unwrap()
+        .entries
+        .iter()
+        .any(|e| e.contains("\"kind\":\"unknown\""));
+    assert!(unknown);
 }

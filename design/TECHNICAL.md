@@ -540,9 +540,12 @@ and `.husky/**`. No launch can remove them.
     reports its process folder, which the host set to the workspace folder
     (host 19.3 "Folders"), as `getcwd` gives it (symlinks resolved, as the
     host resolves an item's `path`, 4.5 step 4). The kernel keeps it once in
-    the record's `folder` (9.3) when it is a plain absolute folder; a later
-    `system/init` with another `cwd` changes nothing, and neither writes an
-    entry. This is the one place the kernel learns the folder (9.6, 14).
+    the record's `folder` (9.3) when it is a plain absolute folder. The
+    first `system/init` decides, even one with no usable `cwd` (or one the
+    kernel cannot read, a key twice: it is an `unknown` entry): the record's
+    `init-seen` is then set, and a later `system/init` with another `cwd`
+    changes nothing; neither writes an entry. This is the one place the
+    kernel learns the folder (9.6, 14).
   - **Held across a resume.** A session whose record has a `workspace` launches
     with `workspace: "<that id>"`; one without launches with `scratch`. In
     stage B every Claude session is in a scratch workspace; a picked folder
@@ -753,7 +756,7 @@ once; `check` runs only this step.
 ### 9.3 Sessions
 
 Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `profile`, `backend`, `title`,
-`handle`, `workspace`, `folder` (the workspace's own folder: the `cwd` of the provider stream's first `system/init`, kept once when it is a plain absolute folder, 4.6; absent until then), `claude-uuid`, `parent?`, `children`, `turn`,
+`handle`, `workspace`, `folder` (the workspace's own folder: the `cwd` of the provider stream's first `system/init`, kept once when it is a plain absolute folder, 4.6; absent until then), `init-seen` (true once the first `system/init` was read: only that one sets `folder`, S36 r1), `claude-uuid`, `parent?`, `children`, `turn`,
 `boot` (the generation of the session's last restart step, or of its creation; "Restart" below), `owner-page` (the `owner/<owner>/<n>` page that lists it, 9.1), `bytes` (the bytes of the session's keys other than its record, 9.3 Quota, so `delete` frees them without reading them), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
 (session allows `{id, tool, key}`, 9.6), `owed-idles` (the `idle` lines `claude` still owes for turns `interrupt` ended, below; absent when 0), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {i, toolCallId, kind, outcome, by, for?, reason?, input?}}`, the pending answers of 9.8 rule 4; `toolCallId` is the ask's call, kept so a later ask on the call is compared without reading every ask (9.8); `input` is the changed input an `allow` carried (2.3), shown in the decision entry and not counted in the 1 KiB; `i` and `kind` are the ask entry's index and its `ask` or `check`, so the decision entry can repeat the ask, and follow the kind rules of 9.8 rule 4, after a restart without the adapter; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
@@ -1381,7 +1384,10 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   folder, which `<ws>/**` needs and the record's `workspace` (the host's id)
   does not hold, is the record's `folder` (4.6): the `cwd` of the stream's
   first `system/init`. With no `folder`, or no `path` on the ask, no file
-  key is offered and the ask still asks. A key for an
+  key is offered and the ask still asks. A session allow grants only the
+  reach its ask was opened with: `answer` with `for: "session"` computes the
+  key afresh and is refused `refused`/`decision` unless it renders to that
+  ask's `reach` exactly (S36 r1). A key for an
   `mcp__watane__<tool>` would rely on the host's `--strict-mcp-config`
   admitting only the `watane` server (4.4, 15), so that no other server's
   tool can carry that name.
@@ -1904,7 +1910,7 @@ stage E).
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/src/call.rs` (a failed call commits no write, id or timer, 2.1), `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
-| A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first (the kernel reads only the item's resolved `path`, under the record's `folder` from `system/init`'s `cwd`, never the input's path; no `folder` or no `path`, no key) and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
+| A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first (the kernel reads only the item's resolved `path`, under the record's `folder` from the first `system/init`'s `cwd`, never the input's path; no `folder` or no `path`, no key); a session allow is refused unless its key renders to the `reach` its ask was opened with (S36 r1) and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
 | The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1); its one first-run default, the built-in `scratch` profile for `page` while `access/page` is absent (9.1), grants less than any profile a participant makes (PLAN R-B4) | `wit/world.wit` (staged as `kernel/wasm/wit/world.wit`, 1), `mod.toml`, `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs`, `console/`, `ui/` |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
 

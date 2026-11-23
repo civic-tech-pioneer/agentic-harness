@@ -6,7 +6,7 @@
 //! inputs name: no listing of keys.
 
 use crate::active::{self, Slots};
-use crate::adapters::claude::{facts, ClaudeAdapter, Fact};
+use crate::adapters::claude::{facts, unread_init, ClaudeAdapter, Fact};
 use crate::adapters::{self, Kind};
 use crate::broker;
 use crate::check::check;
@@ -334,9 +334,9 @@ pub enum ProviderEvent {
     Workspace(String),
     /// The Claude session id of `system/init` (9.8 "Adapter state"): the record's `claude-uuid`.
     ClaudeSession(String),
-    /// The `cwd` of `system/init` (9.3 `folder`): kept once in the record, when it is a plain
-    /// absolute folder.
-    Folder(String),
+    /// A `system/init` and its `cwd` (9.3 `folder`): the first init decides the folder, kept
+    /// when it is a plain absolute folder; a later init changes nothing.
+    Folder(Option<String>),
     /// The provider's stream ended: every open or pending ask closes (9.8 rule 4).
     Ended,
 }
@@ -2140,7 +2140,12 @@ impl<S: State, H: Host> Kernel<S, H> {
         let now = self.host.now();
         let mut allow_push = None;
         if d.for_session {
-            let Some((tool, key)) = Self::ask_scope(&rec, &body) else {
+            // The allow grants only what the ask offered: the scope computed now must be the
+            // reach the ask was opened with (9.6, 14; S36 r1).
+            let offered = body.get("reach").and_then(Value::as_str);
+            let Some((tool, key)) = Self::ask_scope(&rec, &body)
+                .filter(|(t, k)| offered == Some(broker::render(t, k).as_str()))
+            else {
                 return Err(refused("decision", "this ask offers no session allow"));
             };
             if !rec.allows.iter().any(|a| a.tool == tool && a.key == key) {
@@ -2776,7 +2781,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             let events: Vec<ProviderEvent> = if facts.is_empty() {
                 let at = self.host.now();
                 let outs = adapter.line(&body, at);
-                outs.into_iter().map(ProviderEvent::Out).collect()
+                let unread = unread_init(&body).then_some(ProviderEvent::Folder(None));
+                unread
+                    .into_iter()
+                    .chain(outs.into_iter().map(ProviderEvent::Out))
+                    .collect()
             } else {
                 facts
                     .into_iter()
@@ -3170,8 +3179,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             },
             ProviderEvent::ClaudeSession(uuid) => rec.claude_uuid = Some(uuid),
             ProviderEvent::Folder(cwd) => {
-                if rec.folder.is_none() && broker::plain_folder(&cwd) {
-                    rec.folder = Some(cwd);
+                if !rec.init_seen {
+                    rec.init_seen = true;
+                    if rec.folder.is_none() {
+                        rec.folder = cwd.filter(|c| broker::plain_folder(c));
+                    }
                 }
             }
             ProviderEvent::Ended => {
