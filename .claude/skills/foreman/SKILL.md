@@ -158,10 +158,12 @@ Send no progress updates. While a background run works, end your turn with no me
 ## 6. Answer a review round
 
 The deputy starts you with an answer brief: the PR, the round `r`, and the review (a PR comment that
-ends with `VERDICT: changes (n)`, its findings numbered `F<r>.<k>`).
+ends with `VERDICT: changes (n)`, its blocking findings numbered `F<r>.<k>`, its polish `P<r>.<k>`).
+Blocking findings must be answered; polish only where it is cheap (the deputy files the rest under
+`Upkeep`), and the deputy's rulings in your brief are final for this round.
 1. `git pull` `slice/<id>`; read the review and the earlier rounds on the PR (the thread is the
    memory of a fresh session).
-2. Answer every finding, none skipped:
+2. Answer every blocking finding, none skipped:
    - **fix it**: a finding that carries a red test: commit the test first, unchanged, then the fix;
      or
    - **disagree**: only with a reason from the spec chain or the brief (the review team may be
