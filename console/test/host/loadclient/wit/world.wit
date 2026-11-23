@@ -1,0 +1,14 @@
+package mods:loadclient@0.1.0;
+
+/// Test-only (S36-5): the stage B load test's second owner. Each call is the kernel's call of the
+/// same name, made as this mod (`local/loadclient`); an error is the kernel error's JSON debug text.
+interface api {
+  start: func(key: string, input: string) -> result<string, string>;
+  interrupt: func(session: string) -> result<_, string>;
+  cancel: func(session: string);
+}
+
+world loadclient {
+  import mods:agent/sessions@0.1.0;
+  export api;
+}
