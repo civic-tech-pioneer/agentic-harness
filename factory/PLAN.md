@@ -519,9 +519,10 @@ S2 writes each into the document that owns it.
   is allowed only when its fresh key equals a stored pair exactly; take-back and session end remove
   it. (3) Bash: the exact command. (4) The sandbox is the boundary for Bash allow rules.
 
-## Waiting on the human
+- **2026-11-23, the human, on S35-CAP** (PR #43 at the round cap): "Yes, one more round". Option (a): one more
+  answer round for F5.1 by the builder (Claude), then a sixth review by Codex. The merge still needs R-B1.
 
-- **S35-CAP: PR #43 hit the round cap (5 reviews, no approve).** Open: one finding, F5.1 (`console/src/Dock.tsx:20,35`): Send must clear the kept draft synchronously before `actions.say` is dispatched; today a React effect clears it just after (Codex's red test in the r5 comment; the validator saw it pass with a synchronous clear). Last words: reviewer (r5) adversary HELD, user-sim ACCEPTED on watane c2a7d4d, the composer otherwise as the deputy's ruling; builder (r4 answers, 8177ca5): all r4 findings fixed by that ruling, gate, slow and host runs pass. Rounds: 8, 6, 3, 3, 1 findings. Options: (a) allow one more answer and review round for F5.1 (rec: a one-line fix with a given red test); (b) accept F5.1 as polish and merge with it open, as an Upkeep line. Either way the merge also needs R-B1. Undo: none needed for (a).
+## Waiting on the human
 
 - **R-B4 The built-in `scratch` profile (S35, TECHNICAL 14 row).** On first run, while `access/page` is absent,
   the console's page may start sessions with a built-in profile: Claude's default model, no tools, mode manual,
