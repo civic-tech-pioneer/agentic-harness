@@ -65,7 +65,7 @@ where it belongs.
 
 ### 3.2 Sessions
 
-- **AGT-F-6** When a client starts a session or sends an input with a key that it used before for that session, the kernel shall return the first result and change nothing. A deleted session's keys stay used. Traces: F-AGENT-5, F-QUAL-3.
+- **AGT-F-6** When a client starts a session or sends an input with a key that it used before for that session, the kernel shall return the first result and change nothing. A deleted session's keys stay used. Traces: F-AGENT-5.
 - **AGT-F-7** The kernel shall let only the owner of a session attach to it, read it, send input, answer its asks, interrupt, cancel, rename or delete it, and list the owner's own sessions. Traces: F-AGENT-6.
 - **AGT-F-8** When the owner attaches after an index, the kernel shall send every stored entry after that index, then a marker that the replay is complete, then live updates, with no entry missing or doubled. If more entries lie after that index than one replay may carry, then the kernel shall say so, and the owner shall read them in pages first, from either end. The work of each call shall have a bound that does not grow with the transcript. A second attach of the same owner shall end the first. Traces: F-AGENT-6, AGT-F-39.
 - **AGT-F-9** The kernel shall give the client one event format for both backends. If a backend sends output that the kernel does not know, then the kernel shall keep it as an unknown entry and the session shall go on. Traces: F-AGENT-5.
@@ -97,7 +97,7 @@ where it belongs.
 
 - **AGT-F-23** The app shall sign the participant in to their ChatGPT plan and keep the tokens. The host shall add a token only to requests to OpenAI's agent endpoints, and no mod shall see a token. Traces: F-AGENT-5.
 - **AGT-F-24** When OpenAI reports a usage limit, the kernel shall pause the session until the reset time and show it. When it reports an error that can be retried, the kernel shall retry later with backoff, never inside a call. Traces: F-QUAL-3.
-- **AGT-F-25** Before each request to OpenAI, the kernel shall make sure that every tool call in the history has exactly one result, in order. Traces: F-QUAL-3.
+- **AGT-F-25** Before each request to OpenAI, the kernel shall make sure that every tool call in the history has exactly one result, in order. Traces: F-AGENT-5, AGT-F-9.
 
 ### 3.6 Tools
 
@@ -124,7 +124,7 @@ where it belongs.
 
 - **AGT-F-36** The kernel shall count the turns, the failed tool calls in a row and the tokens of each session, for both backends, and stop the turn at a limit of the profile, with the limit named. At the turn limit the agent gets one last turn without tools to sum up. Traces: F-AGENT-8, F-QUAL-3.
 - **AGT-F-37** An agent shall start a child session only with a profile that its own profile names. A child shall only narrow its parent. The kernel shall limit the depth and the number of live children. An OpenAI child shall not start children. Traces: F-AGENT-8.
-- **AGT-F-44** The kernel shall report, after each step, how much of the model's context a session uses, and, where the backend says so, at what point it makes room by summarising. Traces: AGT-F-36, F-QUAL-3.
+- **AGT-F-44** The kernel shall report, after each step, how much of the model's context a session uses, and, where the backend says so, at what point it makes room by summarising. Traces: AGT-F-36.
 
 ### 3.10 Restart and quality
 
@@ -145,7 +145,7 @@ by nothing else.
 - **AGT-F-49** When an ask waits, the console shall show it inside its tool call, with every argument and, for an edit, the change. It shall keep a "Needs you" pointer until the ask is answered, and offer: allow once; allow for the session, with its reach named; and deny with a reason the agent receives. A session allow shall stay shown until the session ends or the participant takes it back. Traces: AGT-F-14, AGT-F-15, AGT-F-42, AGT-F-43.
 - **AGT-F-50** The console shall accept input during a turn and show the queue: the participant shall take a queued input back to edit it, remove it with an undo, and interrupt the turn to send one now. When the queue is full, sending shall be off and the console shall say why. Stop shall show "Stopping…" until the kernel reports the turn ended. Traces: AGT-F-11, AGT-F-41.
 - **AGT-F-51** The console shall list its sessions grouped by need (needs you, running, then recent) and shall not move a row while the pointer is over the list. It shall show how full the context is and warn before the kernel makes room. Traces: AGT-F-10, AGT-F-44.
-- **AGT-F-52** The console shall work with the keyboard alone and with a screen reader, shall honour the participant's setting for reduced motion, and shall never carry a state by colour alone. It shall keep the reader's place: it follows new output only while the reader is at the end. Traces: F-QUAL-3.
+- **AGT-F-52** The console shall work with the keyboard alone and with a screen reader, shall honour the participant's setting for reduced motion, and shall never carry a state by colour alone. It shall keep the reader's place: it follows new output only while the reader is at the end. Traces: AGT-F-45.
 
 ## 4. Journeys
 
