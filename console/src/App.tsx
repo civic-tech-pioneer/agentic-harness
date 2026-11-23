@@ -97,6 +97,11 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
       return mine === drawn ? send(drawn.id, d, mine) : Promise.reject(new Error("the ask is no longer the one the card drew"));
     },
     stop: () => { setStopping(true); void kernel.interrupt(info.id); },
+    unqueue: (n) => kernel.unqueue(info.id, n),
+    interrupt: (replacement) => {
+      setStopping(true);
+      return kernel.interrupt(info.id, replacement).catch((e) => { setStopping(false); throw e; });
+    },
     takeBack: (id) => void kernel.takeBack(info.id, id),
   }), [kernel, info.id, answeredAsks, off]);
 
