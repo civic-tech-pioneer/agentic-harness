@@ -682,7 +682,7 @@ fn ac9_the_page_gets_the_built_in_scratch_profile_on_first_run() {
     let (launch, _) = launches(&k).pop().unwrap();
     assert_eq!(
         launch,
-        json!({"version":1,"profile":"scratch","workspace":"scratch","partial":true})
+        json!({"version":1,"profile":"scratch","workspace":"scratch","partial":true,"ask":true})
     );
     let refused = |r: Result<Called<String>, KernelError>| match r {
         Err(KernelError::Refused(rs)) => rs[0].field == "profile",

@@ -42,7 +42,8 @@ const IDLE: &str = "idle";
 const IDLE_MS: u64 = 600_000;
 /// The profile a page gets on its first run (9.1): Claude's defaults, nothing more.
 const SCRATCH: &str = "scratch";
-const SCRATCH_PROFILE: &str = r#"{"backend":"claude","partial":true}"#;
+/// The built-in `scratch` (9.1): no built-in tool, mode `manual`, its asks sent to the owner (S36).
+const SCRATCH_PROFILE: &str = r#"{"backend":"claude","partial":true,"ask":true}"#;
 /// The identity of the console's page (18.1).
 const PAGE: &str = "page";
 
