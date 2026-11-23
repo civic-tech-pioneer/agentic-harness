@@ -8,9 +8,11 @@ export function isInterrupted(state) {
   return !!s && typeof s === "object" && s.state === "idle" && !!s.stop && typeof s.stop === "object" && s.stop.kind === "interrupted";
 }
 
-/** The common window in which every source loaded: from the latest first load line to `end` (the first Stop, ms). Each source must
- * write at least `share` of `rate` deltas and entries per second within it, and the window must last `minSeconds`; else a fault each. */
-export function loadWindow(by, end, rate, minSeconds, share = 0.8) {
+/** The common window in which every source loaded: from the latest first load line to `end` (the first Stop, ms). The window must
+ * last `minSeconds`, and each source must write at least `share` of `rate` deltas and entries per second in every shared subwindow
+ * of about `step` seconds that tiles it (S36 r3 F3.5: a total over the window lets one early line and a short burst pass); else a
+ * fault each (the first short subwindow of each source and kind). */
+export function loadWindow(by, end, rate, minSeconds, share = 0.8, step = 2) {
   const faults = [];
   let from = -Infinity;
   for (const [name, xs] of by) {
@@ -20,12 +22,18 @@ export function loadWindow(by, end, rate, minSeconds, share = 0.8) {
   }
   const seconds = (end - from) / 1000;
   if (!(seconds >= minSeconds)) faults.push(`the common load window is ${Number.isFinite(seconds) ? seconds.toFixed(1) : 0} s, under ${minSeconds} s`);
-  else for (const [name, xs] of by) {
-    const inside = xs.filter((x) => x.at >= from && x.at < end);
-    for (const kind of ["deltas", "entries"]) {
-      const got = inside.filter((x) => x.kind === (kind === "deltas" ? "delta" : "entry")).length;
-      const want = Math.floor(rate[kind] * seconds * share);
-      if (got < want) faults.push(`${name} wrote ${got} ${kind} in the common ${seconds.toFixed(1)} s, under ${want} (${share * 100}% of ${rate[kind]}/s)`);
+  else {
+    const parts = Math.max(1, Math.floor(seconds / step)), len = (end - from) / parts; // equal subwindows that cover it exactly
+    for (const [name, xs] of by) for (const kind of ["deltas", "entries"]) {
+      const want = Math.floor(rate[kind] * (len / 1000) * share);
+      for (let k = 0; k < parts; k++) {
+        const a = from + k * len, z = k === parts - 1 ? end : a + len;
+        const got = xs.filter((x) => x.at >= a && x.at < z && x.kind === (kind === "deltas" ? "delta" : "entry")).length;
+        if (got < want) {
+          faults.push(`${name} wrote ${got} ${kind} in ${((a - from) / 1000).toFixed(1)}-${((z - from) / 1000).toFixed(1)} s of the common ${seconds.toFixed(1)} s, under ${want} (${share * 100}% of ${rate[kind]}/s)`);
+          break;
+        }
+      }
     }
   }
   return { from, to: end, seconds, faults };
