@@ -2138,7 +2138,6 @@ impl<S: State, H: Host> Kernel<S, H> {
             ..pending
         };
         let now = self.host.now();
-        let mut allow_push = None;
         if d.for_session {
             // The allow grants only what the ask offered: the scope computed now must be the
             // reach the ask was opened with (9.6, 14; S36 r1).
@@ -2156,11 +2155,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                     tool: tool.clone(),
                     key: key.clone(),
                 })?;
-                allow_push = Some(self.write_allow(&mut rec, &id, &tool, &key, true, now)?);
+                // Its push goes before the ask's close and any turn entry it causes, in
+                // transcript order (S36 r1).
+                let push = self.write_allow(&mut rec, &id, &tool, &key, true, now)?;
+                work.pushes.push(push);
             }
         }
         self.close_ask(&mut rec, past, ask, now, &mut work)?;
-        work.pushes.extend(allow_push);
         rec.pending_answers.insert(ask.to_string(), pending);
         let mut decision = d.value;
         if let Some(o) = decision.as_object_mut() {
