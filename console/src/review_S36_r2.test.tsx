@@ -1,6 +1,6 @@
-// S36 review round 2 (Codex): a queue action's message stays recoverable in its own session until its
-// transfer is accepted (F2.1; the deputy's rule: the queue keeps the item until then), and a late
-// queue-full refusal closes Queue even when she has typed since (F2.2). TECHNICAL 18.6 "Queue", "Send".
+// S36 review round 2 (Codex): a queue action's message stays recoverable in its own session (F2.1), and a late
+// queue-full refusal closes Queue even when she has typed since (F2.2). S36 r3 replaced the r2 rule with take it back
+// first; these still hold under it. TECHNICAL 18.6 "Queue", "Send".
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";

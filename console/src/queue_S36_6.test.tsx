@@ -24,19 +24,18 @@ const box = () => screen.getByRole("textbox", { name: "Message" }) as HTMLTextAr
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 
 describe("S36-6", () => {
-  it("ac1_edit_puts_the_text_in_the_composer_and_unqueues_once_its_send_is_accepted", async () => {
+  it("ac1_edit_takes_the_item_back_first_and_puts_its_text_in_the_composer", async () => {
     const { f, calls } = await open();
     expect(items()).toEqual(["first one", "second one"]);
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Edit queued message 1" }));
     await settle();
     expect(box().value).toBe("first one");
-    expect(calls("unqueue")).toEqual([]); // the queue keeps it until the edited send is accepted (S36 r2)
-    expect(items()).toEqual(["first one", "second one"]);
+    expect(calls("unqueue").map((c) => c.args)).toEqual([["s1", 7]]); // take it back first (S36 r3)
+    expect(items()).toEqual(["second one"]);
     await u.type(box(), ", edited{Enter}");
     await settle();
-    expect(f.calls.filter((c) => c.name === "say" || c.name === "unqueue").map((c) => [c.name, c.args.at(-1)])).toEqual([["say", "first one, edited"], ["unqueue", 7]]);
-    expect(items()).toEqual(["second one"]);
+    expect(f.calls.filter((c) => c.name === "say" || c.name === "unqueue").map((c) => [c.name, c.args.at(-1)])).toEqual([["unqueue", 7], ["say", "first one, edited"]]);
   });
   it("ac2_edit_with_typed_text_changes_nothing", async () => {
     const { calls } = await open();
@@ -74,25 +73,25 @@ describe("S36-6", () => {
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     expect(calls("say")).toHaveLength(0);
   });
-  it("ac4_stop_and_send_interrupts_with_the_input_then_unqueues_it", async () => {
+  it("ac4_stop_and_send_unqueues_then_interrupts_with_the_input", async () => {
     const { calls, f } = await open();
     await userEvent.setup().click(screen.getByRole("button", { name: "Stop and send queued message 2" }));
     await settle();
-    expect(f.calls.filter((c) => c.name === "unqueue" || c.name === "interrupt").map((c) => [c.name, ...c.args])).toEqual([["interrupt", "s1", "second one"], ["unqueue", "s1", 8]]);
+    expect(f.calls.filter((c) => c.name === "unqueue" || c.name === "interrupt").map((c) => [c.name, ...c.args])).toEqual([["unqueue", "s1", 8], ["interrupt", "s1", "second one"]]);
     expect(calls("interrupt")).toHaveLength(1);
     expect(document.body.textContent).toContain("Stopping…");
   });
-  it("ac5_unknown_input_says_so", async () => {
+  it("ac5_unknown_input_says_so_and_changes_nothing", async () => {
     const { f, calls } = await open({ refuseUnqueue: true });
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Stop and send queued message 1" }));
     await settle();
     expect(lines()[0]!.textContent).toContain("That message was already sent");
     await u.click(screen.getByRole("button", { name: "Edit queued message 1" }));
-    await u.type(box(), "{Enter}");
     await settle();
     expect(lines()[0]!.textContent).toContain("That message was already sent");
-    expect(f.calls.filter((c) => !["attach", "read"].includes(c.name)).map((c) => c.name)).toEqual(["interrupt", "unqueue", "say", "unqueue"]);
+    expect(box().value).toBe("");
+    expect(f.calls.filter((c) => !["attach", "read"].includes(c.name)).map((c) => c.name)).toEqual(["unqueue", "unqueue"]); // no interrupt, no say
     expect(calls("unqueue")).toHaveLength(2);
   });
   it("ac6_each_control_is_a_named_button_reachable_by_keyboard", async () => {
