@@ -505,12 +505,24 @@ pub fn facts(line: &[u8]) -> Vec<Fact> {
     match (str_of(&v, "type"), str_of(&v, "subtype")) {
         (Some("initialized"), _) => own("workspace").map(Fact::Workspace).into_iter().collect(),
         (Some("system"), Some("init")) => own("session_id")
+            .filter(|id| is_uuid(id))
             .map(Fact::Session)
             .into_iter()
             .chain(own("cwd").map(Fact::Folder))
             .collect(),
         _ => vec![],
     }
+}
+
+/// A uuid as host 19.3 takes a launch's `session` (`8-4-4-4-12` hex digits): an id that is not one
+/// is never kept, so a later launch never names it (S36, dev's fake says `fake-session`).
+fn is_uuid(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('-').collect();
+    parts.len() == 5
+        && parts
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .all(|(p, n)| p.len() == n && p.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 /// The line with each byte that is not valid UTF-8 written as `\xNN` (no lossy decoding).
