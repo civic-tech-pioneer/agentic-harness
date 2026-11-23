@@ -172,7 +172,7 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
             }}>
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
           </div>
-          <Dock view={shown} actions={actions} onNeedsYou={needsYou} needsHidden={needsHidden} behind={behind && !atEnd.current} onBehind={toTheEnd} session={{ model: info.model, mode: info.mode }} sessionId={info.id} stopping={stopping} replaced={replaced} onUseHere={() => reattach.current?.()}
+          <Dock key={info.id} view={shown} actions={actions} onNeedsYou={needsYou} needsHidden={needsHidden} behind={behind && !atEnd.current} onBehind={toTheEnd} session={{ model: info.model, mode: info.mode }} sessionId={info.id} stopping={stopping} replaced={replaced} onUseHere={() => reattach.current?.()}
             status={<StatusLine view={shown} answered={view.openAsks.length - shown.openAsks.length} now={now} stopping={stopping} actions={actions} onNeedsYou={needsYou} />} />
         </ThreadProvider>
       </main>

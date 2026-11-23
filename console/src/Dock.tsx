@@ -78,7 +78,9 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   const ctl = useRef<{ text(): string; take(t: string): void } | null>(null);
   const [note, setNote] = useState<{ text: string; undo?: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => () => clearTimeout(timer.current), []);
+  // 18.6 "Queue": the dock is one session's (App keys it by the session): a call that ends after it left acts on that session alone
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; clearTimeout(timer.current); }, []);
   const say = (text: string, undo?: string) => { clearTimeout(timer.current); setNote({ text, ...(undo !== undefined ? { undo } : {}) }); if (undo !== undefined) timer.current = setTimeout(() => setNote(null), UNDO_MS); };
   const fail = (e: unknown) => say((e as { kind?: unknown } | null)?.kind === "unknown-input" ? "That message was already sent" : errorWords(e));
   /** 18.6 "Queue": takes input `q` out of the queue; false (and a line) when the kernel refuses. */
@@ -88,6 +90,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   const edit = async (q: { n: number; input: string }) => {
     if (ctl.current?.text().trim()) return say("Finish or clear your message first");
     if (!(await unqueue(q))) return;
+    if (!alive.current) { try { await actions.say(q.input); } catch { /* the session is no longer shown */ } return; } // she left: the input goes back to its own queue
     if (ctl.current?.text().trim()) { // she typed while the call ran: the input goes back to the queue
       say("Finish or clear your message first");
       try { await actions.say(q.input); } catch (e) { fail(e); }
