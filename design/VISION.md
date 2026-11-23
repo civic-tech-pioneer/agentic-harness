@@ -11,8 +11,9 @@ answer is a rule where its fact lives, as is N11 (`FUNCTIONAL.md` section
 answer. `AGENTS.md` says which
 files are contracts and which are records.
 
-The layer lives in this repository, the kernel `mods:agent` with its console;
-each provider has its own repository (R1, `TECHNICAL.md` sections 1 and 17).
+The layer lives in this repository, the kernel `mods:agent` with its console
+and the unchecked provider in `provider/` (R-B1); the checked provider has its
+own repository (R1, `TECHNICAL.md` sections 1 and 17).
 Its small host part lands in
 watane, whose `spec/VISION.md`, `spec/FUNCTIONAL.md` and `spec/TECHNICAL.md`
 then gain the rows that `TECHNICAL.md` section 15 lists. Paths such as
