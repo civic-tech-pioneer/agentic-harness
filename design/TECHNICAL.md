@@ -28,12 +28,14 @@ needs more adds it to the backend sections first (17).
 | pkg | pkg 4.5, 5.1, 7.2 | import and export rows, two grant kinds (15) |
 | dev | `dev/` | a fake `claude` and a scripted Responses server, which also serves a judge origin (the judge fake, 16), for previews and tests (12) |
 | M2 Kernel | mod `mods:agent`, this repository (R1, the human, 2026-11-20) | profiles, offers, sessions, transcripts, broker, OpenAI loop, delegation (9) |
-| M1 Providers | two mods `mods:claude-code`, from two publishers: the unchecked one in `provider/` of this repository (R-B1, the human, 2026-11-23), the checked one in its own repository (R1) | unchecked: start and hand off; checked: judge then forward (10) |
+| M1 Providers | two mods `mods:claude-code`, from two publishers: both in this repository, the unchecked one in `provider/`, the checked one in `provider-checked/` (R-B1, the human, 2026-11-23) | unchecked: start and hand off; checked: judge then forward (10) |
 | C1 Console | the kernel's page, `ui/`, built from `console/` in this repository | starting sessions, the transcript, the status line, asks, the queue, the session list (18) |
 
 **This repository** is the kernel `mods:agent` and its console (R1, the human,
-2026-11-20), and the unchecked provider in `provider/` (R-B1, the human,
-2026-11-23); the checked provider lives in its own repository. The kernel's pure logic is a plain Rust crate, `kernel/`
+2026-11-20), and both providers: the unchecked one in `provider/`, the
+checked one in `provider-checked/` (R-B1, the human, 2026-11-23). A provider
+may move to its own repository later if there is evidence it should; that is
+an option, not a rule (R-B1, the human, 2026-11-23). The kernel's pure logic is a plain Rust crate, `kernel/`
 (`agent-kernel`, serde only), with its own tests; the WASM mod wraps the crate
 later (PLAN, deputy decision "The kernel's pure logic is a plain Rust crate").
 Layout: the files marked built exist; the others are planned (the first build
@@ -70,10 +72,11 @@ in the same commit):
   `caller.identity()` (9.3) are in `kernel/wasm/src/lib.rs` (S32, 14)
 - `console/` (source) and `ui/` (built from it), 18
 
-A provider holds `mods:claude-code` with `src/lib.rs`; the checked one, in
-its own repository, also `src/judge.rs` (10: judge call, verdict parse,
-breaker). The unchecked provider is `provider/` of this repository (S35,
-R-B1), a self-contained mod: its own `mod.toml`, `wit/world.wit`, `logic/`
+A provider holds `mods:claude-code` with `src/lib.rs`; the checked one,
+planned in `provider-checked/` of this repository (R-B1), also `src/judge.rs`
+(10: judge call, verdict parse, breaker), a self-contained mod like the
+unchecked one under the same boundary list. The unchecked provider is
+`provider/` of this repository (S35, R-B1), a self-contained mod: its own `mod.toml`, `wit/world.wit`, `logic/`
 crate and tests, no path into `kernel/` or `console/`. Its boundaries are
 the provider rows of 14, in this repository's one boundary list
 (`factory/config.toml` `boundaries`); `provider/BOUNDARIES.md` is a copy of
@@ -1841,12 +1844,9 @@ Each row names the files that hold it: "watane" paths are in the watane
 checkout, the others in this repository (layout in 1). A slice whose diff
 touches a file of this repository named here gets the adversary step; a slice
 that adds or moves such a file updates sections 1 and 14 in the same commit.
-The unchecked provider is in this repository (`provider/`, R-B1), so this one
-list covers its files; `provider/BOUNDARIES.md` is a copy of its rows. The
-checked provider's repository keeps a copy of the provider rows of this section
-(with this repository's commit it copied, refreshed when they change) and its
-`factory/config.toml` `boundaries` points at that copy, so its slices that
-touch a provider file named here get the adversary step; it is built only with that in place (17,
+Both providers are in this repository (`provider/` and `provider-checked/`,
+R-B1), so this one list covers their files; `provider/BOUNDARIES.md` is a copy
+of the provider rows, and the checked provider's folder keeps one too (17,
 stage E).
 
 | Property | Holds by | Files |
@@ -2311,7 +2311,7 @@ length. A long session cannot hold the slot.
 | B | H2 with the unchecked provider and a kernel that runs Claude sessions (9.3, 9.4, 9.8, the queue and session allows); dev's fake `claude` | a session on the fake: transcript, status line, asks, queue, Stop, reload and reattach | watane: host H2 and `host-info.generation` (2.1, G1), dev's fake `claude`, pkg; this repository (one boundary list, its `factory/config.toml` `boundaries` pointing at 14, which names `provider/`): the unchecked provider in `provider/` (R-B1), kernel, console | J11 on the fake without its consent steps (a stage B launch uses a scratch workspace of 4.6, which asks none; the plan line, the folder consent and its withdrawal are stage C) and AGT-J6 (Claude part); cases 5, 6, 7, 8–18, 27–30, and 31 for the turn states stage B has (not `checking`, not `consent`); new cases 34, 35, 36 (kernel part), 41, 45, 49, 51 (kernel part), 52, 53, 55, 56, 57 (idle and ask parts), 58 (the kernel's reattach part), 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 71, 72, 73, 74; the budgets of stage B |
 | C | H6 consents and the app's words; the `claude` binary setting; the plan line | the same on the real `claude`; the `consent` activity; new session with reach | watane: host H6, app; this repository: the console's consent activity and plan line | J11 on the real `claude`, with the consent, plan line and withdrawal; AGT-J4; case 31 for `consent`; the budgets of stage C |
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts), 70; the budgets of stage D |
-| E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); the checked provider's own repository (built only with its `factory/config.toml` `boundaries` pointing at 14); this repository: the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
+| E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); this repository (one boundary list, 14): the checked provider in `provider-checked/` (R-B1), the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24, 52 (`task` part); the budgets of stage F; N5 decided |
 
 Budgets (the "Load" kind of 16). All p95; measured by a slow load test on the
