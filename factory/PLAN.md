@@ -579,6 +579,13 @@ S2 writes each into the document that owns it.
 - **2026-11-23, the human, on S35-MERGE:** "Merge": merge PR #43 once CI on 8a9e512 is green, with no seventh review;
   then hand out S36. The user confirmed it in the deputy's session ("Yes, merge S35"); merged at 042b0dd.
 
+- **2026-11-23, the human, with the monitor, on reviews** (watane-mods PR #5): the review lead triages blocking versus
+  polish (polish never holds a merge; it goes under Upkeep); the lead may propose to accept a blocking finding (security
+  only if cheap to undo and outside the vision's promises, else the human); no fixed round cap, each review ends with the
+  trend and the lead's call, and from round 4 the deputy writes why one more round is worth it; the deputy rules when a
+  finding comes back twice. "find a balanced perspective on building out many features of the product versus building
+  few features perfect".
+
 ## Waiting on the human
 
 - **S35-MERGE: PR #43 after the extra round (r6: `changes (2)`, adversary HELD, user-sim ACCEPTED, F5.1 closed, CI gate
