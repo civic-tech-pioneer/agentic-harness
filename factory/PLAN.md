@@ -83,6 +83,12 @@ limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
   line reads Idle while probe items arrive; `probe.start` with two fields out of range names one.
 
 
+### Upkeep
+
+- **Polish, low priority (the human, 2026-11-23):** a sent message's text stays recoverable until the kernel
+  has accepted it, even across a reload (S35's composer ruling dropped this; Codex F1.4 to F4.3). Pick it up only
+  when cheap, e.g. alongside other composer work.
+
 ## Done
 
 - **S32** stage A end to end (PR #41, merged 2026-11-22 ~14:10 UTC by the PO with `--admin`; 2026-11-21 08:59-10:47,
@@ -526,6 +532,13 @@ S2 writes each into the document that owns it.
   together until there's real evidence that they ought to be apart." The provider stays as `provider/` in this
   repository; TECHNICAL 17 (stage B) gets one boundary list and drops "its own repository". S35's r5 answer
   round makes that change, so review r6 covers it. S35 merges on an approving r6 and green CI.
+
+- **2026-11-23, the human, on the S35 composer ruling:** "I agree with the reviewers that it ought to work that
+  way. But at the same time, if it is a lot of hassle to get it to work, it's not the kind of feature that needs
+  much of our attention, especially because it's fairly rare." The ruling stands for S35; an Upkeep line (polish,
+  low priority) keeps the recoverable sent text.
+- **2026-11-23, the human, on watane S100's top-level resolved `path`** (Deputy decisions, for S36): "Sounds good.
+  Approved." No longer a pending veto.
 
 ## Waiting on the human
 
