@@ -91,7 +91,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   // 18.6 "Queue": the dock is one session's (App keys it by the session): a call that ends after it left acts on that session alone
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; clearTimeout(timer.current); }, []);
-  const say = (text: string, undo?: string) => { clearTimeout(timer.current); setNote({ text, ...(undo !== undefined ? { undo } : {}) }); if (undo !== undefined) timer.current = setTimeout(() => setNote(null), UNDO_MS); };
+  const say = (text: string, undo?: string, keep = false) => { clearTimeout(timer.current); setNote({ text, ...(undo !== undefined ? { undo } : {}) }); if (undo !== undefined && !keep) timer.current = setTimeout(() => setNote(null), UNDO_MS); };
   const fail = (e: unknown) => say((e as { kind?: unknown } | null)?.kind === "unknown-input" ? "That message was already sent" : errorWords(e));
   /** 18.6 "Queue": takes input `q` out of the queue; false (and a line) when the kernel refuses. */
   const unqueue = async (q: { n: number }) => {
@@ -109,15 +109,22 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
     clearTimeout(timer.current); setNote(null);
     ctl.current?.take(q.input);
   };
+  /** 18.6 "Queue": a message a queue action took out is never lost to a refusal: back in the empty composer, else the error with Undo (kept). */
+  const recover = (input: string, e: unknown) => {
+    if (!alive.current) { try { Promise.resolve(actions.say(input)).catch(() => {}); } catch { /* the session is no longer shown */ } return; }
+    const c = ctl.current;
+    if (c && !c.text().trim()) { clearTimeout(timer.current); setNote(null); c.take(input, e); }
+    else say(errorWords(e), input, true);
+  };
   const remove = async (q: { n: number; input: string }) => { if (await unqueue(q)) say("Removed.", q.input); };
   const undo = (input: string) => {
     clearTimeout(timer.current); setNote(null);
-    try { Promise.resolve(actions.say(input)).catch(fail); } catch (e) { fail(e); }
+    try { Promise.resolve(actions.say(input)).catch((e) => recover(input, e)); } catch (e) { recover(input, e); }
   };
   const stopAndSend = async (q: { n: number; input: string }) => {
     if (!(await unqueue(q))) return;
     clearTimeout(timer.current); setNote(null);
-    try { await actions.interrupt!(q.input); } catch (e) { fail(e); }
+    try { await actions.interrupt!(q.input); } catch (e) { recover(q.input, e); }
   };
   const folded = !(opened ?? !(view.openAsks.length > 0 || view.queue.length > 0));
   return (
