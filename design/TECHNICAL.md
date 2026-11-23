@@ -2339,19 +2339,21 @@ and the machine. Whether to change 7 is the human's.
 each stage A–F, the p95 numbers of the budget table in 17, the date and the
 machine. A stage is done only within its budgets.
 
-- **Stage B** (S36, 2026-11-23, remeasured in S36 r1; `Linux 6.18.44-fc-v726 x86_64`, 4 cpus, a cloud VM
-  with a real fsync, load average 2.7 to 4.5 from the run itself; watane `slice/s100` at 2781d8c).
+- **Stage B** (S36, 2026-11-23, remeasured in S36 r1 and r2; `Linux 6.18.44-fc-v726 x86_64`, 4 cpus, a cloud VM
+  with a real fsync, load average 3.0 to 5.4 from the run itself; watane `slice/s100` at fdb3d9a).
   `npm run test:load` in `console/` (`console/test/host/load_b.mjs`): 8 sessions on dev's fake
   `claude` in `watane-dev serve`, 4 for `page`, each shown in its own Chromium page, and 4 for the
   test mod `local/loadclient` (its `access/` seeded into the stopped preview, a test-only reach),
   all started together, each on the fake's `load` at 50 deltas and 5 entries of 4 096 bytes a
-  second for 8 s, then Stop. Each page session is paired with its fake by identity (the fake's
+  second for 8 s, then Stop. Latency counts only once all 8 fakes wrote at least 80% of that
+  rate over a common window of at least 6 s ending at the first Stop (8.0 s in each pass), and only
+  for the items written in it (S36 r2 F2.3: a run with one idle client fails). Each page session is paired with its fake by identity (the fake's
   first input, `load <k>`, which a test-only wrapper that stamps each stdout write records), and
-  every line its fake wrote before Stop reached its page exactly once (about 1 770 per run, none
+  every line its fake wrote before Stop reached its page exactly once (about 1 750 per run, none
   missing, none twice, none from another session). Item delay, the fake's stdout write to the
   item's arrival at the Chromium page's `watane.on` handler, p95 over the page's 4 sessions:
-  11.1, 9.1, 13.1 ms in three passes in a row (max 131 to 147 ms; budget 100). The page's Stop
-  button to `idle {interrupted}` in that page, p95: 11.7, 19.0, 17.0 ms
+  6.5, 9.3, 14.1 ms in three passes in a row (max 139 to 143 ms; budget 100). The page's Stop
+  button to exactly `idle {interrupted}` in that page, p95: 19.9, 27.0, 16.9 ms
   (budget 1 000). State bytes read and written per finished entry (kernel crate,
   `cargo test -- --ignored s36_load`, the mean over 30 entries of 4 KiB after 10 deltas each):
   74 613 at 10 entries, 81 257 at 10 000 (ratio 1.09; budget 2 MiB, within 10%), after the fix
@@ -2360,7 +2362,7 @@ machine. A stage is done only within its budgets.
   10 000 entries were not run on the host: the per-entry state bytes, the one figure that could
   grow with them, are the crate's. The first record (S36) timed raw Node socket arrivals and
   paired sessions with fakes by their delays; S36 r1 (F1.8) replaced it with these browser
-  measurements.
+  measurements; S36 r2 added the common-window rate check and remeasured.
 
 ## 17. Build plan
 
