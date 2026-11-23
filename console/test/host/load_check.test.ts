@@ -53,3 +53,17 @@ describe("S36 r3 load checks", () => {
     expect(loadWindow(by, 8000, RATE, 6).faults).toEqual([]);
   });
 });
+
+describe("S36 r4 load checks", () => {
+  it("regress_S36_r4_load_rejects_a_gap_between_bins (F4.3)", () => {
+    // Codex's control: each of 8 sources has one initial stamp, then 80 deltas and 8 entries in each of four clusters near
+    // 0, 3900, 4000 and 7900 ms: every 2 s bin is full, but [1000, 3000) is empty
+    const by = new Map<string, { at: number; kind: string; n: number }[]>();
+    for (let k = 0; k < 8; k++) {
+      const xs = [{ at: 0, kind: "delta", n: 0 }];
+      for (const c of [0, 3900, 4000, 7900]) for (let n = 0; n < 88; n++) xs.push({ at: c + n, kind: n % 11 === 10 ? "entry" : "delta", n: xs.length });
+      by.set(`source ${k}`, xs);
+    }
+    expect(loadWindow(by, 8000, RATE, 6).faults.length).toBeGreaterThan(0);
+  });
+});
