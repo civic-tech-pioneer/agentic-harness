@@ -520,7 +520,12 @@ S2 writes each into the document that owns it.
   it. (3) Bash: the exact command. (4) The sandbox is the boundary for Bash allow rules.
 
 - **2026-11-23, the human, on S35-CAP** (PR #43 at the round cap): "Yes, one more round". Option (a): one more
-  answer round for F5.1 by the builder (Claude), then a sixth review by Codex. The merge still needs R-B1.
+  answer round for F5.1 by the builder (Claude), then a sixth review by Codex. The merge needed R-B1 too (answered below).
+
+- **2026-11-23, the human, on R-B1:** (b). "b is fine with me ... I favor the pragmatic approach here and keep it
+  together until there's real evidence that they ought to be apart." The provider stays as `provider/` in this
+  repository; TECHNICAL 17 (stage B) gets one boundary list and drops "its own repository". S35's r5 answer
+  round makes that change, so review r6 covers it. S35 merges on an approving r6 and green CI.
 
 ## Waiting on the human
 
@@ -529,13 +534,6 @@ S2 writes each into the document that owns it.
   a scratch folder; a stored profile needs access. Options: (a) keep it (rec: no tools and a scratch folder give
   Claude no reach; it makes the first run work); (b) require `access/page` from the first run (one more setup
   step). Undo: one 14 row and the profile. Blocks nothing; S35 is built with (a).
-- **R-B1 The unchecked provider's own repository** (TECHNICAL 17 stage B: "its own repository,
-  built only with its `factory/config.toml` `boundaries` pointing at 14"). It does not exist;
-  creating a GitHub repository and adopting it is yours. Options: (a) create
-  `civic-tech-pioneer/<name>` and run `factory/bin/adopt.sh` (rec); (b) keep it as `provider/` in
-  this repository and change 17 (one boundary list instead of two). Meanwhile S35 builds it in
-  `provider/` as a self-contained mod (own `mod.toml`, no imports from `kernel/`), so (a) is a
-  `git subtree split`. Undo: (a) archive a repo; (b) one 17 row. Blocks only S35's merge.
 - **N5 The factory's implementer needs a shell.** The human chose to decide at stage F. Options:
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
   backend in the host, a third native process kind (a new host boundary, costly to remove once
