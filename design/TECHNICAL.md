@@ -2487,6 +2487,15 @@ out. Stop shows "Stopping…" until a `turn` update says idle.
   composer, unless the participant has typed since, and shows the error's
   message in one line above the composer (`role="alert"`) until the next edit
   or send; the failure never escapes as an unhandled rejection (S32 user-sim).
+  The composer keeps only unsent text: what the participant typed and has
+  not sent, per session, in `sessionStorage`, back after a reload. Send takes
+  the text out of the composer and the kept draft at once; a pending send is
+  kept nowhere in the page. A refusal while the composer that sent it is
+  still mounted puts the text back there and in the kept draft (typing since
+  wins). Known limit: a send refused after its page reloaded or its composer
+  unmounted is lost from the composer, and the transcript shows no such
+  message; accepted, since the host refuses a `say` only on `busy` or a
+  slash command (S35 r4, the deputy's rule).
 - **Plan.** It folds to one line while an ask waits or inputs are queued,
   unless the participant opened it.
 - **Keys.** Enter sends, Shift+Enter is a new line, Esc in the composer

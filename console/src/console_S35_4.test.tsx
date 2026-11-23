@@ -93,15 +93,6 @@ describe("S35-4 AC4", () => {
     render(<Console served={await served(setup({ "sessions.list": () => ({ ok: [] }) }).w)} />);
     expect(box().value).toBe("");
   });
-  it("r1_f1_4_a_pending_start_keeps_the_draft_over_a_reload", async () => {
-    const f = setup({ "sessions.start": () => new Promise(() => {}) });
-    const first = render(<Console served={await served(f.w)} />);
-    fireEvent.change(box(), { target: { value: "pending message" } });
-    fireEvent.keyDown(box(), { key: "Enter" });
-    first.unmount();
-    render(<Console served={await served(f.w)} />);
-    expect(box().value).toBe("pending message");
-  });
   it("ac4b_a_session_keeps_its_own_draft", async () => {
     const f = setup({ "sessions.list": () => ({ ok: [{ id: "s", title: "T", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 }] }) });
     const a = render(<Console served={await served(f.w)} />);
@@ -206,20 +197,6 @@ describe("S35 r2 F2.2, F2.3, F2.5", () => {
     render(<Console served={await served(f.w)} />);
     expect(box().value).toBe("third remains unsent");
   });
-  it("r2_f2_2_settling_one_send_keeps_a_later_pending_send_of_the_same_text", async () => {
-    const settles: Array<(v: unknown) => void> = [];
-    const f = setup({ "sessions.start": () => new Promise((r) => { settles.push(r); }) });
-    const page = render(<Console served={await served(f.w)} />);
-    for (let n = 0; n < 2; n++) {
-      fireEvent.change(box(), { target: { value: "same words" } });
-      fireEvent.keyDown(box(), { key: "Enter" });
-    }
-    await act(async () => { settles[0]!({ err: "busy" }); await new Promise((r) => setTimeout(r, 20)); });
-    fireEvent.change(box(), { target: { value: "" } });
-    page.unmount();
-    render(<Console served={await served(f.w)} />);
-    expect(box().value).toBe("same words"); // the second send is still pending
-  });
   it("r2_f2_3_an_untitled_row_whose_first_message_came_in_parts_reads_it", async () => {
     const line = JSON.stringify({
       v: 1, i: 2, at: 1, kind: "message",
@@ -259,73 +236,76 @@ describe("S35 r2 F2.2, F2.3, F2.5", () => {
   });
 });
 
-describe("S35 r3 F3.1", () => {
-  it("r3_f3_1_an_accepted_send_clears_the_unchanged_text_a_later_composer_inherited", async () => {
-    let accept!: (r: { ok: number }) => void;
-    const f = setup({
-      "sessions.list": () => ({ ok: [
-        { id: "s", title: "Session", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 },
-      ] }),
-      "sessions.say": () => new Promise((resolve) => { accept = resolve; }),
-    });
-    const first = render(<Console served={await served(f.w)} />);
-    fireEvent.change(box(), { target: { value: "pending message" } });
-    fireEvent.keyDown(box(), { key: "Enter" });
-    first.unmount();
-
-    const second = render(<Console served={await served(f.w)} />);
-    expect(box().value).toBe("pending message");
-    await act(async () => accept({ ok: 1 }));
-    second.unmount();
-
-    render(<Console served={await served(f.w)} />);
-    expect(box().value).toBe(""); // actual: "pending message"
+describe("S35 r4: the kept draft (deputy's rule: unsent text only; TECHNICAL 18.6 Send)", () => {
+  const sessions = (say: () => unknown) => setup({
+    "sessions.list": () => ({ ok: [
+      { id: "s", title: "S", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 },
+    ] }),
+    "sessions.say": say,
   });
-  const pendingSay = () => {
-    const h: { accept: (r: unknown) => void; reject: (e: Error) => void } = { accept: () => {}, reject: () => {} };
-    const f = setup({
-      "sessions.list": () => ({ ok: [
-        { id: "s", title: "Session", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 },
-      ] }),
-      "sessions.say": () => new Promise((resolve, reject) => { h.accept = resolve; h.reject = reject; }),
-    });
-    return { f, h };
-  };
-  it("r3_f3_1_the_inheriting_composer_shows_the_accepted_text_cleared_too", async () => {
-    const { f, h } = pendingSay();
-    const first = render(<Console served={await served(f.w)} />);
-    fireEvent.change(box(), { target: { value: "pending message" } });
-    fireEvent.keyDown(box(), { key: "Enter" });
-    first.unmount();
-    render(<Console served={await served(f.w)} />);
-    await act(async () => h.accept({ ok: 1 }));
+  it("r4_rule_1_unsent_text_is_kept_per_session_across_a_reload", async () => {
+    const f = sessions(() => ({ ok: 1 }));
+    const a = render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "for s" } });
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
     expect(box().value).toBe("");
-  });
-  it("r3_f3_1_a_newer_edit_in_the_inheriting_composer_outlives_the_acceptance", async () => {
-    const { f, h } = pendingSay();
-    const first = render(<Console served={await served(f.w)} />);
-    fireEvent.change(box(), { target: { value: "pending message" } });
-    fireEvent.keyDown(box(), { key: "Enter" });
-    first.unmount();
-    const second = render(<Console served={await served(f.w)} />);
-    fireEvent.change(box(), { target: { value: "pending message, and more" } });
-    await act(async () => h.accept({ ok: 1 }));
-    expect(box().value).toBe("pending message, and more");
-    second.unmount();
+    fireEvent.change(box(), { target: { value: "for a new one" } });
+    a.unmount();
+    expect(sessionStorage.getItem("wa-draft:s")).toBe("for s");
+    expect(sessionStorage.getItem("wa-draft:new")).toBe("for a new one");
     render(<Console served={await served(f.w)} />);
-    expect(box().value).toBe("pending message, and more");
+    expect(box().value).toBe("for s");
   });
-  it("r3_f3_1_a_refusal_after_a_reload_keeps_the_inherited_text", async () => {
-    const { f, h } = pendingSay();
-    const first = render(<Console served={await served(f.w)} />);
-    fireEvent.change(box(), { target: { value: "pending message" } });
+  it("r4_rule_2_send_takes_the_text_out_of_the_composer_and_the_kept_draft_at_once", async () => {
+    const f = sessions(() => new Promise(() => {}));
+    const a = render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "pending" } });
     fireEvent.keyDown(box(), { key: "Enter" });
-    first.unmount();
-    const second = render(<Console served={await served(f.w)} />);
-    await act(async () => h.reject(new Error("refused")));
-    expect(box().value).toBe("pending message");
-    second.unmount();
+    expect(box().value).toBe("");
+    expect(sessionStorage.getItem("wa-draft:s")).toBeNull();
+    a.unmount();
     render(<Console served={await served(f.w)} />);
-    expect(box().value).toBe("pending message");
+    expect(box().value).toBe(""); // the pending send is not offered as unsent (F4.1, F4.3)
+  });
+  it("r4_rule_3_a_refusal_while_mounted_puts_the_text_back_in_the_composer_and_the_kept_draft", async () => {
+    let refuse!: (r: unknown) => void;
+    const f = sessions(() => new Promise((r) => { refuse = r; }));
+    const a = render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "refused words" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    await act(async () => refuse({ err: "busy" }));
+    expect(box().value).toBe("refused words");
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(sessionStorage.getItem("wa-draft:s")).toBe("refused words");
+    a.unmount();
+    render(<Console served={await served(f.w)} />);
+    expect(box().value).toBe("refused words");
+  });
+  it("r4_rule_3_text_typed_since_the_send_wins_over_the_refused_text", async () => {
+    let refuse!: (r: unknown) => void;
+    const f = sessions(() => new Promise((r) => { refuse = r; }));
+    render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "refused words" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    fireEvent.change(box(), { target: { value: "newer" } });
+    await act(async () => refuse({ err: "busy" }));
+    expect(box().value).toBe("newer");
+    expect(sessionStorage.getItem("wa-draft:s")).toBe("newer");
+  });
+  it("r4_rule_4_a_refusal_after_its_composer_unmounted_changes_no_later_composer_or_draft", async () => {
+    const settle: Array<(r: unknown) => void> = [];
+    const f = sessions(() => new Promise((r) => { settle.push(r); }));
+    const a = render(<Console served={await served(f.w)} />);
+    for (const value of ["older", "newer"]) {
+      fireEvent.change(box(), { target: { value } });
+      fireEvent.keyDown(box(), { key: "Enter" });
+    }
+    a.unmount();
+    render(<Console served={await served(f.w)} />);
+    expect(box().value).toBe("");
+    fireEvent.change(box(), { target: { value: "typed later" } });
+    await act(async () => { settle[1]!({ err: "busy" }); settle[0]!({ ok: 1 }); });
+    expect(box().value).toBe("typed later");
+    expect(sessionStorage.getItem("wa-draft:s")).toBe("typed later");
   });
 });
