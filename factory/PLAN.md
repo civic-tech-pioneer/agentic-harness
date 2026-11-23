@@ -55,7 +55,7 @@ Touches: `kernel/`, `provider/` (see Waiting: its own repository), `wit/`, `mod.
 `ui/`, `design/TECHNICAL.md` (2.1, 4.1, 4.6, the 15 row 4.6 names). Fakes nothing once S99
 merges; until then it builds against S99's branch. Protects: *core*. `PO arms`. Cloud.
 
-### S36: stage B, end to end: Alice steers a turn (in flight, cloud, builder claude, reviewer codex; handed out 2026-11-23 after S35 merged at 042b0dd; routine `trig_0184S7g9auvX4raMDZLWTrYS`, 17:39 UTC; DELIVERED as PR #50 (+2404 -252) against watane slice/s100 at ff6428c; r1 to Codex https://chatgpt.com/local/6b048603-4b28-83eb-a045-6edb4806e05e; r1: 8/3 (blocking/polish; adversary BREACHED: an answer can grant a scope the ask never offered; user-sim REJECTED 3 outcomes; call: another round); answer round to Claude 19:03 UTC; r1 answered at aa3432a (all 8 blocking; the adversary's two F1.1 follow-up breaches fixed; load measured in Chromium, within budget); r2 to Codex)
+### S36: stage B, end to end: Alice steers a turn (in flight, cloud, builder claude, reviewer codex; handed out 2026-11-23 after S35 merged at 042b0dd; routine `trig_0184S7g9auvX4raMDZLWTrYS`, 17:39 UTC; DELIVERED as PR #50 (+2404 -252) against watane slice/s100 at ff6428c; r1 to Codex https://chatgpt.com/local/6b048603-4b28-83eb-a045-6edb4806e05e; r1: 8/3 (blocking/polish; adversary BREACHED: an answer can grant a scope the ask never offered; user-sim REJECTED 3 outcomes; call: another round); answer round to Claude 19:03 UTC; r1 answered at aa3432a (all 8 blocking; the adversary's two F1.1 follow-up breaches fixed; load measured in Chromium, within budget); r2 to Codex; r2: 3/0, call another round; answer round to Claude 20:23 UTC with the deputy's ruling on F2.1)
 
 Story: in the same session Alice answers an ask, queues a second message while the first runs,
 presses Stop, restarts `watane-dev serve` and finds the session where she left it. Covers asks
@@ -391,6 +391,7 @@ reviewer claude. Cloud.
 
 ## Deputy decisions
 
+- 2026-11-23 (S36 F2.1, r1's F1.5 back a second time) The console's queue keeps an item until its transfer is accepted: Edit, Undo and Stop and send never remove a queued item before the replacement say (or interrupt and say) succeeds, so a refusal changes nothing and needs no recovery state; a newer draft is left alone.
 - 2026-11-23 (S35, the composer's kept draft, F1.4 to F4.3): no spec asks for a draft that survives a reload while its send is pending; each fix opened the next race. Rule: the composer keeps unsent typing per session across a reload; Send removes the text from composer and kept draft at once; a refusal while the sending composer is mounted puts it back (newer typing wins); a refusal after a reload or unmount is lost from the composer (known limit in TECHNICAL 18). PR #43 comment 7088686568.
 
 - 2026-11-23 (watane S100, for S36): the host gives the resolved path (9.6's open point) as a top-level `"path"` on a file-tool `ask`/`check` item (absolute, symlinks resolved; `input` as `claude` sent it; absent when unresolvable or refused). S36 writes it into 4.5's item table and has the kernel offer a file key only from `path`. A request before `system/init` passed is denied by the host and pushes nothing.
