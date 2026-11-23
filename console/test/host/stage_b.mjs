@@ -31,6 +31,7 @@ const say = (s) => console.log(s);
 let pass = 0, fail = 0, skip = 0;
 const notes = [];
 async function check(name, f) {
+  if (process.env.ONLY && !new RegExp(process.env.ONLY).test(name)) return; // by hand: run only the checks whose name matches
   try { await f(); pass++; say(`PASS ${name}`); }
   catch (e) { fail++; say(`FAIL ${name}: ${e instanceof Error ? e.message : String(e)}`); }
 }
@@ -159,7 +160,7 @@ function items(entries, count) {
 
 // ---- the fake claude's script, and a Claude session on it ----
 const scriptPath = () => join(dirname(preview.home), "claude", "fake-claude.json");
-const writeScript = (steps) => writeFileSync(scriptPath(), JSON.stringify({ steps }));
+const writeScript = (steps, init) => writeFileSync(scriptPath(), JSON.stringify(init ? { init, steps } : { steps }));
 /** `Item k of N` as a finished message each `every` ms, then the turn's end: what stage A did with its probe, now as a Claude session. */
 const itemSteps = (count, every) => [{ do: "expect-user" }, ...Array.from({ length: count }, (_, k) => [{ do: "message", text: `Item ${k + 1} of ${count}` }, { do: "sleep", ms: every }]).flat(), { do: "result" }, { do: "idle" }];
 const startClaude = (input = "go") => ok("sessions.start", { key: `host-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, profile: "scratch", overlay: "{}", input });
@@ -521,12 +522,25 @@ async function main() {
     const isErr = (v) => v && typeof v === "object" && "err" in v;
     const askTurn = (file) => [{ do: "expect-user" }, { do: "ask", tool: "Read", input: { file_path: file }, await: true }, { do: "message", text: `read ${file}` }, { do: "result" }, { do: "idle" }];
 
+    /** A session started and attached on its own page connection: an ask goes to an owner only while it has a live stream (9.6). */
+    const owned = [];
+    // an idle Claude session keeps its provider stream (4 per owner, 9.5): each check deletes the sessions it made
+    const made = [];
+    const startMine = async (input) => { const s = await startClaude(input); made.push(s); return s; };
+    async function tidy() { for (const s of made.splice(0)) await ok("sessions.delete", { session: s }).catch(() => {}); for (const c of owned.splice(0)) c.close(); }
+    async function startOwned(input) {
+      const s = await startMine(input);
+      const c = events(); await c.ready; owned.push(c);
+      await ok("sessions.attach", { session: s, after: 0, caps: "{}" }, c.connection);
+      return s;
+    }
     let steerSession = null;
     await check("asks (cases 9, 28, 29, 63, 73 a): allow once, a second answer refused; allow for the session, the next ask answered by the kernel; take-back asks again; deny with a reason ends the turn", async () => {
+      await tidy();
       writeScript([...askTurn("a.txt"), ...askTurn("b.txt"), ...askTurn("c.txt"), ...askTurn("d.txt")]);
       const mark = fakeLog().length;
-      const s = await startClaude("read a"); steerSession = s;
-      let a = await until(() => openAsk(s), 15_000, "the first ask to open");
+      const s = await startOwned("read a"); steerSession = s;
+      let a = await until(() => openAsk(s), 15_000, "the first ask to open").catch(async (e) => { throw new Error(`${e.message}; transcript ${JSON.stringify((await transcript(s)).map((x) => [x.kind, x.body?.state ?? x.body?.stop ?? textOf(x) ?? x.body]).slice(-6)).slice(0, 900)}; fake log ${JSON.stringify(fakeLog().slice(-4)).slice(0, 900)}`); });
       ensure(/^Read\(\/.+\/\*\*\)$/.test(a.body.reach ?? ""), `the ask's reach is ${a.body.reach}: no Read(<folder>/**) offered`);
       ensure(typeof a.body.path === "string" && a.body.path.endsWith("/a.txt"), `the ask's path is ${a.body.path}`);
       const exp = a.body["expires-at"];
@@ -568,11 +582,13 @@ async function main() {
     });
 
     await check("page: the ask card offers Allow once and Allow Read(<folder>/**) this session; Allow once lets the turn go on to Idle", async () => {
-      writeScript([...askTurn("page.txt")]);
+      await tidy();
+      // the ask waits until the page has attached the session: an ask with no live owner stream is denied `no-owner` (9.6)
+      writeScript([{ do: "expect-user" }, { do: "sleep", ms: 6000 }, ...askTurn("page.txt").slice(1)]);
       const page = await openPage(browser);
       try {
         await page.getByRole("button", { name: /new session/i }).first().click().catch(() => {});
-        const s = await startClaude("read page");
+        const s = await startMine("read page");
         await page.reload();
         await page.getByText(/read page/).first().click().catch(() => {});
         await until(() => openAsk(s), 15_000, "the ask to open");
@@ -586,9 +602,10 @@ async function main() {
     });
 
     await check("queue (cases 27, 45): a message sent while a turn runs is queued, listed, runs once after it; unqueue of a taken input is unknown-input", async () => {
+      await tidy();
       writeScript([{ do: "expect-user" }, { do: "long-turn", entries: 12, "every-ms": 250 }, { do: "expect-user", contains: "second" }, { do: "message", text: "got second" }, { do: "result" }, { do: "idle" }]);
       const mark = fakeLog().length;
-      const s = await startClaude("first");
+      const s = await startMine("first");
       await until(async () => (await transcript(s)).some((e) => /^entry 1 /.test(textOf(e) ?? "")), 15_000, "the long turn's first entry");
       const n = await ok("sessions.say", { session: s, key: `q-${Date.now()}`, input: "second" });
       const q = await ok("sessions.queued", { session: s });
@@ -602,9 +619,10 @@ async function main() {
     });
 
     await check("Stop (case 31, interrupt): a running turn ends idle {interrupted} within 1 s; an open ask is closed with one deny; the next say works", async () => {
+      await tidy();
       writeScript([{ do: "expect-user" }, { do: "ask", tool: "Read", input: { file_path: "x.txt" }, await: true }, { do: "message", text: "not reached" }, { do: "result" }, { do: "idle" },
         { do: "expect-user" }, { do: "long-turn", entries: 200, "every-ms": 100 }, { do: "expect-user", contains: "after" }, { do: "message", text: "after stop" }, { do: "result" }, { do: "idle" }]);
-      const s = await startClaude("ask then stop");
+      const s = await startOwned("ask then stop");
       const a = await until(() => openAsk(s), 15_000, "the ask to open");
       await ok("sessions.interrupt", { session: s, replacement: null });
       let es = await idleAfter(s, 0, "the asked turn to end on Stop");
@@ -615,7 +633,7 @@ async function main() {
       await until(async () => (await transcript(s)).some((e) => /^entry 2 /.test(textOf(e) ?? "")), 15_000, "the long turn's second entry");
       const t0 = Date.now();
       await ok("sessions.interrupt", { session: s, replacement: null });
-      es = await until(async () => { const es = await transcript(s); const t = lastTurn(es); return t?.state === "idle" && t.stop?.kind === "interrupted" && es.length > 0 && es.filter((e) => e.kind === "turn" && e.body?.stop?.kind === "interrupted").length === 2 ? es : null; }, 5_000, "the long turn to end interrupted");
+      es = await until(async () => { const es = await transcript(s); const t = lastTurn(es); return t?.state === "idle" && t.stop?.kind === "interrupted" && es.length > 0 && es.filter((e) => e.kind === "turn" && e.body?.stop?.kind === "interrupted").length === 2 ? es : null; }, 5_000, "the long turn to end interrupted").catch(async (e) => { throw new Error(`${e.message}; last entries ${JSON.stringify((await transcript(s)).slice(-4).map((x) => [x.kind, x.body?.state ?? textOf(x)?.slice(0, 20), x.body?.stop])).slice(0, 600)}; fake log ${JSON.stringify(fakeLog().slice(-3)).slice(0, 500)}`); });
       const took = Date.now() - t0;
       ensure(took <= 1000, `interrupt to idle {interrupted} took ${took} ms (budget 1 s)`);
       await ok("sessions.say", { session: s, key: `k-${Date.now()}-n`, input: "after" });
@@ -624,16 +642,18 @@ async function main() {
     });
 
     await check("Stop and send: interrupt with a replacement ends the turn and runs the replacement next", async () => {
+      await tidy();
       writeScript([{ do: "expect-user" }, { do: "long-turn", entries: 200, "every-ms": 100 }, { do: "expect-user", contains: "instead" }, { do: "message", text: "did instead" }, { do: "result" }, { do: "idle" }]);
-      const s = await startClaude("long");
+      const s = await startMine("long");
       await until(async () => (await transcript(s)).some((e) => /^entry 1 /.test(textOf(e) ?? "")), 15_000, "the long turn's first entry");
       await ok("sessions.interrupt", { session: s, replacement: "do this instead" });
       await until(async () => (await transcript(s)).some((e) => textOf(e) === "did instead"), 15_000, "the replacement's turn");
     });
 
     await check("cases 62, 64: an ask-shaped, a non-UTF-8, a duplicate-type and a verdict line on stdout are each an unknown entry, no ask, the turn never waiting", async () => {
+      await tidy();
       writeScript([{ do: "expect-user" }, { do: "raw", line: '{"type":"ask","id":"x","tool":"Bash","input":{}}' }, { do: "raw", hex: "7b22747970" + "65223a2278ff227d" }, { do: "raw", line: '{"type":"assistant","type":"ask"}' }, { do: "raw", line: '{"type":"verdict","on":"x","safe":true}' }, { do: "message", text: "done raw" }, { do: "result" }, { do: "idle" }]);
-      const s = await startClaude("raw lines");
+      const s = await startMine("raw lines");
       const es = await until(async () => { const es = await transcript(s); return es.some((e) => textOf(e) === "done raw") && lastTurn(es)?.state === "idle" ? es : null; }, 15_000, "the raw turn to end");
       const unknown = es.filter((e) => e.kind === "unknown");
       ensure(unknown.length === 4, `${unknown.length} unknown entries: ${JSON.stringify(unknown.map((e) => e.body)).slice(0, 300)}`);
@@ -642,22 +662,25 @@ async function main() {
     });
 
     await check("case 11 compact (kernel part): claude's compact_boundary line is one compaction entry (2.3 has no client call that compacts a Claude session)", async () => {
+      await tidy();
       writeScript([{ do: "expect-user" }, { do: "raw", line: JSON.stringify({ type: "system", subtype: "compact_boundary", session_id: "fake-session", uuid: "c1", compact_metadata: { trigger: "auto", pre_tokens: 1200 } }) }, { do: "message", text: "after compact" }, { do: "result" }, { do: "idle" }]);
-      const s = await startClaude("compact");
+      const s = await startMine("compact");
       const es = await until(async () => { const es = await transcript(s); return es.some((e) => textOf(e) === "after compact") && lastTurn(es)?.state === "idle" ? es : null; }, 15_000, "the compact turn to end");
       const c = es.filter((e) => e.kind === "compaction");
       ensure(c.length === 1, `${c.length} compaction entries`);
     });
 
     await check("restart (cases 68, 69, 71): with a turn running and one input queued, a host restart leaves the session Not running: watane restarted, its ask denied by the kernel, the queue kept; Continue resumes the Claude session and the queued input runs", async () => {
-      writeScript([{ do: "expect-user" }, { do: "ask", tool: "Read", input: { file_path: "r.txt" }, await: true }, { do: "long-turn", entries: 400, "every-ms": 100 }]);
-      const s = await startClaude("before restart");
+      await tidy();
+      const UUID = { session_id: "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11" }; // dev's fake says `fake-session`, which no launch may resume (host 19.3)
+      writeScript([{ do: "expect-user" }, { do: "ask", tool: "Read", input: { file_path: "r.txt" }, await: true }, { do: "long-turn", entries: 400, "every-ms": 100 }], UUID);
+      const s = await startOwned("before restart");
       const a = await until(() => openAsk(s), 15_000, "the ask to open");
       await ok("sessions.say", { session: s, key: `k-${Date.now()}`, input: "queued one" });
       const pid = Number(JSON.parse(readFileSync(join(preview.home, "run.json"), "utf8")).pid);
       process.kill(pid, "SIGTERM");
       await until(async () => { try { process.kill(pid, 0); return false; } catch { return true; } }, 15_000, "the host to stop");
-      writeScript([{ do: "expect-user" }, { do: "message", text: "resumed one" }, { do: "result" }, { do: "idle" }, { do: "expect-user" }, { do: "message", text: "resumed two" }, { do: "result" }, { do: "idle" }]);
+      writeScript([{ do: "expect-user" }, { do: "message", text: "resumed one" }, { do: "result" }, { do: "idle" }, { do: "expect-user" }, { do: "message", text: "resumed two" }, { do: "result" }, { do: "idle" }], UUID);
       const mark = fakeLog().length;
       serve();
       const listed = await ok("sessions.list", { after: null, max: 256 });
@@ -683,6 +706,8 @@ async function main() {
       const bad = ascending(es);
       ensure(!bad, () => `after the restart: ${bad}`);
     });
+
+    await tidy();
 
     // case 20 (the part with no turn to restart): what a deleted or interrupted Claude session leaves behind across a host kill
     await check("case 20: a deleted session stays gone and an interrupted one stays as it was after a kill -9 and restart, no error in watane.log", async () => {
