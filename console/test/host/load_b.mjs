@@ -109,7 +109,7 @@ def feed():
     named = False
     for line in sys.stdin.buffer:
         if not named:
-            m = re.search(rb'"text":"(load (?:client )?\\d+)"', line)
+            m = re.search(rb'"(?:text|content)":"(load (?:client )?\\d+)"', line)
             if m:
                 named = True
                 with lock: out.write("input\\t%s\\n" % m.group(1).decode())
