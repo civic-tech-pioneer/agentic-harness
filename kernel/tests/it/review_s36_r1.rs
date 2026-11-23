@@ -153,7 +153,12 @@ fn regress_s36_an_unread_init_uses_up_the_first_init() {
     let (s, t) = started(&mut k);
     let mut n = 0;
     let dup = r#"{"type":"system","subtype":"init","cwd":"/x","cwd":"/x"}"#.to_string();
-    feed(&mut k, &t, &mut n, &[dup, init(Some("/w")), read("a1", "/w/a.txt")]);
+    feed(
+        &mut k,
+        &t,
+        &mut n,
+        &[dup, init(Some("/w")), read("a1", "/w/a.txt")],
+    );
     assert_eq!(rec(&mut k, &s).folder, None);
     assert!(stored_ask(&mut k, &s, "a1").get("reach").is_none());
     let unknown = k
