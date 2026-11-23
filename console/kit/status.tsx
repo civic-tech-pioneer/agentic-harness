@@ -7,7 +7,7 @@ import { answeredWords } from "./parts/askbar";
 type Shape = "dot" | "square" | "diamond" | "bars" | "ring" | "dashed-ring" | "triangle" | "loading";
 const NAMES: Record<Shape, string> = { dot: "Running", square: "Checking", diamond: "Waiting for you", bars: "Paused", ring: "Idle", "dashed-ring": "Not running", triangle: "Failed", loading: "Loading" };
 /** An act with no `run` has no kernel call yet: it shows disabled, with a description saying so. */
-interface Spec { word: string; shape: Shape; clock?: string; esc?: boolean; act?: { label: string; key?: string; run?: () => void } }
+interface Spec { word: string; shape: Shape; clock?: string; esc?: boolean; act?: { label: string; key?: string; run?: () => void; off?: boolean } }
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const clock = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${pad(s % 60)}`; };
@@ -45,7 +45,7 @@ function failedWords(stop: { error: string; cause?: string }): string {
   return stop.cause ?? stop.error;
 }
 
-function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: number): Spec {
+function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: number, actions: Actions): Spec {
   const t = view.turn;
   if (!t) return view.loading ? { word: "Loading", shape: "loading" } : { word: "Idle", shape: "ring" };
   switch (t.state) {
@@ -68,7 +68,8 @@ function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: 
       if (t.stop.kind === "stopped") return { word: `Stopped at the ${t.stop.limit}`, shape: "ring" };
       if (t.stop.kind === "failed") return { word: `Failed: ${failedWords(t.stop)}`, shape: "triangle", act: { label: "Try again" } };
       return { word: "Idle", shape: "ring" };
-    case "unknown": return { word: "Not running: watane restarted", shape: "dashed-ring", act: { label: "Continue" } };
+    // 18.5, 9.3 R5: Continue is `say` with the text `Continue`; a refusal leaves the status as it is, so she can try again
+    case "unknown": return { word: "Not running: watane restarted", shape: "dashed-ring", act: { label: "Continue", off: !!actions.off, run: () => { try { void Promise.resolve(actions.say("Continue")).catch(() => {}); } catch { /* refused: the status stays */ } } } };
     case "resume-lost": return { word: "Claude no longer has this session", shape: "dashed-ring", act: { label: "Continue from a summary" } };
   }
 }
@@ -79,14 +80,14 @@ export function StatusLine(props: { view: SessionView; now: number; stopping: bo
   const noKernel = useId();
   const s: Spec = stopping && view.turn?.state !== "idle"
     ? { word: "Stopping…", shape: "dot" }
-    : spec(view, now, props.onNeedsYou, props.answered ?? 0);
+    : spec(view, now, props.onNeedsYou, props.answered ?? 0, props.actions);
   return (
     <div className="wa-status" data-state={view.turn?.state ?? "none"}>
       <span className="wa-shape" data-shape={s.shape} role="img" aria-label={NAMES[s.shape]} />
       <span role="status" className="wa-status-word">{s.word}</span>
       {s.clock ? <span className="wa-status-clock" aria-hidden="true">· {s.clock}</span> : null}
       {s.act ? (
-        <button type="button" onClick={s.act.run} disabled={!s.act.run} aria-describedby={s.act.run ? undefined : noKernel}>
+        <button type="button" onClick={s.act.run} disabled={!s.act.run || s.act.off} aria-describedby={s.act.run ? undefined : noKernel}>
           {s.act.label}{s.act.key ? <> <kbd>{s.act.key}</kbd></> : null}
         </button>
       ) : null}
