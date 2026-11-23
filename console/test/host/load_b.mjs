@@ -1,20 +1,23 @@
-// S36-5: the stage B budgets (TECHNICAL 17, row B) end to end on watane's own host with dev's fake `claude`: 8 sessions, 4 for each of
-// 2 owners (the console's `page`, and the test mod `loadclient` as `local/loadclient`), each on the fake's `load` with
-// `rate {deltas: 50, entries: 5, bytes: 4096}`. Measures item delay from the fake's stdout write to the page connection (p95 over the
-// page's 4 sessions, budget 100 ms) and `interrupt` to `idle {interrupted}` at the page (p95, budget 1 s). The state bytes per entry are
-// the kernel crate's (kernel/tests/it/s36_load.rs). By hand: `npm run test:load` in console/. Exit 0 within budget, 1 over or failed,
-// 2 not run (a prerequisite missing: watane-dev, fake-claude, cargo, python3).
+// S36-5, S36 r1 F1.8: the stage B budgets (TECHNICAL 17, row B) end to end on watane's own host with dev's fake `claude`, measured in
+// the browser: 8 sessions, 4 for each of 2 owners (the console's `page`, each session shown in its own Chromium page, and the test mod
+// `loadclient` as `local/loadclient`), each on the fake's `load` with `rate {deltas: 50, entries: 5, bytes: 4096}`, all started together.
+// Item delay: the fake's stdout write to the item's arrival in the Chromium page that shows its session (the page's `watane.on`
+// handler, before the console's own), p95 over the page's 4 sessions, budget 100 ms. Stop: the page's Stop button to
+// `idle {interrupted}` in that page, p95, budget 1 s. Each page session is paired with its fake by identity (the fake's first input,
+// `load <k>`, which its stamp file names), and every line its fake wrote before Stop must reach its page exactly once.
+// The state bytes per entry are the kernel crate's (kernel/tests/it/s36_load.rs). By hand: `npm run test:load` in console/. Exit 0
+// within budget, 1 over or failed, 2 not run (a prerequisite missing: watane-dev, fake-claude, cargo, python3, Chromium).
 //
 // Two test-only reaches, each named where it is used: the second owner's `access/local/loadclient` is written into the stopped preview's
 // kernel state by test/host/seed (no kernel call writes `access/`, 9.1), and the preview's fake-claude link is replaced by a wrapper that
-// stamps each stdout line with its write time (the fake writes no time of its own).
+// stamps each stdout line with its write time and names the fake's first input (the fake writes no time of its own).
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
-import net from "node:net";
 import { tmpdir, loadavg, cpus } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { launch } from "../slow-kit.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -64,49 +67,31 @@ async function ok(url, fn, args, connection) {
   if (v && typeof v === "object" && "ok" in v) return v.ok;
   throw new Error(`${fn} refused: ${JSON.stringify(v)}`);
 }
-/** A page connection to the kernel's origin: each SSE message with its arrival time. */
-function events(url) {
-  const u = new URL(url);
-  const c = { msgs: [], buf: "", connection: null };
-  let raw = Buffer.alloc(0), head = true;
-  c.ready = new Promise((resolve, reject) => {
-    const s = net.connect({ host: "127.0.0.1", port: Number(u.port) });
-    c.sock = s;
-    s.on("connect", () => s.write(`GET /events HTTP/1.1\r\nHost: ${u.host}\r\nAccept: text/event-stream\r\n\r\n`));
-    s.on("data", (d) => {
-      const at = Date.now();
-      raw = Buffer.concat([raw, d]);
-      if (head) { const i = raw.indexOf("\r\n\r\n"); if (i < 0) return; raw = raw.subarray(i + 4); head = false; }
-      for (;;) {
-        const i = raw.indexOf("\r\n"); if (i < 0) return;
-        const n = parseInt(raw.subarray(0, i).toString(), 16);
-        if (n === 0 || raw.length < i + 2 + n + 2) return;
-        c.buf += raw.subarray(i + 2, i + 2 + n).toString("utf8"); raw = raw.subarray(i + 2 + n + 2);
-        for (let j; (j = c.buf.indexOf("\n\n")) >= 0;) {
-          const line = c.buf.slice(0, j).split("\n").find((l) => l.startsWith("data: ")); c.buf = c.buf.slice(j + 2);
-          if (!line) continue;
-          const m = JSON.parse(line.slice(6)); m.at = at; c.msgs.push(m);
-          if (m.type === "connection") { c.connection = m.id; resolve(c); }
-        }
-      }
-    });
-    s.on("error", reject);
-  });
-  return c;
-}
-/** Each item of `stream` with its arrival: a text delta `delta N `, a finished `entry N`, or a turn. */
-function arrivals(c, stream) {
+/** Runs in each Chromium page before watane.js: every stream item the page's `watane.on` gets, with its arrival time, before the
+ * console's handler sees it; and when `sessions.attach` resolved. */
+const PROBE = `(() => {
+  const A = (window.__arrivals = []); window.__attached = null;
+  const t = () => performance.timeOrigin + performance.now();
+  let real;
+  Object.defineProperty(window, "watane", { configurable: true, get: () => real, set(v) {
+    real = Object.freeze({ ...v,
+      on(h) { return v.on((m) => { if (m && m.type === "stream" && Array.isArray(m.items)) { const at = t(); for (const it of m.items) A.push({ stream: m.stream, seq: it.seq, body: it.body, at }); } h(m); }); },
+      async call(fn, args) { const r = await v.call(fn, args); if (fn === "sessions.attach" && r && "ok" in r) window.__attached = { at: t(), session: args.session, stream: r.ok }; return r; } });
+  } });
+})();`;
+/** Each item a page got: a text delta `delta N `, a finished `entry N`, or a turn; with its stream and arrival. */
+function arrivals(raw) {
   const out = [];
-  for (const m of c.msgs) if (m.type === "stream" && m.stream === stream) for (const it of m.items) {
+  for (const it of raw) {
     let o; try { o = JSON.parse(it.body); } catch { continue; }
     const w = o._meta?.watane;
     // an ACP update is the item itself (`sessionUpdate`); a finished message comes as an update with `_meta.watane.i`, or as an `entry` item
     const text = o.content?.text ?? w?.entry?.body?.content?.[0]?.text ?? "";
     const d = /^delta (\d+) $/.exec(text);
     const e = /^entry (\d+) /.exec(text);
-    if (d) out.push({ kind: "delta", n: +d[1], at: m.at });
-    else if (e) out.push({ kind: "entry", n: +e[1], at: m.at });
-    else if (w?.type === "turn" || w?.entry?.kind === "turn") out.push({ kind: "turn", state: w.state ?? w.entry?.body, at: m.at });
+    if (d) out.push({ kind: "delta", n: +d[1], at: it.at, stream: it.stream });
+    else if (e) out.push({ kind: "entry", n: +e[1], at: it.at, stream: it.stream });
+    else if (w?.type === "turn" || w?.entry?.kind === "turn") out.push({ kind: "turn", state: w.state ?? w.entry?.body, at: it.at, stream: it.stream });
   }
   return out;
 }
@@ -117,13 +102,30 @@ const WRAPPER = `#!/usr/bin/python3 -I
 import os, re, subprocess, sys, time, threading
 real = REAL
 me = os.path.abspath(sys.argv[0])
-p = subprocess.Popen([me] + sys.argv[1:], executable=real, stdin=sys.stdin, stdout=subprocess.PIPE)
+p = subprocess.Popen([me] + sys.argv[1:], executable=real, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 out = open(os.path.join(os.path.dirname(me), "stamps-%d.tsv" % os.getpid()), "w", buffering=1)
+lock = threading.Lock()
+def feed():
+    named = False
+    for line in sys.stdin.buffer:
+        if not named:
+            m = re.search(rb'"text":"(load (?:client )?\\d+)"', line)
+            if m:
+                named = True
+                with lock: out.write("input\\t%s\\n" % m.group(1).decode())
+        try:
+            p.stdin.write(line); p.stdin.flush()
+        except (BrokenPipeError, ValueError):
+            break
+    try: p.stdin.close()
+    except Exception: pass
+threading.Thread(target=feed, daemon=True).start()
 pat = re.compile(rb'"text":"(delta|entry) (\\d+) ')
 for line in p.stdout:
     sys.stdout.buffer.write(line); sys.stdout.buffer.flush()
     m = pat.search(line[:400])
-    if m: out.write("%d\\t%s\\t%s\\n" % (time.time_ns(), m.group(1).decode(), m.group(2).decode()))
+    if m:
+        with lock: out.write("%d\\t%s\\t%s\\n" % (time.time_ns(), m.group(1).decode(), m.group(2).decode()))
 sys.exit(p.wait())
 `;
 function wrapFake() {
@@ -132,13 +134,23 @@ function wrapFake() {
   unlinkSync(link);
   writeFileSync(link, WRAPPER.replace("REAL", JSON.stringify(real)));
   chmodSync(link, 0o755);
-  writeFileSync(join(dirname(link), "fake-claude.json"), JSON.stringify({ steps: [{ do: "expect-user" }, { do: "load", rate: RATE }, { do: "expect-user" }] }));
+  writeFileSync(join(dirname(link), "fake-claude.json"), JSON.stringify({ steps: [{ do: "expect-user" }, { do: "message", text: "ready" }, { do: "result" }, { do: "idle" }, { do: "expect-user" }, { do: "load", rate: RATE }, { do: "expect-user" }] }));
   return dirname(link);
 }
-/** The stamp files in the order their fakes started (by the first stamp). */
+/** Each fake's stamps by the first input it got (`load <k>`, `load client <k>`): its identity. */
 function stamps(dir) {
-  return readdirSync(dir).filter((f) => /^stamps-\d+\.tsv$/.test(f)).map((f) => readFileSync(join(dir, f), "utf8").split("\n").filter(Boolean).map((l) => { const [ns, kind, n] = l.split("\t"); return { at: Number(BigInt(ns) / 1_000_000n), kind, n: +n }; }))
-    .filter((s) => s.length).sort((a, b) => a[0].at - b[0].at);
+  const by = new Map();
+  for (const f of readdirSync(dir).filter((f) => /^stamps-\d+\.tsv$/.test(f))) {
+    let input; const xs = [];
+    for (const l of readFileSync(join(dir, f), "utf8").split("\n").filter(Boolean)) {
+      const [a, b, c] = l.split("\t");
+      if (a === "input") input = b; else xs.push({ at: Number(BigInt(a)) / 1e6, kind: b, n: +c });
+    }
+    if (input === undefined) continue; // a fake with no load input (none in this run)
+    if (by.has(input)) throw new Error(`two fakes got the input ${input}`);
+    by.set(input, xs);
+  }
+  return by;
 }
 const p95 = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(s.length * 0.95))]; };
 
@@ -164,55 +176,74 @@ async function main() {
   serve();
   const claudeDir = wrapFake();
 
-  // 8 sessions: the page's 4 attached on their own page connections, the client's 4 unattached
-  const conns = [], streams = [], pageSessions = [], clientSessions = [];
-  for (let k = 0; k < SESSIONS; k++) {
-    const c = events(preview.agent); await c.ready; conns.push(c);
-    const s = await ok(preview.agent, "sessions.start", { key: `load-page-${k}`, profile: "scratch", overlay: "{}", input: `load ${k}` });
-    pageSessions.push(s);
-    streams.push(await ok(preview.agent, "sessions.attach", { session: s, after: 0, caps: "{}" }, c.connection));
-    await sleep(150); // the fakes start in this order, so stamp file k is session k
-    const t = await post(preview.client, "api.start", { key: `load-client-${k}`, input: `load client ${k}` });
-    if (!t || !("ok" in t)) throw new Error(`the second owner's start was refused: ${JSON.stringify(t)}`);
-    clientSessions.push(t.ok);
-    await sleep(150);
-  }
-  say(`8 sessions started (page: ${pageSessions.length}, local/loadclient: ${clientSessions.length}); loading for ${SECONDS - 2} s`);
-  await sleep((SECONDS - 2) * 1000);
-  // Stop: interrupt each page session and time its idle {interrupted} at the page connection
-  const stopAt = [];
-  for (const s of pageSessions) { stopAt.push(Date.now()); await ok(preview.agent, "sessions.interrupt", { session: s, replacement: null }); }
-  for (const s of clientSessions) await post(preview.client, "api.interrupt", { session: s });
-  await sleep(3000);
+  // 8 sessions: each page session shown in its own Chromium page (the console opens the owner's newest session), the client's 4 unattached
+  const browser = await launch();
+  const pages = [], pageSessions = [], clientSessions = [];
+  const turnOf = async (s) => { const r = await ok(preview.agent, "sessions.read", { session: s, after: 0, before: null, max: 512 }); const t = r.entries.map((e) => (typeof e === "string" ? JSON.parse(e) : e)).filter((e) => e.kind === "turn").pop(); return t?.body?.state; };
+  const until = async (f, ms, what) => { const end = Date.now() + ms; for (;;) { const v = await f(); if (v) return v; if (Date.now() > end) throw new Error(`timed out waiting for ${what}`); await sleep(100); } };
+  try {
+    for (let k = 0; k < SESSIONS; k++) {
+      const s = await ok(preview.agent, "sessions.start", { key: `load-page-${k}`, profile: "scratch", overlay: "{}", input: `load ${k}` });
+      pageSessions.push(s);
+      await until(async () => (await turnOf(s)) === "idle", 15_000, `session load ${k}'s first turn to end`);
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      await page.addInitScript(PROBE);
+      await page.goto(preview.agent);
+      await until(async () => (await page.evaluate(() => window.__attached?.session ?? null)) === s, 15_000, `page ${k} to attach to its session`);
+      pages.push(page);
+      const t = await post(preview.client, "api.start", { key: `load-client-${k}`, input: `load client ${k}` });
+      if (!t || !("ok" in t)) throw new Error(`the second owner's start was refused: ${JSON.stringify(t)}`);
+      clientSessions.push(t.ok);
+    }
+    for (const s of clientSessions) await until(async () => { try { const r = await post(preview.client, "api.say", { session: s, key: `go-${s}`, input: "go" }); return r && "ok" in r; } catch { return false; } }, 15_000, "the client's go");
+    for (const s of pageSessions) await ok(preview.agent, "sessions.say", { session: s, key: `go-${s}`, input: "go" });
+    say(`8 sessions loading (page: ${pageSessions.length} in Chromium, local/loadclient: ${clientSessions.length}) for ${SECONDS - 2} s`);
+    await sleep((SECONDS - 2) * 1000);
+    // Stop: each page's own Stop button, timed in that page
+    const stopAt = [];
+    for (const page of pages) stopAt.push(await page.evaluate(() => { const b = document.querySelector(".wa-stop"); if (!b) return null; const at = performance.timeOrigin + performance.now(); b.click(); return at; }));
+    for (const s of clientSessions) await post(preview.client, "api.interrupt", { session: s });
+    await sleep(3000);
 
-  const files = stamps(claudeDir);
-  if (files.length !== 2 * SESSIONS) throw new Error(`${files.length} stamped fakes, expected ${2 * SESSIONS}`);
-  const delays = [], stops = [], lines = [];
-  // each page session's fake: the stamp file its arrivals fit (no arrival before its write, the smallest median delay); the start
-  // order alone can swap two fakes that start close together
-  const fit = (got, file) => { const w = new Map(file.map((x) => [`${x.kind} ${x.n}`, x.at])); const ds = got.filter((a) => a.kind !== "turn" && w.has(`${a.kind} ${a.n}`)).map((a) => a.at - w.get(`${a.kind} ${a.n}`)).sort((a, b) => a - b); return ds.length && ds[0] >= -2 ? ds[ds.length >> 1] : Infinity; };
-  const taken = new Set();
-  for (let k = 0; k < SESSIONS; k++) {
-    const got = arrivals(conns[k], streams[k]);
-    const f = files.map((file, j) => [j, taken.has(j) ? Infinity : fit(got, file)]).sort((a, b) => a[1] - b[1])[0][0];
-    taken.add(f);
-    const written = new Map(files[f].map((x) => [`${x.kind} ${x.n}`, x.at]));
-    let missing = 0, n = 0;
-    const mine = [];
-    for (const a of got) if (a.kind !== "turn") { const w = written.get(`${a.kind} ${a.n}`); if (w === undefined) missing++; else { mine.push(a.at - w); n++; } }
-    delays.push(...mine);
-    const late = mine.findIndex((d) => d > BUDGET.delay);
-    lines.push(`  session ${k}: ${files[f].length} lines written, ${n} matched at the page, ${missing} unmatched; p95 ${p95(mine)} ms, max ${Math.max(...mine)} ms${late >= 0 ? `, first over ${BUDGET.delay} ms at item ${late + 1}` : ""}`);
-    const end = got.find((a) => a.kind === "turn" && a.at >= stopAt[k] && JSON.stringify(a.state).includes("interrupted"));
-    stops.push(end ? end.at - stopAt[k] : Infinity);
-  }
-  for (const l of lines) say(l);
-  const dp95 = p95(delays), sp95 = p95(stops);
-  say(`item delay source to page: p95 ${dp95} ms over ${delays.length} items (budget ${BUDGET.delay}); max ${Math.max(...delays)} ms`);
-  say(`interrupt to idle {interrupted} at the page: p95 ${sp95} ms (budget ${BUDGET.stop}); each ${stops.join(", ")} ms`);
-  say(`machine: ${process.platform} ${cpus().length} cpus, load average ${loadavg().map((x) => x.toFixed(2)).join(" ")}`);
-  for (const c of conns) c.sock.destroy();
-  return dp95 <= BUDGET.delay && sp95 <= BUDGET.stop;
+    const files = stamps(claudeDir);
+    for (const k of [...Array(SESSIONS).keys()]) for (const name of [`load ${k}`, `load client ${k}`]) if (!files.has(name)) throw new Error(`no stamped fake got the input ${name}`);
+    const delays = [], stops = [], lines = [], faults = [];
+    for (let k = 0; k < SESSIONS; k++) {
+      if (stopAt[k] === null) { faults.push(`page ${k} had no Stop button (its turn was not running)`); continue; }
+      const attached = await pages[k].evaluate(() => window.__attached);
+      const got = arrivals(await pages[k].evaluate(() => window.__arrivals));
+      const foreign = got.filter((a) => a.stream !== attached.stream);
+      if (foreign.length) faults.push(`page ${k}: ${foreign.length} items of another stream`);
+      const file = files.get(`load ${k}`);
+      const written = new Map(file.map((x) => [`${x.kind} ${x.n}`, x.at]));
+      const seen = new Map();
+      const mine = [];
+      for (const a of got) if (a.kind !== "turn") {
+        const key = `${a.kind} ${a.n}`, w = written.get(key);
+        seen.set(key, (seen.get(key) ?? 0) + 1);
+        if (w === undefined) faults.push(`page ${k}: ${key} arrived but its fake never wrote it`);
+        else if (seen.get(key) === 1) mine.push(a.at - w);
+      }
+      const twice = [...seen].filter(([, c]) => c > 1).map(([key]) => key);
+      if (twice.length) faults.push(`page ${k}: ${twice.length} items arrived more than once (${twice.slice(0, 3).join(", ")})`);
+      const lost = file.filter((x) => x.at < stopAt[k] && !seen.has(`${x.kind} ${x.n}`));
+      if (lost.length) faults.push(`page ${k}: ${lost.length} of the ${file.filter((x) => x.at < stopAt[k]).length} lines written before Stop never arrived (first: ${lost[0].kind} ${lost[0].n})`);
+      if (mine.some((d) => d < -2)) faults.push(`page ${k}: an item arrived before its write`);
+      delays.push(...mine);
+      const late = mine.findIndex((d) => d > BUDGET.delay);
+      lines.push(`  page ${k} (session ${pageSessions[k]}): ${file.length} lines written, ${mine.length} arrived once, ${file.length - mine.length} after Stop not delivered; p95 ${p95(mine).toFixed(1)} ms, max ${Math.max(...mine).toFixed(1)} ms${late >= 0 ? `, first over ${BUDGET.delay} ms at item ${late + 1}` : ""}`);
+      const end = got.find((a) => a.kind === "turn" && a.at >= stopAt[k] && JSON.stringify(a.state).includes("interrupted"));
+      stops.push(end ? end.at - stopAt[k] : Infinity);
+    }
+    for (const l of lines) say(l);
+    for (const f of faults) say(`FAULT ${f}`);
+    const dp95 = p95(delays), sp95 = p95(stops);
+    say(`item delay, the fake's write to the Chromium page: p95 ${dp95.toFixed(1)} ms over ${delays.length} items (budget ${BUDGET.delay}); max ${Math.max(...delays).toFixed(1)} ms`);
+    say(`Stop in the page to idle {interrupted} in the page: p95 ${sp95.toFixed(1)} ms (budget ${BUDGET.stop}); each ${stops.map((x) => x.toFixed(1)).join(", ")} ms`);
+    say(`machine: ${process.platform} ${cpus().length} cpus, load average ${loadavg().map((x) => x.toFixed(2)).join(" ")}`);
+    if (faults.length) throw new Error(`${faults.length} completeness or identity faults`);
+    return dp95 <= BUDGET.delay && sp95 <= BUDGET.stop;
+  } finally { await browser.close(); }
 }
 
 let code = 0;
