@@ -854,8 +854,10 @@ wire") are this JSON; the entry has no `activity`.
   no due deadline changes nothing but the timer: it sets it again for the
   earliest deadline (a deadline over 30 days ahead, 7). Until stage D, a due
   deadline of a later stage (`ask`, `retry`, `resume`) stays and keeps its count but arms no
-  timer: the timer is set for the earliest deadline still in the future. A firing whose restart step (R6) fails
-  re-arms nothing; the next call on the session settles its deadline.
+  timer: the timer is set for the earliest deadline still in the future. A session firing cannot fail, as the restart
+  firing (R2): one whose restart step (R6) fails still sets the timer again (for the earliest
+  deadline in the future, else after the idle delay) and charges what the step wrote, and a firing
+  charges what it wrote past the reserve too; the next call on the session does its step.
 - **Quota.** An owner's bytes (`quota/<owner>`) count every key the owner
   causes: session records, `queue/`, entries, wire chunks, loop state,
   `stream/`, `live/` and its kept `key/<owner>/<key>` results (kept after a

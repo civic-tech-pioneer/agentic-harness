@@ -43,6 +43,7 @@ mod s28;
 mod s29_ceiling;
 mod s29_short;
 mod s35_stage_b;
+mod s36_firing;
 mod s36_path;
 mod scope_s34;
 mod seam_s32;
