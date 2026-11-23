@@ -1654,7 +1654,9 @@ per items call with the stream's `last`, and deleted with `stream/<id>`. A
 deferred or failed call rolls it back with the rest. From the items it reads
 the kernel also takes the `initialized` item's `workspace` (4.6) and the
 `system/init` line's `session_id` (the record's `claude-uuid`, for a later
-resume, 9.3 R5) and `cwd` (the record's `folder`, once, 4.6; S36); none gives
+resume, 9.3 R5; only a uuid, `8-4-4-4-12` hex digits, as host 19.3 takes a
+launch's `session`: another id is not kept, and the next launch starts a new
+Claude session, S36) and `cwd` (the record's `folder`, once, 4.6; S36); none gives
 an entry.
 
 Libraries: `claude-codes` (types only) and `agent-client-protocol-schema`
