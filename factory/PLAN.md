@@ -65,6 +65,23 @@ detection through `host-info.generation`, the rest of 17's stage B cases, and th
 left after S99: interrupt, host ask items 4.5, the load test's fake). Carry: S34 RISK 3, S26/S28
 limits on the real rollback, the felt-wrong second-tab freeze. `PO arms`. Cloud.
 
+### S37: spike: what can enforce a profile's local-network setting for the shell grant (V27)
+
+Question: which mechanisms can enforce a profile setting "local network access: denied (default) / allowed" for
+the shell grant, on macOS and Linux? Local network means loopback (127.0.0.0/8, ::1), private ranges (10/8,
+172.16/12, 192.168/16, fc00::/7), link-local (169.254/16, fe80::/10) and the metadata address 169.254.169.254.
+Candidates: (a) the kernel refuses allowlist entries at profile check (`localhost`, `*.localhost`, IP literals in
+those ranges); (b) Claude Code's sandbox settings (what its network proxy and `allowedDomains` can and cannot
+refuse, per platform: Seatbelt on macOS, bubblewrap on Linux); (c) a watane host egress proxy in front of the
+sandbox that checks the resolved address at connect time; (d) anything else found (OS firewall rules per
+process, a resolver that refuses such answers). For each: what it stops and what it doesn't (DNS rebinding,
+names that resolve to private addresses, IPv6 and IPv4-mapped forms, the metadata address, a command that
+bypasses the proxy), its cost, and where it lives (kernel, host, Claude config). Probe on the Mac and in a Linux
+container where a claim can be tested; mark each claim probed or from docs.
+Outcome: `design/SPIKE-local-network.md`, a write-up with a recommendation and the probe scripts; no product
+code. The human decides V27 from it. Touches: `design/SPIKE-local-network.md`, `probes/` only. Builder codex,
+reviewer claude. Cloud.
+
 ### Stage B carry list (folded into stage B's end-to-end slices, never a slice of its own)
 
 - S34 RISK 1: write keys for build and config files beyond the list (`Cargo.toml`, `conftest.py`,
@@ -540,19 +557,25 @@ S2 writes each into the document that owns it.
 - **2026-11-23, the human, on watane S100's top-level resolved `path`** (Deputy decisions, for S36): "Sounds good.
   Approved." No longer a pending veto.
 
+- **2026-11-23, the human, on the R-B1 vision edit:** "That should not have lived in vision, because it's way too
+  specific, And only belongs to the technical documentation, as an option. So good to remove it there." VISION drops
+  the repository rule entirely; TECHNICAL keeps a provider's own repository as an option for later.
+- **2026-11-23, the human, on R-B4** (the built-in `scratch` profile): "Sounds good to me." Option (a), as S35 built it.
+- **2026-11-23, the human, on V27:** "In principle, what I would like is that the profile at least has the option to
+  block or allow access to localhost via whatever mechanism that may be. I could imagine that it's complex though, so
+  I'm willing to take a best effort and a report on exactly what can be done and what are the limitations. I'll take
+  the decision from there." Read as: a profile setting for local network access (loopback, private and link-local
+  ranges), denied by default. Spike S37 reports the mechanisms; V27 is decided after it.
+
 ## Waiting on the human
 
-- **R-B4 The built-in `scratch` profile (S35, TECHNICAL 14 row).** On first run, while `access/page` is absent,
-  the console's page may start sessions with a built-in profile: Claude's default model, no tools, mode manual,
-  a scratch folder; a stored profile needs access. Options: (a) keep it (rec: no tools and a scratch folder give
-  Claude no reach; it makes the first run work); (b) require `access/page` from the first run (one more setup
-  step). Undo: one 14 row and the profile. Blocks nothing; S35 is built with (a).
 - **N5 The factory's implementer needs a shell.** The human chose to decide at stage F. Options:
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
   backend in the host, a third native process kind (a new host boundary, costly to remove once
   mods use it). Rec: (a). Blocks only stage F.
 
-- **V27: the shell grant's network allowlist reaches loopback through Claude's sandbox proxy**
+- **V27 (decide after the S37 spike report; the human wants a profile setting for local network access, denied by default):
+  the shell grant's network allowlist reaches loopback through Claude's sandbox proxy**
   (S1, PR #37, security boundary). With `allowedDomains: ["localhost"]`, a command reaches a
   loopback server through the sandbox's own proxy (direct connections stay blocked); the proxy also
   reaches LAN and `169.254.169.254` addresses behind any allowlisted name. TECHNICAL 4.2's
