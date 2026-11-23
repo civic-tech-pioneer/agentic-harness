@@ -5,7 +5,7 @@
 // handler, before the console's own), p95 over the page's 4 sessions, budget 100 ms. Stop: the page's Stop button to
 // `idle {interrupted}` in that page, p95, budget 1 s. Each page session is paired with its fake by identity (the fake's first input,
 // `load <k>`, which its stamp file names), and every line its fake wrote before Stop must reach its page exactly once. Latency counts
-// only once all 8 fakes wrote 80% of the rate over a common window of at least 6 s ending at the first Stop, and only the items
+// only once all 8 fakes wrote 80% of the rate in every 2 s subwindow of a common window of at least 6 s ending at the first Stop, and only the items
 // written in it; Stop ends at exactly `idle {interrupted}` (S36 r2 F2.3, test/host/load_check.mjs).
 // The state bytes per entry are the kernel crate's (kernel/tests/it/s36_load.rs). By hand: `npm run test:load` in console/. Exit 0
 // within budget, 1 over or failed, 2 not run (a prerequisite missing: watane-dev, fake-claude, cargo, python3, Chromium).
