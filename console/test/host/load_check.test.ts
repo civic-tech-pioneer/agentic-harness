@@ -87,3 +87,31 @@ describe("S36 r5 load checks", () => {
     assert.ok(loadWindow(by, 8000, { deltas: 50, entries: 5 }, 6).faults.length > 0);
   });
 });
+
+describe("S36 r6 load checks", () => {
+  /** 8 sources stamping a delta every `d` ms and an entry every `e` ms from 0 to `to`, with one gap of `gap` ms (kind `k`) at 3 s. */
+  const run = (d: number, e: number, to: number, gap?: { kind: "delta" | "entry"; ms: number }) => {
+    const by = new Map<string, { at: number; kind: string; n: number }[]>();
+    for (let s = 0; s < 8; s++) {
+      const xs: { at: number; kind: string; n: number }[] = [];
+      for (const [kind, every] of [["delta", d], ["entry", e]] as const) {
+        for (let t = 0; t < to; t += every) {
+          if (gap?.kind === kind && t > 3000 && t < 3000 + gap.ms) continue;
+          xs.push({ at: t, kind, n: xs.length });
+        }
+      }
+      xs.sort((a, b) => a.at - b.at);
+      by.set(`source ${s}`, xs);
+    }
+    return by;
+  };
+  it("regress_S36_r6_the_real_runs_jitter_passes (F6.3)", () => {
+    // the real stage B run's worst gaps: 28.5 ms between deltas, 205 ms between entries, window edges included
+    expect(loadWindow(run(28.5, 205, 8000), 8000, RATE, 6).faults).toEqual([]);
+  });
+  it("regress_S36_r6_a_gap_over_twice_the_spacing_fails (F6.3)", () => {
+    expect(loadWindow(run(20, 200, 8000, { kind: "delta", ms: 41 }), 8000, RATE, 6).faults.length).toBeGreaterThan(0);
+    expect(loadWindow(run(20, 200, 8000, { kind: "entry", ms: 401 }), 8000, RATE, 6).faults.length).toBeGreaterThan(0);
+    expect(loadWindow(run(20, 200, 8000), 7980 + 41, RATE, 6).faults.length).toBeGreaterThan(0); // the window's right edge
+  });
+});
