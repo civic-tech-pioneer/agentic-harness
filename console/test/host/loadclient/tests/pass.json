@@ -1,6 +1,6 @@
 {
   "fakes": {"mods:agent/sessions": {"start": {"err": "busy"}}},
   "steps": [
-    {"call": "api.start", "args": {"key": "k1", "input": "hi"}, "returns": {"err": "Busy"}}
+    {"call": "api.start", "args": {"key": "k1", "input": "hi"}, "returns": {"err": "Error::Busy"}}
   ]
 }
