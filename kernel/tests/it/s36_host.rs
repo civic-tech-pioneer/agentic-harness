@@ -73,7 +73,8 @@ mod owed_idle {
         // the next turn still ends at its own idle
         k.say("page", &id, "k2", r#"[{"type":"text","text":"again"}]"#)
             .unwrap();
-        k.provider_lines(&t, vec![(3, IDLE.into())]).unwrap();
+        k.provider_lines(&t, vec![(3, RESULT.into()), (4, IDLE.into())])
+            .unwrap();
         let last = turns(&mut k, &id);
         assert!(last.last().unwrap().contains("completed"), "{last:?}");
     }
@@ -92,7 +93,8 @@ mod owed_idle {
             "the replacement's turn ended: {:?}",
             rec.turn
         );
-        k.provider_lines(&t, vec![(3, IDLE.into())]).unwrap();
+        k.provider_lines(&t, vec![(3, RESULT.into()), (4, IDLE.into())])
+            .unwrap();
         let rec = Record::load(&mut k.state, &id).unwrap();
         assert!(!rec.turn.is_active());
     }

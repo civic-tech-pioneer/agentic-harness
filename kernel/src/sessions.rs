@@ -908,6 +908,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .put(&stream_key(&started.stream), bytes)
             .map_err(|e| KernelError::TooLarge(e.0 as u64))?;
         rec.add_stream(started.stream)?;
+        rec.owed_idles = 0;
         slots.provider += 1;
         a.owner.open_provider(slots.boot);
         Ok(())
@@ -926,6 +927,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.state.delete(&stream_key(stream));
         self.drop_adapter(stream);
         rec.streams.retain(|s| s != stream);
+        rec.owed_idles = 0;
         if rec.boot != slots.boot {
             return false;
         }
@@ -2287,6 +2289,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if was {
             self.end_interrupted(&mut rec, past, now, &mut work)?;
             if let Some((stream, direct)) = live.clone() {
+                // `claude` ends the interrupted turn with an `idle` of its own, later (S36).
+                rec.owed_idles = rec.owed_idles.saturating_add(1);
                 work.requests.push(Request::Interrupt {
                     session: rec.id.clone(),
                     stream,
@@ -3196,7 +3200,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 if let Some(r) = out.resolved {
                     self.resolve(&mut rec, past, r, now, &mut work)?;
                 }
-                if out.idle {
+                if out.idle && rec.owed_idles > 0 {
+                    rec.owed_idles -= 1;
+                } else if out.idle {
                     let idle = Turn::Idle {
                         stop: Stop::Completed,
                         seconds: None,
