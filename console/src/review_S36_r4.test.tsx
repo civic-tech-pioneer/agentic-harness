@@ -31,12 +31,12 @@ describe("S36 r4", () => {
     await u.click(screen.getByRole("button", { name: "Remove queued message 1" }));
     await settle();
     set(f, "say", async (...args: unknown[]) => { f.calls.push({ name: "say", args }); throw refusal("queue-full"); });
-    await u.click(screen.getByRole("button", { name: "Undo", exact: true }));
+    await u.click(screen.getByRole("button", { name: "Undo" }));
     await settle();
     await u.click(screen.getByRole("button", { name: "Edit queued message 1" })); // another row frees room
     await settle();
     act(() => { vi.advanceTimersByTime(7000); });
-    expect(screen.getAllByRole("button", { name: "Undo", exact: true })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1);
   });
   it("regress_s36_refused_interrupt_after_a_switch_keeps_the_taken_text (F4.1)", async () => {
     const f = fakeKernel([...story, [queueOf(["first one", "second one"])]]);
