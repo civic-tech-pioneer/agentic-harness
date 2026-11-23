@@ -267,6 +267,17 @@ describe("S35 r4: the kept draft (deputy's rule: unsent text only; TECHNICAL 18.
     render(<Console served={await served(f.w)} />);
     expect(box().value).toBe(""); // the pending send is not offered as unsent (F4.1, F4.3)
   });
+  it("r5_f5_1_send_clears_the_kept_draft_before_say_is_dispatched", async () => {
+    let draftWhenDispatched: string | null | undefined;
+    const f = sessions(() => {
+      draftWhenDispatched = sessionStorage.getItem("wa-draft:s");
+      return new Promise(() => {});
+    });
+    render(<Console served={await served(f.w)} />);
+    fireEvent.change(box(), { target: { value: "pending" } });
+    fireEvent.keyDown(box(), { key: "Enter" });
+    expect(draftWhenDispatched).toBeNull();
+  });
   it("r4_rule_3_a_refusal_while_mounted_puts_the_text_back_in_the_composer_and_the_kept_draft", async () => {
     let refuse!: (r: unknown) => void;
     const f = sessions(() => new Promise((r) => { refuse = r; }));
