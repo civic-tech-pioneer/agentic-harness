@@ -62,12 +62,6 @@ fn init(cwd: Option<&str>) -> String {
     v.to_string()
 }
 
-fn read(id: &str, path: &str) -> String {
-    json!({"type":"ask","id":id,"tool":"Read","input":{"file_path":path},"path":path,
-        "tool_use_id":format!("t-{id}"),"expires-at":9000})
-    .to_string()
-}
-
 #[allow(dead_code)]
 fn stored_ask(k: &mut K, s: &str, id: &str) -> Value {
     k.read("alice", s, 0, None, 512)
@@ -79,7 +73,6 @@ fn stored_ask(k: &mut K, s: &str, id: &str) -> Value {
         .unwrap()["body"]
         .clone()
 }
-
 
 /// A `system/init` with a key twice whose `subtype` spells `init` with a JSON escape: every JSON
 /// reader takes it as `init`, but `unread_init` looks for the literal bytes `"init"`, so it does
