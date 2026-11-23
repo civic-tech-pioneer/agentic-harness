@@ -2522,7 +2522,7 @@ The frames give layout, spacing and words; these values are fixed:
 Continue on `unknown` sends `say` with the text `Continue` (9.3, R5).
 
 Only the word and its subject are in the live region; the clock is not read
-out. Stop shows "Stopping…" until a `turn` update says idle.
+out. Stop shows "Stopping…" until a `turn` update says idle, or shows another running turn (Stop and send's replacement, whose running update may reach the view in the same frame as the interrupted one; S36 r1).
 
 ### 18.6 Behaviour
 
