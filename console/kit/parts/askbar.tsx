@@ -53,9 +53,9 @@ export function AskBar({ call, askId, reach, actions, sent = false, judge = fals
       {refused ? <p key="refused" ref={note} className="wa-refused" role="alert" tabIndex={-1}>The answer was not taken. Try again.</p> : null}
       <div ref={mark} className="wa-askbar askbar" role="group" aria-label="Your answer">
         <span className="askq">{QUESTION[call.kind] ?? "Allow this call?"}</span>
-        <button type="button" ref={denyBtn} className="btn quiet danger" onClick={() => { if (denying) closeDeny(); else { setDenying(true); queueMicrotask(() => { reasonIn.current?.focus({ preventScroll: true }); revealForm(reasonIn.current?.closest("form") ?? null); }); } }}>Deny…</button>
-        {reach ? <button type="button" className="btn" onClick={() => actions.answer(id, { outcome: "allow", for: "session" })}>Allow {reach} this session</button> : null}
-        <button type="button" className="btn primary wa-primary" data-ask-first onClick={() => actions.answer(id, { outcome: "allow" })}>Allow once</button>
+        <button type="button" ref={denyBtn} className="btn quiet danger" disabled={actions.off} onClick={() => { if (denying) closeDeny(); else { setDenying(true); queueMicrotask(() => { reasonIn.current?.focus({ preventScroll: true }); revealForm(reasonIn.current?.closest("form") ?? null); }); } }}>Deny…</button>
+        {reach ? <button type="button" className="btn" disabled={actions.off} onClick={() => actions.answer(id, { outcome: "allow", for: "session" })}>Allow {reach} this session</button> : null}
+        <button type="button" className="btn primary wa-primary" data-ask-first disabled={actions.off} onClick={() => actions.answer(id, { outcome: "allow" })}>Allow once</button>
       </div>
       {denying ? (
         <form className="wa-deny denyrow" onSubmit={(e) => { e.preventDefault(); const r = reason.trim(); actions.answer(id, r ? { outcome: "deny", reason: r } : { outcome: "deny" }); }}>
@@ -64,7 +64,7 @@ export function AskBar({ call, askId, reach, actions, sent = false, judge = fals
             onChange={(e) => setReason(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); closeDeny(); } }} />
           <button type="button" className="btn quiet" onClick={closeDeny}>Cancel</button>
-          <button type="submit" className="btn danger">Deny</button>
+          <button type="submit" className="btn danger" disabled={actions.off}>Deny</button>
         </form>
       ) : null}
     </>

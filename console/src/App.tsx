@@ -27,6 +27,8 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
   const viewRef = useRef(view); viewRef.current = view;
   const heldRef = useRef(held); heldRef.current = held;
   const subRef = useRef(sub); subRef.current = sub;
+  const [replaced, setReplaced] = useState(false); // 18.6 "Another tab": the stream went to another tab
+  const reattach = useRef<(() => void) | null>(null);
   const [needsHidden, setNeedsHidden] = useState(false);
   const lastAsk = useRef<string | null>(null); // the ask whose card last took focus
   // ask ids repeat across sessions: what this console answered is per session; a new session opens at its end, not stopping
@@ -37,8 +39,10 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
     let open = true; // a late view of a closed session is never kept
     const tok = {};
     setSub(tok);
-    const s = openSession(kernel, id, (v) => { if (open) setHeld({ tok, id, kernel, view: v }); });
-    return () => { open = false; s.close(); };
+    setReplaced(false);
+    const s = openSession(kernel, id, (v) => { if (open) setHeld({ tok, id, kernel, view: v }); }, (r) => { if (open) setReplaced(r); });
+    reattach.current = s.reattach;
+    return () => { open = false; reattach.current = null; s.close(); };
   }, [kernel, info.id]);
   // 18.6 Place: follow the end while the reader is within 40 px of it (and on open).
   const toEnd = useCallback(() => {
@@ -79,7 +83,9 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
       throw e;
     });
   };
+  const off = replaced;
   const actions: Actions = useMemo(() => ({
+    off,
     answeredAsks,
     say: (text) => kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: () => Promise.reject(new Error("an answer goes out only with the ask its card drew")), // fail closed: no drawn ask, no identity check
@@ -92,7 +98,7 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
     },
     stop: () => { setStopping(true); void kernel.interrupt(info.id); },
     takeBack: (id) => void kernel.takeBack(info.id, id),
-  }), [kernel, info.id, answeredAsks]);
+  }), [kernel, info.id, answeredAsks, off]);
 
   const shown = useMemo(() => live.size && view.openAsks.some((id) => live.has(id)) ? { ...view, openAsks: view.openAsks.filter((id) => !live.has(id)) } : view, [view, live]);
 
@@ -161,7 +167,7 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
             }}>
             <div className="wa-column"><Transcript view={view} actions={actions} /></div>
           </div>
-          <Dock view={shown} actions={actions} onNeedsYou={needsYou} needsHidden={needsHidden} behind={behind && !atEnd.current} onBehind={toTheEnd} session={{ model: info.model, mode: info.mode }} sessionId={info.id} stopping={stopping}
+          <Dock view={shown} actions={actions} onNeedsYou={needsYou} needsHidden={needsHidden} behind={behind && !atEnd.current} onBehind={toTheEnd} session={{ model: info.model, mode: info.mode }} sessionId={info.id} stopping={stopping} replaced={replaced} onUseHere={() => reattach.current?.()}
             status={<StatusLine view={shown} answered={view.openAsks.length - shown.openAsks.length} now={now} stopping={stopping} actions={actions} onNeedsYou={needsYou} />} />
         </ThreadProvider>
       </main>

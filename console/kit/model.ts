@@ -58,6 +58,8 @@ export const emptyView: SessionView = {
   allows: [], lastIndex: 0, synced: false, loading: false,
 };
 export interface Actions {
+  /** The view's stream went to another tab: asks, Send and Stop are off (18.6 "Another tab"). */
+  off?: boolean;
   /** The asks this console answered that have no decision entry yet (9.4 rule 4), each with the open ask object it was answered for:
    * a card is answered only when its own row's ask is that object (the dock's count reads the same set). */
   answeredAsks?: ReadonlyMap<string, Ask>;

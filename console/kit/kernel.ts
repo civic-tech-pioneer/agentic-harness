@@ -66,7 +66,7 @@ export function governor() {
 }
 
 /** Opens a session: attaches after the last index shown, pages when behind, reattaches when the stream drops. */
-export function openSession(rawKernel: Kernel, session: string, onView: (v: SessionView) => void): { close(): void } {
+export function openSession(rawKernel: Kernel, session: string, onView: (v: SessionView) => void, onReplaced: (replaced: boolean) => void = () => {}): { close(): void; reattach(): void } {
   const gov = governor();
   const kernel: Kernel = {
     ...rawKernel,
@@ -74,6 +74,7 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
     read: async (...a) => { await gov.take(); return rawKernel.read(...a); },
   };
   let view = emptyView;
+  let replaced = false; // another tab took the stream (9.4): the page is told, and offers `reattach`
   let closed = false;
   let gen = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -216,6 +217,7 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
             for (const m of join.push(json)) show(safeReduce(view, m));
             if (was) tries = 0; // a live item resets the try count, not the one quick reattach
             else if (view.synced) {
+              if (replaced) { replaced = false; if (!closed) onReplaced(false); } // the attach after "Use here" has synced: the notice goes
               reached = true;
               if (stable) clearTimeout(stable);
               stable = setTimeout(() => { if (!closed && g === gen) healthy(); }, STABLE_MS);
@@ -224,7 +226,7 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
           (reason) => {
             if (g !== gen || closed) return; // an old connection's end leaves the new one's timer alone
             if (stable) clearTimeout(stable);
-            if (reason === "replaced") return;
+            if (reason === "replaced") { replaced = true; if (!closed) onReplaced(true); return; } // 18.6 "Another tab": no reattach by itself; the page offers "Use here"
             if (reached && !quick) { quick = true; void connect(); }
             else fail(g, `the stream ended (${reason}) ${reached ? "again right after it synced" : "before it synced"}`);
           });
@@ -249,5 +251,5 @@ export function openSession(rawKernel: Kernel, session: string, onView: (v: Sess
   }
 
   void connect();
-  return { close() { closed = true; gen++; gov.stop(); if (frame !== undefined) { if (framed) cancelAnimationFrame(frame as number); else clearTimeout(frame as ReturnType<typeof setTimeout>); frame = undefined; } if (timer) clearTimeout(timer); if (stable) clearTimeout(stable); } };
+  return { reattach() { if (closed) return; tries = 0; quick = false; void connect(); }, close() { closed = true; gen++; gov.stop(); if (frame !== undefined) { if (framed) cancelAnimationFrame(frame as number); else clearTimeout(frame as ReturnType<typeof setTimeout>); frame = undefined; } if (timer) clearTimeout(timer); if (stable) clearTimeout(stable); } };
 }
