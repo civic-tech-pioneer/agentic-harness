@@ -31,7 +31,7 @@ fn adv_s34_unicode_spelling_of_a_named_file_gets_a_key() {
             ),
         ] {
             assert_eq!(
-                scope(tool, ws, &input),
+                scope(tool, ws, &input, Some(&path)),
                 None,
                 "{tool} {name:?} writes the protected file on macOS and must ask"
             );

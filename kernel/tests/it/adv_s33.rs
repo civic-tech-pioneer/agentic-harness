@@ -16,6 +16,7 @@ fn adv_s33_glob_absolute_pattern_escapes_workspace() {
         "ask",
         "Glob",
         &json!({"path": "/w/src", "pattern": "*.rs"}),
+        Some("/w/src"),
     );
     assert_eq!(seen.as_deref(), Some("Glob(/w/**)"));
     let wider = reach(
@@ -24,6 +25,7 @@ fn adv_s33_glob_absolute_pattern_escapes_workspace() {
         "ask",
         "Glob",
         &json!({"path": "/w/src", "pattern": "/home/*/.ssh/*"}),
+        Some("/w/src"),
     );
     assert_ne!(
         wider, seen,

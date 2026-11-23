@@ -37,7 +37,7 @@ fn started(k: &mut K, ws: Option<&str>) -> String {
     k.attach("alice", &id, 0).unwrap();
     if let Some(w) = ws {
         let mut r = rec(k, &id);
-        r.workspace = Some(w.into());
+        r.folder = Some(w.into());
         r.save(&mut k.state).unwrap();
     }
     id
@@ -48,8 +48,16 @@ fn rec(k: &mut K, id: &str) -> Record {
 }
 
 fn ask(k: &mut K, a: &mut ClaudeAdapter, s: &str, id: &str, tool: &str, input: Value) {
-    let l = json!({"type": "ask", "id": id, "tool": tool, "input": input,
+    let mut l = json!({"type": "ask", "id": id, "tool": tool, "input": input,
         "tool_use_id": format!("t-{id}"), "expires-at": 9000});
+    // The path the host would resolve: the input's own, as given (no symlinks here).
+    let p = ["file_path", "notebook_path", "path"]
+        .iter()
+        .find_map(|k| l["input"].get(*k).and_then(Value::as_str))
+        .map(str::to_string);
+    if let Some(p) = p {
+        l["path"] = json!(p);
+    }
     for out in a.line(l.to_string().as_bytes(), 1000) {
         k.provider(s, ProviderEvent::Out(out)).unwrap();
     }

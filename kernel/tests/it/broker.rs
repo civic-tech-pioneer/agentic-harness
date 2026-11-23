@@ -6,8 +6,16 @@ use agent_kernel::broker::reach;
 use agent_kernel::*;
 use serde_json::{json, Value};
 
+/// The path the host would resolve for an input: its own file or search path, as given (no
+/// symlinks here; S36-1's tests feed the resolved path apart).
+fn path_of(input: &Value) -> Option<&str> {
+    ["file_path", "notebook_path", "path"]
+        .iter()
+        .find_map(|k| input.get(*k).and_then(Value::as_str))
+}
+
 fn r(ws: Option<&str>, tool: &str, input: Value) -> Option<String> {
-    reach("alice", ws, "ask", tool, &input)
+    reach("alice", ws, "ask", tool, &input, path_of(&input))
 }
 
 #[test]
@@ -157,8 +165,14 @@ fn ac1_reach_of_bash_and_other_tools() {
     for none in ["AskUserQuestion", "ExitPlanMode", "Web Fetch", "Bash(ls)"] {
         assert_eq!(r(None, none, json!({})), None, "{none}");
     }
-    assert_eq!(reach("alice", None, "check", "TodoWrite", &json!({})), None);
-    assert_eq!(reach("agent:x", None, "ask", "TodoWrite", &json!({})), None);
+    assert_eq!(
+        reach("alice", None, "check", "TodoWrite", &json!({}), None),
+        None
+    );
+    assert_eq!(
+        reach("agent:x", None, "ask", "TodoWrite", &json!({}), None),
+        None
+    );
 }
 
 type K = Kernel<MemState, FakeHost>;
@@ -204,6 +218,9 @@ fn rec(k: &mut K, id: &str) -> Record {
 fn ask(id: &str, tool: &str, input: Value, reach: Option<&str>) -> ProviderEvent {
     let mut body = json!({"id": id, "kind": "ask", "toolCallId": id,
         "toolCall": {"toolCallId": id, "title": tool}, "input": input, "expires-at": 9000});
+    if let Some(p) = path_of(&input).map(str::to_string) {
+        body["path"] = json!(p);
+    }
     if let Some(r) = reach {
         body["reach"] = json!(r);
     }
@@ -397,7 +414,7 @@ fn edit_ask(ws: &str, held: usize, pad: usize) -> (K, String) {
         })
         .unwrap();
     }
-    r.workspace = Some(ws.to_string());
+    r.folder = Some(ws.to_string());
     r.save(&mut k.state).unwrap();
     let input = json!({"file_path": format!("{ws}/a.rs")});
     k.provider(&id, ask("a1", "Edit", input, None)).unwrap();
