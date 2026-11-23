@@ -573,6 +573,13 @@ S2 writes each into the document that owns it.
 
 ## Waiting on the human
 
+- **S35-MERGE: PR #43 after the extra round (r6: `changes (2)`, adversary HELD, user-sim ACCEPTED, F5.1 closed, CI gate
+  green).** F6.1 (PLAN.md on the branch still shows R-B1 open) is done on main; the slice does not touch PLAN.md. F6.2 is
+  a one-line citation in `provider/BOUNDARIES.md` (cite 3629c5c, not 866d325); the builder fixes it now (routine, 08:45
+  UTC). Options: (a) the deputy checks F6.2 with Codex's own command (`git show <sha>:design/TECHNICAL.md | grep -Fx` each
+  copied row, exit 0) and green CI, then merges with no seventh review (rec: a citation, checked mechanically); (b) one
+  more Codex review round first. Undo: (a) a revert of the merge.
+
 - **N5 The factory's implementer needs a shell (revisit when stage E starts; the human leans to (b)).** Options:
   (a) Claude grant with shell and web (nothing new; (b) can follow); (b) a `codex app-server`
   backend in the host, a third native process kind (a new host boundary, costly to remove once
