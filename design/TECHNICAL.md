@@ -2563,7 +2563,9 @@ out. Stop shows "Stopping…" until a `turn` update says idle, or shows another 
   call that ends after she switched acts on its own session alone. A message
   a queue action took out is never lost to a refusal: a refused Stop and
   send, or a refused Undo, puts the input in the composer when it is empty,
-  else shows the error with Undo again (S36 r1).
+  else shows the error with Undo again, kept: no timer, no later queue action
+  clears it, and a later line (a Remove's "Removed.") carries its inputs, so
+  one Undo puts every one of them back (S36 r1, user-sim).
 - **Send.** A `say` that fails (any error of 2.3: `refused`, `queue-full`,
   `quota`, `paused`, `busy`, `backend`, ...) puts its text back into the
   composer, unless the participant has typed since, and shows the error's
