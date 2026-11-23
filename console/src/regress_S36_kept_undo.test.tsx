@@ -1,7 +1,8 @@
 // S36 user-sim (Alice on the real host): a refused Undo with a draft in the composer keeps the message as
 // "The queue is full. ... remove a queued message." with Undo again. Alice does what it says and removes another
 // queued message: that Remove's own "Removed. Undo" replaces the kept one, and the first message is gone for good.
-// TECHNICAL 18.6 "Queue": a message a queue action took out is never lost to a refusal.
+// S36 r2, the deputy's rule (18.6 "Queue"): a refused Undo changes nothing: its line and Undo stay, and Undo once
+// the queue has room puts the message back. A later Remove is a line of its own, as any Remove's is.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -18,7 +19,7 @@ const box = () => screen.getByRole("textbox", { name: "Message" }) as HTMLTextAr
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 
 describe("S36 user-sim", () => {
-  it("regress_S36_kept_undo_survives_the_next_remove", async () => {
+  it("regress_S36_refused_undo_keeps_its_line_and_undo", async () => {
     const f: FakeKernel = fakeKernel([...story, queue("first one", "second one")]);
     for (let n = 0; n < story.length + 1; n++) f.play(n);
     render(<App kernel={f} info={INFO} />);
@@ -33,19 +34,14 @@ describe("S36 user-sim", () => {
     await u.click(screen.getByRole("button", { name: "Undo" }));
     await settle();
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument(); // kept, with the error
-    // she follows the error's advice: removes a queued message, then uses every Undo the page offers
+    // she makes room (a queued message is taken from the queue by the turn) and uses the same Undo again
     f.say = say;
     const mark = f.calls.length;
-    await u.click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await u.clear(box());
+    await u.click(screen.getByRole("button", { name: "Undo" }));
     await settle();
-    for (let k = 0; k < 3; k++) {
-      const b = screen.queryByRole("button", { name: "Undo" });
-      if (!b) break;
-      await u.click(b);
-      await settle();
-    }
     const sent = f.calls.slice(mark).filter((c) => c.name === "say").map((c) => c.args[2]);
-    expect(sent).toContain("second one");
-    expect(box().value === "first one" || sent.includes("first one"), `after the second Remove and its Undo she sent ${JSON.stringify(sent)}, the composer holds ${JSON.stringify(box().value)}: "first one" is lost`).toBe(true);
+    expect(sent).toEqual(["first one"]);
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 });
