@@ -2346,15 +2346,15 @@ machine. A stage is done only within its budgets.
   test mod `local/loadclient` (its `access/` seeded into the stopped preview, a test-only reach),
   all started together, each on the fake's `load` at 50 deltas and 5 entries of 4 096 bytes a
   second for 8 s, then Stop. Latency counts only once all 8 fakes wrote at least 80% of that
-  rate in every 2 s subwindow of a common window of at least 6 s ending at the first Stop (8.0 s in
+  rate in every 2 s subwindow of a common window of at least 6 s ending at the first Stop (7.9 to 8.0 s in
   each pass), and only for the items written in it (S36 r2 F2.3: a run with one idle client fails;
   S36 r3 F3.5: sources that load in turn, not together, fail). Each page session is paired with its fake by identity (the fake's
   first input, `load <k>`, which a test-only wrapper that stamps each stdout write records), and
   every line its fake wrote before Stop reached its page exactly once (about 1 750 per run, none
   missing, none twice, none from another session). Item delay, the fake's stdout write to the
   item's arrival at the Chromium page's `watane.on` handler, p95 over the page's 4 sessions:
-  6.5, 9.3, 14.1 ms in three passes in a row (max 139 to 143 ms; budget 100). The page's Stop
-  button to exactly `idle {interrupted}` in that page, p95: 19.9, 27.0, 16.9 ms
+  10.5, 12.9, 12.0 ms in three passes in a row (max 136 to 146 ms; budget 100). The page's Stop
+  button to exactly `idle {interrupted}` in that page, p95: 18.7, 19.2, 12.4 ms
   (budget 1 000). State bytes read and written per finished entry (kernel crate,
   `cargo test -- --ignored s36_load`, the mean over 30 entries of 4 KiB after 10 deltas each):
   74 613 at 10 entries, 81 257 at 10 000 (ratio 1.09; budget 2 MiB, within 10%), after the fix
@@ -2363,7 +2363,8 @@ machine. A stage is done only within its budgets.
   10 000 entries were not run on the host: the per-entry state bytes, the one figure that could
   grow with them, are the crate's. The first record (S36) timed raw Node socket arrivals and
   paired sessions with fakes by their delays; S36 r1 (F1.8) replaced it with these browser
-  measurements; S36 r2 added the common-window rate check and remeasured.
+  measurements; S36 r2 added the common-window rate check and remeasured; S36 r3 made it hold in every 2 s
+  subwindow and remeasured (watane `slice/s100` at fdb3d9a).
 
 ## 17. Build plan
 
