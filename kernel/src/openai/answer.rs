@@ -43,20 +43,14 @@ pub const MAX_ATTEMPTS: u32 = 6;
 pub fn head(item: &[u8]) -> Option<Head> {
     let v: Value = serde_json::from_slice(item).ok()?;
     let status = u16::try_from(v.get("status")?.as_u64()?).ok()?;
-    let sse = v
-        .get("headers")
-        .and_then(Value::as_object)
-        .map(|h| {
-            h.iter().any(|(k, v)| {
-                k.eq_ignore_ascii_case("content-type")
-                    && v.as_str().is_some_and(|s| {
-                        s.split(';')
-                            .next()
-                            .is_some_and(|m| m.trim().eq_ignore_ascii_case("text/event-stream"))
-                    })
+    let sse = v.get("headers")?.as_object()?.iter().any(|(k, v)| {
+        k.eq_ignore_ascii_case("content-type")
+            && v.as_str().is_some_and(|s| {
+                s.split(';')
+                    .next()
+                    .is_some_and(|m| m.trim().eq_ignore_ascii_case("text/event-stream"))
             })
-        })
-        .unwrap_or(false);
+    });
     Some(Head { status, sse })
 }
 
