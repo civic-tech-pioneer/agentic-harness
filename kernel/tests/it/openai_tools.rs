@@ -1326,7 +1326,10 @@ fn r1_f1_5_a_restart_reopens_the_toolsets_before_running_jobs_again() {
     assert_ne!(again[0].0, old, "the job runs on the new handle");
     assert_eq!(again[0].1, format!("{id}/c1"), "under its original key");
     assert_eq!(lp(&mut k, &id)["tools"]["handle"], again[0].0.as_str());
-    assert_eq!(rec(&mut k, &id).handle.as_deref(), Some(again[0].0.as_str()));
+    assert_eq!(
+        rec(&mut k, &id).handle.as_deref(),
+        Some(again[0].0.as_str())
+    );
 }
 
 /// F1.5: a session idle at the restart opens its toolsets again before its next step's jobs.
@@ -1350,7 +1353,11 @@ fn r1_f1_5_an_idle_session_reopens_the_toolsets_after_a_restart() {
         .iter()
         .any(|c| matches!(c, HostCall::ToolsOpen { .. })));
     let s = stream_of(&mut k, &id);
-    feed(&mut k, &s, vec![sse_head(), completed(&[call_of("c2", "notes_a", "{}")])]);
+    feed(
+        &mut k,
+        &s,
+        vec![sse_head(), completed(&[call_of("c2", "notes_a", "{}")])],
+    );
     let again = calls_of(&k);
     assert_eq!(again.len(), 1);
     assert_ne!(again[0].0, old);

@@ -1354,7 +1354,10 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   slot or wait in the FIFO under the new boot; `retrying` stays, its `retry`
   deadline and timer kept, and the request goes when it fires; `tools` stays,
   its open jobs of `idempotent` tools start again under their keys (job slots
-  as above), the others get `aborted`, `pending` calls start in waves as
+  as above) on the toolsets opened again (the host keeps handles in memory: a
+  handle kept from an earlier boot is opened again before its next job or
+  request, in any state; the described tools are kept, so the requests' bytes
+  stay the same), the others get `aborted`, `pending` calls start in waves as
   before, the first at once up to the free job slots, and with no call left
   open or pending it goes to `ready`; `waiting` and `paused` are unchanged.
 - **Settled by S40-3 (the loop).**

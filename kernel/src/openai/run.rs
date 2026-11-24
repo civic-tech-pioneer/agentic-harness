@@ -376,7 +376,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if !room {
             return Launch::Wait;
         }
-        match self.tools_setup(ls) {
+        match self.tools_setup(ls, slots.boot) {
             Ok(()) => {}
             Err(SetupError::Consent(what)) => return Launch::Consent(what),
             Err(SetupError::Failed(e)) => return Launch::Failed(e),

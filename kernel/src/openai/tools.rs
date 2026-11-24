@@ -58,6 +58,10 @@ pub struct ToolInfo {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ToolSet {
     pub handle: String,
+    /// The boot the handle was opened in: the host keeps handles in memory, so a later boot
+    /// opens the toolsets again (9.5 "After a restart").
+    #[serde(default)]
+    pub boot: u64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub described: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -171,9 +175,10 @@ impl<S: State, H: Host> Kernel<S, H> {
     // ---- opening the toolsets
 
     /// The session's `agent-tools` handle and the tools it describes (AC1): opened and described
-    /// at the first request, kept in the loop state, never again. A profile with no toolsets
-    /// opens nothing.
-    pub(crate) fn tools_setup(&mut self, ls: &mut LoopState) -> Result<(), SetupError> {
+    /// at the first request, kept in the loop state, never again; a handle of an earlier `boot`
+    /// is opened again (the described tools are kept, so the requests' bytes stay the same). A
+    /// profile with no toolsets opens nothing.
+    pub(crate) fn tools_setup(&mut self, ls: &mut LoopState, boot: u64) -> Result<(), SetupError> {
         if ls.policy.toolsets.is_empty() {
             return Ok(());
         }
@@ -181,12 +186,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             Some(what) => SetupError::Consent(what),
             None => SetupError::Failed(e),
         };
-        if ls.tools.is_none() {
+        if ls.tools.as_ref().is_none_or(|t| t.boot != boot) {
             let handle = self.host.tools_open(&ls.policy.toolsets).map_err(fail)?;
-            ls.tools = Some(ToolSet {
-                handle,
-                ..ToolSet::default()
-            });
+            let set = ls.tools.get_or_insert_with(ToolSet::default);
+            set.handle = handle;
+            set.boot = boot;
         }
         let Some(set) = ls.tools.as_mut().filter(|t| !t.described) else {
             return Ok(());
@@ -511,7 +515,23 @@ impl<S: State, H: Host> Kernel<S, H> {
         ls: &mut LoopState,
         cx: &mut Cx,
     ) -> Result<Blocked, KernelError> {
-        let handle = ls.tools.as_ref().map(|t| t.handle.clone());
+        if !ls.calls.iter().any(|c| c.st == CallState::Pending) {
+            return Ok(Blocked::No);
+        }
+        let setup = match self.tools_setup(ls, cx.slots.boot) {
+            Ok(()) => None,
+            Err(SetupError::Consent(what)) => Some(format!("consent-pending({what})")),
+            Err(SetupError::Failed(e)) => Some(e),
+        };
+        if let Some(t) = &ls.tools {
+            if rec.handle.as_deref() != Some(t.handle.as_str()) {
+                rec.handle = Some(t.handle.clone());
+            }
+        }
+        let handle = match setup {
+            None => ls.tools.as_ref().map(|t| t.handle.clone()),
+            Some(_) => None,
+        };
         let mut i = 0;
         while i < ls.calls.len() {
             if ls.calls[i].st != CallState::Pending {
@@ -547,7 +567,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 Some(h) => self
                     .host
                     .tools_call(h, &key, &field("name"), &field("arguments")),
-                None => Err("no handle".to_string()),
+                None => Err(setup.clone().unwrap_or_else(|| "no handle".to_string())),
             };
             match started {
                 Ok(stream) => {
