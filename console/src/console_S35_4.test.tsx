@@ -34,9 +34,10 @@ describe("S35-4 AC2 the new-session view", () => {
     expect(screen.getByRole("button", { name: "Start session" })).toBeDisabled();
     expect(f.calls.map((c) => c.fn)).toEqual(["sessions.list"]); // no session was started by looking
   });
-  it("ac2_send_starts_with_a_fresh_scratch_key_and_opens_the_session_in_place", async () => {
+  it.each(["", "   "])("ac2_send_starts_with_a_fresh_scratch_key_for_blank_folder_%j", async (folder) => {
     const f = setup();
     render(<Console served={await served(f.w)} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Folder path" }), { target: { value: folder } });
     fireEvent.change(box(), { target: { value: "hi" } });
     fireEvent.keyDown(box(), { key: "Enter" });
     await tick();
@@ -48,7 +49,7 @@ describe("S35-4 AC2 the new-session view", () => {
     expect(text()).toContain("Claude Code (unchecked)");
     expect(text()).toContain("Scratch folder");
     expect(screen.getAllByText("Say hi").length).toBeGreaterThan(1); // the sidebar lists it too
-    expect(screen.queryByText("A new scratch folder")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "New session" })).toBeNull();
   });
   it("ac2_the_button_starts_too_and_a_new_session_after_it_shows_the_view_again", async () => {
     const f = setup();

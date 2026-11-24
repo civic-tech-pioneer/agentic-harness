@@ -1,5 +1,5 @@
 //! The watane 19.3/19.7 consumer seam. Drive the real adapter with host stream items and outcomes.
-use agent_kernel::{FakeHost, HostCall, Kernel, MemState, Record, SinkOutcome, Stop, Turn};
+use agent_kernel::{FakeHost, HostCall, Kernel, MemState, Record, SinkOutcome, State, Stop, Turn};
 use serde_json::json;
 
 const FOLDER: &str = "/home/alice/notes";
@@ -164,4 +164,102 @@ fn ac4_picked_folder_never_offers_recursive_write_keys() {
         .find(|e| e["kind"] == "ask")
         .unwrap();
     assert!(ask["body"].get("reach").is_none());
+}
+
+fn launch_workspaces(k: &Kernel<MemState, FakeHost>) -> Vec<serde_json::Value> {
+    k.host
+        .calls
+        .iter()
+        .filter_map(|c| match c {
+            HostCall::StartProvider { launch, .. } => Some(
+                serde_json::from_str::<serde_json::Value>(launch).unwrap()["workspace"].clone(),
+            ),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn ac2_attach_after_initialized_shows_no_consent() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+        .unwrap()
+        .value;
+    let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    let pending = json!({"type": "consent-pending", "what": WHAT});
+    let initialized = json!({"type": "initialized", "workspace": FOLDER});
+    k.provider_lines(
+        &stream,
+        vec![
+            (1, pending.to_string().into_bytes()),
+            (2, initialized.to_string().into_bytes()),
+        ],
+    )
+    .unwrap();
+    k.host.calls.clear();
+    k.attach("page", &id, 0).unwrap();
+    assert!(!k.host.calls.iter().any(|c| matches!(c,
+        HostCall::Push { value, .. }
+        if value["_meta"]["watane"]["state"]["activity"]["kind"] == "consent")));
+}
+
+#[test]
+fn ac3_a_say_after_refusal_asks_for_the_picked_folder_again() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+        .unwrap()
+        .value;
+    let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    k.provider_ended_with(&stream, Some(format!("consent-refused({WHAT})")))
+        .unwrap();
+    k.host.calls.clear();
+    k.say("page", &id, "s1", "again").unwrap();
+    assert_eq!(launch_workspaces(&k), vec![json!(FOLDER)]);
+}
+
+#[test]
+fn ac1_scratch_session_lists_no_workspace_and_bad_folders_are_refused() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start("page", "s", "scratch", "{}", "hello")
+        .unwrap()
+        .value;
+    let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    let ws =
+        json!({"type": "initialized", "workspace": "scratch:0123456789abcdef0123456789abcdef"});
+    k.provider_lines(&stream, vec![(1, ws.to_string().into_bytes())])
+        .unwrap();
+    assert_eq!(k.list("page", None, 5).unwrap()[0].workspace, None);
+    for bad in [
+        "notes",
+        "scratch",
+        "scratch:0123456789abcdef0123456789abcdef",
+    ] {
+        k.host.calls.clear();
+        let e = k
+            .start_in_folder("page", bad, "scratch", "{}", "hello", bad)
+            .unwrap_err();
+        assert!(
+            matches!(e, agent_kernel::KernelError::Refused(r) if r.len() == 1 && r[0].field == "folder"),
+            "{bad}"
+        );
+        assert!(launch_workspaces(&k).is_empty());
+    }
+
+    k.state
+        .put(
+            "profile/o",
+            br#"{"backend":"openai","model":"gpt-5"}"#.to_vec(),
+        )
+        .unwrap();
+    k.state.put("access/page", br#"["o"]"#.to_vec()).unwrap();
+    let e = k
+        .start_in_folder("page", "openai", "o", "{}", "hello", FOLDER)
+        .unwrap_err();
+    assert!(
+        matches!(e, agent_kernel::KernelError::Refused(r) if r.len() == 1 && r[0].field == "folder")
+    );
+    assert!(launch_workspaces(&k).is_empty());
 }
