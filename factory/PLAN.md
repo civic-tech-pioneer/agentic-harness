@@ -32,7 +32,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 ### S38: stage C, the consumer half: Alice gives Notes' agents a folder, sees the wait, and can take it back
 (in flight, cloud, builder codex, reviewer claude; rule 3: last two handed out watane S103 claude, S107 codex, so by the
 count Claude builds next; deputy reason: the watane side has S103 on Claude, and this slice is console and kernel work,
-where Codex had no round yet in this repository, so Codex builds it and Claude reviews; sketched 2026-11-24 by deputy-3; Codex task https://chatgpt.com/local/6b054293-b150-83ed-8869-70e96b05307e, dispatched ~07:53 UTC; DELIVERED 08:05 as PR #52 (507+/85-, pushed only slice/S38); r1: Claude review routine `trig_01LqzqTFjZfs2fKqkKTvzqbj`, fires 08:10 UTC.)
+where Codex had no round yet in this repository, so Codex builds it and Claude reviews; sketched 2026-11-24 by deputy-3; Codex task https://chatgpt.com/local/6b054293-b150-83ed-8869-70e96b05307e, dispatched ~07:53 UTC; DELIVERED 08:05 as PR #52 (507+/85-, pushed only slice/S38); r1: Claude review routine `trig_01LqzqTFjZfs2fKqkKTvzqbj`, fires 08:10 UTC; r1 (08:40): 2/8 findings, changes (2) (validator RETURN x2, adversary HELD, user-sim REJECTED on outcome 3, accepted as R1.1); answer r1 dispatched 08:45 UTC into the same Codex task.)
 spec-check: covered by the spec-chain review of 2026-11-23 (PR #51); its TECHNICAL errors 1, 2, 12 and 13 are this slice's.
 
 Story (J11, its consent part; TECHNICAL 17 stage C, "this repository" column): Alice starts a session with reach into
@@ -121,6 +121,8 @@ reviewer claude. Cloud.
 
 
 ### Upkeep
+
+- **S38 after watane S103 merges:** run S38 outcomes 1-3 on a participant home with a fake `Confirm` (a preview refuses every consent, host 19.7), outcome 2 and 4 on `watane-dev serve`, and measure the stage C budgets (case 31 host part is S103's A3).
 
 - **S36 accepted limits (r7, the human merged it as it stood, 2026-11-24):** F7.1 and F7.2 are the S35 Send limit (TECHNICAL 18.6): an Edit send refused after leaving the session keeps only the original text, and a reload while an accepted take's reply is in flight can offer it once more. F7.3: the load check's 2x spacing failed once on timer jitter (40.585 ms delta gap); widen to 3x (60/600 ms) if it fails again. Also P7.1: exact just-over-limit fixtures in `console/test/host/load_check.test.ts`.
 
@@ -407,6 +409,9 @@ reviewer claude. Cloud.
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
+
+- 2026-11-24 (S38 r1) F1.2: watane Q38 (consent key with `via`) is the human's and open; S38 keeps option (b) in TECHNICAL 8 and the doubles, marked pending, as the reversible option ((b) to (a) keeps every consent valid; host 18 Q38). Clause: the deliberation ladder's 'build the option that keeps the others open'. Undo: drop `via` from two rows and the doubles.
+- 2026-11-24 (S38 r1) R1.1 accepted: a withdrawn consent reads as 'Connection to Claude Code ended'; host 19.7/19.2 end it with a plain `gone`, and AGT-J1 / AGT-F-29 ask only that the stream end. A distinct host ending would be a watane interface change (Door C), not planned. Undo: a `consent-withdrawn(what)` ending in watane and one console line.
 
 - 2026-11-23 (deputy-2, S36 F3.1, the same finding a third time) Take back first, replacing the F2.1 rule below, which let the original and its replacement both run: Edit, Stop and send, and remove call `unqueue(n)` first (the kernel's atomic take, TECHNICAL 9.3); `unknown-input` leaves everything alone; a later refused `say` or `interrupt` puts the text in the composer (18.6 Send). Clauses: AGT-F-41 "take one out before a turn takes it", AGT-F-50 "take a queued input back to edit it"; none against. Cost: a refused re-send loses its queue place, and its text lives in the composer under that rule's reload limit. Not deliberated on the PR: the clause decides it (Kind rule, Door none). undo: rewrite 18.6 Queue and the console's Dock again. PR #50 comment 7114381778.
 - (withdrawn by the line above) 2026-11-23 (S36 F2.1, r1's F1.5 back a second time) The console's queue keeps an item until its transfer is accepted: Edit, Undo and Stop and send never remove a queued item before the replacement say (or interrupt and say) succeeds, so a refusal changes nothing and needs no recovery state; a newer draft is left alone.
