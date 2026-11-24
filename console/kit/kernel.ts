@@ -9,7 +9,7 @@ export interface Kernel {
     Promise<{ ok: true } | { behind: number }>;
   read(session: string, after: number, max: number): Promise<string[]>;
   /** 2.3 `start`: the new session's id; an error rejects as `say`'s does. */
-  start(key: string, profile: string, overlay: string, input: string): Promise<string>;
+  start(key: string, profile: string, overlay: string, input: string, folder?: string): Promise<string>;
   say(session: string, key: string, input: string): Promise<number>;
   answer(session: string, key: string, ask: string, decision: string): Promise<void>;
   interrupt(session: string, replacement?: string): Promise<void>;
