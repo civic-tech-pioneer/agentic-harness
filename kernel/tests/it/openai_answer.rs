@@ -187,3 +187,21 @@ fn ac6_backoff_doubles_and_runs_out() {
     assert_eq!(backoff_ms(u32::MAX), None);
     assert_eq!(MAX_ATTEMPTS, 6);
 }
+
+/// F1.7 (S40-2 AC1): a head with no `headers` object is not a head.
+#[test]
+fn r1_f1_7_a_head_needs_a_headers_object() {
+    assert_eq!(head(br#"{"status":200}"#), None);
+    assert_eq!(head(br#"{"status":200,"headers":[]}"#), None);
+    assert_eq!(
+        head(br#"{"status":200,"headers":"text/event-stream"}"#),
+        None
+    );
+    assert_eq!(
+        head(br#"{"status":200,"headers":{}}"#),
+        Some(Head {
+            status: 200,
+            sse: false
+        })
+    );
+}
