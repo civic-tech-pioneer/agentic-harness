@@ -1289,6 +1289,14 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   `failed {too-large}` and the next `say` continues as for `resume-lost`,
   from a summary. Trimming starts a new prefix (cache), once. `instructions`
   stay byte-stable.
+  Settled by S40-1: an input takes the step number of the response before it
+  (`steps` when appended), so "the last 4 steps" are the items of the 4
+  highest step numbers present; the mark is a wire index, and the trim record
+  `{mark, through, stage}` trims the items below `through` (at most the mark),
+  by `stage`: `reasoning` leaves out their reasoning items, `outputs` also
+  cuts each tool output over 8 KiB to its first 8 KiB (at a character
+  boundary) plus ` [cut by watane: <n> bytes]`, `<n>` the original size. A
+  `wire/<id>/<n>` chunk is named by the wire index of its first item.
 - **Active history.** A compaction item returned by the server replaces every
   wire item before it. The loop state keeps `active`: the wire index of the
   newest compaction item, or of the summary that a `resume-lost` or `failed
