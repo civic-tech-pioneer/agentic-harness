@@ -87,6 +87,15 @@ the provider rows of 14, in this repository's one boundary list
 those rows beside it. The kernel links it as a local provider (`kernel/wasm/deps.json`,
 `kernel/wasm/wit/deps/claude-code/`, written by `watane-dev add`).
 
+`factory/publish-test-mods.sh <publisher-home> <publisher-channel-link>`
+assembles the two mod folders in a temporary directory. It builds the WASM
+components and builds the console under the agent mod's `ui/`. It publishes
+the prebuilt provider first, then uses `watane-dev add --release` to bind the
+staged agent to that release. It checks and publishes the agent and prints
+its install link. Both releases use the same test publisher. The publisher
+app signs them on approval and exports the site. The configured loopback URL
+serves that directory throughout publishing and installation.
+
 A new source file starts with a `//!` line that cites its section here, as
 every watane file does.
 
@@ -250,10 +259,8 @@ Every function of `sessions` refuses with `not-owner` a caller whose
 provider makes no judge call for a call it refuses (10). `not-owner` and
 `not-direct` (10) are cases of the shared `start-error` and `session-error` of
 `claude-types` (2.1). The kernel's identity is one fixed published value
-`<publisher>/agent`, a constant in each provider's `src/lib.rs`, compared
-exactly; no `local/…` identity and no other publisher's `agent` matches,
-except the stage B value of 10 ("Unchecked"), `local/agent`, while the kernel
-is unpublished (R-B3).
+`<publisher>/agent`, pinned at build time and compared exactly. A development
+build uses `local/agent` for the unpublished kernel (10, R-B3).
 
 ### 2.3 Kernel (`mods:agent@0.1.0`)
 
@@ -1839,9 +1846,9 @@ section, and its code).
   through unchanged; a `say` error cancels the stream and is `bad-launch
   {field: "input", reason: <its case>}`. Its other functions return
   `not-direct`. The kernel identity it compares with (2.2) is, until the
-  kernel is published, `local/agent`: stage B runs only in previews, where every
-  mod is `local/` (PLAN R-B3, the product owner's; publishing the provider
-  sets the published value first).
+  kernel is published, `local/agent` (PLAN R-B3). The test release builder
+  compiles the provider with exactly the test channel's `<publisher>/agent`
+  identity. Each build accepts one identity.
 - **Checked:** it forwards every item unchanged (an `ask` item reaches the
   kernel at once; only its answer waits for the verdict, step 6), answers every `check`
   (`none` when safe, `deny` otherwise), judges every `ask` and input, and
@@ -2021,7 +2028,7 @@ stage E).
 | No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
-| A mod in the middle gains no authority | host consent (8); the providers' `sessions` refuse any caller but the kernel (2.2, 10) | watane `host/` consent, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`) |
+| A mod in the middle gains no authority | host consent (8); the providers' `sessions` compare one pinned kernel identity (2.2, 10) | watane `host/` consent, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`); `factory/publish-test-mods.sh` pins the release identity |
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/src/openai/run.rs` and `kernel/src/openai/tools.rs` (the `request` and `job` streams, routed by `stream/<id>`, S40), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7); the OpenAI loop's slots, retries and pauses (9.5) | `kernel/src/delegation.rs`, `kernel/src/openai/` (`run.rs`, `tools.rs`), `kernel/src/quota.rs` (the slot limits) |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/src/call.rs` (a failed call commits no write, id or timer, 2.1), `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
@@ -2513,6 +2520,13 @@ length. A long session cannot hold the slot.
 | D | H3 and accounts; the OpenAI loop (9.5); dev's scripted Responses server | backend choice with refusals; paused until a time; the context meter | watane: host H3, app accounts, dev's Responses server; this repository: the OpenAI loop, the console | AGT-J2, AGT-J6; cases 1–4, 19 (`openai`), 22; new cases 39, 40, 48, 54, 57 (retry and usage-limit parts), 70; the budgets of stage D |
 | E | The checked provider (needs a judge account, V7: 16, "Probes named here") | checking, verdicts, the breaker | watane: the host's account kind `judge`, the app's judge page, dev's judge fake (16); this repository (one boundary list, 14): the checked provider in `provider-checked/` (R-B1), the `checking` activity | AGT-J3; cases 19 (`judge`), 25, 32, 33; case 31 for `checking`; new cases 36 (provider), 51 (provider part), 37, 38, 42–44, 46, 47, 50; the budgets of stage E |
 | F | Delegation and counters (9.7); factory profiles | children in the transcript; stopped at a limit | this repository: kernel, console; N5 (open, decided at stage F: (a) the Claude grant with shell and web, nothing new, or (b) a `codex app-server` backend in the host, a third native process kind; recommended (a)) | AGT-J5; cases 23, 24, 52 (`task` part); the budgets of stage F; N5 decided |
+
+S39 exercises stage C's scratch path with the installed releases (section 1).
+In a fresh app home, one install consent covers the agent and its provider.
+The installed console starts a scratch conversation, shows streamed replies
+and tool asks, stops a running turn, and restores the transcript after the app
+restarts. Automated checks use dev's fake Claude Code. The real login check
+uses the participant's own Claude Code binary and account.
 
 Budgets (the "Load" kind of 16). All p95; measured by a slow load test on the
 stage's fakes, recorded with the date and the machine in 16, "Budget record";

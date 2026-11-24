@@ -620,12 +620,16 @@ async function main() {
 
     await check("Stop (case 31, interrupt): a running turn ends idle {interrupted} within 1 s; an open ask is closed with one deny; the next say works", async () => {
       await tidy();
-      writeScript([{ do: "expect-user" }, { do: "ask", tool: "Read", input: { file_path: "x.txt" }, await: true }, { do: "message", text: "not reached" }, { do: "result" }, { do: "idle" },
+      writeScript([{ do: "expect-user", contains: "ready" }, { do: "message", text: "ready" }, { do: "result" }, { do: "idle" },
+        { do: "expect-user", contains: "ask then stop" }, { do: "ask", tool: "Read", input: { file_path: "x.txt" }, await: true }, { do: "message", text: "not reached" }, { do: "result" }, { do: "idle" },
         { do: "expect-user" }, { do: "long-turn", entries: 200, "every-ms": 100 }, { do: "expect-user", contains: "after" }, { do: "message", text: "after stop" }, { do: "result" }, { do: "idle" }]);
-      const s = await startOwned("ask then stop");
+      // Ask only after the owner has attached. The kernel denies an ask that arrives before attach.
+      const s = await startOwned("ready");
+      await idleAfter(s, 0, "the setup turn to end");
+      await ok("sessions.say", { session: s, key: `k-${Date.now()}`, input: "ask then stop" });
       const a = await until(() => openAsk(s), 15_000, "the ask to open");
       await ok("sessions.interrupt", { session: s, replacement: null });
-      let es = await idleAfter(s, 0, "the asked turn to end on Stop");
+      let es = await idleAfter(s, a.i, "the asked turn to end on Stop");
       ensure(lastTurn(es)?.stop?.kind === "interrupted", `the turn ended ${JSON.stringify(lastTurn(es))}`);
       const d = decisionsOf(es, a.body.id);
       ensure(d.length === 1 && d[0].body.decision.outcome === "deny", `decisions of the interrupted ask: ${JSON.stringify(d.map((x) => x.body.decision))}`);

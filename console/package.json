@@ -9,6 +9,7 @@
     "test:slow": "node test/slow.mjs",
     "test:host": "node test/host/stage_b.mjs",
     "test:host:d": "node test/host/stage_d.mjs",
+    "test:installed": "node test/host/installed.mjs",
     "test:load": "node test/host/load_b.mjs",
     "typecheck": "tsc --noEmit"
   },
