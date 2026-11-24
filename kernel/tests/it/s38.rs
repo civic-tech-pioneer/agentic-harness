@@ -303,6 +303,16 @@ fn picked_folder_rejects_control_characters_and_oversize_paths() {
         .unwrap_err();
     assert!(matches!(err, agent_kernel::KernelError::TooLarge(4096)));
     assert!(launch_workspaces(&k).is_empty());
+    assert!(k
+        .start_in_folder(
+            "page",
+            "fits",
+            "scratch",
+            "{}",
+            "hello",
+            &format!("/{}", "a".repeat(4095))
+        )
+        .is_ok());
 }
 
 #[test]
