@@ -82,6 +82,9 @@ pub fn refuse(
                     );
                 }
             }
+            if !p.skills.is_empty() {
+                add("skills", "skills wait for the skill tool on openai");
+            }
             for (i, s) in p.skills.iter().enumerate() {
                 if s.files.keys().any(|k| k != "SKILL.md") {
                     add(

@@ -257,7 +257,8 @@ is unpublished (R-B3).
 interface sessions {                                 // the owner only, by caller.identity()
   start: func(key: string, profile: string, overlay: string, input: string) -> result<string, error>;
   start-in-folder: func(key: string, profile: string, overlay: string, input: string, folder: string) -> result<string, error>;
-  check: func(profile: string, overlay: string) -> list<refusal>;
+  profiles: func() -> list<profile-info>;                // the profiles this caller may use (9.1)
+  check: func(profile: string, overlay: string) -> list<refusal>;   // by stored profile name, as `start` checks it (9.2)
   attach: func(session: string, after: u64, caps: string) -> result<stream-id, error>;
   read: func(session: string, after: u64, before: option<u64>, max: u32) -> result<page, error>;
   say: func(session: string, key: string, input: string) -> result<u64, error>;
@@ -274,6 +275,7 @@ interface sessions {                                 // the owner only, by calle
 record page { entries: list<string>, last: u64 }
 record session-info { id: string, title: string, profile: string, backend: string, workspace: option<string>, turn: string, updated: u64 }
 record queued-input { n: u64, input: string }
+record profile-info { name: string, backend: string, model: option<string> }
 record refusal { field: string, backend: string, model: string, reason: string }
 variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow, behind(u64), too-large(u64), busy }
 
@@ -705,7 +707,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | Key | Value |
 |---|---|
 | `profile/<name>` | a profile (9.2) |
-| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed, with one exception, the console's first run (S35): for the identity `page` only, an absent `access/page` allows the built-in profile `scratch` and nothing else (an unreadable one still allows none). `profile/scratch` absent reads as the built-in `{"backend":"claude","partial":true,"ask":true}`: Claude's default model, no built-in tools, mode `manual` with its asks sent to the owner (`ask: true`, 4.1: without it the host denies every `can_use_tool` at once and pushes no ask, host 19.3; S36), no allow rule, in a scratch workspace by default (4.6), which is less than any profile the participant can make: with no built-in tool and no `agent-handle`, `claude` has no tool to ask about, and every allow is the owner's own answer to one call. The first-run allowance covers only that built-in: a stored `profile/scratch` is a profile like any other and needs `access/page` to list it (S35 adversary), and a stored `access/page` replaces the allowance `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile may say so). A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
+| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed, with one exception, the console's first run (S35): for the identity `page` only, an absent `access/page` allows the built-in profile `scratch` and nothing else (an unreadable one still allows none). `profile/scratch` absent reads as the built-in `{"backend":"claude","partial":true,"ask":true}`: Claude's default model, no built-in tools, mode `manual` with its asks sent to the owner (`ask: true`, 4.1: without it the host denies every `can_use_tool` at once and pushes no ask, host 19.3; S36), no allow rule, in a scratch workspace by default (4.6), which is less than any profile the participant can make: with no built-in tool and no `agent-handle`, `claude` has no tool to ask about, and every allow is the owner's own answer to one call. The first-run allowance covers only that built-in: a stored `profile/scratch` is a profile like any other and needs `access/page` to list it (S35 adversary), and a stored `access/page` replaces the allowance `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile is refused `{field: "profile", reason: "no such profile"}`; `check` takes the profile by name, and an OpenAI profile without a model is refused `{field: "model"}`). `profiles()` lists the names the caller may use in this key's order, at most 64, each with the `backend` (default `claude`) and `model` of its stored profile, a name with no stored profile left out; it reads this key and at most 64 `profile/` keys, and for `page` with no `access/page` it lists the built-in `scratch` A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
 | `adopted/<offer id>` | `{content hash, content}` |
 | `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
 | `session/<id>` | the session record (9.3) |
@@ -1895,7 +1897,7 @@ section, and its code).
 | `allow`, `deny` | flags | the broker; a path rule refused |
 | `mode` | flag | `manual`, `dont-ask`; others refused |
 | `ask`, `pre-tool-check` | stdio, hook | the broker |
-| `skills` | plugin folder | a `skill` function; a skill with other files refused |
+| `skills` | plugin folder | a `skill` function, which stage F adds; until then any `skills` is refused (`skills`, "skills wait for the skill tool on openai"), and a skill with other files too |
 | `subagents`, `subagent-depth` | flags, env | `delegates` and `task`; a subagent with `tools` refused |
 | `sandbox`, `workspace` | settings, cwd | refused unless absent |
 | `json-schema` | flag; the kernel checks the answer; a missing `structured_output` fails | `text.format`; a schema outside the strict subset refused; the kernel checks the answer |

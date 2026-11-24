@@ -32,6 +32,7 @@ fn ac7_openai_refuses_every_field_at_once() {
         "fallback-models",
         "mode",
         "subagents[0].tools",
+        "skills",
         "skills[0].files",
     ];
     want.sort();
@@ -44,7 +45,7 @@ fn ac7_openai_refuses_every_field_at_once() {
 #[test]
 fn ac7_openai_accepts_the_plain_profile() {
     let doc = json!({"allow": ["Bash(git status:*)"], "mode": "dont-ask",
-        "skills": [{"name": "s", "files": {"SKILL.md": "x"}}], "ask-expiry": 30});
+        "ask-expiry": 30});
     assert!(names(doc, Backend::Openai, "gpt-x", None).is_empty());
 }
 
@@ -102,4 +103,14 @@ fn ac9_model_argument_grammar_on_both_backends() {
     }
     assert_eq!("openai".parse::<Backend>(), Ok(Backend::Openai));
     assert!("x".parse::<Backend>().is_err());
+}
+
+#[test]
+fn s40_5_openai_skills_wait_for_the_skill_tool() {
+    let doc = json!({"skills": [{"name": "s", "files": {"SKILL.md": "x"}}]});
+    assert_eq!(
+        names(doc.clone(), Backend::Openai, "gpt-x", None),
+        ["skills"]
+    );
+    assert!(names(doc, Backend::Claude, "m", None).is_empty());
 }

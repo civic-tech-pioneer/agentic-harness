@@ -13,6 +13,8 @@ interface sessions {
 
   start: func(key: string, profile: string, overlay: string, input: string) -> result<string, error>;
   start-in-folder: func(key: string, profile: string, overlay: string, input: string, folder: string) -> result<string, error>;
+  record profile-info { name: string, backend: string, model: option<string> }
+  profiles: func() -> list<profile-info>;
   check: func(profile: string, overlay: string) -> list<refusal>;
   attach: func(session: string, after: u64, caps: string) -> result<stream-id, error>;
   read: func(session: string, after: u64, before: option<u64>, max: u32) -> result<page, error>;
@@ -35,6 +37,8 @@ world agent {
   import watane:host/timers@0.1.0;
   import watane:host/host-info@0.1.0;
   import watane:host/claude-session@0.1.0;
+  import watane:host/https-stream@0.1.0;
+  import watane:host/agent-tools@0.1.0;
   import mods:claude-code/sessions@0.1.0;
   export sessions;
   export watane:host/stream-sink@0.1.0;

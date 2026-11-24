@@ -26,6 +26,7 @@ mod example;
 mod grammar;
 mod idle;
 mod meter;
+mod named;
 mod openai_answer;
 mod openai_loop;
 mod openai_wire;

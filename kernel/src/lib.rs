@@ -7,6 +7,7 @@ pub mod call;
 pub mod check;
 pub mod error;
 pub mod launch;
+pub mod named;
 pub mod openai;
 pub mod overlay;
 pub mod profile;
@@ -21,6 +22,7 @@ pub mod transcript;
 
 pub use check::check;
 pub use error::{KernelError, Problem, Refusal};
+pub use named::{ProfileInfo, MAX_PROFILES};
 pub use overlay::{apply_overlay, parse_overlay, Overlay};
 pub use profile::{
     grammar_problems, parse_profile, Backend, PreToolCheck, Profile, Skill, Subagent, SystemPrompt,

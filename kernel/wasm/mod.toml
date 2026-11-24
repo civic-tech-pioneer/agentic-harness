@@ -1,2 +1,5 @@
 name = "Agentic harness"
 summary = "Run Claude and ChatGPT agent sessions from mods, on the participant's own subscriptions."
+
+[http]
+hosts = ["api.openai.com"]
