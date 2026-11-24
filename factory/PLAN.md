@@ -62,7 +62,7 @@ adversary runs). Protects: *core*.
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S113 codex, S112 codex; the
 consumer-halves lane, sketched 2026-11-24 by deputy-3: it builds against watane `slice/s111` (PR #28), whose branch holds a
 first version of host 19.4 `https-stream` with the `openai` account and dev's scripted Responses server; it merges main
-and reruns on watane main once PR #28 merges.)
+and reruns on watane main once PR #28 merges; routine `trig_01MKpjib1FAYCnuVhuMx2RRD`, fires 19:05 UTC.)
 Story (AGT-J2; TECHNICAL 17 stage D, "this repository" column: the OpenAI loop of 9.5 and the console): Alice switches a
 profile to an OpenAI model; the kernel refuses the fields OpenAI cannot honour and names them; with a profile it can run,
 the console shows the same kinds of events as with Claude; when her plan's limit runs out the session reads paused until
