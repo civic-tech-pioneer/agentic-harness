@@ -138,3 +138,14 @@ fn ac4_at_most_64_profiles_and_65_reads() {
     assert_eq!(ps[63].name, "p63");
     assert!(k.state.counts().gets <= 65, "{}", k.state.counts().gets);
 }
+
+/// S40-7 (stage D on watane's host): a path rule on an OpenAI profile was named twice, once by the
+/// rule check and once by the refuse table; each field is named once.
+#[test]
+fn regress_s40_7_a_path_rule_on_openai_is_named_once() {
+    let tidy =
+        r#"{"backend":"openai","model":"gpt-5","tools":["Read","Edit"],"allow":["Read(/tmp/**)"]}"#;
+    let mut k = kernel(&[("access/page", r#"["Tidy"]"#), ("profile/Tidy", tidy)]);
+    let rs = k.check_named("page", "Tidy", "{}");
+    assert_eq!(fields(&rs), ["tools", "allow"], "{rs:?}");
+}

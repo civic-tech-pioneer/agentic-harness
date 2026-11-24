@@ -661,9 +661,10 @@ pub(crate) fn openai_rule_problem(rule: &str) -> Option<String> {
         .collect();
     let list = [format!("{plain}{rest}")];
     let (_, problems) = crate::rules::Rules::compile(&list, &[], &[]);
+    // A path rule is the refuse table's row (11, "a path rule is refused on openai"): named once.
     problems
         .into_iter()
-        .next()
+        .find(|p| !p.reason.contains("path rule"))
         .map(|p| format!("rule {rule:?}: {}", p.reason))
 }
 

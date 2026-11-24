@@ -146,3 +146,15 @@ describe("S40-6 AC6 the kit and the fake kernel", () => {
     expect((await k.check!("Tidy", "{}")).map((r) => r.field)).toEqual(["tools", "allow"]);
   });
 });
+
+describe("S40-7 regress: the host answers profiles and check as bare lists", () => {
+  it("regress_S40_7_bare_lists_from_the_host_read_as_profiles_and_refusals", async () => {
+    const f = setup({
+      "sessions.profiles": () => [{ name: "Sort", backend: "openai", model: "gpt-5" }],
+      "sessions.check": () => [{ field: "tools", backend: "openai", model: "gpt-5", reason: "refused unless empty on openai" }],
+    });
+    const k = wataneKernel(f.w);
+    expect((await k.profiles!()).map((p) => p.name)).toEqual(["Sort"]);
+    expect((await k.check!("Sort", "{}")).map((r) => r.field)).toEqual(["tools"]);
+  });
+});
