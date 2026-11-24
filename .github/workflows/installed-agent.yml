@@ -1,0 +1,40 @@
+name: Installed agent
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installed-agent:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: civic-tech-pioneer/watane
+          ref: ae4b9b969a1231436b974f9520d442056ddacff1
+          path: work/watane
+          persist-credentials: false
+      - name: Install desktop build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev xvfb
+      - name: Build Watane and its fake Claude Code
+        working-directory: work/watane
+        run: |
+          rustup show
+          cargo build --locked -p watane-app -p watane-dev --features watane-app/driver --bins
+          echo "WATANE_BIN_DIR=$PWD/target/debug" >> "$GITHUB_ENV"
+      - name: Test the installed releases
+        env:
+          RUSTUP_TOOLCHAIN: 1.100.0
+        run: |
+          rustup target add wasm32-wasip2
+          xvfb-run -a dbus-run-session -- npm --prefix console run test:installed
