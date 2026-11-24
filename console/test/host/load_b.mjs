@@ -5,8 +5,9 @@
 // handler, before the console's own), p95 over the page's 4 sessions, budget 100 ms. Stop: the page's Stop button to
 // `idle {interrupted}` in that page, p95, budget 1 s. Each page session is paired with its fake by identity (the fake's first input,
 // `load <k>`, which its stamp file names), and every line its fake wrote before Stop must reach its page exactly once. Latency counts
-// only once all 8 fakes wrote 80% of the rate in every 2 s subwindow of a common window of at least 6 s ending at the first Stop, and only the items
-// written in it; Stop ends at exactly `idle {interrupted}` (S36 r2 F2.3, test/host/load_check.mjs).
+// only once all 8 fakes loaded together through a common window of at least 6 s ending at the first Stop, with no gap between
+// consecutive stamps of a source (the window's edges included) over twice the nominal spacing (40 ms for deltas, 400 ms for
+// entries), and only the items written in it; Stop ends at exactly `idle {interrupted}` (S36 r2 F2.3, test/host/load_check.mjs).
 // The state bytes per entry are the kernel crate's (kernel/tests/it/s36_load.rs). By hand: `npm run test:load` in console/. Exit 0
 // within budget, 1 over or failed, 2 not run (a prerequisite missing: watane-dev, fake-claude, cargo, python3, Chromium).
 //
@@ -51,7 +52,9 @@ function serve() {
   if (!preview.agent || !preview.client) throw new Error(`serve gave no page for the kernel or the client: ${JSON.stringify(res.pages)}`);
 }
 const stop = () => { const pid = Number(JSON.parse(readFileSync(join(preview.home, "run.json"), "utf8")).pid); process.kill(pid, "SIGTERM"); return pid; };
-const gone = async (pid) => { for (let k = 0; k < 150; k++) { try { process.kill(pid, 0); } catch { return; } await sleep(100); } throw new Error("the host did not stop"); };
+/** Whether `pid` exited, also as a zombie no one reaps (Linux, a container whose init does not reap: the review's r6 run). */
+const zombie = (pid) => { try { return /^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, "utf8")); } catch { return false; } };
+const gone = async (pid) => { for (let k = 0; k < 150; k++) { try { process.kill(pid, 0); } catch { return; } if (zombie(pid)) return; await sleep(100); } throw new Error("the host did not stop"); };
 
 function post(url, fn, args, connection) {
   const u = new URL(url);
@@ -215,7 +218,7 @@ async function main() {
     const pageStops = stopAt.filter((x) => x !== null);
     const win = loadWindow(new Map(names.map((n) => [n, files.get(n)])), pageStops.length ? Math.min(...pageStops) : -Infinity, RATE, WINDOW);
     const delays = [], stops = [], lines = [], faults = [...win.faults];
-    if (!win.faults.length) say(`all 8 sources at the rate in every 2 s subwindow of a common ${win.seconds.toFixed(1)} s before the first Stop`);
+    if (!win.faults.length) say(`all 8 sources loaded through a common ${win.seconds.toFixed(1)} s before the first Stop: no gap over twice the spacing (40 ms deltas, 400 ms entries), the window's edges included`);
     for (let k = 0; k < SESSIONS; k++) {
       if (stopAt[k] === null) { faults.push(`page ${k} had no Stop button (its turn was not running)`); continue; }
       const attached = await pages[k].evaluate(() => window.__attached);

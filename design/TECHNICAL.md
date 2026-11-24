@@ -2339,25 +2339,27 @@ and the machine. Whether to change 7 is the human's.
 each stage A–F, the p95 numbers of the budget table in 17, the date and the
 machine. A stage is done only within its budgets.
 
-- **Stage B** (S36, 2026-11-23, remeasured in S36 r1 and r2; `Linux 6.18.44-fc-v726 x86_64`, 4 cpus, a cloud VM
-  with a real fsync, load average 3.0 to 5.4 from the run itself; watane `slice/s100` at fdb3d9a).
+- **Stage B** (S36, 2026-11-23, remeasured in S36 r1, r2 and r6; r6: `Linux 6.18.44-fc-v819 x86_64`, 4 cpus, a cloud
+  VM with a real fsync, load average 3.5 to 5.1 from the run itself; watane `slice/s100` at ef94a58).
   `npm run test:load` in `console/` (`console/test/host/load_b.mjs`): 8 sessions on dev's fake
   `claude` in `watane-dev serve`, 4 for `page`, each shown in its own Chromium page, and 4 for the
   test mod `local/loadclient` (its `access/` seeded into the stopped preview, a test-only reach),
   all started together, each on the fake's `load` at 50 deltas and 5 entries of 4 096 bytes a
-  second for 8 s, then Stop. Latency counts only once all 8 fakes wrote at least 80% of that
-  rate all through a common window of at least 6 s ending at the first Stop (7.9 to 8.0 s in each pass), as a
-  maximum spacing (S36 r5 F5.5, the deputy's rule): for each fake and kind, no gap between consecutive stamps, nor
-  from the window's start to the first or from the last to its end, exceeds 25 ms for deltas or 250 ms for entries;
-  and only for the items written in it (S36 r2 F2.3: a run with one idle client fails; S36 r3 F3.5: sources that
-  load in turn, not together, fail; S36 r4 F4.3: bursts at the edges of 2 s bins around an idle 2 s fail; S36 r5
-  F5.5: deltas 25.125 ms apart fail). The passes below were measured under the r2 to r4 checks. Each page session is paired with its fake by identity (the fake's
+  second for 8 s, then Stop. Latency counts only once all 8 fakes loaded together, with no idle
+  stretch, all through a common window of at least 6 s ending at the first Stop (8.0 s in each pass), as a
+  maximum spacing (S36 r5 F5.5, r6 F6.3, the deputy's rules): for each fake and kind, no gap between consecutive
+  stamps, nor from the window's start to the first or from the last to its end, exceeds twice the nominal
+  spacing, 40 ms for deltas and 400 ms for entries; and only for the items written in it (S36 r2 F2.3: a run with
+  one idle client fails; S36 r3 F3.5: sources that load in turn, not together, fail; S36 r4 F4.3: bursts at the
+  edges of 2 s bins around an idle 2 s fail; S36 r6 F6.3: the real run's jitter, gaps of 28.5 ms and 205 ms,
+  passes, and a gap over 40 ms or 400 ms fails, at the edges too; r5's 25 ms rule failed every real run by
+  up to 3.5 ms of timer jitter). The passes below were measured under the r6 check. Each page session is paired with its fake by identity (the fake's
   first input, `load <k>`, which a test-only wrapper that stamps each stdout write records), and
   every line its fake wrote before Stop reached its page exactly once (about 1 750 per run, none
   missing, none twice, none from another session). Item delay, the fake's stdout write to the
   item's arrival at the Chromium page's `watane.on` handler, p95 over the page's 4 sessions:
-  10.5, 12.9, 12.0 ms in three passes in a row (max 136 to 146 ms; budget 100). The page's Stop
-  button to exactly `idle {interrupted}` in that page, p95: 18.7, 19.2, 12.4 ms
+  15.6, 26.7, 11.5 ms in three passes in a row over 1 754 to 1 759 items (max 106 to 243 ms; budget 100). The
+  page's Stop button to exactly `idle {interrupted}` in that page, p95: 15.7, 26.3, 15.3 ms
   (budget 1 000). State bytes read and written per finished entry (kernel crate,
   `cargo test -- --ignored s36_load`, the mean over 30 entries of 4 KiB after 10 deltas each):
   74 613 at 10 entries, 81 257 at 10 000 (ratio 1.09; budget 2 MiB, within 10%), after the fix
@@ -2368,8 +2370,10 @@ machine. A stage is done only within its budgets.
   paired sessions with fakes by their delays; S36 r1 (F1.8) replaced it with these browser
   measurements; S36 r2 added the common-window rate check and remeasured; S36 r3 made it hold in every 2 s
   subwindow and remeasured (watane `slice/s100` at fdb3d9a); S36 r4 made the windows slide
-  (`console/test/host/load_check.mjs`, a pure function with its test), and the figures above were not remeasured under it
-  (no `watane-dev` on that build machine; the review r4 isolated run measured 32.4 ms item p95 and 19.4 ms Stop p95).
+  (`console/test/host/load_check.mjs`, a pure function with its test); S36 r5 made it a maximum spacing of 25 ms and
+  250 ms, which the real run failed by timer jitter alone (review r6: worst 28.5 ms); S36 r6 set it at twice the nominal
+  spacing and remeasured (the figures above). A host that exits as a zombie no one reaps (a container's init) counts as
+  stopped (`/proc/<pid>/stat`).
 
 ## 17. Build plan
 
