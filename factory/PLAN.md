@@ -33,7 +33,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S113 codex, S112 codex; the
 consumer-halves lane, sketched 2026-11-24 by deputy-3: it builds against watane `slice/s111` (PR #28), whose branch holds a
 first version of host 19.4 `https-stream` with the `openai` account and dev's scripted Responses server; it merges main
-and reruns on watane main once PR #28 merges; routine `trig_01MKpjib1FAYCnuVhuMx2RRD`, fires 19:05 UTC; BLOCKED 20:05 as PR #54: a preview has no scripted OpenAI stream (watane dev question 15). Ruling (b): S40 is reviewed and merged on its kernel and console proof (cargo tests on FakeHost, the console's fake kernel, test:host:d's 5 checks on the real host); outcomes 2 to 4 on `watane-dev serve` and the stage D budgets move to Upkeep, for when watane S114 (dev 15 option (a), F-MAKE-4) merges. r1: Codex review https://chatgpt.com/local/6b05eeef-aae8-83eb-85bf-a60c3e428074, dispatched 20:12 UTC; r1 (20:38): 7/3 by the reviewer, changes (7), adversary HELD, user-sim REJECTED; deputy grade 5/5 (F1.2 a split usage-limit body and F1.7 a malformed head need host behaviour that does not occur: polish, taken as cheap); posted on the PR; answer r1 to a Claude routine, fires 20:42 UTC, rebuilt on watane main 71b3ae6a (S111 merged); r1 answered at 7e87c41 (+574/-97, all 7 fixed red-first, test:host:d 5 PASS on watane main a98d96f); r2: same Codex review task, dispatched 21:05 UTC.)
+and reruns on watane main once PR #28 merges; routine `trig_01MKpjib1FAYCnuVhuMx2RRD`, fires 19:05 UTC; BLOCKED 20:05 as PR #54: a preview has no scripted OpenAI stream (watane dev question 15). Ruling (b): S40 is reviewed and merged on its kernel and console proof (cargo tests on FakeHost, the console's fake kernel, test:host:d's 5 checks on the real host); outcomes 2 to 4 on `watane-dev serve` and the stage D budgets move to Upkeep, for when watane S114 (dev 15 option (a), F-MAKE-4) merges. r1: Codex review https://chatgpt.com/local/6b05eeef-aae8-83eb-85bf-a60c3e428074, dispatched 20:12 UTC; r1 (20:38): 7/3 by the reviewer, changes (7), adversary HELD, user-sim REJECTED; deputy grade 5/5 (F1.2 a split usage-limit body and F1.7 a malformed head need host behaviour that does not occur: polish, taken as cheap); posted on the PR; answer r1 to a Claude routine, fires 20:42 UTC, rebuilt on watane main 71b3ae6a (S111 merged); r1 answered at 7e87c41 (+574/-97, all 7 fixed red-first, test:host:d 5 PASS on watane main a98d96f); r2: same Codex review task, dispatched 21:05 UTC; r2 (21:08): 3/1, changes (3), adversary BREACHED 1 (restart recovery opened a session's toolsets under another owner's origin), user-sim REJECTED; F2.1 and F2.2 sit in the restart recovery r1's answer added (stall by area): ruled narrow, every open job is aborted after a restart, the reissue code goes, case 22's idempotent half is a known limit; F2.3 fixed; answer r2 to Claude, fires 21:36 UTC.)
 Story (AGT-J2; TECHNICAL 17 stage D, "this repository" column: the OpenAI loop of 9.5 and the console): Alice switches a
 profile to an OpenAI model; the kernel refuses the fields OpenAI cannot honour and names them; with a profile it can run,
 the console shows the same kinds of events as with Claude; when her plan's limit runs out the session reads paused until
@@ -113,6 +113,8 @@ reviewer claude. Cloud.
 
 
 ### Upkeep
+
+- **Case 22's idempotent half (from S40 r2):** after a restart, reissue an idempotent job under its key, with the toolset reopened under the session owner's origin and the job sent only once the handle is usable.
 
 - **S40 on `watane-dev serve` (after watane S114 merges):** turn the SKIP lines of `test:host:d` into checks, run S40 outcomes 2 to 4 on a preview with a scripted OpenAI stream, and add the stage D load test.
 
@@ -413,6 +415,8 @@ reviewer claude. Cloud.
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
+
+- 2026-11-24 (S40 r2) after a host restart every open job of an OpenAI session in `tools` is aborted, idempotent ones included; the kernel reopens no toolset and reissues no job (TECHNICAL 9.5 and the restart table say so; case 22's idempotent half not yet built). Clause: rulings narrow (stall by area: two blocking findings in code r1's answer added, one a breach). Undo: reissue under the session owner's origin once the handle is usable, a later slice.
 
 - 2026-11-24 (S39 r1) accepted: A1.1 a provider release built other than by `publish-test-mods.sh` trusts `local/agent` (needs a hand-published provider and a local mod with the slug `agent`; the four-line pin test closes the script path); A1.2 the script checks the channel's publisher only after signing the provider (operator-only). Whether a release build must refuse the dev default is a TECHNICAL 2.2/10 question for later.
 
