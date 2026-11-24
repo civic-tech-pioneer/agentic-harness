@@ -6,9 +6,12 @@ use watane::host::claude_types::{Decision, SessionError, StartError};
 use watane::host::streams::{self, StreamError};
 use watane::host::{caller, claude_code, claude_session};
 
-/// The identity of the kernel `mods:agent` while it is unpublished (PLAN R-B3); the published
-/// `<publisher>/agent` replaces it before the provider is published.
-const KERNEL: &str = "local/agent";
+/// The single kernel identity for this build (TECHNICAL 2.2). The release
+/// builder pins the publishing channel before compiling the provider.
+const KERNEL: &str = match option_env!("AGENT_KERNEL_IDENTITY") {
+    Some(identity) => identity,
+    None => "local/agent",
+};
 
 /// The only identity that passes: an exact byte comparison.
 fn is_kernel(identity: &str) -> bool {
@@ -158,8 +161,12 @@ mod tests {
 
     #[test]
     fn ac2_only_the_kernel_identity_passes() {
-        assert!(is_kernel("local/agent"));
+        let expected = option_env!("AGENT_KERNEL_IDENTITY").unwrap_or("local/agent");
+        assert!(is_kernel(expected));
+        assert_eq!(is_kernel("local/agent"), expected == "local/agent");
         for other in [
+            &format!("{expected} "),
+            &format!("{expected}s"),
             "local/agents",
             "local/agent ",
             "Local/agent",
@@ -284,10 +291,7 @@ mod tests {
 
     #[test]
     fn ac4_other_functions_not_direct_for_kernel_not_owner_for_others() {
-        assert!(matches!(
-            refuse("local/agent"),
-            Err(SessionError::NotDirect)
-        ));
+        assert!(matches!(refuse(KERNEL), Err(SessionError::NotDirect)));
         for other in ["local/agents", "page", "host", ""] {
             assert!(
                 matches!(refuse(other), Err(SessionError::NotOwner)),
