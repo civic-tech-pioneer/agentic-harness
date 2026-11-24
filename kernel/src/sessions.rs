@@ -233,6 +233,8 @@ pub struct FakeHost {
     pub open_error: Option<StreamError>,
     /// `start_provider` fails: no provider is linked.
     pub no_provider: bool,
+    /// A synchronous launch refusal returned by the host.
+    pub start_error: Option<String>,
     /// `start_provider` answers `direct: false` (a checked provider's stream, 10).
     pub not_direct: bool,
 }
@@ -280,6 +282,9 @@ impl Host for FakeHost {
         Ok(stream)
     }
     fn start_provider(&mut self, launch: &str, input: &str) -> Result<Started, String> {
+        if let Some(cause) = &self.start_error {
+            return Err(cause.clone());
+        }
         if self.no_provider {
             return Err("no Claude Code provider is linked".to_string());
         }
@@ -332,6 +337,8 @@ pub enum ProviderEvent {
     Turn(Turn),
     /// The workspace the stream's `initialized` item names (4.6): kept once in the record.
     Workspace(String),
+    /// The launch is waiting for consent, or has initialized and cleared the wait.
+    Consent(Option<String>),
     /// The Claude session id of `system/init` (9.8 "Adapter state"): the record's `claude-uuid`.
     ClaudeSession(String),
     /// A `system/init` and its `cwd` (9.3 `folder`): the first init decides the folder, kept
@@ -373,6 +380,7 @@ pub struct SessionInfo {
     pub title: String,
     pub profile: String,
     pub backend: String,
+    pub workspace: Option<String>,
     /// The turn JSON of 9.3.
     pub turn: String,
     pub updated: u64,
@@ -487,6 +495,9 @@ struct StreamKey {
     /// A provider stream the host does not feed directly (`direct: false`, 10).
     #[serde(default, skip_serializing_if = "is_false")]
     checked: bool,
+    // Kept with the live stream cursor so an attaching page can see the pending question.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    consent: Option<String>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -865,7 +876,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         if !refusals.is_empty() {
             return Err(KernelError::Refused(refusals));
         }
-        let workspace = rec.workspace.as_deref().unwrap_or(SCRATCH);
+        let workspace = rec
+            .workspace
+            .as_deref()
+            .or(rec.requested_folder.as_deref())
+            .unwrap_or(SCRATCH);
         let uuid = rec.claude_uuid.as_deref().filter(|_| resume);
         Ok(Self::compile_launch(
             &rec.profile,
@@ -902,6 +917,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             kind: PROVIDER.to_string(),
             last: 0,
             checked: !started.direct,
+            consent: None,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         self.state
@@ -1800,7 +1816,19 @@ impl<S: State, H: Host> Kernel<S, H> {
         overlay: &str,
         input: &str,
     ) -> Result<Called<String>, KernelError> {
-        self.guarded(|k| k.start_call(caller, key, profile, overlay, input))
+        self.guarded(|k| k.start_call(caller, key, profile, overlay, input, None))
+    }
+
+    pub fn start_in_folder(
+        &mut self,
+        caller: &str,
+        key: &str,
+        profile: &str,
+        overlay: &str,
+        input: &str,
+        folder: &str,
+    ) -> Result<Called<String>, KernelError> {
+        self.guarded(|k| k.start_call(caller, key, profile, overlay, input, Some(folder)))
     }
 
     fn start_call(
@@ -1810,6 +1838,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         profile: &str,
         overlay: &str,
         input: &str,
+        folder: Option<&str>,
     ) -> Result<Called<String>, KernelError> {
         check_key(key)?;
         let mut slots = self.begin()?;
@@ -1836,6 +1865,17 @@ impl<S: State, H: Host> Kernel<S, H> {
         // A Claude profile without a model runs the default one; an OpenAI one must name it (9.2).
         if backend == Backend::Openai && parsed.model.is_none() {
             return Err(refused("model", "an OpenAI profile needs a model"));
+        }
+        if let Some(folder) = folder {
+            if backend != Backend::Claude || !folder.starts_with('/') {
+                return Err(refused(
+                    "folder",
+                    "Claude Code needs an absolute folder path",
+                ));
+            }
+            if folder.len() > crate::record::RECORD_BYTES {
+                return Err(KernelError::TooLarge(crate::record::RECORD_BYTES as u64));
+            }
         }
         let model = parsed.model.unwrap_or_else(|| "default".to_string());
         let refusals = check(&json, overlay, backend, &model, None);
@@ -1873,6 +1913,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             created: now,
             updated: now,
             owner_page: n as u32,
+            requested_folder: folder.map(str::to_owned),
             ..Record::default()
         };
         // A later launch narrows as this one does (9.2).
@@ -1881,7 +1922,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         // The provider's `start` comes before the first write (2.1): none linked, nothing written.
         let started = match backend {
             Backend::Claude => {
-                let launch = Self::compile_launch(profile, &json, &narrowing, SCRATCH, None);
+                let launch = Self::compile_launch(
+                    profile,
+                    &json,
+                    &narrowing,
+                    folder.unwrap_or(SCRATCH),
+                    None,
+                );
                 Some(self.start_provider(&launch, input)?)
             }
             _ => None,
@@ -2608,6 +2655,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                     title: r.title,
                     profile: r.profile,
                     backend: r.backend,
+                    workspace: r
+                        .workspace
+                        .filter(|path| path.starts_with('/'))
+                        .or(r.requested_folder),
                     turn: turn.to_json().to_string(),
                     updated: r.updated,
                 });
@@ -2732,7 +2783,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 other => return self.finish_items(other),
             }
         }
-        let kept = self.take_seq(stream, last, None);
+        let kept = self.take_seq(stream, last, None, key.consent);
         let (pushes, requests, gone) = done;
         self.finish_items(kept.map(|()| Step::Done {
             pushes,
@@ -2771,6 +2822,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let kept = self.state.get(&adapter_key(stream));
         let mut adapter = ClaudeAdapter::from_state(kept.as_deref(), !key.checked);
         let before = adapter.to_state();
+        let mut consent = key.consent;
         let mut done = (Vec::new(), Vec::new(), Vec::new());
         let mut prev = key.last;
         for (seq, body) in fresh {
@@ -2790,10 +2842,20 @@ impl<S: State, H: Host> Kernel<S, H> {
             } else {
                 facts
                     .into_iter()
-                    .map(|f| match f {
-                        Fact::Workspace(id) => ProviderEvent::Workspace(id),
-                        Fact::Session(uuid) => ProviderEvent::ClaudeSession(uuid),
-                        Fact::Folder(cwd) => ProviderEvent::Folder(cwd),
+                    .flat_map(|f| match f {
+                        Fact::ConsentPending(what) => {
+                            consent = Some(what.clone());
+                            vec![ProviderEvent::Consent(Some(what))]
+                        }
+                        Fact::Workspace(id) => {
+                            let clear = consent.take().map(|_| ProviderEvent::Consent(None));
+                            [Some(ProviderEvent::Workspace(id)), clear]
+                                .into_iter()
+                                .flatten()
+                                .collect()
+                        }
+                        Fact::Session(uuid) => vec![ProviderEvent::ClaudeSession(uuid)],
+                        Fact::Folder(cwd) => vec![ProviderEvent::Folder(cwd)],
                     })
                     .collect()
             };
@@ -2815,7 +2877,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let after = adapter.to_state();
         let state = (after != before).then_some(after);
-        let kept = self.take_seq(stream, last, state);
+        let kept = self.take_seq(stream, last, state, consent);
         let (pushes, requests, gone) = done;
         self.finish_items(kept.map(|()| Step::Done {
             pushes,
@@ -2877,6 +2939,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         stream: &str,
         last: u64,
         adapter: Option<Vec<u8>>,
+        consent: Option<String>,
     ) -> Result<(), KernelError> {
         let Some(mut key) = self
             .state
@@ -2887,6 +2950,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         self.open_meter();
         key.last = last;
+        key.consent = consent;
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         self.state
             .put(&stream_key(stream), bytes)
@@ -3032,7 +3096,17 @@ impl<S: State, H: Host> Kernel<S, H> {
             .map(|e| json!({"_meta": {"watane": {"type": "entry", "entry": e}}}))
             .collect();
         items.push(json!({"_meta": {"watane": {"type": "synced", "through": meta.last}}}));
-        items.push(json!({"_meta": {"watane": turn_push(&rec.turn)}}));
+        let mut turn = rec.turn.clone();
+        if rec.requested_folder.is_some() {
+            if let Turn::Running { activity, .. } = &mut turn {
+                *activity = self
+                    .live_provider(&rec)
+                    .and_then(|stream| self.provider_key(&stream))
+                    .and_then(|key| key.consent)
+                    .map(|what| crate::record::Activity::Consent { what });
+            }
+        }
+        items.push(json!({"_meta": {"watane": turn_push(&turn)}}));
         items.push(json!({"_meta": {"watane": queue}}));
         for v in items {
             if let Err(e) = self.host.push(&o, v) {
@@ -3065,6 +3139,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             kind: OWNER.to_string(),
             last: 0,
             checked: false,
+            consent: None,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         let too_large = |e: crate::state::TooLarge| KernelError::TooLarge(e.0 as u64);
@@ -3169,6 +3244,15 @@ impl<S: State, H: Host> Kernel<S, H> {
         let now = self.host.now();
         let mut work = Work::default();
         match event {
+            ProviderEvent::Consent(what) => {
+                if let Turn::Running { since, .. } = rec.turn {
+                    let activity = what.map(|what| crate::record::Activity::Consent { what });
+                    work.pushes.push(Push::of(
+                        &rec.id,
+                        turn_push(&Turn::Running { since, activity }),
+                    ));
+                }
+            }
             ProviderEvent::Turn(t) => self.change_turn(&mut rec, past, t, now, &mut work)?,
             ProviderEvent::Workspace(id) => match rec.workspace.as_deref() {
                 None => rec.workspace = Some(id),
@@ -3312,8 +3396,18 @@ impl<S: State, H: Host> Kernel<S, H> {
         let tool = body.pointer("/toolCall/title").and_then(Value::as_str)?;
         let input = body.get("input").unwrap_or(&Value::Null);
         let path = body.get("path").and_then(Value::as_str);
-        let key = broker::scope(tool, rec.folder.as_deref(), input, path)?;
+        let key = broker::scope(tool, Self::allow_folder(rec, tool), input, path)?;
         Some((tool.to_string(), key))
+    }
+
+    /// A picked folder has no named source tree for a recursive file write grant.
+    fn allow_folder<'a>(rec: &'a Record, tool: &str) -> Option<&'a str> {
+        if rec.requested_folder.is_some()
+            && matches!(tool, "Write" | "Edit" | "MultiEdit" | "NotebookEdit")
+        {
+            return None;
+        }
+        rec.folder.as_deref()
     }
 
     /// 9.6: the kernel sets the reach of a new ask, replacing or removing the one it came with.
@@ -3323,7 +3417,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let reach = tool.and_then(|t| {
             let input = body.get("input").unwrap_or(&Value::Null);
             let path = body.get("path").and_then(Value::as_str);
-            broker::reach(&rec.owner, rec.folder.as_deref(), kind, t, input, path)
+            broker::reach(&rec.owner, Self::allow_folder(rec, t), kind, t, input, path)
         });
         if let Some(o) = body.as_object_mut() {
             match reach {
@@ -3638,7 +3732,8 @@ fn may_activate(e: &ProviderEvent) -> bool {
     match e {
         ProviderEvent::Turn(t) => t.is_active(),
         ProviderEvent::Out(o) => o.entry.as_ref().is_some_and(|e| e.kind == Kind::Ask),
-        ProviderEvent::Workspace(_)
+        ProviderEvent::Consent(_)
+        | ProviderEvent::Workspace(_)
         | ProviderEvent::ClaudeSession(_)
         | ProviderEvent::Folder(_)
         | ProviderEvent::Ended => false,

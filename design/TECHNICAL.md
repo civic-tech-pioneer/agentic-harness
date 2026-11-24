@@ -256,6 +256,7 @@ is unpublished (R-B3).
 ```wit
 interface sessions {                                 // the owner only, by caller.identity()
   start: func(key: string, profile: string, overlay: string, input: string) -> result<string, error>;
+  start-in-folder: func(key: string, profile: string, overlay: string, input: string, folder: string) -> result<string, error>;
   check: func(profile: string, overlay: string) -> list<refusal>;
   attach: func(session: string, after: u64, caps: string) -> result<stream-id, error>;
   read: func(session: string, after: u64, before: option<u64>, max: u32) -> result<page, error>;
@@ -271,7 +272,7 @@ interface sessions {                                 // the owner only, by calle
   take-back: func(session: string, allow: string) -> result<_, error>; // a session allow (9.6)
 }
 record page { entries: list<string>, last: u64 }
-record session-info { id: string, title: string, profile: string, backend: string, turn: string, updated: u64 }
+record session-info { id: string, title: string, profile: string, backend: string, workspace: option<string>, turn: string, updated: u64 }
 record queued-input { n: u64, input: string }
 record refusal { field: string, backend: string, model: string, reason: string }
 variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow, behind(u64), too-large(u64), busy }
@@ -343,7 +344,7 @@ fields. Each value goes out as one `--flag=value` argument.
 |---|---|---|
 | `profile` | the session's kernel profile name (9.2), set by the kernel: `[A-Za-z0-9._-]{1,64}` as host 19.3 takes it; the kernel leaves the field out for a name outside it | nothing: the host uses it only in the workspace consent's words (8, "{profile}"), never as an argument (watane S95) |
 | `workspace` | a workspace id the origin client holds (8), or `scratch` for a new scratch workspace (4.6) | cwd |
-| `extra-workspaces` | workspace ids, the same rule | `--add-dir=` each |
+| `extra-workspaces` | workspace ids, the same rule except that `scratch` is refused | `--add-dir=` each |
 | `model` | `[A-Za-z0-9.\-\[\]]{1,64}` | `--model=` |
 | `fallback-models` | the same, at most 4 | `--fallback-model=` |
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max` | `--effort=` |
@@ -408,7 +409,7 @@ character is printable ASCII (space to `~`). Each refusal names its reason.
 | Grant | Built-in tools | Required |
 |---|---|---|
 | Claude Code (unchecked), `claude-code` | `Read`, `Write`, `Edit`, `Glob`, `Grep`, `NotebookEdit`, `Skill`, `Task`, `TodoWrite` | a workspace |
-| Claude Code with shell and web (unchecked), `claude-code-shell` | the above and `Bash`, `WebFetch`, `WebSearch` | a workspace; `sandbox.enabled: true`; writes only in the workspaces; loopback denied; none of `excludedCommands`, `allowUnsandboxedCommands`, `allowUnixSockets`, `allowLocalBinding`; a network allowlist of plain domain names |
+| Claude Code with shell and web (unchecked), `claude-code-shell` | the above and `Bash`, `WebFetch`, `WebSearch` | a workspace; `sandbox.enabled: true`; writes only in the workspaces; loopback denied only while no allowlisted domain names or resolves to a loopback address (V27, 14); none of `excludedCommands`, `allowUnsandboxedCommands`, `allowUnixSockets`, `allowLocalBinding`; a network allowlist of plain domain names |
 
 There are two grants (N1, the human, 2026-11-20): `claude-code`, file tools in
 confined folders, and `claude-code-shell`, shell and web inside Claude's
@@ -451,7 +452,7 @@ and `.husky/**`. No launch can remove them.
 2. With a callback, the answer must hold `hook_on_failure_supported: true`
    and not `hooks_applied: false`; otherwise the host kills the group and
    ends the stream `mismatch`. Once this step has passed, the host pushes the
-   item `{"type":"initialized"}` on the `claude-code.start` (and
+   item `{"type":"initialized","workspace":"<id>"}` on the `claude-code.start` (and
    `claude-code-shell.start`) stream. The host starts the process only after
    the workspace consent is held (8), so `initialized` never comes before it;
    the checked provider relies on that (10).
@@ -549,12 +550,16 @@ and `.husky/**`. No launch can remove them.
     changes nothing; neither writes an entry. This is the one place the
     kernel learns the folder (9.6, 14).
   - **Held across a resume.** A session whose record has a `workspace` launches
-    with `workspace: "<that id>"`; one without launches with `scratch`. In
-    stage B every Claude session is in a scratch workspace; a picked folder
-    needs the workspace consent (stage C) and its 2.1 and 8 rows.
+    with `workspace: "<that id>"`; before initialization it relaunches with the
+    original picked folder, or with `scratch` for a scratch session.
   - **Lifetime.** It outlives its stream and the session's `delete`; the host
     deletes it with its owner mod (host 19.3).
-- **Picked workspace:** canonical, symlinks resolved. Refused: `/`, the home
+- **Picked workspace:** `start-in-folder` takes an absolute path for a Claude profile.
+  The kernel passes it to the same provider as a scratch launch. The host
+  resolves and validates it before asking (host 19.3, 19.7), and
+  `initialized.workspace` is its canonical path. `list` returns the picked
+  path for display, canonical once available. The requested path never grants
+  file reach. Canonical, symlinks resolved. Refused: `/`, the home
   folder, the watane home and its ancestors, `~/.claude`, `~/.codex`,
   `~/.ssh`, `~/.aws`, `~/Library/Keychains`, the run and scratch trees;
   compared without case on a case-insensitive file system.
@@ -669,15 +674,17 @@ and `.husky/**`. No launch can remove them.
 
 | Consent | Asked when | Kept for | Words |
 |---|---|---|---|
-| Workspace | a launch names a folder new for the origin client | (origin client, folder) | "Let {origin client} have agents work in {folder} ({profile}, through {provider})?" |
-| Account | an `https-stream` with `account: "openai"` new for the origin client (the `judge` account asks none: entering its key is the consent, 5) | (origin client, account) | "Let {origin client} use your ChatGPT plan?" |
+| Workspace | a launch names a folder new for the origin client and provider | (origin client, provider, folder) | "Let {origin client} have agents work in {folder} ({profile}, through {provider})?" |
+| Account | an `https-stream` with `account: "openai"` new for the origin client and requester (the `judge` account asks none: entering its key is the consent, 5) | (origin client, requester, account) | "Let {origin client} use your ChatGPT plan?" |
 | Toolset | `agent-tools.open` with a toolset new for the origin client | (origin client, toolset) | "Let {origin client}'s agents call: {functions}?" |
 
 - **Origin client:** the page's mod for a page call; the mod of the handle
   for an agent's call; for an item, job or timer, the origin of the call that
   opened it. The host carries it with the chain.
 - Stored with the grants (host 4.4); shown and withdrawn in the manager like
-  grants. A withdrawal ends dependent streams and closes dependent handles.
+  grants. A withdrawal ends dependent streams with `gone` and closes
+  dependent handles (host 19.7). `gone` is shared with other events that remove
+  the stream, so the console reports the loss of the provider connection.
 - **Grant words:** "Can start Claude Code with your Claude account, to read
   and change files in folders you choose. Not checked by watane." and "Can
   start Claude Code with your Claude account and let it run programs and use
@@ -698,7 +705,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | Key | Value |
 |---|---|
 | `profile/<name>` | a profile (9.2) |
-| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed, with one exception, the console's first run (S35): for the identity `page` only, an absent `access/page` allows the built-in profile `scratch` and nothing else (an unreadable one still allows none). `profile/scratch` absent reads as the built-in `{"backend":"claude","partial":true,"ask":true}`: Claude's default model, no built-in tools, mode `manual` with its asks sent to the owner (`ask: true`, 4.1: without it the host denies every `can_use_tool` at once and pushes no ask, host 19.3; S36), no allow rule, in a scratch workspace (4.6), which is less than any profile the participant can make: with no built-in tool and no `agent-handle`, `claude` has no tool to ask about, and every allow is the owner's own answer to one call. The first-run allowance covers only that built-in: a stored `profile/scratch` is a profile like any other and needs `access/page` to list it (S35 adversary), and a stored `access/page` replaces the allowance `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile may say so). A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
+| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed, with one exception, the console's first run (S35): for the identity `page` only, an absent `access/page` allows the built-in profile `scratch` and nothing else (an unreadable one still allows none). `profile/scratch` absent reads as the built-in `{"backend":"claude","partial":true,"ask":true}`: Claude's default model, no built-in tools, mode `manual` with its asks sent to the owner (`ask: true`, 4.1: without it the host denies every `can_use_tool` at once and pushes no ask, host 19.3; S36), no allow rule, in a scratch workspace by default (4.6), which is less than any profile the participant can make: with no built-in tool and no `agent-handle`, `claude` has no tool to ask about, and every allow is the owner's own answer to one call. The first-run allowance covers only that built-in: a stored `profile/scratch` is a profile like any other and needs `access/page` to list it (S35 adversary), and a stored `access/page` replaces the allowance `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile may say so). A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
 | `adopted/<offer id>` | `{content hash, content}` |
 | `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
 | `session/<id>` | the session record (9.3) |
@@ -758,7 +765,7 @@ once; `check` runs only this step.
 ### 9.3 Sessions
 
 Session record: `id` (made by the kernel, at most 64 bytes), `owner`, `key`, `profile`, `backend`, `title`,
-`handle`, `workspace`, `folder` (the workspace's own folder: the `cwd` of the provider stream's first `system/init`, kept once when it is a plain absolute folder, 4.6; absent until then), `init-seen` (true once the first `system/init` was read: only that one sets `folder`, S36 r1), `claude-uuid`, `parent?`, `children`, `turn`,
+`handle`, `workspace`, `requested-folder` (the launch path of a picked folder, for display and retry before initialization), `folder` (the workspace's own folder: the `cwd` of the provider stream's first `system/init`, kept once when it is a plain absolute folder, 4.6; absent until then), `init-seen` (true once the first `system/init` was read: only that one sets `folder`, S36 r1), `claude-uuid`, `parent?`, `children`, `turn`,
 `boot` (the generation of the session's last restart step, or of its creation; "Restart" below), `owner-page` (the `owner/<owner>/<n>` page that lists it, 9.1), `bytes` (the bytes of the session's keys other than its record, 9.3 Quota, so `delete` frees them without reading them), `active-page` (the `active/` page that lists the session, absent when it is not listed; 9.1),
 `allows`
 (session allows `{id, tool, key}`, 9.6), `owed-idles` (the `idle` lines `claude` still owes for turns `interrupt` ended, below; absent when 0), `pending-answers` (Claude asks the kernel answered itself that the host has not yet closed: `{ask id: {i, toolCallId, kind, outcome, by, for?, reason?, input?}}`, the pending answers of 9.8 rule 4; `toolCallId` is the ask's call, kept so a later ask on the call is compared without reading every ask (9.8); `input` is the changed input an `allow` carried (2.3), shown in the decision entry and not counted in the 1 KiB; `i` and `kind` are the ask entry's index and its `ask` or `check`, so the decision entry can repeat the ask, and follow the kind rules of 9.8 rule 4, after a restart without the adapter; kept in the record so they survive a restart, charged as control records, 9.3), `counters {turns, tool-errors-in-a-row, tokens}`,
@@ -786,7 +793,7 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 
 | Turn state | Meaning |
 |---|---|
-| `running {activity?}` | a turn is under way; `activity` while it lasts: `checking {on}` (the checked provider asks its judge, 10), `compacting`, `consent {what}` (a request waits for the participant in the app, 8). The activity is live only: pushed as a `turn` update, never stored in the record or as an entry, so it costs no write |
+| `running {activity?}` | a turn is under way; `activity` while it lasts: `checking {on}` (the checked provider asks its judge, 10), `compacting`, `consent {what}` (a request waits for the participant in the app, 8). The activity is live only: pushed as a `turn` update and kept out of the record and entries. Pending consent joins the provider stream cursor write so attachment during a wait can see it. `initialized` clears it |
 | `waiting {asks}` | an ask is open |
 | `paused {until}` | a usage limit, or retries ran out; the `resume` deadline resumes it (below) |
 | `idle {stop}` | `completed`, `interrupted`, `stopped {limit}` (names the limit), `failed {error}` (`failed {timers}` when a retry finds no timer slot, below) |
@@ -1383,10 +1390,11 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   otherwise put `/etc` under `<ws>/**`). Since watane S100 the host gives
   each file-tool `ask` and `check` item a top-level `path` so (4.5 step 4);
   the kernel reads that and never the `input`'s path. The workspace's own
-  folder, which `<ws>/**` needs and the record's `workspace` (the host's id)
-  does not hold, is the record's `folder` (4.6): the `cwd` of the stream's
+  folder used for `<ws>/**` is the record's `folder` (4.6),
+  which comes from the `cwd` of the stream's
   first `system/init`. With no `folder`, or no `path` on the ask, no file
-  key is offered and the ask still asks. A session allow grants only the
+  key is offered and the ask still asks. Picked folders offer no recursive
+  write keys because they do not name a source tree. A session allow grants only the
   reach its ask was opened with: `answer` with `for: "session"` computes the
   key afresh and is refused `refused`/`decision` unless it renders to that
   ask's `reach` exactly (S36 r1). A key for an
@@ -1918,10 +1926,8 @@ stage E).
 
 Not protected: a revoked `access/` entry does not stop a turn already running: no call of 2.3 writes `access/` today, so the kernel learns of the change only when a call reads the key (9.7, "Revoking"); the slice that adds the call writing `access/` ends the turns of the sessions whose profile it removes (as `cancel`); the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
-what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose loopback reach is still to be probed (V27), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
-(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6); whether a subagent prompt that starts with `/` runs a skill (not
-probed; probe V26, slice S1); whether the shell grant's sandbox blocks
-loopback (probe V27, slice S1; table in 16).
+what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose allowlisted names can reach loopback, LAN and link-local addresses (V27, breached; the shell grant waits on the human), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
+(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6); The subagent slash-prompt probe V26 held and the shell network probe V27 breached (16).
 
 ## 15. Provides and needs
 
@@ -1991,8 +1997,8 @@ of `spec/VISION.md`.
 | V6 | the cost of one item through watane's call path: with no write, and with one state write (one full fsync) | done (`proto/stream-cost-bench`) | `ARCHITECTURE-PROPOSAL.md` section 18; it is why 9.4 writes once per finished entry, never per delta |
 | V7 | latency of one judge check (`pre-tool-check`) on a real judge account | stage E, before the checked provider is built | `ARCHITECTURE-PROPOSAL.md` section 18 |
 | V8 | the stage A prototype through three layers (host stream, a mod consumer, a page consumer): order, delay and the cost of one fsync per commit (7, N4) | stage A | "V8 record", at the end of this section (numbers; whether to change 7 is the human's) |
-| V26 | whether a subagent prompt that starts with `/` runs a skill (14) | slice S1 | `ARCHITECTURE-PROPOSAL.md` section 18 |
-| V27 | whether the shell grant's sandbox blocks loopback (14) | slice S1 | `ARCHITECTURE-PROPOSAL.md` section 18 |
+| V26 | whether a subagent prompt that starts with `/` runs a skill (14) | S1, held | `ARCHITECTURE-PROPOSAL.md` section 18 |
+| V27 | whether the shell grant's sandbox blocks loopback (14) | S1, breached | `ARCHITECTURE-PROPOSAL.md` section 18 |
 
 **Cases** (the research's recurring ones first):
 1. An orphaned tool call is repaired before the next request; a result

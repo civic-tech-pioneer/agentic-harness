@@ -49,6 +49,7 @@ mod s36_firing;
 mod s36_host;
 mod s36_load;
 mod s36_path;
+mod s38;
 mod scope_s34;
 mod seam_s32;
 mod sessions;

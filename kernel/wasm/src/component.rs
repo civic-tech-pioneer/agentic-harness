@@ -152,6 +152,18 @@ impl sessions::Guest for Export {
             .map(|c| c.value)
             .map_err(map::error)
     }
+    fn start_in_folder(
+        key: String,
+        profile: String,
+        overlay: String,
+        input: String,
+        folder: String,
+    ) -> Result<String, sessions::Error> {
+        run(|k| k.start_in_folder(&me(), &key, &profile, &overlay, &input, &folder))
+            .map(|c| c.value)
+            .map_err(map::error)
+    }
+
     /// Stage A: the crate has no name-based check (it checks a profile document for `start`),
     /// so this answers one refusal that says so.
     fn check(_profile: String, _overlay: String) -> Vec<sessions::Refusal> {
@@ -224,6 +236,7 @@ impl sessions::Guest for Export {
                         title: i.title,
                         profile: i.profile,
                         backend: i.backend,
+                        workspace: i.workspace,
                         turn: i.turn,
                         updated: i.updated,
                     })
