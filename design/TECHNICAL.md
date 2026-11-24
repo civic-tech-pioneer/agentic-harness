@@ -2419,7 +2419,7 @@ of `spec/VISION.md`.
     `interrupt` with a replacement, Continue on an `unknown` session and
     `answer` with `allow` are each refused `{field: "profile"}`; the turn's
     end starts no queued input and the queue stays; a `resume` deadline
-    leaves the turn `paused` with no time (that half comes with the session timers, 9.5); `read`, `answer` with `deny`,
+    leaves the turn `paused` with no time and sends no request (the OpenAI loop's `resume`, 9.5; S40 r1); `read`, `answer` with `deny`,
     `cancel` and `delete` still work. An unreadable `access/` value acts as
     an empty one.
 75. (9.8) Kernel crate, adapter: an `Edit` ask's `toolCall` has `kind: edit`

@@ -1267,6 +1267,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                 self.go(rec, &mut ls, &mut cx, Pending::default(), None, attempt)?;
             }
             (Phase::Paused, (_, true)) if matches!(rec.turn, Turn::Paused { .. }) => {
+                // 9.7 "Revoking": a profile the owner may no longer use sends nothing; the turn
+                // stays paused with no time.
+                if !self.may_use(&rec.owner, &rec.profile) {
+                    let paused = Turn::Paused { until: None };
+                    self.turn_to(rec, past, paused, now, cx.work)?;
+                    return Ok(());
+                }
                 let running = Turn::Running {
                     since: now,
                     activity: None,
