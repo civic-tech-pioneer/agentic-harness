@@ -530,6 +530,8 @@ reviewer claude. Cloud.
 
 ## Human answers (2026-11-20, through the PO)
 
+- 2026-11-24 watane host 18 **Q38: (b)**, the human: a consent is kept per (origin client, provider, folder or account). TECHNICAL 8 cites watane host 19.7, which S103 writes to match; no change here.
+
 S2 writes each into the document that owns it.
 - **N1** Two Claude Code grants: file tools in confined folders, and shell-and-web inside Claude's sandbox.
 - **N2** `auto` permission mode stays out.
