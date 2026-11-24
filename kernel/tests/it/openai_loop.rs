@@ -1007,3 +1007,44 @@ fn r1_f1_3_a_late_delta_of_a_completed_request_is_ignored() {
         .iter()
         .any(|c| matches!(c, HostCall::Push { .. })));
 }
+
+/// F1.2 (S40-2 `error_body`): a non-2xx body the host splits is classified over its items
+/// joined.
+#[test]
+fn r1_f1_2_a_split_usage_limit_body_pauses_until_the_reset() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let s = stream_of(&mut k, &id);
+    let body = usage_limit_body(60);
+    let (a, b) = body.split_at(body.len() / 2);
+    feed(
+        &mut k,
+        &s,
+        vec![head(429, "application/json"), a.to_vec(), b.to_vec()],
+    );
+    k.provider_ended_with(&s, None).unwrap();
+    let until = k.host.now + 60_000;
+    assert_eq!(turn(&mut k, &id), Turn::Paused { until: Some(until) });
+    assert_eq!(slots(&mut k).request, 0);
+}
+
+/// F1.2: a split body is classified once its items joined read as JSON (else at `ended`).
+#[test]
+fn r1_f1_2_a_split_error_body_is_classified_once_its_joined_items_read() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let s = stream_of(&mut k, &id);
+    let body = br#"{"error":{"message":"bad model name"}}"#;
+    let (a, b) = body.split_at(10);
+    feed(&mut k, &s, vec![head(400, "application/json"), a.to_vec()]);
+    assert!(matches!(turn(&mut k, &id), Turn::Running { .. }));
+    feed(&mut k, &s, vec![b.to_vec()]);
+    let page = k.read("alice", &id, 0, None, 20).unwrap();
+    let t = turn(&mut k, &id);
+    assert!(
+        matches!(&t, Turn::Idle { stop: Stop::Failed { error, .. }, .. } if error.contains("bad model name")),
+        "{t:?} {:?}",
+        page.entries
+    );
+    assert_eq!(slots(&mut k).request, 0);
+}
