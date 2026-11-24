@@ -1,0 +1,155 @@
+//! The watane 19.3/19.7 consumer seam. Drive the real adapter with host stream items and outcomes.
+use agent_kernel::{FakeHost, HostCall, Kernel, MemState, Record, SinkOutcome, Stop, Turn};
+use serde_json::json;
+
+const FOLDER: &str = "/home/alice/notes";
+const WHAT: &str = "workspace:local/claude-code:/home/alice/notes";
+
+#[test]
+fn ac1_ac2_ac3_workspace_stream_lifecycle() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+        .unwrap()
+        .value;
+    let rec = Record::load(&mut k.state, &id).unwrap();
+    let stream = rec.streams[0].clone();
+    assert!(rec.folder.is_none());
+    assert!(k.host.calls.iter().any(|c| matches!(c,
+        HostCall::StartProvider { launch, .. }
+        if serde_json::from_str::<serde_json::Value>(launch).unwrap()["workspace"] == FOLDER
+    )));
+
+    let pending = json!({"type": "consent-pending", "what": WHAT});
+    let call = k
+        .provider_lines(&stream, vec![(1, pending.to_string().into_bytes())])
+        .unwrap();
+    assert_eq!(call.value, SinkOutcome::Taken);
+    assert!(matches!(
+        Record::load(&mut k.state, &id).unwrap().turn,
+        Turn::Running { activity: None, .. }
+    ));
+    k.attach("page", &id, 0).unwrap();
+    assert!(k.host.calls.iter().any(|c| matches!(c,
+        HostCall::Push { value, .. }
+        if value["_meta"]["watane"]["state"]["activity"]["what"] == WHAT
+    )));
+
+    let initialized = json!({"type": "initialized", "workspace": FOLDER});
+    let call = k
+        .provider_lines(&stream, vec![(2, initialized.to_string().into_bytes())])
+        .unwrap();
+    assert!(call
+        .pushes
+        .iter()
+        .any(|p| p.value["state"]["state"] == "running"
+            && p.value["state"].get("activity").is_none()));
+    assert_eq!(
+        k.list("page", None, 5).unwrap()[0].workspace.as_deref(),
+        Some(FOLDER)
+    );
+
+    k.provider_ended_with(&stream, Some("gone".into())).unwrap();
+    let rec = Record::load(&mut k.state, &id).unwrap();
+    assert!(!rec.streams.contains(&stream));
+    assert!(
+        matches!(rec.turn, Turn::Idle { stop: Stop::Failed { cause: Some(cause), .. }, .. } if cause == "gone")
+    );
+    assert!(k
+        .read("page", &id, 0, None, 20)
+        .unwrap()
+        .entries
+        .iter()
+        .any(|e| e.contains("hello")));
+
+    let next = k
+        .start_in_folder("page", "next", "scratch", "{}", "again", FOLDER)
+        .unwrap()
+        .value;
+    let stream = Record::load(&mut k.state, &next).unwrap().streams[0].clone();
+    let refused = format!("consent-refused({WHAT})");
+    k.provider_ended_with(&stream, Some(refused.clone()))
+        .unwrap();
+    let rec = Record::load(&mut k.state, &next).unwrap();
+    assert!(rec.streams.is_empty());
+    assert!(rec.folder.is_none());
+    assert!(
+        matches!(rec.turn, Turn::Idle { stop: Stop::Failed { cause: Some(cause), .. }, .. } if cause == refused)
+    );
+}
+
+#[test]
+fn ac1_host_rejects_a_forbidden_path_before_opening_a_session() {
+    let cause = "bad-launch: workspace: protected folder";
+    let host = FakeHost {
+        start_error: Some(cause.into()),
+        ..FakeHost::default()
+    };
+    let mut k = Kernel::new(MemState::default(), host);
+    let error = k
+        .start_in_folder(
+            "page",
+            "first",
+            "scratch",
+            "{}",
+            "hello",
+            "/home/alice/.ssh",
+        )
+        .unwrap_err();
+    assert!(matches!(error, agent_kernel::KernelError::Backend(message) if message == cause));
+    assert!(k.list("page", None, 5).unwrap().is_empty());
+}
+
+#[test]
+fn ac2_wrapped_stdout_cannot_start_a_consent_wait() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+        .unwrap()
+        .value;
+    let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    let stdout = json!({"type": "consent-pending", "what": WHAT});
+    let wrapped = json!({"type": "wrapped", "line": stdout.to_string()});
+    k.provider_lines(&stream, vec![(1, wrapped.to_string().into_bytes())])
+        .unwrap();
+    k.attach("page", &id, 0).unwrap();
+    assert!(!k.host.calls.iter().any(|c| matches!(c,
+        HostCall::Push { value, .. }
+        if value["_meta"]["watane"]["state"]["activity"]["kind"] == "consent"
+    )));
+}
+
+#[test]
+fn ac4_picked_folder_never_offers_recursive_write_keys() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+        .unwrap()
+        .value;
+    let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    k.attach("page", &id, 0).unwrap();
+    let path = format!("{FOLDER}/entry.txt");
+    let lines = [
+        json!({"type": "initialized", "workspace": FOLDER}),
+        json!({"type": "system", "subtype": "init", "cwd": FOLDER}),
+        json!({"type": "ask", "id": "write", "tool": "Write", "path": path,
+            "input": {"file_path": path, "content": "notes"}, "tool_use_id": "tu1", "expires-at": 9000}),
+    ];
+    k.provider_lines(
+        &stream,
+        lines
+            .into_iter()
+            .enumerate()
+            .map(|(i, v)| (i as u64 + 1, v.to_string().into_bytes()))
+            .collect(),
+    )
+    .unwrap();
+    let page = k.read("page", &id, 0, None, 20).unwrap();
+    let ask = page
+        .entries
+        .iter()
+        .map(|e| serde_json::from_str::<serde_json::Value>(e).unwrap())
+        .find(|e| e["kind"] == "ask")
+        .unwrap();
+    assert!(ask["body"].get("reach").is_none());
+}

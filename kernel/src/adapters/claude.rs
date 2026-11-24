@@ -484,6 +484,8 @@ impl ClaudeAdapter {
 pub enum Fact {
     /// The host's `initialized` item: the launch's workspace id.
     Workspace(String),
+    /// A host consent question on the launch stream, before initialization.
+    ConsentPending(String),
     /// `system/init`'s `session_id`: the Claude session's uuid.
     Session(String),
     /// A `system/init` line and its `cwd`, when it names one: the process folder of `claude`
@@ -504,6 +506,7 @@ pub fn facts(line: &[u8]) -> Vec<Fact> {
     };
     let own = |k: &str| str_of(&v, k).filter(|s| !s.is_empty()).map(str::to_string);
     match (str_of(&v, "type"), str_of(&v, "subtype")) {
+        (Some("consent-pending"), _) => own("what").map(Fact::ConsentPending).into_iter().collect(),
         (Some("initialized"), _) => own("workspace").map(Fact::Workspace).into_iter().collect(),
         (Some("system"), Some("init")) => own("session_id")
             .filter(|id| is_uuid(id))

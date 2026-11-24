@@ -195,6 +195,9 @@ pub struct Record {
     pub handle: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
+    /// The launch path before the host confirms its canonical workspace id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_folder: Option<String>,
     /// The workspace's own folder: the `cwd` of the stream's first `system/init`, kept once (9.3).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
@@ -249,6 +252,7 @@ impl Default for Record {
             title: String::new(),
             handle: None,
             workspace: None,
+            requested_folder: None,
             folder: None,
             init_seen: false,
             claude_uuid: None,
