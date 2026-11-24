@@ -1298,67 +1298,90 @@ fn ac10_a_decided_ask_that_leaves_ready_sends_the_request_in_its_own_call() {
 
 // ---- review r1
 
-/// F1.5 (9.5 "After a restart"): the host keeps handles in memory, so the restart step opens the
-/// toolsets again and the idempotent job starts again on the new handle, under its original key.
+/// The `agent-tools` calls in the host log: each is made under the origin of the call that runs.
+fn tools_effects(k: &K) -> Vec<HostCall> {
+    k.host
+        .calls
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                HostCall::ToolsOpen { .. }
+                    | HostCall::ToolsDescribe { .. }
+                    | HostCall::ToolsCall { .. }
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+// ---- review r2
+
+/// F2.1 (the deputy's ruling, 9.5 "After a restart"): an open job of an idempotent tool is
+/// aborted after a restart, like any other; no toolset is opened and no job is sent again, and
+/// the turn goes on with the next request.
 #[test]
-fn r1_f1_5_a_restart_reopens_the_toolsets_before_running_jobs_again() {
+fn review_restart_aborts_an_idempotent_job_and_opens_and_calls_nothing() {
     let mut k = kernel();
     let id = session_with_calls(&mut k, "alice", "k", &[call_of("c1", "notes_a", "{}")]);
-    let old = calls_of(&k)[0].0.clone();
+    assert_eq!(calls_of(&k).len(), 1);
     k.host.calls.clear();
     k.host.generation = 2;
     k.read("alice", &id, 0, None, 10).unwrap();
-    let opened = k
-        .host
-        .calls
-        .iter()
-        .position(|c| matches!(c, HostCall::ToolsOpen { .. }))
-        .expect("the toolsets are opened again");
-    let called = k
-        .host
-        .calls
-        .iter()
-        .position(|c| matches!(c, HostCall::ToolsCall { .. }))
-        .expect("the idempotent job starts again");
-    assert!(opened < called, "the open comes before the job");
-    let again = calls_of(&k);
-    assert_eq!(again.len(), 1);
-    assert_ne!(again[0].0, old, "the job runs on the new handle");
-    assert_eq!(again[0].1, format!("{id}/c1"), "under its original key");
-    assert_eq!(lp(&mut k, &id)["tools"]["handle"], again[0].0.as_str());
+    assert_eq!(tools_effects(&k), [], "no ToolsOpen and no ToolsCall");
+    let reqs = starts(&k);
+    assert_eq!(reqs.len(), 1);
     assert_eq!(
-        rec(&mut k, &id).handle.as_deref(),
-        Some(again[0].0.as_str())
+        outputs(&reqs[0]),
+        [("c1".to_string(), "aborted".to_string())]
     );
+    assert_eq!(lp(&mut k, &id)["state"], "requesting");
+    assert_eq!(slots(&mut k).job, 0);
 }
 
-/// F1.5: a session idle at the restart opens its toolsets again before its next step's jobs.
+/// F2.2: the restart pass steps the sessions of every owner under the origin of the call that
+/// armed it; it makes no `agent-tools` call for them. Open jobs (idempotent ones included) and
+/// pending calls are aborted, and each turn goes on with its next request.
 #[test]
-fn r1_f1_5_an_idle_session_reopens_the_toolsets_after_a_restart() {
+fn review_the_restart_pass_makes_no_tools_effect_under_another_owner() {
     let mut k = kernel();
-    let id = session_with_calls(&mut k, "alice", "k", &[call_of("c1", "notes_a", "{}")]);
-    let j = jobs(&mut k, &id);
-    finish(&mut k, &j[0].1, json!(1));
-    let s = stream_of(&mut k, &id);
-    feed(&mut k, &s, vec![sse_head(), completed(&[])]);
-    k.provider_ended_with(&s, None).unwrap();
-    assert_eq!(lp(&mut k, &id)["state"], "idle");
-    let old = calls_of(&k)[0].0.clone();
+    let a = session_with_calls(&mut k, "alice", "k", &[call_of("c1", "notes_a", "{}")]);
+    // Ten calls: eight open jobs, two pending behind the session's job slots.
+    let calls: Vec<Value> = (1..=10)
+        .map(|n| call_of(&format!("c{n}"), "notes_a", "{}"))
+        .collect();
+    let b = session_with_calls(&mut k, "bob", "k", &calls);
+    assert_eq!(calls_of(&k).len(), 9);
     k.host.calls.clear();
+    // A call of another owner sees the new boot and arms the pass.
     k.host.generation = 2;
-    k.say("alice", &id, "q", IN).unwrap();
-    assert!(k
-        .host
-        .calls
+    k.list("carol", None, 1).unwrap();
+    let mut ended = false;
+    for _ in 0..20 {
+        let before = k.host.calls.len();
+        k.timer("restart");
+        if k.host.calls[before..].contains(&HostCall::TimerCancel {
+            id: "restart".into(),
+        }) {
+            ended = true;
+            break;
+        }
+    }
+    assert!(ended, "the pass ends");
+    assert_eq!(tools_effects(&k), [], "no agent-tools call in the pass");
+    for (id, n) in [(&a, 1), (&b, 10)] {
+        assert_eq!(rec(&mut k, id).boot, 2);
+        assert_eq!(lp(&mut k, id)["state"], "requesting");
+        assert_eq!(lp(&mut k, id)["jobs"].as_u64().unwrap_or(0), 0);
+    }
+    let reqs = starts(&k);
+    assert_eq!(reqs.len(), 2);
+    let mut outs: Vec<usize> = reqs.iter().map(|r| outputs(r).len()).collect();
+    outs.sort();
+    assert_eq!(outs, [1, 10]);
+    assert!(reqs
         .iter()
-        .any(|c| matches!(c, HostCall::ToolsOpen { .. })));
-    let s = stream_of(&mut k, &id);
-    feed(
-        &mut k,
-        &s,
-        vec![sse_head(), completed(&[call_of("c2", "notes_a", "{}")])],
-    );
-    let again = calls_of(&k);
-    assert_eq!(again.len(), 1);
-    assert_ne!(again[0].0, old);
+        .flat_map(outputs)
+        .all(|(_, o)| o == "aborted"));
+    assert_eq!(slots(&mut k).job, 0);
 }
