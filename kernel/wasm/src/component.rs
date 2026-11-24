@@ -8,7 +8,8 @@ use crate::mods::claude_code::sessions as provider;
 use crate::watane::host::{caller, claude_session, host_info, state, streams, timers};
 use agent_kernel::call::{self, CallKernel};
 use agent_kernel::{
-    Attached, Host, KernelError, Outcome, Request, Started, State, StreamError, TooLarge, MAX_VALUE,
+    Attached, Host, KernelError, Outcome, Request, Started, State, StreamError, TooLarge, Tool,
+    MAX_VALUE,
 };
 use serde_json::Value;
 
@@ -127,6 +128,26 @@ impl Host for WitHost {
     fn resume_stream(&mut self, stream: &str) {
         let _ = streams::resume(stream);
     }
+    // S40-5 writes the imports of `https-stream` and `agent-tools`.
+    fn https_start(&mut self, _request: &str) -> Result<String, String> {
+        Err("not linked yet".into())
+    }
+    fn tools_open(&mut self, _toolsets: &[String]) -> Result<String, String> {
+        Err("not linked yet".into())
+    }
+    fn tools_describe(&mut self, _handle: &str) -> Result<Vec<Tool>, String> {
+        Err("not linked yet".into())
+    }
+    fn tools_call(
+        &mut self,
+        _handle: &str,
+        _key: &str,
+        _tool: &str,
+        _args: &str,
+    ) -> Result<String, String> {
+        Err("not linked yet".into())
+    }
+    fn tools_close(&mut self, _handle: &str) {}
 }
 
 /// Runs one crate call (S32 R1, `call::run`): `Ok` commits its writes, `Err` drops them.

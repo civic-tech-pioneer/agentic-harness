@@ -1344,6 +1344,51 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   as above), the others get `aborted`, `pending` calls start in waves as
   before, the first at once up to the free job slots, and with no call left
   open or pending it goes to `ready`; `waiting` and `paused` are unchanged.
+- **Settled by S40-3 (the loop).**
+  - *The request.* `https-stream.start` gets exactly `{"url":"https://api.openai.com/v1/responses",
+    "method":"POST","headers":{"content-type":"application/json","accept":"text/event-stream"},
+    "body":<the body above, as text>,"account":"openai","idle-s":90}`. `reasoning` is
+    `{"effort": <the profile's effort>}` when the profile sets one, else absent. A `start`, `say` or
+    interrupt replacement sends it before its first write, so a host that refuses it
+    (`start-error`) refuses the call `backend(<cause>)` and nothing is written; a
+    request that finds no free slot waits (`ready {wait: n}`, below).
+  - *State.* `loop/<id>` is `{state, ...}`: `idle` (between turns), `ready {wait?, attempt}`,
+    `requesting {stream, attempt}`, `retrying {attempt}`, `paused`; with `model`, `effort`,
+    `instructions` (the profile's `system-prompt` text, then the overlay's
+    `system-prompt-append`, compiled once at `start`), `last-error`, `too-large`, the turn's
+    `turn-tokens` and `turn-calls`, and the wire fields (`next`, `active`, `wire-chunks`,
+    `steps`, `trim`). `attempt` counts the retries so far: the first request is
+    `requesting {attempt: 0}`; its failure sets `retrying {attempt: 1}` and the `retry`
+    deadline at now + `backoff_ms(1)`; the failure of retry 6 (the 7th failed request) finds no
+    backoff left and pauses with no time, `last-error` holding the error text (the turn JSON
+    of 9.3 does not change). A usage limit sets `paused {until}` and a `resume` deadline at
+    `until` (the reset time, at least 1 s ahead); the firing of either deadline sends the same
+    request again (the body is rebuilt from the wire and the trim record, so it is the same).
+  - *Items.* The first item of a request stream is its head `{status, headers}`; before it the
+    host may push `{"type":"consent-pending","what":<text>}` (host 19.4, 19.7): the turn shows
+    the live activity `consent {what}` (kept in `stream/<id>` for `attach`), cleared by the
+    head. A stream that then ends `consent-refused(<what>)` ends the turn `failed
+    {error: "consent-refused(<what>)"}`. A non-2xx status is classified when its first body
+    item arrives (or at `ended` with no body): the loop cancels the stream and frees its slot
+    at once. `response.completed` appends the response's `output` items to the wire (step
+    `steps + 1`), adds its input and output tokens to the turn's, and pushes `{"type":"usage",
+    "context-used": <input tokens>, "context-window": 272000, "compact-at": 200000}`; with no
+    `function_call` item the turn ends `idle {completed, tokens}` (`tokens` the turn's input plus
+    output tokens, `tools` its call count when any), else the calls go to `openai_calls`. Items of
+    a stream that is no longer the loop's current one are ignored; the slot of a stream that is
+    not current (a completed response's, or one a cancel left) is freed at its `ended`.
+  - *Slots.* A request takes a slot when the kernel holds fewer than 8 requests and its owner
+    fewer than 4 (`quota/<owner>` `request`, tagged by boot as `provider` is); else it takes the
+    place `slots.tail` in the FIFO: `slots/wait/<n>` `{session, boot}`, and the loop is `ready
+    {wait: n}`. An entry counts only while the loop is still `ready {wait: n}` for it; any other
+    entry is skipped and removed when reached. Whatever frees a slot (an `ended`, a cancelled or
+    failed request, `interrupt`, `cancel`, `delete`) or queues a request inside an items call (an
+    items call cannot start a stream: it may still be dropped) sends the oldest entries whose
+    owner is under its cap at the end of the call, each in a write of its own.
+  - *Too large.* The turn ends `idle {failed {error: "too-large"}}` and `too-large` is set;
+    the next input restarts the wire from `Wire::restart_from_summary` with the text of the
+    transcript's last assistant messages joined by a blank line, the newest 32 KiB kept (cut at a
+    character boundary), then sends the input.
 
 ### 9.6 The broker
 
@@ -1545,7 +1590,8 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 - Cancelling a session cancels its children, depth first.
 - **Usage.** After each step the kernel pushes `usage` (9.4):
   `context-used` from the step's input tokens, `context-window` from the
-  model, and `compact-at` for OpenAI (the request's `compact_threshold`). For
+  model (272 000 for every OpenAI model until the catalog gives it, S40-3), and
+  `compact-at` for OpenAI (the request's `compact_threshold`). For
   Claude, `compact-at` is absent: Claude decides when it compacts.
 
 ### 9.8 Adapters

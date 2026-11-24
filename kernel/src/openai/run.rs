@@ -1,0 +1,1342 @@
+//! The OpenAI loop (TECHNICAL 9.5, S40-3): a session on a `backend: "openai"` profile sends
+//! Responses requests through `https-stream`, shows the reply as the Claude backend's events are
+//! shown, keeps the finished response in the wire history, and answers errors, usage limits,
+//! `interrupt`, `cancel`, `delete` and a restart as 9.5 says. Tool calls go to `openai_calls`,
+//! which S40-4 fills.
+//!
+//! The hooks live in `sessions.rs`; every state change here is made by a call that already holds
+//! the session's record and accounts (`Cx`), or by a wrapper below that reads them.
+
+use crate::active::Slots;
+use crate::adapters::responses;
+use crate::error::KernelError;
+use crate::openai::answer::{self, backoff_ms, Failure, Sse};
+use crate::openai::wire::{user_message, BodyArgs, Wire, WireItem, COMPACT_THRESHOLD};
+use crate::overlay::apply_overlay;
+use crate::profile::{parse_profile, SystemPrompt};
+use crate::queue::Queue;
+use crate::quota::Past;
+use crate::record::{Activity, Deadline, Record, Stop, Turn};
+use crate::sessions::{
+    delta_only, input_text, wire_update, Acct, Called, Host, Kernel, Push, SinkOutcome, Step,
+    StreamError, StreamKey, Work,
+};
+use crate::state::State;
+use crate::transcript::Transcript;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+/// The `kind` of a request stream's `stream/<id>` (9.1).
+pub(crate) const REQUEST: &str = "request";
+const RETRY: &str = "retry";
+const RESUME: &str = "resume";
+const URL: &str = "https://api.openai.com/v1/responses";
+/// The model's context window in tokens, as the `usage` item reports it (9.7).
+pub const CONTEXT_WINDOW: u64 = 272_000;
+/// The most bytes of the transcript's last assistant messages a summary restart carries (9.5).
+pub const SUMMARY_BYTES: usize = 32 * 1024;
+
+/// What the loop is doing (9.5). `Idle` is between turns.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "state",
+    rename_all = "kebab-case",
+    rename_all_fields = "kebab-case"
+)]
+pub enum Phase {
+    #[default]
+    Idle,
+    /// Waiting to send: `wait` is the place in the FIFO (`slots/wait/<n>`), `attempt` the retry
+    /// this request is.
+    Ready {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wait: Option<u64>,
+        #[serde(default)]
+        attempt: u32,
+    },
+    Requesting {
+        stream: String,
+        #[serde(default)]
+        attempt: u32,
+    },
+    Retrying {
+        attempt: u32,
+    },
+    Paused,
+}
+
+/// `loop/<id>` (9.1, 9.5).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", default)]
+pub struct LoopState {
+    #[serde(flatten)]
+    pub phase: Phase,
+    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// Compiled once at `start`: the profile's prompt, then the overlay's append.
+    pub instructions: String,
+    /// The error text of the last failed request, kept when retries ran out (9.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    /// The turn ended `failed {too-large}`: the next input restarts from a summary.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub too_large: bool,
+    /// Tokens and tool calls of the turn so far, for its `idle`.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub turn_tokens: u64,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub turn_calls: u64,
+    #[serde(flatten)]
+    pub wire: Wire,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+/// `slots/wait/<n>` (9.1).
+#[derive(Serialize, Deserialize)]
+struct Waiting {
+    session: String,
+    boot: u64,
+}
+
+/// The call in hand: the slots and accounts it read, what it pushes, and the clock.
+pub(crate) struct Cx<'a> {
+    pub slots: &'a mut Slots,
+    pub a: &'a mut Acct,
+    pub work: &'a mut Work,
+    pub past: Past,
+    pub now: u64,
+    /// `slots` changed and is not saved yet.
+    pub dirty: bool,
+}
+
+/// What a turn adds to the wire before its request: a summary that starts the history anew
+/// (`failed {too-large}`), and the input items.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Pending {
+    summary: Option<String>,
+    inputs: Vec<Value>,
+}
+
+/// How `launch` found the request: sent (before any write), waiting, or not sendable.
+pub(crate) enum Launch {
+    Wait,
+    Started(String),
+    TooLarge,
+    Host(String),
+}
+
+/// What `start`, `say` and `interrupt` work out before their first write.
+pub(crate) struct Prelaunch {
+    pub ls: LoopState,
+    go: Option<(Pending, Launch)>,
+}
+
+/// One item of a request stream, as the loop reads it.
+enum Ev {
+    Consent(String),
+    Head {
+        status: u16,
+        sse: bool,
+        cleared: bool,
+    },
+    BadHead,
+    Data {
+        bytes: Vec<u8>,
+        status: u16,
+    },
+}
+
+fn request_json(body: &str) -> String {
+    let body = serde_json::to_string(body).expect("a string serializes");
+    format!(
+        "{{\"url\":\"{URL}\",\"method\":\"POST\",\"headers\":{{\"content-type\":\"application/json\",\"accept\":\"text/event-stream\"}},\"body\":{body},\"account\":\"openai\",\"idle-s\":90}}"
+    )
+}
+
+fn consent_what(v: &Value) -> Option<String> {
+    if v.get("type").and_then(Value::as_str) != Some("consent-pending") {
+        return None;
+    }
+    Some(
+        v.get("what")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+    )
+}
+
+fn failed(error: impl Into<String>) -> Stop {
+    Stop::Failed {
+        error: error.into(),
+        cause: None,
+    }
+}
+
+impl<S: State, H: Host> Kernel<S, H> {
+    // ---- the loop state
+
+    pub(crate) fn loop_load(&mut self, id: &str) -> Option<LoopState> {
+        self.state
+            .get(&format!("loop/{id}"))
+            .and_then(|b| serde_json::from_slice(&b).ok())
+    }
+
+    pub(crate) fn loop_save(&mut self, id: &str, ls: &LoopState) -> Result<(), KernelError> {
+        let bytes = serde_json::to_vec(ls).expect("a loop state serializes");
+        self.state
+            .put(&format!("loop/{id}"), bytes)
+            .map_err(|t| KernelError::TooLarge(t.0 as u64))
+    }
+
+    /// The session's loop state, or a new one from its profile and overlay (9.5: `instructions`
+    /// are compiled once, at `start`).
+    pub(crate) fn loop_for(&mut self, rec: &Record) -> LoopState {
+        if let Some(ls) = self.loop_load(&rec.id) {
+            return ls;
+        }
+        let json = self.profile_json(&rec.profile).unwrap_or_default();
+        let base = parse_profile(&json).0;
+        let compiled = apply_overlay(&base, &rec.overlay.clone().unwrap_or_default()).0;
+        LoopState {
+            model: base.model.unwrap_or_default(),
+            effort: base.effort,
+            instructions: match compiled.system_prompt {
+                Some(SystemPrompt::Replace(s) | SystemPrompt::Append(s)) => s,
+                None => String::new(),
+            },
+            ..LoopState::default()
+        }
+    }
+
+    // ---- the request
+
+    fn pending_for(&mut self, rec: &Record, ls: &LoopState, input: &str) -> Pending {
+        Pending {
+            summary: ls.too_large.then(|| self.summary_text(rec)),
+            inputs: vec![user_message(&input_text(input))],
+        }
+    }
+
+    /// 9.5: the text of the transcript's last assistant messages, at most 32 KiB, newest kept.
+    fn summary_text(&mut self, rec: &Record) -> String {
+        let mut meta = rec.meta();
+        let mut texts: Vec<String> = Vec::new();
+        let mut bytes = 0usize;
+        let mut before = Some(meta.last + 1);
+        'pages: loop {
+            let page = Transcript::new(&mut self.state, &rec.id, &mut meta).read(0, before, 256);
+            let Ok(page) = page else { break };
+            let Some(first) = page.entries.first() else {
+                break;
+            };
+            let first_i = serde_json::from_str::<Value>(first)
+                .ok()
+                .and_then(|v| v["i"].as_u64())
+                .unwrap_or(1);
+            for line in page.entries.iter().rev() {
+                let Ok(v) = serde_json::from_str::<Value>(line) else {
+                    continue;
+                };
+                if v["kind"] != "message" || v["body"]["role"] != "agent" {
+                    continue;
+                }
+                let text: String = v["body"]["content"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|c| c["text"].as_str())
+                    .collect();
+                if text.is_empty() {
+                    continue;
+                }
+                bytes += text.len() + 2;
+                texts.push(text);
+                if bytes >= SUMMARY_BYTES {
+                    break 'pages;
+                }
+            }
+            if first_i <= 1 {
+                break;
+            }
+            before = Some(first_i);
+        }
+        texts.reverse();
+        let mut out = texts.join("\n\n");
+        if out.len() > SUMMARY_BYTES {
+            let mut cut = out.len() - SUMMARY_BYTES;
+            while !out.is_char_boundary(cut) {
+                cut += 1;
+            }
+            out = out[cut..].to_string();
+        }
+        out
+    }
+
+    /// The wire items the next request sends, with `pending` as it will be stored.
+    fn preview(&mut self, rec: &Record, ls: &LoopState, pending: &Pending) -> Vec<WireItem> {
+        let mut items = if pending.summary.is_some() {
+            Vec::new()
+        } else {
+            ls.wire.active_items(&mut self.state, &rec.id)
+        };
+        let new = pending
+            .summary
+            .iter()
+            .map(|s| user_message(s))
+            .chain(pending.inputs.iter().cloned());
+        for (i, item) in (ls.wire.next..).zip(new) {
+            items.push(WireItem {
+                i,
+                step: ls.wire.steps,
+                model: None,
+                item,
+            });
+        }
+        items
+    }
+
+    /// Builds the body and, when a request slot is free, starts the stream. Writes nothing (it
+    /// sets only `ls.wire.trim` in memory), so a call can do it before its first write. In an
+    /// items call (held) nothing is sent: the loop waits in the FIFO and the call's end sends it.
+    fn launch(
+        &mut self,
+        rec: &Record,
+        ls: &mut LoopState,
+        slots: &Slots,
+        a: &Acct,
+        pending: &Pending,
+        freeing: u32,
+    ) -> Launch {
+        if self.held.is_some() {
+            return Launch::Wait;
+        }
+        let room = slots.request.saturating_sub(freeing) < self.limits.request
+            && a.owner.request_at(slots.boot).saturating_sub(freeing) < self.limits.owner_request;
+        if !room {
+            return Launch::Wait;
+        }
+        if pending.summary.is_some() {
+            ls.wire.trim = None;
+        }
+        let items = self.preview(rec, ls, pending);
+        let reasoning = ls.effort.as_ref().map(|e| json!({ "effort": e }));
+        let args = BodyArgs {
+            session: &rec.id,
+            model: &ls.model,
+            instructions: &ls.instructions,
+            tools: &[],
+            reasoning: reasoning.as_ref(),
+            compact_threshold: COMPACT_THRESHOLD,
+        };
+        let body = match ls.wire.body(&args, &items) {
+            Ok(b) => b,
+            Err(_) => return Launch::TooLarge,
+        };
+        match self.host.https_start(&request_json(&body)) {
+            Ok(stream) => {
+                self.opened = Some(stream.clone());
+                Launch::Started(stream)
+            }
+            Err(e) => Launch::Host(e),
+        }
+    }
+
+    /// What `start`, `say` and an `interrupt` replacement work out before their first write: the
+    /// loop state, the input as wire items, and the request, sent when a slot is free. A host
+    /// that refuses the request refuses the call (`backend`). `interrupting`: the request the
+    /// session holds is about to be freed.
+    pub(crate) fn openai_prelaunch(
+        &mut self,
+        rec: &Record,
+        input: Option<&str>,
+        slots: &Slots,
+        a: &Acct,
+        interrupting: bool,
+    ) -> Result<Prelaunch, KernelError> {
+        let mut ls = self.loop_for(rec);
+        let Some(input) = input else {
+            return Ok(Prelaunch { ls, go: None });
+        };
+        let pending = self.pending_for(rec, &ls, input);
+        let freeing = u32::from(interrupting && matches!(ls.phase, Phase::Requesting { .. }));
+        let launch = self.launch(rec, &mut ls, slots, a, &pending, freeing);
+        if let Launch::Host(e) = launch {
+            return Err(KernelError::Backend(e));
+        }
+        Ok(Prelaunch {
+            ls,
+            go: Some((pending, launch)),
+        })
+    }
+
+    /// The end of a call that began a turn: stores the input in the wire and registers the
+    /// request (or its place in the FIFO). Saves the loop state.
+    pub(crate) fn openai_finish(
+        &mut self,
+        rec: &mut Record,
+        p: Prelaunch,
+        cx: &mut Cx,
+    ) -> Result<(), KernelError> {
+        let Prelaunch { mut ls, go } = p;
+        if let Some((pending, launch)) = go {
+            ls.turn_tokens = 0;
+            ls.turn_calls = 0;
+            self.go(rec, &mut ls, cx, pending, Some(launch), 0)?;
+        }
+        self.loop_save(&rec.id, &ls)
+    }
+
+    /// Stores `pending` and takes the request's slot, or waits, or ends the turn (9.5 `ready`).
+    fn go(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        pending: Pending,
+        launched: Option<Launch>,
+        attempt: u32,
+    ) -> Result<(), KernelError> {
+        let launch = match launched {
+            Some(l) => l,
+            None => self.launch(rec, ls, cx.slots, cx.a, &pending, 0),
+        };
+        if let Some(s) = &pending.summary {
+            ls.wire.restart_from_summary(&mut self.state, &rec.id, s)?;
+            ls.too_large = false;
+        }
+        if !pending.inputs.is_empty() {
+            let step = ls.wire.steps;
+            ls.wire
+                .append(&mut self.state, &rec.id, step, None, pending.inputs)?;
+        }
+        match launch {
+            Launch::Started(stream) => self.register_request(rec, ls, cx, stream, attempt),
+            Launch::Wait => self.enqueue(rec, ls, cx, attempt),
+            Launch::TooLarge => {
+                ls.too_large = true;
+                self.end_turn(rec, ls, cx, failed("too-large"))
+            }
+            Launch::Host(e) => self.end_turn(rec, ls, cx, failed(e)),
+        }
+    }
+
+    fn register_request(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        stream: String,
+        attempt: u32,
+    ) -> Result<(), KernelError> {
+        let key = StreamKey::new(&rec.id, REQUEST);
+        let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
+        self.state
+            .put(&format!("stream/{stream}"), bytes)
+            .map_err(|e| KernelError::TooLarge(e.0 as u64))?;
+        rec.add_stream(stream.clone())?;
+        cx.slots.request += 1;
+        cx.a.owner.open_request(cx.slots.boot);
+        cx.dirty = true;
+        ls.phase = Phase::Requesting { stream, attempt };
+        Ok(())
+    }
+
+    /// The request waits in the FIFO (9.5 Slots): `slots/wait/<n>` and `ready {wait}`.
+    fn enqueue(
+        &mut self,
+        rec: &Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        attempt: u32,
+    ) -> Result<(), KernelError> {
+        let n = cx.slots.tail;
+        let entry = Waiting {
+            session: rec.id.clone(),
+            boot: cx.slots.boot,
+        };
+        self.state
+            .put(
+                &format!("slots/wait/{n}"),
+                serde_json::to_vec(&entry).expect("an entry serializes"),
+            )
+            .map_err(|e| KernelError::TooLarge(e.0 as u64))?;
+        cx.slots.tail += 1;
+        cx.dirty = true;
+        ls.phase = Phase::Ready {
+            wait: Some(n),
+            attempt,
+        };
+        self.drain_due = true;
+        Ok(())
+    }
+
+    /// Frees a request stream's slot and keys; `cancel` ends the stream at the host too.
+    fn release_request(&mut self, rec: &mut Record, stream: &str, cx: &mut Cx, cancel: bool) {
+        self.state.delete(&format!("stream/{stream}"));
+        if cancel {
+            self.cancel_provider(stream);
+        }
+        rec.streams.retain(|s| s != stream);
+        if rec.boot == cx.slots.boot {
+            cx.slots.request = cx.slots.request.saturating_sub(1);
+            cx.a.owner.close_request(cx.slots.boot);
+            cx.dirty = true;
+        }
+        self.drain_due = true;
+    }
+
+    // ---- the end of a turn, errors, pauses
+
+    /// The turn ends `idle {stop}`; the oldest queued input then starts the next turn.
+    fn end_turn(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        stop: Stop,
+    ) -> Result<(), KernelError> {
+        let tokens = (ls.turn_tokens > 0).then_some(ls.turn_tokens);
+        let tools = (ls.turn_calls > 0).then_some(ls.turn_calls);
+        ls.phase = Phase::Idle;
+        ls.turn_tokens = 0;
+        ls.turn_calls = 0;
+        rec.deadlines
+            .retain(|d| d.what != RETRY && d.what != RESUME);
+        let idle = Turn::Idle {
+            stop,
+            seconds: None,
+            tools,
+            tokens,
+        };
+        self.turn_to(rec, cx.past, idle, cx.now, cx.work)?;
+        if cx.past.is_past() || Self::room(rec).is_err() || !self.may_use(&rec.owner, &rec.profile)
+        {
+            return Ok(());
+        }
+        let mut q = Queue::load(&mut self.state, &rec.id);
+        let Some(next) = q.take_oldest() else {
+            return Ok(());
+        };
+        self.start_turn(
+            rec,
+            cx.past,
+            next.input.clone(),
+            false,
+            None,
+            cx.now,
+            cx.work,
+        )?;
+        q.save(&mut self.state, &rec.id)?;
+        cx.work.pushes.push(Push::of(&rec.id, q.push_value()));
+        let pending = self.pending_for(rec, ls, &next.input);
+        self.go(rec, ls, cx, pending, None, 0)
+    }
+
+    /// Whether a session holding no timer yet finds none free (9.3).
+    fn timer_capped(&self, rec: &Record, cx: &Cx) -> bool {
+        rec.deadlines.is_empty()
+            && (cx.slots.timers >= self.limits.timers
+                || cx.a.owner.timers >= self.limits.owner_timers)
+    }
+
+    /// A usage limit (9.5): `paused {until}` with a `resume` deadline, or with no time when the
+    /// reset is unknown or no timer is free.
+    fn pause(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        until: Option<u64>,
+    ) -> Result<(), KernelError> {
+        rec.deadlines
+            .retain(|d| d.what != RETRY && d.what != RESUME);
+        let at = until
+            .map(|u| u.max(cx.now + 1000))
+            .filter(|_| !self.timer_capped(rec, cx))
+            .filter(|&at| {
+                rec.add_deadline(Deadline {
+                    what: RESUME.into(),
+                    at,
+                })
+                .is_ok()
+            });
+        ls.phase = Phase::Paused;
+        self.turn_to(rec, cx.past, Turn::Paused { until: at }, cx.now, cx.work)
+    }
+
+    /// A retryable error (9.5): the next attempt after its backoff, or a pause with no time when
+    /// the attempts ran out; no timer free ends the turn `failed {timers}` (9.3).
+    fn retry(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        failed_attempt: u32,
+        msg: String,
+    ) -> Result<(), KernelError> {
+        ls.last_error = Some(msg);
+        rec.deadlines
+            .retain(|d| d.what != RETRY && d.what != RESUME);
+        let attempt = failed_attempt + 1;
+        let Some(ms) = backoff_ms(attempt) else {
+            ls.phase = Phase::Paused;
+            return self.turn_to(rec, cx.past, Turn::Paused { until: None }, cx.now, cx.work);
+        };
+        let deadline = Deadline {
+            what: RETRY.into(),
+            at: cx.now + ms,
+        };
+        if self.timer_capped(rec, cx) || rec.add_deadline(deadline).is_err() {
+            return self.end_turn(rec, ls, cx, failed("timers"));
+        }
+        ls.phase = Phase::Retrying { attempt };
+        Ok(())
+    }
+
+    fn apply_failure(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        f: Failure,
+    ) -> Result<(), KernelError> {
+        let attempt = match &ls.phase {
+            Phase::Requesting { attempt, .. } => *attempt,
+            _ => 0,
+        };
+        match f {
+            Failure::UsageLimit { until } => self.pause(rec, ls, cx, until),
+            Failure::Retryable(msg) => self.retry(rec, ls, cx, attempt, msg),
+            Failure::Fatal(msg) => {
+                ls.last_error = Some(msg.clone());
+                self.end_turn(rec, ls, cx, failed(msg))
+            }
+        }
+    }
+
+    /// A response completed (9.5 `requesting`): its output goes to the wire, the owner gets
+    /// `usage`, and the turn ends or the calls go on.
+    fn on_completed(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        usage: answer::Usage,
+        output: Vec<Value>,
+    ) -> Result<(), KernelError> {
+        ls.wire.steps += 1;
+        let step = ls.wire.steps;
+        let model = ls.model.clone();
+        ls.wire
+            .append(&mut self.state, &rec.id, step, Some(&model), output.clone())?;
+        ls.turn_tokens += usage.input_tokens + usage.output_tokens;
+        ls.last_error = None;
+        cx.work.pushes.push(Push::of(
+            &rec.id,
+            json!({
+                "type": "usage",
+                "context-used": usage.input_tokens,
+                "context-window": CONTEXT_WINDOW,
+                "compact-at": COMPACT_THRESHOLD,
+            }),
+        ));
+        let calls: Vec<Value> = output
+            .into_iter()
+            .filter(|i| i["type"] == "function_call")
+            .collect();
+        if calls.is_empty() {
+            return self.end_turn(rec, ls, cx, Stop::Completed);
+        }
+        ls.turn_calls += calls.len() as u64;
+        self.openai_calls(rec, ls, calls, cx.work)?;
+        if matches!(ls.phase, Phase::Ready { .. }) {
+            let attempt = 0;
+            self.enqueue(rec, ls, cx, attempt)?;
+        }
+        Ok(())
+    }
+
+    /// The calls of a completed response (9.5 `requesting`). S40-4 fills this; until then each
+    /// call is answered `aborted` and the loop is `ready` for the next request.
+    pub(crate) fn openai_calls(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        calls: Vec<Value>,
+        work: &mut Work,
+    ) -> Result<(), KernelError> {
+        let _ = work;
+        let outputs: Vec<Value> = calls
+            .iter()
+            .filter_map(|c| c["call_id"].as_str())
+            .map(|id| json!({"type": "function_call_output", "call_id": id, "output": "aborted"}))
+            .collect();
+        let step = ls.wire.steps;
+        ls.wire
+            .append(&mut self.state, &rec.id, step, None, outputs)?;
+        ls.phase = Phase::Ready {
+            wait: None,
+            attempt: 0,
+        };
+        Ok(())
+    }
+
+    // ---- items and the end of a request stream
+
+    pub(crate) fn request_key(&mut self, stream: &str) -> Option<StreamKey> {
+        self.state
+            .get(&format!("stream/{stream}"))
+            .and_then(|b| serde_json::from_slice::<StreamKey>(&b).ok())
+            .filter(|k| k.kind == REQUEST)
+    }
+
+    /// `provider_lines` of a request stream (2.1 case 7, 9.5): the loop reads the head, each event
+    /// and the consent notice.
+    pub(crate) fn request_lines(
+        &mut self,
+        stream: &str,
+        mut key: StreamKey,
+        items: Vec<(u64, Vec<u8>)>,
+    ) -> Result<Called<SinkOutcome>, KernelError> {
+        let taken = || {
+            Ok(Called {
+                value: SinkOutcome::Taken,
+                pushes: Vec::new(),
+            })
+        };
+        let mut fresh: Vec<_> = items.into_iter().filter(|(n, _)| *n > key.last).collect();
+        fresh.sort_by_key(|(n, _)| *n);
+        let Some(last) = fresh.last().map(|(n, _)| *n) else {
+            return taken();
+        };
+        self.hold();
+        let mut done = (Vec::new(), Vec::new(), Vec::new());
+        let mut prev = key.last;
+        for (seq, body) in fresh {
+            if seq == prev {
+                continue;
+            }
+            prev = seq;
+            self.open_meter();
+            match self.request_item(stream, &mut key, &body) {
+                Ok(Step::Done {
+                    mut pushes,
+                    mut requests,
+                    gone,
+                }) => {
+                    done.0.append(&mut pushes);
+                    done.1.append(&mut requests);
+                    done.2.extend(gone);
+                }
+                other => return self.finish_items(other),
+            }
+            if self.state.get(&format!("stream/{stream}")).is_none() {
+                break;
+            }
+        }
+        let kept = self.take_request_seq(stream, key, last);
+        let (pushes, requests, gone) = done;
+        let r = self.finish_items(kept.map(|()| Step::Done {
+            pushes,
+            requests,
+            gone,
+        }));
+        self.after_call();
+        r
+    }
+
+    /// Keeps the stream's cursor, head and consent in `stream/<id>`, unless the batch ended it.
+    fn take_request_seq(
+        &mut self,
+        stream: &str,
+        mut key: StreamKey,
+        last: u64,
+    ) -> Result<(), KernelError> {
+        let name = format!("stream/{stream}");
+        if self.state.get(&name).is_none() {
+            return Ok(());
+        }
+        self.open_meter();
+        key.last = last;
+        let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
+        self.state
+            .put(&name, bytes)
+            .map_err(|e| KernelError::TooLarge(e.0 as u64))?;
+        let c = self.state.change();
+        if c.owner == 0 && c.session == 0 {
+            self.state.close();
+            return Ok(());
+        }
+        match Record::load(&mut self.state, &key.session) {
+            Some(mut rec) => {
+                let mut acct = self.accounts(&rec.owner);
+                self.finish_as(Some(&mut rec), &mut acct, true)
+            }
+            None => {
+                self.state.close();
+                Ok(())
+            }
+        }
+    }
+
+    /// One item: a delta only forwards (reads `live/<session>` alone, P09); anything else is
+    /// the loop's work on the session.
+    fn request_item(
+        &mut self,
+        stream: &str,
+        key: &mut StreamKey,
+        body: &[u8],
+    ) -> Result<Step, KernelError> {
+        let session = key.session.clone();
+        let parsed: Option<Value> = serde_json::from_slice(body).ok();
+        let ev = if let Some(what) = parsed.as_ref().and_then(consent_what) {
+            key.consent = Some(what.clone());
+            Ev::Consent(what)
+        } else if key.head.is_none() {
+            match answer::head(body) {
+                Some(h) => {
+                    key.head = Some(h.status);
+                    key.sse = h.sse;
+                    Ev::Head {
+                        status: h.status,
+                        sse: h.sse,
+                        cleared: key.consent.take().is_some(),
+                    }
+                }
+                None => Ev::BadHead,
+            }
+        } else {
+            Ev::Data {
+                bytes: body.to_vec(),
+                status: key.head.unwrap_or(0),
+            }
+        };
+        let now = self.host.now();
+        // A delta reads no record (P09).
+        if let (Ev::Data { status, .. }, true) = (&ev, key.sse) {
+            if (200..300).contains(status) {
+                if let Sse::Event(v) = answer::sse(body, now) {
+                    let outs = responses::event(&v, now);
+                    let updates: Vec<Value> = outs.iter().filter_map(delta_only).collect();
+                    if updates.len() == outs.len() {
+                        let pushes: Vec<Push> = updates
+                            .into_iter()
+                            .map(|u| Push::of(&session, wire_update(u, now, None)))
+                            .collect();
+                        let live = self.live_stream(&session);
+                        return Ok(self.tail(&session, pushes, live));
+                    }
+                }
+            }
+        }
+        let work = self.openai_item(stream, &session, ev)?;
+        let live = work.live.clone();
+        Ok(self.tail(&session, work.pushes, live))
+    }
+
+    /// The end of an item's step, as `item_step` ends one: the pushes go to the live owner
+    /// stream, and a full one defers the call.
+    fn tail(&mut self, session: &str, pushes: Vec<Push>, live: Option<String>) -> Step {
+        let failed = self.send_live(&pushes, live.as_deref());
+        if failed == Some(StreamError::Full) {
+            return Step::Defer;
+        }
+        let gone = live
+            .filter(|_| failed.is_some())
+            .map(|o| (session.to_string(), o))
+            .into_iter()
+            .collect();
+        Step::Done {
+            pushes,
+            requests: Vec::new(),
+            gone,
+        }
+    }
+
+    /// The loop's work for one item of its current request stream.
+    fn openai_item(&mut self, stream: &str, session: &str, ev: Ev) -> Result<Work, KernelError> {
+        let mut rec = Record::load(&mut self.state, session)
+            .ok_or_else(|| KernelError::UnknownSession(session.to_string()))?;
+        let mut work = Work::default();
+        let Some(mut ls) = self.loop_load(session) else {
+            return Ok(work);
+        };
+        if !matches!(&ls.phase, Phase::Requesting { stream: s, .. } if s == stream) {
+            return Ok(work);
+        }
+        let mut acct = self.accounts(&rec.owner);
+        let past = acct.past;
+        let mut slots = Slots::load(&mut self.state);
+        let (before, before_ls) = (rec.clone(), ls.clone());
+        let was = rec.turn.is_active();
+        let now = self.host.now();
+        let mut cx = Cx {
+            slots: &mut slots,
+            a: &mut acct,
+            work: &mut work,
+            past,
+            now,
+            dirty: false,
+        };
+        self.on_event(&mut rec, &mut ls, &mut cx, stream, ev)?;
+        let mut dirty = cx.dirty;
+        self.settle_openai(
+            &mut rec, &before, &mut slots, &mut acct, was, now, &mut dirty,
+        )?;
+        if dirty {
+            slots.save(&mut self.state)?;
+        }
+        if ls != before_ls {
+            self.loop_save(session, &ls)?;
+        }
+        let changed = rec != before;
+        if changed {
+            rec.updated = now;
+        }
+        self.finish_as(changed.then_some(&mut rec), &mut acct, true)?;
+        work.live = rec.live.clone();
+        Ok(work)
+    }
+
+    /// The timer and the active index follow what the step did to the record.
+    #[allow(clippy::too_many_arguments)]
+    fn settle_openai(
+        &mut self,
+        rec: &mut Record,
+        before: &Record,
+        slots: &mut Slots,
+        a: &mut Acct,
+        was: bool,
+        now: u64,
+        dirty: &mut bool,
+    ) -> Result<(), KernelError> {
+        if rec.deadlines != before.deadlines {
+            *dirty |= self.sync_timer(rec, slots, a, &before.deadlines, now, false);
+        }
+        if was != rec.turn.is_active() {
+            *dirty |= self.sync_active(rec, slots, was)?;
+        }
+        Ok(())
+    }
+
+    fn on_event(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        stream: &str,
+        ev: Ev,
+    ) -> Result<(), KernelError> {
+        let running = |rec: &Record, activity| match rec.turn {
+            Turn::Running { since, .. } => Some(Push::of(
+                &rec.id,
+                crate::sessions::turn_push(&Turn::Running { since, activity }),
+            )),
+            _ => None,
+        };
+        match ev {
+            Ev::Consent(what) => {
+                let push = running(rec, Some(Activity::Consent { what }));
+                cx.work.pushes.extend(push);
+            }
+            Ev::Head {
+                status,
+                sse,
+                cleared,
+            } => {
+                if cleared {
+                    let push = running(rec, None);
+                    cx.work.pushes.extend(push);
+                }
+                if (200..300).contains(&status) && !sse {
+                    let f = Failure::Fatal("the response is not an event stream".into());
+                    self.release_request(rec, stream, cx, true);
+                    self.apply_failure(rec, ls, cx, f)?;
+                }
+            }
+            Ev::BadHead => {
+                let f = Failure::Fatal("the stream's first item is not a response head".into());
+                self.release_request(rec, stream, cx, true);
+                self.apply_failure(rec, ls, cx, f)?;
+            }
+            Ev::Data { bytes, status } if !(200..300).contains(&status) => {
+                let f = answer::error_body(status, &bytes, cx.now);
+                self.release_request(rec, stream, cx, true);
+                self.apply_failure(rec, ls, cx, f)?;
+            }
+            Ev::Data { bytes, .. } => {
+                match answer::sse(&bytes, cx.now) {
+                    Sse::Completed { usage, output } => {
+                        self.on_completed(rec, ls, cx, usage, output)?;
+                    }
+                    Sse::Failed(f) => {
+                        self.release_request(rec, stream, cx, true);
+                        self.apply_failure(rec, ls, cx, f)?;
+                    }
+                    Sse::Unreadable(_) => {
+                        let raw = Value::String(String::from_utf8_lossy(&bytes).into_owned());
+                        self.unknown_entry(rec, cx.past, raw, cx.now, cx.work)?;
+                    }
+                    Sse::Event(_) | Sse::Item(_) => {
+                        let v: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+                        for out in responses::event(&v, cx.now) {
+                            if let Some(e) = out.entry {
+                                self.out_entry(rec, cx.past, e, cx.now, cx.work)?;
+                            }
+                            if let Some(u) = out.update {
+                                let push =
+                                    Push::of(&rec.id, wire_update(u, cx.now, cx.work.stored));
+                                cx.work.pushes.push(push);
+                            }
+                        }
+                        // An item not stored past the quota ended the turn: the loop stops (9.3).
+                        if !rec.turn.is_active() && matches!(ls.phase, Phase::Requesting { .. }) {
+                            self.openai_stop(rec, ls, cx);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// `stream-sink.ended` of a request stream (9.5).
+    pub(crate) fn request_ended(
+        &mut self,
+        stream: &str,
+        key: StreamKey,
+        cause: Option<&str>,
+    ) -> Result<Called<()>, KernelError> {
+        let r = self.openai_ended(stream, key, cause);
+        self.after_call();
+        r
+    }
+
+    fn openai_ended(
+        &mut self,
+        stream: &str,
+        key: StreamKey,
+        cause: Option<&str>,
+    ) -> Result<Called<()>, KernelError> {
+        let none = |this: &mut Self| {
+            this.state.delete(&format!("stream/{stream}"));
+            this.state.close();
+            Ok(Called {
+                value: (),
+                pushes: Vec::new(),
+            })
+        };
+        let Some(mut rec) = Record::load(&mut self.state, &key.session) else {
+            return none(self);
+        };
+        let mut work = Work::default();
+        let mut acct = self.accounts(&rec.owner);
+        let past = acct.past;
+        let mut slots = Slots::load(&mut self.state);
+        let before = rec.clone();
+        let was = rec.turn.is_active();
+        let now = self.host.now();
+        let mut ls = self.loop_load(&rec.id);
+        let before_ls = ls.clone();
+        let mut cx = Cx {
+            slots: &mut slots,
+            a: &mut acct,
+            work: &mut work,
+            past,
+            now,
+            dirty: false,
+        };
+        self.release_request(&mut rec, stream, &mut cx, false);
+        if let Some(ls) = ls.as_mut() {
+            let current = matches!(&ls.phase, Phase::Requesting { stream: s, .. } if s == stream);
+            if current {
+                let f = ended_failure(&key, cause, now);
+                self.apply_failure(&mut rec, ls, &mut cx, f)?;
+            }
+        }
+        let mut dirty = cx.dirty;
+        self.settle_openai(
+            &mut rec, &before, &mut slots, &mut acct, was, now, &mut dirty,
+        )?;
+        if dirty {
+            slots.save(&mut self.state)?;
+        }
+        if let Some(ls) = ls.as_ref().filter(|l| Some(*l) != before_ls.as_ref()) {
+            self.loop_save(&rec.id, ls)?;
+        }
+        let changed = rec != before;
+        if changed {
+            rec.updated = now;
+        }
+        self.finish_as(changed.then_some(&mut rec), &mut acct, true)?;
+        let live = rec.live.clone();
+        Ok(Called {
+            value: (),
+            pushes: self.flush(work, live.as_deref()),
+        })
+    }
+
+    // ---- interrupt, cancel, delete
+
+    /// Cancels every request stream of the session and frees their slots (9.5 "any"): the loop is
+    /// idle and no retry or resume is waiting.
+    pub(crate) fn openai_stop(&mut self, rec: &mut Record, ls: &mut LoopState, cx: &mut Cx) {
+        for s in rec.streams.clone() {
+            if self.request_key(&s).is_some() {
+                self.release_request(rec, &s, cx, true);
+            }
+        }
+        ls.phase = Phase::Idle;
+        ls.turn_tokens = 0;
+        ls.turn_calls = 0;
+        rec.deadlines
+            .retain(|d| d.what != RETRY && d.what != RESUME);
+    }
+
+    // ---- timers
+
+    /// A `retry` or `resume` deadline came due (9.3 deadlines, 9.5).
+    pub(crate) fn openai_fire(
+        &mut self,
+        rec: &mut Record,
+        slots: &mut Slots,
+        acct: &mut Acct,
+        work: &mut Work,
+        now: u64,
+        due: (bool, bool),
+    ) -> Result<(), KernelError> {
+        let Some(mut ls) = self.loop_load(&rec.id) else {
+            return Ok(());
+        };
+        let before_ls = ls.clone();
+        let past = acct.past;
+        let mut cx = Cx {
+            slots,
+            a: acct,
+            work,
+            past,
+            now,
+            dirty: false,
+        };
+        match (&ls.phase, due) {
+            (Phase::Retrying { attempt }, (true, _)) => {
+                let attempt = *attempt;
+                self.go(rec, &mut ls, &mut cx, Pending::default(), None, attempt)?;
+            }
+            (Phase::Paused, (_, true)) if matches!(rec.turn, Turn::Paused { .. }) => {
+                let running = Turn::Running {
+                    since: now,
+                    activity: None,
+                };
+                self.turn_to(rec, past, running, now, cx.work)?;
+                self.go(rec, &mut ls, &mut cx, Pending::default(), None, 0)?;
+            }
+            _ => {}
+        }
+        if cx.dirty {
+            slots.save(&mut self.state)?;
+        }
+        if ls != before_ls {
+            self.loop_save(&rec.id, &ls)?;
+        }
+        Ok(())
+    }
+
+    // ---- restart
+
+    /// R4 (9.5 "After a restart"): `requesting` and `ready` go to `ready` and take a request slot
+    /// or wait; the other states stay.
+    pub(crate) fn openai_restart(
+        &mut self,
+        rec: &mut Record,
+        a: &mut Acct,
+        slots: &mut Slots,
+        work: &mut Work,
+        now: u64,
+    ) -> Result<(), KernelError> {
+        let Some(mut ls) = self.loop_load(&rec.id) else {
+            return Ok(());
+        };
+        let attempt = match &ls.phase {
+            Phase::Requesting { attempt, .. } | Phase::Ready { attempt, .. } => *attempt,
+            _ => return Ok(()),
+        };
+        let past = a.past;
+        let mut cx = Cx {
+            slots,
+            a,
+            work,
+            past,
+            now,
+            dirty: false,
+        };
+        ls.phase = Phase::Ready {
+            wait: None,
+            attempt,
+        };
+        self.go(rec, &mut ls, &mut cx, Pending::default(), None, attempt)?;
+        let dirty = cx.dirty;
+        self.loop_save(&rec.id, &ls)?;
+        if dirty {
+            slots.save(&mut self.state)?;
+        }
+        Ok(())
+    }
+
+    // ---- the FIFO
+
+    /// Sends the oldest waiting requests whose session and owner are under their caps, while
+    /// request slots are free (9.5 Slots). Each starts in a write of its own.
+    pub(crate) fn after_call(&mut self) {
+        if std::mem::take(&mut self.drain_due) {
+            self.openai_drain();
+        }
+    }
+
+    fn openai_drain(&mut self) {
+        let mut slots = Slots::load(&mut self.state);
+        let (mut n, tail) = (slots.head, slots.tail);
+        let mut first_kept: Option<u64> = None;
+        let mut changed = false;
+        while n < tail && slots.request < self.limits.request {
+            let at = n;
+            n += 1;
+            let name = format!("slots/wait/{at}");
+            let Some(bytes) = self.state.get(&name) else {
+                continue;
+            };
+            match self.drain_one(&mut slots, &name, at, &bytes) {
+                Drain::Gone => changed = true,
+                Drain::Kept => {
+                    first_kept.get_or_insert(at);
+                }
+            }
+        }
+        // The rest of the FIFO is read only to find where it begins.
+        while first_kept.is_none() && n < tail {
+            if self.state.get(&format!("slots/wait/{n}")).is_some() {
+                first_kept = Some(n);
+            }
+            n += 1;
+        }
+        let head = first_kept.unwrap_or(tail);
+        if head != slots.head {
+            slots.head = head;
+            changed = true;
+        }
+        if changed {
+            let _ = slots.save(&mut self.state);
+        }
+    }
+
+    /// One FIFO entry: dropped when stale or sent now, or kept (its owner is at its cap).
+    fn drain_one(&mut self, slots: &mut Slots, name: &str, at: u64, bytes: &[u8]) -> Drain {
+        let stale = |this: &mut Self| {
+            this.state.delete(name);
+            Drain::Gone
+        };
+        let Ok(w) = serde_json::from_slice::<Waiting>(bytes) else {
+            return stale(self);
+        };
+        if w.boot != slots.boot {
+            return stale(self);
+        }
+        let Some(mut rec) = Record::load(&mut self.state, &w.session) else {
+            return stale(self);
+        };
+        let Some(mut ls) = self.loop_load(&w.session) else {
+            return stale(self);
+        };
+        let attempt = match ls.phase {
+            Phase::Ready {
+                wait: Some(n),
+                attempt,
+            } if n == at => attempt,
+            _ => return stale(self),
+        };
+        self.open_meter();
+        let mut acct = self.accounts(&rec.owner);
+        if acct.owner.request_at(slots.boot) >= self.limits.owner_request {
+            self.state.close();
+            return Drain::Kept;
+        }
+        self.state.delete(name);
+        let mut work = Work::default();
+        let (past, now) = (acct.past, self.host.now());
+        let before = rec.clone();
+        let was = rec.turn.is_active();
+        let mut cx = Cx {
+            slots,
+            a: &mut acct,
+            work: &mut work,
+            past,
+            now,
+            dirty: false,
+        };
+        let sent = self.go(
+            &mut rec,
+            &mut ls,
+            &mut cx,
+            Pending::default(),
+            None,
+            attempt,
+        );
+        let mut dirty = cx.dirty;
+        if sent.is_ok() {
+            let _ = self.settle_openai(&mut rec, &before, slots, &mut acct, was, now, &mut dirty);
+            let _ = self.loop_save(&rec.id, &ls);
+        }
+        let _ = slots.save(&mut self.state);
+        if rec != before {
+            rec.updated = now;
+        }
+        let _ = self.finish_as(Some(&mut rec), &mut acct, true);
+        self.deliver(&work.pushes, rec.live.as_deref());
+        Drain::Gone
+    }
+
+    // ---- attach
+
+    /// The activity a session's request shows an attaching page: its consent notice, if any.
+    pub(crate) fn openai_activity(&mut self, rec: &Record) -> Option<Activity> {
+        let ls = self.loop_load(&rec.id)?;
+        let Phase::Requesting { stream, .. } = ls.phase else {
+            return None;
+        };
+        let key = self.request_key(&stream)?;
+        key.consent.map(|what| Activity::Consent { what })
+    }
+
+    /// `delete`: the loop state and the wire chunks go, uncharged (the record's `bytes` frees
+    /// them); the request streams the session holds are the caller's.
+    pub(crate) fn openai_delete(&mut self, id: &str) {
+        if let Some(ls) = self.loop_load(id) {
+            for first in &ls.wire.wire_chunks {
+                self.state.delete_uncharged(&format!("wire/{id}/{first}"));
+            }
+        }
+        self.state.delete_uncharged(&format!("loop/{id}"));
+    }
+}
+
+enum Drain {
+    Gone,
+    Kept,
+}
+
+/// How a request stream's end reads (9.5 Errors): a refused stream has its head's status; one
+/// refused by the consent says so.
+fn ended_failure(key: &StreamKey, cause: Option<&str>, now: u64) -> Failure {
+    if let Some(c) = cause.filter(|c| c.starts_with("consent-refused(")) {
+        return Failure::Fatal(c.to_string());
+    }
+    match key.head {
+        Some(status) if !(200..300).contains(&status) => answer::error_body(status, b"", now),
+        _ => answer::ended(cause, false)
+            .unwrap_or_else(|| Failure::Fatal("the response ended before it completed".into())),
+    }
+}

@@ -39,7 +39,7 @@ pub use refuse::{refuse, Catalog, CatalogModel};
 pub use rules::{Rules, Verdict};
 pub use sessions::{
     input_text, Attached, Called, FakeHost, Host, HostCall, Kernel, Outcome, ProviderEvent, Push,
-    Request, SessionInfo, SinkOutcome, Started, StreamError, MAX_TIMER_MS,
+    Request, SessionInfo, SinkOutcome, Started, StreamError, Tool, MAX_TIMER_MS,
 };
 pub use state::{Buffered, Counts, MemState, State, TooLarge, MAX_VALUE};
 pub use transcript::{chunk_key, Joiner, Meta, NewEntry, Page, Replay, Transcript};

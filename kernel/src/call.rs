@@ -4,7 +4,7 @@
 //! refused call arms nothing that writes later, S35 r1 F1.1). Host-independent, so the wrapper's
 //! rule is tested natively.
 
-use crate::sessions::{Host, Kernel, Outcome, Request, Started, StreamError};
+use crate::sessions::{Host, Kernel, Outcome, Request, Started, StreamError, Tool};
 use crate::state::{Buffered, State, TooLarge};
 use crate::KernelError;
 use serde_json::Value;
@@ -88,6 +88,27 @@ impl<S: State, H: Host> Host for CallHost<S, H> {
     }
     fn resume_stream(&mut self, stream: &str) {
         self.inner.resume_stream(stream)
+    }
+    fn https_start(&mut self, request: &str) -> Result<String, String> {
+        self.inner.https_start(request)
+    }
+    fn tools_open(&mut self, toolsets: &[String]) -> Result<String, String> {
+        self.inner.tools_open(toolsets)
+    }
+    fn tools_describe(&mut self, handle: &str) -> Result<Vec<Tool>, String> {
+        self.inner.tools_describe(handle)
+    }
+    fn tools_call(
+        &mut self,
+        handle: &str,
+        key: &str,
+        tool: &str,
+        args: &str,
+    ) -> Result<String, String> {
+        self.inner.tools_call(handle, key, tool, args)
+    }
+    fn tools_close(&mut self, handle: &str) {
+        self.inner.tools_close(handle)
     }
 }
 

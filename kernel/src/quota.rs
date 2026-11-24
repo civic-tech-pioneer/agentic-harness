@@ -12,6 +12,9 @@ pub const RESERVE_BYTES: u64 = 32 << 20;
 /// Provider streams the kernel holds, and one owner (9.5 "Slots").
 pub const PROVIDER_STREAMS: u32 = 8;
 pub const OWNER_PROVIDER: u32 = 4;
+/// Model requests the kernel holds, and one owner (9.5 "Slots").
+pub const REQUEST_STREAMS: u32 = 8;
+pub const OWNER_REQUEST: u32 = 4;
 /// Session timers the kernel holds, and one owner (9.3 "Deadlines and the session timer").
 pub const SESSION_TIMERS: u32 = 240;
 pub const OWNER_TIMERS: u32 = 120;
@@ -25,6 +28,8 @@ pub struct Limits {
     pub reserve_bytes: u64,
     pub provider: u32,
     pub owner_provider: u32,
+    pub request: u32,
+    pub owner_request: u32,
     pub timers: u32,
     pub owner_timers: u32,
 }
@@ -38,6 +43,8 @@ impl Default for Limits {
             reserve_bytes: RESERVE_BYTES,
             provider: PROVIDER_STREAMS,
             owner_provider: OWNER_PROVIDER,
+            request: REQUEST_STREAMS,
+            owner_request: OWNER_REQUEST,
             timers: SESSION_TIMERS,
             owner_timers: OWNER_TIMERS,
         }
@@ -54,6 +61,9 @@ pub struct Usage {
     /// The owner's provider streams, valid only while `slots_boot` is the boot of `slots` (9.1).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub provider: u32,
+    /// The owner's model requests, tagged with `slots_boot` as `provider` is.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub request: u32,
     /// The owner's session timers; kept across a restart, so not tagged with a boot (9.3).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub timers: u32,
@@ -96,16 +106,44 @@ impl Usage {
         }
     }
 
+    /// The owner's model requests of this boot (an older boot's count reads zero).
+    pub fn request_at(&self, boot: u64) -> u32 {
+        if self.slots_boot == boot {
+            self.request
+        } else {
+            0
+        }
+    }
+
+    /// Counts of an older boot are dropped when the tag moves to `boot`.
+    fn retag(&mut self, boot: u64) {
+        if self.slots_boot != boot {
+            self.provider = 0;
+            self.request = 0;
+            self.slots_boot = boot;
+        }
+    }
+
     /// Takes one more provider stream, restarting the count when it is of an older boot.
     pub fn open_provider(&mut self, boot: u64) {
-        self.provider = self.provider_at(boot) + 1;
-        self.slots_boot = boot;
+        self.retag(boot);
+        self.provider += 1;
     }
 
     /// Frees one; an older boot's count is already zero.
     pub fn close_provider(&mut self, boot: u64) {
-        self.provider = self.provider_at(boot).saturating_sub(1);
-        self.slots_boot = boot;
+        self.retag(boot);
+        self.provider = self.provider.saturating_sub(1);
+    }
+
+    pub fn open_request(&mut self, boot: u64) {
+        self.retag(boot);
+        self.request += 1;
+    }
+
+    pub fn close_request(&mut self, boot: u64) {
+        self.retag(boot);
+        self.request = self.request.saturating_sub(1);
     }
 
     /// Adds a signed delta to `bytes`, never below 0.
