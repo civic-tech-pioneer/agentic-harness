@@ -1392,12 +1392,58 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     transcript's last assistant messages joined by a blank line, the newest 32 KiB kept (cut at a
     character boundary), then sends the input.
 
+- **Settled by S40-4 (the tool calls).**
+  - *Toolsets.* The first request of a session whose profile lists `toolsets` is preceded by
+    `agent-tools.open` and `describe` (6); the handle is kept in the record's `handle` and in
+    `loop/<id>` `tools`, with the request's `tools`: per tool `{"type":"function","name",
+    "description","parameters": <the input schema as JSON>,"strict":false}` in the order described,
+    kept as stored so every request sends the same bytes, and each tool's `parallel` and
+    `idempotent`. A profile with no toolsets opens nothing and sends no `tools`. `consent-pending(<what>)`
+    from either call sets the live activity `consent {what}` and the `retry` deadline of the
+    backoff above (the loop is `retrying`; the firing opens or describes again); `consent-refused`,
+    `not-granted` or any other failure ends the turn `idle {failed {error: <that text>}}`.
+    `cancel` and `delete` `close` the handle; `interrupt` keeps it.
+  - *Calls.* `loop/<id>` `calls` lists the step's calls with no output yet, each `{item, st}`:
+    `ask`, `pending` (allowed, not started) or `job {stream}`; `serial` says the step runs one call
+    at a time (some call's tool is not `parallel`); `jobs` counts the session's job streams that
+    have not ended; `items` keeps the `response.output_item.done` items of the response under way,
+    which `response.completed` uses when its `output` is empty (dev 18.3's scripted server). The
+    states are `waiting` (some call asks) and `tools {wait?}`. A call whose tool the session did not
+    describe gets `{"error":"unknown tool"}`, or `aborted` when the session has no toolsets.
+  - *Outputs.* A denied call's output is `{"error":"denied by the profile"}` (a deny rule, or a call
+    no rule allows in mode `dont-ask`); a denied ask's is `{"error":"denied: <reason>"}`, the
+    reason the owner's, or the kernel's `no-owner`, `expired`, `timers`, `busy`, `quota`; a job's
+    `{"ok":v}` is `v` as JSON text, its `{"err":{code,message}}` is
+    `{"error":"<code>: <message>"}`, a call that cannot start (`tools_call` failed) gets
+    `{"error":"<the host's error>"}`. Each output is stored in the wire at once and shown as the
+    Responses adapter maps a job output.
+  - *Jobs.* The job of a call is `tools_call(handle, "<session>/<call_id>", name, arguments)`; its
+    key is that string. Slots: 16 kernel-wide (`slots.job`), 8 per owner (`quota/<owner>` `job`,
+    tagged by boot), 8 per session; a slot is freed at the job stream's `ended`, which also starts
+    the next pending calls, in call order. A session whose pending calls wait for a kernel or owner
+    slot (or finds the FIFO not empty) takes a place in the FIFO (`tools {wait: n}`); the drain
+    starts its calls when slots free, oldest first, each in a write of its own. A job that ends
+    with no item gives `aborted`. When every call has its output the loop is `ready`; inside an
+    items call the request is queued with the FIFO and sent at the call's end.
+  - *Restart, interrupt.* As the rows above; `interrupt` and `cancel` also write each open call's
+    `aborted` output (wire and tool entry) and deny each open ask `by: kernel`, reason `interrupted`
+    (`interrupt`) or `cancel` (`cancel`).
+
 ### 9.6 The broker
 
 - Rules: deny, then ask, then allow; the strictest match wins. A rule that
   does not parse disables its tool. A tool that no rule names asks.
 - Matching for OpenAI: tool names and `Name(arg)` with `*` and `?` globs;
-  path rules are refused at compilation.
+  path rules are refused at compilation. Settled by S40-4: the name of a
+  rule may hold `*` and `?` too (`notes_*`); it is replaced by the described
+  tools whose names it matches before the rules compile, and the profile
+  check accepts such a rule for `backend: "openai"` (the allowlist of Claude's
+  tools applies to Claude profiles only). A call is matched by its tool's name
+  alone (no `arg`). `ask-expiry` is in seconds and 600 when the profile sets
+  none. An OpenAI ask's id is its call's `call_id`; the owner's `answer` decides
+  it at once (decision entry `by: owner`), `{allow, for: session}` is refused
+  `{field: "decision"}` (no scope function for a toolset's tool), and the ask
+  has no `reach`.
 - An ask goes to the owner when it has an attached stream; otherwise, and for
   an `agent:` owner, it is denied. Kernel asks expire after `ask-expiry`
   (an `ask` deadline of the session's timer, 9.3; at the timer cap the ask is denied `timers`); Claude asks after 10 minutes (the host). A kernel ask that reaches its `ask-expiry` is denied, reason `expired`, as the host denies a Claude ask at its 10 minutes (4.5); an `ask-expiry` of 0 denies at once. The session is not allowed anything by it.

@@ -29,6 +29,7 @@ mod meter;
 mod named;
 mod openai_answer;
 mod openai_loop;
+mod openai_tools;
 mod openai_wire;
 mod overlay;
 mod quota;

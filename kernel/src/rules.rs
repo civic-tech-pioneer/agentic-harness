@@ -80,7 +80,7 @@ fn parse(rule: &str) -> Parsed {
 }
 
 /// Whole-string glob match: `*` any run, `?` one character. Greedy with one backtrack point.
-fn glob(pat: &[char], text: &[char]) -> bool {
+pub(crate) fn glob(pat: &[char], text: &[char]) -> bool {
     let (mut p, mut t) = (0, 0);
     let mut star: Option<(usize, usize)> = None;
     while t < text.len() {

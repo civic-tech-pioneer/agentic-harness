@@ -15,6 +15,10 @@ pub const OWNER_PROVIDER: u32 = 4;
 /// Model requests the kernel holds, and one owner (9.5 "Slots").
 pub const REQUEST_STREAMS: u32 = 8;
 pub const OWNER_REQUEST: u32 = 4;
+/// Tool jobs the kernel holds, one owner, one session (9.5 "Slots").
+pub const JOB_STREAMS: u32 = 16;
+pub const OWNER_JOB: u32 = 8;
+pub const SESSION_JOB: u32 = 8;
 /// Session timers the kernel holds, and one owner (9.3 "Deadlines and the session timer").
 pub const SESSION_TIMERS: u32 = 240;
 pub const OWNER_TIMERS: u32 = 120;
@@ -30,6 +34,9 @@ pub struct Limits {
     pub owner_provider: u32,
     pub request: u32,
     pub owner_request: u32,
+    pub job: u32,
+    pub owner_job: u32,
+    pub session_job: u32,
     pub timers: u32,
     pub owner_timers: u32,
 }
@@ -45,6 +52,9 @@ impl Default for Limits {
             owner_provider: OWNER_PROVIDER,
             request: REQUEST_STREAMS,
             owner_request: OWNER_REQUEST,
+            job: JOB_STREAMS,
+            owner_job: OWNER_JOB,
+            session_job: SESSION_JOB,
             timers: SESSION_TIMERS,
             owner_timers: OWNER_TIMERS,
         }
@@ -64,6 +74,9 @@ pub struct Usage {
     /// The owner's model requests, tagged with `slots_boot` as `provider` is.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub request: u32,
+    /// The owner's tool jobs, tagged with `slots_boot` as `provider` is.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub job: u32,
     /// The owner's session timers; kept across a restart, so not tagged with a boot (9.3).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub timers: u32,
@@ -115,11 +128,21 @@ impl Usage {
         }
     }
 
+    /// The owner's tool jobs of this boot (an older boot's count reads zero).
+    pub fn job_at(&self, boot: u64) -> u32 {
+        if self.slots_boot == boot {
+            self.job
+        } else {
+            0
+        }
+    }
+
     /// Counts of an older boot are dropped when the tag moves to `boot`.
     fn retag(&mut self, boot: u64) {
         if self.slots_boot != boot {
             self.provider = 0;
             self.request = 0;
+            self.job = 0;
             self.slots_boot = boot;
         }
     }
@@ -144,6 +167,16 @@ impl Usage {
     pub fn close_request(&mut self, boot: u64) {
         self.retag(boot);
         self.request = self.request.saturating_sub(1);
+    }
+
+    pub fn open_job(&mut self, boot: u64) {
+        self.retag(boot);
+        self.job += 1;
+    }
+
+    pub fn close_job(&mut self, boot: u64) {
+        self.retag(boot);
+        self.job = self.job.saturating_sub(1);
     }
 
     /// Adds a signed delta to `bytes`, never below 0.
