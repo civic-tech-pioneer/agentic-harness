@@ -32,7 +32,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 ### S38: stage C, the consumer half: Alice gives Notes' agents a folder, sees the wait, and can take it back
 (in flight, cloud, builder codex, reviewer claude; rule 3: last two handed out watane S103 claude, S107 codex, so by the
 count Claude builds next; deputy reason: the watane side has S103 on Claude, and this slice is console and kernel work,
-where Codex had no round yet in this repository, so Codex builds it and Claude reviews; sketched 2026-11-24 by deputy-3; Codex task https://chatgpt.com/local/6b054293-b150-83ed-8869-70e96b05307e, dispatched ~07:53 UTC.)
+where Codex had no round yet in this repository, so Codex builds it and Claude reviews; sketched 2026-11-24 by deputy-3; Codex task https://chatgpt.com/local/6b054293-b150-83ed-8869-70e96b05307e, dispatched ~07:53 UTC; DELIVERED 08:05 as PR #52 (507+/85-, pushed only slice/S38); r1: Claude review routine `trig_01LqzqTFjZfs2fKqkKTvzqbj`, fires 08:10 UTC.)
 spec-check: covered by the spec-chain review of 2026-11-23 (PR #51); its TECHNICAL errors 1, 2, 12 and 13 are this slice's.
 
 Story (J11, its consent part; TECHNICAL 17 stage C, "this repository" column): Alice starts a session with reach into
