@@ -36,6 +36,8 @@ const URL: &str = "https://api.openai.com/v1/responses";
 pub const CONTEXT_WINDOW: u64 = 272_000;
 /// The most bytes of the transcript's last assistant messages a summary restart carries (9.5).
 pub const SUMMARY_BYTES: usize = 32 * 1024;
+/// The most bytes of a non-2xx body the loop keeps to classify it (one host chunk, 9.5).
+pub const ERROR_BODY: usize = 64 * 1024;
 
 /// What the loop is doing (9.5). `Idle` is between turns.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -909,9 +911,31 @@ impl<S: State, H: Host> Kernel<S, H> {
                 None => Ev::BadHead,
             }
         } else {
-            Ev::Data {
-                bytes: body.to_vec(),
-                status: key.head.unwrap_or(0),
+            let status = key.head.unwrap_or(0);
+            if !(200..300).contains(&status) {
+                // A non-2xx body is classified over its items joined (S40-2 `error_body`): once
+                // they read as JSON, else at `ended`.
+                if key.body.len() < ERROR_BODY {
+                    let room = ERROR_BODY - key.body.len();
+                    key.body
+                        .push_str(&String::from_utf8_lossy(&body[..body.len().min(room)]));
+                }
+                if serde_json::from_str::<Value>(&key.body).is_err() {
+                    return Ok(Step::Done {
+                        pushes: Vec::new(),
+                        requests: Vec::new(),
+                        gone: Vec::new(),
+                    });
+                }
+                Ev::Data {
+                    bytes: key.body.clone().into_bytes(),
+                    status,
+                }
+            } else {
+                Ev::Data {
+                    bytes: body.to_vec(),
+                    status,
+                }
             }
         };
         let now = self.host.now();
@@ -1580,7 +1604,9 @@ fn ended_failure(key: &StreamKey, cause: Option<&str>, now: u64) -> Failure {
         return Failure::Fatal(c.to_string());
     }
     match key.head {
-        Some(status) if !(200..300).contains(&status) => answer::error_body(status, b"", now),
+        Some(status) if !(200..300).contains(&status) => {
+            answer::error_body(status, key.body.as_bytes(), now)
+        }
         _ => answer::ended(cause, false)
             .unwrap_or_else(|| Failure::Fatal("the response ended before it completed".into())),
     }

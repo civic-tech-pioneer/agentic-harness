@@ -1384,9 +1384,9 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     host may push `{"type":"consent-pending","what":<text>}` (host 19.4, 19.7): the turn shows
     the live activity `consent {what}` (kept in `stream/<id>` for `attach`), cleared by the
     head. A stream that then ends `consent-refused(<what>)` ends the turn `failed
-    {error: "consent-refused(<what>)"}`. A non-2xx status is classified when its first body
-    item arrives (or at `ended` with no body): the loop cancels the stream and frees its slot
-    at once. `response.completed` appends the response's `output` items to the wire (step
+    {error: "consent-refused(<what>)"}`. A non-2xx status is classified over its body items joined (the first 64 KiB, kept in
+    `stream/<id>` `body`): as soon as they read as JSON, else at `ended`; the loop then cancels
+    the stream and frees its slot. `response.completed` appends the response's `output` items to the wire (step
     `steps + 1`), adds its input and output tokens to the turn's, and pushes `{"type":"usage",
     "context-used": <input tokens>, "context-window": 272000, "compact-at": 200000}`; with no
     `function_call` item the turn ends `idle {completed, tokens}` (`tokens` the turn's input plus

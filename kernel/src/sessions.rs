@@ -629,6 +629,10 @@ pub(crate) struct StreamKey {
     /// are ignored (9.5 Items), deltas too.
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) done: bool,
+    /// The body of a non-2xx response so far, its items joined (at most `ERROR_BODY` bytes): it
+    /// is classified once it reads as JSON, or at `ended` (9.5).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) body: String,
 }
 
 impl StreamKey {
@@ -642,6 +646,7 @@ impl StreamKey {
             head: None,
             sse: false,
             done: false,
+            body: String::new(),
         }
     }
 }
@@ -1068,6 +1073,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             head: None,
             sse: false,
             done: false,
+            body: String::new(),
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         self.state
@@ -3502,6 +3508,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             head: None,
             sse: false,
             done: false,
+            body: String::new(),
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         let too_large = |e: crate::state::TooLarge| KernelError::TooLarge(e.0 as u64);
