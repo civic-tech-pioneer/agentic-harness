@@ -72,8 +72,9 @@ describe("S36 r4 load checks", () => {
 });
 
 describe("S36 r5 load checks", () => {
-  it("regress_S36_r5_load_rejects_a_short_window_just_after_a_stamp (F5.5)", () => {
-    // Codex's control: deltas every 25.125 ms and an entry 20 ms after every eighth delta: [1, 2001) holds 79 deltas, under 80
+  it("regress_S36_r5_a_steady_source_a_little_under_the_rate_passes (F5.5, the r6 F6.3 ruling)", () => {
+    // Codex's r5 control: deltas every 25.125 ms and an entry 20 ms after every eighth delta. Under the r6 ruling (no gap over
+    // twice the nominal spacing) a source that loads steadily, if a little slower, is loading: it passes
     const by = new Map<string, { at: number; kind: string; n: number }[]>();
     for (let k = 0; k < 8; k++) {
       const xs: { at: number; kind: string; n: number }[] = [];
@@ -84,7 +85,7 @@ describe("S36 r5 load checks", () => {
       xs.sort((a, b) => a.at - b.at);
       by.set(`source ${k}`, xs);
     }
-    assert.ok(loadWindow(by, 8000, { deltas: 50, entries: 5 }, 6).faults.length > 0);
+    expect(loadWindow(by, 8000, { deltas: 50, entries: 5 }, 6).faults).toEqual([]);
   });
 });
 
