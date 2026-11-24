@@ -24,7 +24,7 @@ export function NewSession({ kernel, sessions, onNew, start }: { kernel: Kernel;
   // `profiles` once on opening; a kernel that cannot answer leaves the built-in scratch profile
   useEffect(() => {
     let live = true;
-    Promise.resolve().then(() => kernel.profiles()).then((p) => { if (live && Array.isArray(p) && p.length) { setProfiles(p); setPicked(0); } }, () => {});
+    Promise.resolve().then(() => kernel.profiles?.()).then((p) => { if (live && Array.isArray(p) && p.length) { setProfiles(p); setPicked(0); } }, () => {});
     return () => { live = false; };
   }, [kernel]);
   const profile = profiles[picked] ?? profiles[0]!;
@@ -32,7 +32,7 @@ export function NewSession({ kernel, sessions, onNew, start }: { kernel: Kernel;
   useEffect(() => {
     let live = true;
     setRefusals([]);
-    Promise.resolve().then(() => kernel.check(profile.name, "{}")).then((r) => { if (live && Array.isArray(r)) setRefusals(r); }, () => {});
+    Promise.resolve().then(() => kernel.check?.(profile.name, "{}")).then((r) => { if (live && Array.isArray(r)) setRefusals(r); }, () => {});
     return () => { live = false; };
   }, [kernel, profile.name]);
   const on = backendName(profile.backend);

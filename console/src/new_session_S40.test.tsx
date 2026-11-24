@@ -134,15 +134,15 @@ describe("S40-6 AC6 the kit and the fake kernel", () => {
   it("ac6_the_kit_maps_profiles_and_check_to_sessions_profiles_and_sessions_check", async () => {
     const f = setup();
     const k = wataneKernel(f.w);
-    expect((await k.profiles()).map((p) => p.name)).toEqual(["scratch", "Sort", "Tidy"]);
-    expect((await k.check("Tidy", "{}")).map((r) => r.field)).toEqual(["tools", "allow"]);
+    expect((await k.profiles!()).map((p) => p.name)).toEqual(["scratch", "Sort", "Tidy"]);
+    expect((await k.check!("Tidy", "{}")).map((r) => r.field)).toEqual(["tools", "allow"]);
     expect(f.calls.map((c) => [c.fn, c.args])).toEqual([["sessions.profiles", {}], ["sessions.check", { profile: "Tidy", overlay: "{}" }]]);
   });
   it("ac6_the_fake_kernel_answers_three_profiles", async () => {
     const k = fakeKernel([]);
-    expect(await k.profiles()).toEqual(fakeProfiles);
+    expect(await k.profiles!()).toEqual(fakeProfiles);
     expect(fakeProfiles.map((p) => [p.name, p.backend, p.model ?? null])).toEqual([["scratch", "claude", null], ["Sort", "openai", "gpt-5"], ["Tidy", "openai", "gpt-5"]]);
-    expect(await k.check("Sort", "{}")).toEqual([]);
-    expect((await k.check("Tidy", "{}")).map((r) => r.field)).toEqual(["tools", "allow"]);
+    expect(await k.check!("Sort", "{}")).toEqual([]);
+    expect((await k.check!("Tidy", "{}")).map((r) => r.field)).toEqual(["tools", "allow"]);
   });
 });
