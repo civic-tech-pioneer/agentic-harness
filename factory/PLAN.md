@@ -30,7 +30,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 ### S39: Alice installs the agent mod in her watane app and talks to her real Claude Code in its console
 (in flight, cloud, builder codex, reviewer claude; rule 3: last two handed out S38 codex, S103 claude, so Codex builds;
 asked by the human, 2026-11-24: "the harness ui integrated into the harness backend as a complete mod"; sketched by
-deputy-3; Codex task https://chatgpt.com/local/6b058467-f1e8-83ed-936f-4c8adb37c047, dispatched ~12:30 UTC; BLOCKED 12:58 at 3ac6a3f as PR #53 (+470/-19): both releases build and install in the app and the console opens, but a scratch turn ends `no-app`: watane's app never gives the host its Settings accounts (`HostConfirm` has no `accounts()`). watane S103 (PR #26) adds exactly that (`app/src/confirm.rs`), so S39 holds until S103 merges, then continues from `slice/S39` in the same Codex task: prove the installed scratch journey on watane main. No round runs meanwhile. Changed 2026-11-24 15:20 UTC under the new deputy rule (a dependent slice does not wait; mboogerd/claude-plugin#1, the human's go-ahead): continued now against watane `slice/s103`, rerun on watane main once PR #26 merges. DELIVERED 15:50 UTC at 29606b1 (outcomes 2, 3, 5 on watane slice/s103 1ffb3b1; CI gate and installed-agent green; desktop CI pinned to that watane revision until PR #26 merges); r1: Claude review routine, fires 15:53 UTC.)
+deputy-3; Codex task https://chatgpt.com/local/6b058467-f1e8-83ed-936f-4c8adb37c047, dispatched ~12:30 UTC; BLOCKED 12:58 at 3ac6a3f as PR #53 (+470/-19): both releases build and install in the app and the console opens, but a scratch turn ends `no-app`: watane's app never gives the host its Settings accounts (`HostConfirm` has no `accounts()`). watane S103 (PR #26) adds exactly that (`app/src/confirm.rs`), so S39 holds until S103 merges, then continues from `slice/S39` in the same Codex task: prove the installed scratch journey on watane main. No round runs meanwhile. Changed 2026-11-24 15:20 UTC under the new deputy rule (a dependent slice does not wait; mboogerd/claude-plugin#1, the human's go-ahead): continued now against watane `slice/s103`, rerun on watane main once PR #26 merges. DELIVERED 15:50 UTC at 29606b1 (outcomes 2, 3, 5 on watane slice/s103 1ffb3b1; CI gate and installed-agent green; desktop CI pinned to that watane revision until PR #26 merges); r1: Claude review routine, fires 15:53 UTC; r1 (16:18): 0/5, VERDICT approve (validator PASS/RETURN regraded, adversary HELD, user-sim ACCEPTED, all 5 outcomes on watane slice/s103 1838d16). Before merge: once watane PR #26 merges, the same Codex task moves the CI pin (`.github/workflows/installed-agent.yml:22`) to watane main, takes P1.1 (two Mac notes) and A1.1's four lines (test the provider pin before building), and a confirming round reads that diff.)
 Why: today the kernel, its console and the provider run only in `watane-dev serve`, assembled by test scripts
 (`kernel/wasm/ui` and `logic.wasm` are git-ignored build outputs). The agent layer is a mod (VISION) and must install and
 run like one. This is stage C's "the same on the real `claude`" (TECHNICAL 17), for scratch sessions.
@@ -120,6 +120,8 @@ reviewer claude. Cloud.
 
 
 ### Upkeep
+
+- **From S39's review (2026-11-24), console, earlier slices:** after Stop the transcript shows 'An event this console does not know' (claude's `control_response` to the interrupt); a stopped turn's footer reads 'Completed'; with no Claude Code binary chosen the error does not point to Settings → Claude Code; S39 polish P1.2 to P1.5 (exit 2 when binaries are missing, full grant lists in the consent check, a commit id in `provider/BOUNDARIES.md`, `node -e` instead of `python3`). For watane: the consent window's Call line reads as an interface name, not words.
 
 - **From watane S103 r1 (2026-11-24):** Stop before `initialized` (while a folder consent waits) should cancel the stream, not send `interrupt`: an interrupt leaves the app's question open, and a later yes answers into an idle session. The host's cancel path drops the question and prevents the launch.
 
@@ -414,6 +416,8 @@ reviewer claude. Cloud.
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
+
+- 2026-11-24 (S39 r1) accepted: A1.1 a provider release built other than by `publish-test-mods.sh` trusts `local/agent` (needs a hand-published provider and a local mod with the slug `agent`; the four-line pin test closes the script path); A1.2 the script checks the channel's publisher only after signing the provider (operator-only). Whether a release build must refuse the dev default is a TECHNICAL 2.2/10 question for later.
 
 - 2026-11-24 (S38 r2) F2.1 replaces the r1 ruling on F1.2: TECHNICAL 8's two 'Kept for' cells cite watane host 19.7 and name Q38 as open, restating no key; the doubles use 19.7's `workspace:<folder>` as the main case. Clause: rulings narrow to the spec's literal words. Undo: one cell each.
 - 2026-11-24 (S38 r2) accepted: R2.2 (a late `consent-pending` needs a forged wrapped line and a disagreeing host check: two unusual events); Q2.1 (Stop during a consent wait leaves the app's question open; watane 19.3 does not say what `interrupt` does before `initialize`) and Q2.2 (forbidden path refused at call or at apply) go to watane S103's review.
