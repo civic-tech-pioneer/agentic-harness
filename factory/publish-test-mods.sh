@@ -37,8 +37,10 @@ build_component() {
   cp "$target/wasm32-wasip2/release/$artifact.wasm" "$stage/$destination/logic.wasm"
 }
 
+export AGENT_KERNEL_IDENTITY="$publisher/agent"
+cargo test --locked --manifest-path "$root/provider/logic/Cargo.toml" --lib ac2_ >&2
 build_component kernel agent_mod agent -p agent-mod
-AGENT_KERNEL_IDENTITY="$publisher/agent" build_component provider/logic claude_code claude-code
+build_component provider/logic claude_code claude-code
 (
   cd "$root/console"
   npm ci
