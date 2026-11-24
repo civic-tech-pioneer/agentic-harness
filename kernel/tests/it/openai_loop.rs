@@ -951,3 +951,29 @@ fn items_of_a_stream_that_is_no_longer_the_loops_are_ignored() {
     assert_eq!(k.state.len(), before);
     assert!(matches!(turn(&mut k, &id), Turn::Running { .. }));
 }
+
+// ---- review r1
+
+/// F1.4 (9.7 "Revoking", case 74): a `resume` deadline of a profile the owner may no longer use
+/// leaves the turn `paused` with no time and sends nothing.
+#[test]
+fn r1_f1_4_a_timed_pause_whose_profile_was_revoked_stays_paused_with_no_time() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let s = stream_of(&mut k, &id);
+    feed(
+        &mut k,
+        &s,
+        vec![head(429, "application/json"), usage_limit_body(60)],
+    );
+    let until = k.host.now + 60_000;
+    assert_eq!(turn(&mut k, &id), Turn::Paused { until: Some(until) });
+    k.state.put("access/alice", b"[]".to_vec()).unwrap();
+    k.host.now = until;
+    k.timer(&format!("s/{id}"));
+    assert_eq!(turn(&mut k, &id), Turn::Paused { until: None });
+    assert_eq!(starts(&k).len(), 1, "no request is sent");
+    assert_eq!(lp(&mut k, &id)["state"], "paused");
+    assert!(rec(&mut k, &id).deadlines.is_empty());
+    assert_eq!(slots(&mut k).timers, 0);
+}
