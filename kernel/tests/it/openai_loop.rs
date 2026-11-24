@@ -1048,3 +1048,60 @@ fn r1_f1_2_a_split_error_body_is_classified_once_its_joined_items_read() {
     );
     assert_eq!(slots(&mut k).request, 0);
 }
+
+fn kinds(k: &mut K, id: &str) -> Vec<String> {
+    k.read("alice", id, 0, None, 50)
+        .unwrap()
+        .entries
+        .iter()
+        .map(|l| {
+            serde_json::from_str::<Value>(l).unwrap()["kind"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect()
+}
+
+/// F1.6 (9.5 "Compaction items"): a compaction the server returns is marked by one
+/// `compaction` entry, whether it streamed or came only in `response.completed`.
+#[test]
+fn r1_f1_6_a_server_compaction_writes_one_compaction_entry() {
+    let comp = json!({"type":"compaction","id":"cmp","encrypted_content":"c"});
+    // Streamed as an item, then in the output.
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let s = stream_of(&mut k, &id);
+    feed(
+        &mut k,
+        &s,
+        vec![
+            sse_head(),
+            item_done(&comp),
+            item_done(&message("ok")),
+            completed(1, 1, &[comp.clone(), message("ok")]),
+        ],
+    );
+    let ks = kinds(&mut k, &id);
+    assert_eq!(
+        ks.iter().filter(|k| *k == "compaction").count(),
+        1,
+        "{ks:?}"
+    );
+    assert!(!ks.iter().any(|k| k == "unknown"), "{ks:?}");
+    // Only in the output of `response.completed`.
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let s = stream_of(&mut k, &id);
+    feed(
+        &mut k,
+        &s,
+        vec![sse_head(), completed(1, 1, &[comp.clone(), message("ok")])],
+    );
+    let ks = kinds(&mut k, &id);
+    assert_eq!(
+        ks.iter().filter(|k| *k == "compaction").count(),
+        1,
+        "{ks:?}"
+    );
+}
