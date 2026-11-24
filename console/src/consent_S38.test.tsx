@@ -59,3 +59,22 @@ it("ac1_keeps_the_folder_and_message_when_the_host_rejects_the_path", async () =
   expect(message).toHaveValue("Read");
   expect(host.calls.some((call) => call.fn === "sessions.attach")).toBe(false);
 });
+
+it.each([
+  ["canonical path", { ok: [{ id: "n1", title: "Read", profile: "scratch", backend: "claude", workspace: folder, updated: 1 }] }, folder],
+  ["typed path when list fails", { err: "busy" }, "/home/alice/link-to-notes"],
+])("shows the %s after Start", async (_case, list, expected) => {
+  const typed = "/home/alice/link-to-notes";
+  let started = false;
+  const host = fakeWatane({
+    "sessions.list": () => started ? list : { ok: [] },
+    "sessions.start-in-folder": () => { started = true; return { ok: "n1" }; },
+    "sessions.attach": () => ({ ok: "st1" }),
+    "sessions.read": () => ({ ok: { entries: [], last: 0 } }),
+  });
+  render(<Console served={await served(host.w)} />);
+  fireEvent.change(screen.getByRole("textbox", { name: "Folder path" }), { target: { value: typed } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Read" } });
+  fireEvent.click(screen.getByRole("button", { name: "Start session" }));
+  expect(await screen.findByTitle("Workspace")).toHaveTextContent(expected);
+});
