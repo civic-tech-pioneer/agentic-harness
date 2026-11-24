@@ -55,6 +55,7 @@ Each behaviour is proven at the lowest level that shows it
 | Console views | `npm test` in `console/` (in the gate) |
 | Console page (slow) | `npm run test:slow` in `console/`: Chromium layout and open-at-the-end checks; run before a console slice delivers |
 | Stage A on watane's real host | `npm run test:host` in `console/`: needs `watane-dev` and `watane` of watane rev c2a7d4d or later on `PATH` (S101: a machine with no IPv6 loopback is served on 127.0.0.1 alone); exit 2 means not run; by hand, not in the gate (CI installs v0.1.0) |
+| Stage D on watane's real host | `npm run test:host:d` in `console/`: the profile list, each refusal named and an OpenAI `start` that reaches the host's `https-stream` (the preview refuses the account, so the turn ends failed "not signed in to ChatGPT"); what needs a scripted Responses server is a SKIP naming watane dev question 15; needs `watane-dev` of watane slice/s111 or later on `PATH`; exit 2 means not run; by hand, not in the gate |
 | Stage B budgets (slow) | `npm run test:load` in `console/`: 8 fake sessions for 2 owners on `watane-dev serve`, item delay and Stop measured at the page (TECHNICAL 16 "Budget record"); needs `watane-dev`, `fake-claude`, `cargo` and `python3`; exit 2 means not run; by hand, on a quiet machine. The state bytes per entry: `cargo test -- --ignored s36_load` in `kernel/` |
 | Probes of the real programs | `proto/claude-probes/probes.py`, `proto/agent-spike/chatgpt-probes.py` (by hand, after a `claude` update) |
 
