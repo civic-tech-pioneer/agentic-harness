@@ -5,7 +5,7 @@ import { parse } from "../kit/wire";
 import { metaOf, titleOf, type SessionInfo } from "./Header";
 import { shapeOf, type SidebarSession } from "./Sidebar";
 
-interface Listed { id: string; title: string; profile: string; backend: string; turn?: string; updated: number }
+interface Listed { id: string; title: string; profile: string; backend: string; workspace?: string | null; turn?: string; updated: number }
 
 /** `info` is null when the owner has no session: the page then shows the new-session view. `list` reads the sidebar again (a session just started). */
 export interface Served { kernel: Kernel; info: SessionInfo | null; sessions: SidebarSession[]; list(): Promise<{ sessions: SidebarSession[]; info(id: string): SessionInfo | undefined }> }
@@ -22,15 +22,15 @@ export const startKey = (): string => `console-${Date.now()}-${Math.random().toS
 /** Served by watane (host 8.1): a `<local>.localhost` origin. Vite's `localhost:<port>` and the slow tests' 127.0.0.1 are not; index.html asks for /watane.js everywhere, so that request does not tell. */
 export const isServed = (host: string): boolean => /^[^.]+\.localhost$/.test(host);
 
-/** The facts the kernel's stream does not carry (18.4): stage B has Claude Code sessions in a scratch folder, which no judge checks. A Claude
- * session of `scratch` runs in a scratch folder; any other row reads `<backend> · <profile>`. No model or mode: a stored `profile/scratch` lists
+/** The facts the kernel's stream does not carry (18.4): Claude Code sessions currently use the unchecked provider. The kernel reports a picked path,
+ * and scratch sessions retain their default label. No model or mode: a stored `profile/scratch` lists
  * as the built-in does, so the console cannot know them until the kernel reports them (S35 r2 F2.5). */
 const infoOf = (s: Listed): SessionInfo => {
   const claude = /claude/i.test(s.backend), scratch = claude && s.profile === "scratch";
   return {
     id: s.id, title: s.title, profile: s.profile,
     provider: claude ? "Claude Code (unchecked)" : s.backend,
-    workspace: scratch ? "Scratch folder" : "",
+    workspace: s.workspace ?? (scratch ? "Scratch folder" : ""),
   };
 };
 /** 2.3 `list`: a session's `turn` is the turn JSON of 9.3 (`{"state":"running",...}`); its `state` names the sidebar's shape (a bare word is read as one too). */

@@ -115,6 +115,8 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
   display: inline-flex; align-items: center; gap: 6px; min-height: 32px; height: 32px; padding: 0 10px; border: 1px solid var(--line);
   border-radius: 16px; background: var(--panel); font-size: 12.5px; color: var(--muted); max-width: 100%;
 }
+.wa-folder-path input { min-width: 0; width: 15rem; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
+.wa-folder-default { color: var(--muted); font-size: 12px; }
 .wa-chip b { color: var(--ink); font-weight: 500; }
 .wa-chip.checked { border-color: var(--ok); color: var(--ok); }
 .wa-chip.grant { border-color: var(--ok); color: var(--ok); background: var(--panel); }
