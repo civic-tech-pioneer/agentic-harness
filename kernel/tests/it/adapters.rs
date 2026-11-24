@@ -122,7 +122,7 @@ fn ac2_every_row_of_9_8_has_a_fixture() {
         .flat_map(fixtures_of)
         .map(|fx| fx["row"].as_str().expect("row").to_string())
         .collect();
-    assert_eq!(rows.len(), 12, "rows read: {rows:?}");
+    assert_eq!(rows.len(), 13, "rows read: {rows:?}");
     for row in rows {
         assert!(have.contains(&row), "no fixture for the 9.8 row {row:?}");
     }
