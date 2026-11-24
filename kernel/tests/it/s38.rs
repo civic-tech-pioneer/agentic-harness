@@ -334,3 +334,21 @@ fn late_pending_consent_is_ignored_after_either_init() {
             if value["_meta"]["watane"]["state"]["activity"]["kind"] == "consent")));
     }
 }
+
+#[test]
+fn relaunched_stream_shows_a_new_consent_wait() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k.start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER).unwrap().value;
+    let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    let initialized = json!({"type": "initialized", "workspace": FOLDER});
+    k.provider_lines(&stream, vec![(1, initialized.to_string().into_bytes())]).unwrap();
+    // The human withdraws the grant: host 19.7 ends the dependent stream with `gone`.
+    k.provider_ended_with(&stream, Some("gone".into())).unwrap();
+    k.say("page", &id, "k2", "again").unwrap();
+    let rec = Record::load(&mut k.state, &id).unwrap();
+    let next = rec.streams.iter().find(|s| **s != stream).expect("a new provider stream").clone();
+    k.attach("page", &id, 0).unwrap();
+    let pending = json!({"type": "consent-pending", "what": WHAT});
+    let call = k.provider_lines(&next, vec![(1, pending.to_string().into_bytes())]).unwrap();
+    assert!(call.pushes.iter().any(|p| p.value["state"]["activity"]["what"] == WHAT));
+}
