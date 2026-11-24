@@ -625,6 +625,10 @@ pub(crate) struct StreamKey {
     pub(crate) head: Option<u16>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) sse: bool,
+    /// A request stream whose response completed: its later items are of a finished request and
+    /// are ignored (9.5 Items), deltas too.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) done: bool,
 }
 
 impl StreamKey {
@@ -637,6 +641,7 @@ impl StreamKey {
             consent: None,
             head: None,
             sse: false,
+            done: false,
         }
     }
 }
@@ -1062,6 +1067,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             consent: None,
             head: None,
             sse: false,
+            done: false,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         self.state
@@ -3495,6 +3501,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             consent: None,
             head: None,
             sse: false,
+            done: false,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         let too_large = |e: crate::state::TooLarge| KernelError::TooLarge(e.0 as u64);

@@ -1391,7 +1391,8 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     "context-used": <input tokens>, "context-window": 272000, "compact-at": 200000}`; with no
     `function_call` item the turn ends `idle {completed, tokens}` (`tokens` the turn's input plus
     output tokens, `tools` its call count when any), else the calls go to `openai_calls`. Items of
-    a stream that is no longer the loop's current one are ignored; the slot of a stream that is
+    a stream that is no longer the loop's current one are ignored, and so is every item after
+    a stream's `response.completed` (deltas too: `stream/<id>` keeps `done`); the slot of a stream that is
     not current (a completed response's, or one a cancel left) is freed at its `ended`.
   - *Slots.* A request takes a slot when the kernel holds fewer than 8 requests and its owner
     fewer than 4 (`quota/<owner>` `request`, tagged by boot as `provider` is); else it takes the

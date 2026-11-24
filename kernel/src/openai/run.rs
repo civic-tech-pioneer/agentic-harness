@@ -915,6 +915,21 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
         };
         let now = self.host.now();
+        // Items after `response.completed` are of a finished request (9.5 Items).
+        if key.done {
+            return Ok(Step::Done {
+                pushes: Vec::new(),
+                requests: Vec::new(),
+                gone: Vec::new(),
+            });
+        }
+        if let (Ev::Data { status, .. }, true) = (&ev, key.sse) {
+            if (200..300).contains(status)
+                && matches!(answer::sse(body, now), Sse::Completed { .. })
+            {
+                key.done = true;
+            }
+        }
         // A delta reads no record (P09).
         if let (Ev::Data { status, .. }, true) = (&ev, key.sse) {
             if (200..300).contains(status) {
