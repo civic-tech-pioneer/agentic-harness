@@ -18,6 +18,8 @@ function setup(over: Record<string, (a: any) => unknown> = {}) {
     "sessions.start": () => { started = true; return { ok: "n1" }; },
     "sessions.attach": () => ({ ok: "st1" }),
     "sessions.read": () => ({ ok: { entries: [], last: 0 } }),
+    "sessions.profiles": () => ({ ok: [{ name: "scratch", backend: "claude", model: null }] }), // S40: the view calls `profiles` and `check`
+    "sessions.check": () => ({ ok: [] }),
     ...over,
   });
   return f;
@@ -32,7 +34,8 @@ describe("S35-4 AC2 the new-session view", () => {
     expect(text()).toContain("A new scratch folder");
     expect(box()).toHaveAttribute("placeholder", "Message Claude…");
     expect(screen.getByRole("button", { name: "Start session" })).toBeDisabled();
-    expect(f.calls.map((c) => c.fn)).toEqual(["sessions.list"]); // no session was started by looking
+    await tick();
+    expect(f.calls.map((c) => c.fn)).toEqual(["sessions.list", "sessions.profiles", "sessions.check"]); // no session was started by looking (S40: `profiles` once, `check` for the first profile)
   });
   it.each(["", "   "])("ac2_send_starts_with_a_fresh_scratch_key_for_blank_folder_%j", async (folder) => {
     const f = setup();
@@ -140,7 +143,7 @@ describe("S35 r1 F1.5 every row's title and meta", () => {
   it("r1_f1_5_an_openai_scratch_session_is_not_a_claude_scratch_folder", async () => {
     const openAiScratch = setup({ "sessions.list": () => ({ ok: [{ id: "a", title: "T", profile: "scratch", backend: "openai", turn: "idle", updated: 1 }] }) });
     expect((await served(openAiScratch.w)).sessions[0]?.meta)
-      .toBe("openai · scratch");
+      .toBe("ChatGPT · scratch"); // S40 AC4: the backend `openai` reads as ChatGPT
   });
 });
 

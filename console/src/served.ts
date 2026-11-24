@@ -26,10 +26,10 @@ export const isServed = (host: string): boolean => /^[^.]+\.localhost$/.test(hos
  * and scratch sessions retain their default label. No model or mode: a stored `profile/scratch` lists
  * as the built-in does, so the console cannot know them until the kernel reports them (S35 r2 F2.5). */
 const infoOf = (s: Listed): SessionInfo => {
-  const claude = /claude/i.test(s.backend), scratch = claude && s.profile === "scratch";
+  const claude = /claude/i.test(s.backend), openai = /openai/i.test(s.backend), scratch = claude && s.profile === "scratch";
   return {
     id: s.id, title: s.title, profile: s.profile,
-    provider: claude ? "Claude Code (unchecked)" : s.backend,
+    provider: claude ? "Claude Code (unchecked)" : openai ? "ChatGPT" : s.backend,
     workspace: s.workspace ?? (scratch ? "Scratch folder" : ""),
   };
 };

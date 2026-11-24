@@ -163,3 +163,23 @@ button.wa-plan-head { min-height: 32px; border: 0; background: transparent; padd
 .wa-send:disabled { opacity: .35; cursor: default; }
 .wa-stop { margin-left: auto; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; font-weight: 500; }
 .wa-stop + .wa-send { margin-left: 0; }
+
+/* 18.6 "New session": the profile rows, "Runs on", the kernel's refusals (frame NewSession-2) */
+.wa-newbody { display: flex; flex-direction: column; gap: 16px; max-width: 780px; margin: 0 auto; }
+.wa-profiles { display: flex; flex-direction: column; gap: 8px; }
+.wa-pcard { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 10px 14px; min-height: 44px; box-sizing: border-box; cursor: pointer; }
+.wa-pcard[data-on] { border-color: var(--accent); }
+.wa-pcard input { accent-color: var(--accent); align-self: center; }
+.wa-pcard span { font-size: 12.5px; color: var(--muted); }
+.wa-runson { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wa-runson-label { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.wa-seg { height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 13.5px; }
+.wa-seg[aria-pressed="true"] { background: var(--panel); color: var(--ink); border-color: var(--accent); }
+.wa-seg:disabled { cursor: default; opacity: .7; }
+.wa-refusals:empty { display: none; }
+.wa-refusals { display: flex; flex-direction: column; gap: 6px; border-radius: 12px; border: 1px solid var(--danger); padding: 12px 14px; }
+.wa-refusals b { color: var(--danger); }
+.wa-ref { display: flex; gap: 10px; font-size: 13px; line-height: 1.5; }
+.wa-ref code { flex: 0 0 96px; color: var(--danger); font-family: var(--font-mono); font-size: 12.5px; }
+.wa-send-off { margin: 0; color: var(--muted); font-size: 12px; }
+@media (max-width: 520px) { .wa-ref { flex-direction: column; gap: 2px; } }

@@ -19,12 +19,13 @@ const keepDraft = (key: string | undefined, text: string) => { try { if (key) { 
  * and the link leave together, and clearing the composer gives the item back to its row (S36 r5 F5.1, r6 F6.1). */
 type Ctl = { text(): string; put(t: string, error?: unknown, from?: string): boolean };
 
-export function Composer({ queued, actions, busy = false, stopping = false, session, draftKey, placeholder: given, sendLabel, ctl, epoch, taken }: {
+export function Composer({ queued, actions, busy = false, stopping = false, session, draftKey, placeholder: given, sendLabel, blocked, ctl, epoch, taken }: {
   queued: number; /** The session's capacity epoch (taken.ts); none: the queue's length and the turn stand for it. */ epoch?: () => number; actions: Actions; busy?: boolean; stopping?: boolean; session?: { model?: string; mode?: string };
   /** Where the unsent text is kept (`sessionStorage`); none keeps nothing. */ draftKey?: string;
   /** The session whose taken items (taken.ts) the composer can hold; none: it holds none. */ taken?: string;
   /** Filled with a hold on the text (the queue's Edit reads and sets it). */ ctl?: MutableRefObject<Ctl | null>;
   /** Words for a composer that is not a session's (the new-session view). */ placeholder?: string; sendLabel?: string;
+  /** Why Start is off (the new-session view's refusals), as text above the composer; none: not blocked. */ blocked?: string;
 }) {
   const [text, setText_] = useState(() => draftOf(draftKey));
   const now = useRef(text); // the text as of the last change, for calls that land in one render batch (S36 r5 F5.1)
@@ -60,7 +61,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   const off = !!actions.off; // 18.6 "Another tab": the stream is not this tab's
   const send = () => {
     const t = text.trim();
-    if (!t || full || off) return;
+    if (!t || full || off || blocked) return;
     const of = held();
     if (of !== undefined && !claim(taken!, of)) return; // the item's one guard: a call of it is in flight
     const mark = ++edited.current;
@@ -86,6 +87,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   return (
     <form className="wa-composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
       {alert ? <p className="wa-send-err" role="alert">{alert}</p> : null}
+      {blocked ? <p className="wa-send-off">{blocked}</p> : null}
       <textarea aria-label="Message" rows={2} value={text} placeholder={placeholder}
         onChange={(e) => { edited.current++; setRefused(null); setText(e.target.value); if (!e.target.value.trim()) holdIt(undefined); }}
         onKeyDown={(e) => {
@@ -100,7 +102,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
             {stopping ? "Stopping…" : "Stop"}
           </button>
         ) : null}
-        <button type="submit" className="wa-send" aria-label={sendLabel ?? (busy ? "Queue message" : "Send message")} disabled={full || off || !text.trim()}>
+        <button type="submit" className="wa-send" aria-label={sendLabel ?? (busy ? "Queue message" : "Send message")} disabled={full || off || !!blocked || !text.trim()}>
           <svg width="16" height="16" strokeWidth="2.4" {...svg}><path d="M12 19V5M6 11l6-6 6 6" /></svg>
         </button>
       </div>

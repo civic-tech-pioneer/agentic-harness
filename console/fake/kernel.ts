@@ -1,5 +1,6 @@
 // TECHNICAL 2.3, 9.4: a scripted fake kernel with the shape of `attach` and `read`, for the console's tests.
-import type { Kernel } from "../kit/kernel";
+import type { Kernel, ProfileInfo, Refusal } from "../kit/kernel";
+import { chatgptStory } from "./chatgpt";
 
 export interface FakeKernel extends Kernel { drop(): void; play(step?: number): void; calls: { name: string; args: unknown[] }[] }
 
@@ -21,12 +22,26 @@ export function partsOf(entry: object, size: number): string[] {
   return texts.map((text, k) => JSON.stringify({ v: 1, i: e.i - m + 1 + k, kind: "part", ...(e.at !== undefined ? { at: e.at } : {}), body: { n: k + 1, m, text } }));
 }
 
+/** The profiles the fake kernel answers `profiles` with (2.3), and the refusals its `check` returns for each (a name it does not know: none). */
+export const fakeProfiles: ProfileInfo[] = [
+  { name: "scratch", backend: "claude" },
+  { name: "Sort", backend: "openai", model: "gpt-5" },
+  { name: "Tidy", backend: "openai", model: "gpt-5" },
+];
+const fakeRefusals: Record<string, Refusal[]> = {
+  Tidy: [
+    { field: "tools", backend: "openai", model: "gpt-5", reason: "ChatGPT runs no file tools: it has only the toolsets you give it." },
+    { field: "allow", backend: "openai", model: "gpt-5", reason: "An allow rule needs Claude Code." },
+  ],
+};
+
 /** `script` is steps of stream messages; `opts.preload` are entries (JSON) already stored; `opts.refuseAnswer` makes `answer` reject the way a kernel refusal does (`busy`, or a refusal whose field is `ask`: already decided). */
 export function fakeKernel(script: string[][], opts?: { preload?: string[]; refuseAnswer?: "busy" | "ask"; refuseUnqueue?: boolean }): FakeKernel {
   const store: Rec[] = (opts?.preload ?? []).map((s) => JSON.parse(s));
   const calls: FakeKernel["calls"] = [];
   let stream: { onMessage: (j: string) => void; onEnd: (r: string) => void } | null = null;
   let next = 0, started = 0;
+  let steps = script; // the script of the running session: the Claude one, or ChatGPT's for the profile `Sort`
   const acc = { agent: "", thought: "", thoughtAt: undefined as number | undefined, thoughtEnd: undefined as number | undefined, user: "", tools: new Map<string, Rec>() };
   const items: Record<string, string> = {};
   const last = () => store[store.length - 1]?.i ?? 0;
@@ -89,13 +104,17 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[]; refu
       return store.filter((e) => e.i > after).slice(0, Math.min(max, 256)).map((e) => JSON.stringify(e));
     },
     /** A new session that answers like the story: its stored entries are cleared and the story's first step plays. */
-    async start(key, profile, overlay, input) {
-      calls.push({ name: "start", args: [key, profile, overlay, input] });
+    async start(key, profile, overlay, input, folder) {
+      calls.push({ name: "start", args: folder === undefined ? [key, profile, overlay, input] : [key, profile, overlay, input, folder] });
+      steps = profile === "Sort" ? chatgptStory : script;
+      if (profile === "Sort") next = 1; // step 0 plays by itself
       store.length = 0; for (const k of Object.keys(items)) delete items[k];
       acc.agent = acc.thought = acc.user = ""; acc.thoughtAt = acc.thoughtEnd = undefined; acc.tools.clear();
-      setTimeout(() => { if (script[0]) this.play(0); }, 0);
+      setTimeout(() => { if (steps[0]) this.play(0); }, 0);
       return `new${++started}`;
     },
+    async profiles() { calls.push({ name: "profiles", args: [] }); return fakeProfiles; },
+    async check(profile, overlay) { calls.push({ name: "check", args: [profile, overlay] }); return fakeRefusals[profile] ?? []; },
     async say(session, key, input) { calls.push({ name: "say", args: [session, key, input] }); return 0; },
     async answer(session, key, ask, decision) {
       calls.push({ name: "answer", args: [session, key, ask, decision] });
@@ -117,7 +136,7 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[]; refu
     drop() { const s = stream; stream = null; s?.onEnd("dropped"); },
     play(step) {
       const n = step ?? next++;
-      const msgs = script[n];
+      const msgs = steps[n];
       if (!msgs) throw new Error(`no step ${n} in the script`);
       for (const j of msgs) { record(j); stream?.onMessage(j); }
     },

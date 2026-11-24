@@ -40,7 +40,7 @@ export function Header({ info, view, actions }: { info: SessionInfo; view: Sessi
         <span className="wa-chip" title="Profile">Profile <b>{info.profile}</b></span>
         <span className={`wa-chip${info.judge ? " checked" : ""}`} title={title}>
           <svg {...svg}><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" /></svg>
-          {info.provider} · {info.judge ? "your judge checks calls" : "no judge"}
+          {info.provider === "ChatGPT" ? `ChatGPT · ${info.profile}` : `${info.provider} · ${info.judge ? "your judge checks calls" : "no judge"}`}
         </span>
         {info.workspace ? <span className="wa-chip wa-workspace" title="Workspace">{FOLDER}<b title={info.workspace}>{info.workspace}</b></span> : null}
         {view.allows.map((a) => (

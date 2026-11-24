@@ -2466,8 +2466,18 @@ say (layout, spacing, words).
   drops any item at or below it, and holds items of a stream whose `attach`
   has not answered yet. From stage B (S35) it opens the owner's newest
   session (`list`); with none, or on New session, it shows the new-session
-  view (frame `NewSession-2`) with profile `scratch` and an optional absolute
-  folder path. The first Send calls `start` for a blank path or
+  view (frame `NewSession-2`). From stage D (S40) the view calls `profiles()`
+  once when it opens and lists each profile as a radio row (its name, and
+  `Claude Code` or `ChatGPT` with the model when there is one; the first is
+  selected; a kernel that cannot answer leaves `scratch` alone). "Runs on"
+  marks the selected profile's backend; the other is not selectable (title
+  "Set in the profile"). On each selection the view calls `check(name, "{}")`
+  and lists every refusal under "Can't run on <backend>", each `field` and
+  `reason`, in a `role="status"` `aria-live="polite"` region; while any holds,
+  Start is off and says why as text. The view has no refusal rule of its own.
+  A `start` refused `refused(list)` shows each refusal's `field: reason` in
+  the line above the composer and puts the text back. An optional absolute
+  folder path stays. The first Send calls `start` for a blank path or
   `start-in-folder` for a picked path. Both take a fresh key. The page
   opens the session and displays the picked path from `list`. Without `window.watane` (the
   component tests, `npm run dev`) it opens the scripted fake kernel

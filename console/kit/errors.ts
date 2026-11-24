@@ -1,9 +1,13 @@
 // TECHNICAL 2.3, 18.6 "Send": what the composer's alert says for a failed `say` or `start`, one sentence for each error case of 2.3.
 type Err = { kind?: unknown; payload?: unknown; refusals?: unknown; message?: unknown };
 
+/** Each refusal as `field: reason` (the field when the kernel names one), 18.6 "Send". */
 const reasons = (e: Err): string[] => {
   const list = Array.isArray(e.refusals) ? e.refusals : Array.isArray(e.payload) ? e.payload : [];
-  return list.flatMap((r) => (r && typeof r === "object" && typeof (r as { reason?: unknown }).reason === "string" ? [(r as { reason: string }).reason] : []));
+  return list.flatMap((r) => {
+    const o = r as { field?: unknown; reason?: unknown } | null;
+    return o && typeof o === "object" && typeof o.reason === "string" ? [typeof o.field === "string" && o.field ? `${o.field}: ${o.reason}` : o.reason] : [];
+  });
 };
 
 /** The alert for a failed call: a sentence for each 2.3 error the kernel names (`kind` is the case's name), never the JSON. An error with no case (a plain `Error`) says its own message. */
