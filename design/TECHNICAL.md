@@ -674,8 +674,8 @@ and `.husky/**`. No launch can remove them.
 
 | Consent | Asked when | Kept for | Words |
 |---|---|---|---|
-| Workspace | a launch names a folder new for the origin client and provider | (origin client, provider, folder) | "Let {origin client} have agents work in {folder} ({profile}, through {provider})?" |
-| Account | an `https-stream` with `account: "openai"` new for the origin client and requester (the `judge` account asks none: entering its key is the consent, 5) | (origin client, requester, account) | "Let {origin client} use your ChatGPT plan?" |
+| Workspace | a launch names a folder new for the origin client and provider | (origin client, provider, folder) — pending the human's answer to watane Q38 (host/TECHNICAL 18); built as (b), the option that keeps (a) open | "Let {origin client} have agents work in {folder} ({profile}, through {provider})?" |
+| Account | an `https-stream` with `account: "openai"` new for the origin client and requester (the `judge` account asks none: entering its key is the consent, 5) | (origin client, requester, account) — pending the human's answer to watane Q38 (host/TECHNICAL 18); built as (b), the option that keeps (a) open | "Let {origin client} use your ChatGPT plan?" |
 | Toolset | `agent-tools.open` with a toolset new for the origin client | (origin client, toolset) | "Let {origin client}'s agents call: {functions}?" |
 
 - **Origin client:** the page's mod for a page call; the mod of the handle
@@ -683,8 +683,7 @@ and `.husky/**`. No launch can remove them.
   opened it. The host carries it with the chain.
 - Stored with the grants (host 4.4); shown and withdrawn in the manager like
   grants. A withdrawal ends dependent streams with `gone` and closes
-  dependent handles (host 19.7). `gone` is shared with other events that remove
-  the stream, so the console reports the loss of the provider connection.
+  dependent handles (host 19.7).
 - **Grant words:** "Can start Claude Code with your Claude account, to read
   and change files in folders you choose. Not checked by watane." and "Can
   start Claude Code with your Claude account and let it run programs and use
@@ -1928,6 +1927,10 @@ Not protected: a revoked `access/` entry does not stop a turn already running: n
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose allowlisted names can reach loopback, LAN and link-local addresses (V27, breached; the shell grant waits on the human), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
 (spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6). The subagent slash-prompt probe V26 held and the shell network probe V27 breached (16).
+
+**Known limit (S38):** Host 19.7 uses `gone` for consent withdrawal and other
+provider-stream endings. The console displays “Connection to Claude Code ended”
+and keeps the transcript through the last finished message.
 
 ## 15. Provides and needs
 
