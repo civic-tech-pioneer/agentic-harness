@@ -2578,8 +2578,17 @@ out. Stop shows "Stopping…" until a `turn` update says idle, or shows another 
   `unqueue` succeeds and leaves only when the kernel accepts its `say` or
   `interrupt`, or when she discards it. Copying its text into the composer
   (Edit, or a refused `interrupt`, into an empty composer) does not remove
-  it: the composer remembers the item it copied while it holds that text,
-  and a send of it (edited or not) that the kernel accepts removes the item.
+  it. One owner, one guard (the deputy's rule, S36 r6): a taken item has one
+  send path at a time and one in-flight guard, keyed by its id. While the
+  composer holds its text, the composer owns it: the draft carries the
+  item's id, also in its `sessionStorage` mirror beside the draft, so the
+  link survives a reload, and the item's row shows no Undo or retry.
+  Sending the composer (edited or not) is the item's send, under its guard;
+  when the kernel accepts it, the item and the link leave together; when it
+  is refused, the text stays where it is (back in the composer and linked,
+  or, if she typed since, the item back with its row). Clearing the
+  composer gives the item back to its row; discarding the item drops the
+  link and leaves the composer's text as an ordinary draft.
   Nothing else removes or overwrites one: not a timer, another queue action,
   a newer draft, a refused send, two calls that end together, or a session
   switch; a reply that ends after she switched writes to its own session's
@@ -2591,8 +2600,13 @@ out. Stop shows "Stopping…" until a `turn` update says idle, or shows another 
   Discard; one call in flight at a time. Remove is `unqueue`, and its item
   stores the absolute time 6 s on, when its ordinary Undo ends: past it
   (also after a reload) Undo is hidden, unless it was refused or is in
-  flight, and the item stays with Discard. Known cost: a refused re-send loses the
-  item's place in the queue. The controls are off under "Another tab". A
+  flight, and the item stays with Discard. Each ordinary Undo has its own
+  timer for its deadline, and a click checks the deadline again; a refused
+  item's retry is not an ordinary Undo and has no deadline (S36 r6). Known
+  cost: a refused re-send loses the item's place in the queue. Known limit
+  (accepted by the deputy, S36 r6): if the browser fails to delete the
+  mirror (`removeItem` throws), an item the kernel accepted, gone from the
+  live list, comes back after a reload; it needs a storage failure. The controls are off under "Another tab". A
   full queue turns Send off and says why (the placeholder, or the line above
   the composer while it holds text): 32 inputs, or a `say` refused
   `queue-full` (the 2 MiB limit), also one that ends after she typed again,
