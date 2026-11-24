@@ -27,6 +27,35 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
+### S39: Alice installs the agent mod in her watane app and talks to her real Claude Code in its console
+(in flight, cloud, builder codex, reviewer claude; rule 3: last two handed out S38 codex, S103 claude, so Codex builds;
+asked by the human, 2026-11-24: "the harness ui integrated into the harness backend as a complete mod"; sketched by
+deputy-3.)
+Why: today the kernel, its console and the provider run only in `watane-dev serve`, assembled by test scripts
+(`kernel/wasm/ui` and `logic.wasm` are git-ignored build outputs). The agent layer is a mod (VISION) and must install and
+run like one. This is stage C's "the same on the real `claude`" (TECHNICAL 17), for scratch sessions.
+
+Outcomes (user-sim on the real watane app, CI on dev's fake `claude`):
+1. One command from a clean checkout builds the complete agent mod (kernel logic, the console as its page) and the
+   `claude-code` provider, and publishes them as releases with `watane-dev publish` to a local test site; the built mod
+   passes `watane-dev check`.
+2. In a fresh watane app home, Alice pastes the agent mod's link into "Install from link": one consent window lists the
+   kernel and the provider it needs with their grants in words, she approves, and both are installed.
+3. She opens the agent mod from her launcher: its page is the console; with dev's fake `claude` set as the Claude Code
+   binary (Settings, S102), she starts a scratch session, sees the reply stream, answers a tool ask, stops a long turn,
+   and after quitting and restarting the app the transcript is back.
+4. The same with her real `claude` binary and login: the human's check on the Mac, not CI's (no cloud team can sign in
+   to the human's account). The PR says how to run it in a few commands.
+5. Existing gates stay green; `npm run test:host` and the kernel tests still pass.
+
+Interface: watane's install of a mod with a dependency (as the app fixtures `recommendations` and `reading-list`), host
+19.3 (Claude Code launch, scratch workspaces), app 19.1/19.3 (the Claude Code binary setting). Constraints: picked
+folders and their consent are left out (watane S103, not merged; S38's folder field may stay but needs no new work); no
+real account in CI; no change to watane unless a gap blocks install, and then a question to the deputy first. Touches:
+`kernel/wasm/`, `provider/`, `console/` build, a build or release script, `factory/gate.sh` if the gate builds the mod,
+`design/TECHNICAL.md` 1 (layout) and 17. Boundary: TECHNICAL 14 (the provider's grants and the install consent: the
+adversary runs). Protects: *core*.
+
 ## Sketched
 
 ### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DONE 2026-11-23: PR #43 merged with --admin at 042b0dd on the human's word after the extra round, r6 changes 2 answered (F6.1 done on main, F6.2 fixed); was in flight, builder claude, reviewer codex; continuation DELIVERED 21:31 UTC at 8fc6db6 on watane c2a7d4d (routine `trig_01NpPnJxwNjH279WAFwnziDk`), screenshots in `factory/runs/S35/screens/`; r1: Codex review dispatched 21:40 UTC, https://chatgpt.com/local/6b035f75-9cbc-83eb-953f-4ea568e56065; r1: 8 Codex findings (validator RETURN, adversary BREACHED, user-sim REJECTED) plus deputy design findings D1.1, D1.2, answer dispatched 22:04 UTC (session `cse_01LxwP923RKBfVNTWsTUagAQ`); r1 answered at 4522428 (all 10 fixed); r2 (22:37): Codex `changes (6)`, validator RETURN, adversary HELD, user-sim ACCEPTED; answer r2 dispatched 23:10 UTC (session `cse_01LxwP8yPPmPVipCPszcmKqW`; a 23:00 fire carried the stale r1 brief and pushed nothing); r2 answered at ea98cb9 (all 6 fixed); r3: Codex review dispatched 23:29 UTC; r3 (23:58): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim ACCEPTED); answer r3 dispatched 00:01 UTC (session `cse_01LxwP8zfZtC4o6shbfqRvp7`); r3 answered at d0dfddd (all 3 fixed); r4: Codex review dispatched 00:20 UTC; r4 (00:26): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim REJECTED), all on the composer's kept draft; deputy ruling (same finding 4 rounds running) and answer r4 dispatched 00:51 UTC (session `cse_01LxwP92VSjjigxaiXQaSyiJ`); r4 answered at 8177ca5 (by the ruling); r5 (last): Codex review dispatched 01:12 UTC; r5 (01:18): `changes (1)` (validator RETURN, adversary HELD, user-sim ACCEPTED): **round cap reached, held for the human** (Waiting: S35-CAP); then the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
