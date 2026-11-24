@@ -75,3 +75,32 @@ Constraints: no shell grant (V27 waits on the human; build nothing that assumes 
 12, 13 of PR #51's list in the sections this slice touches (with `spec-change`); the rest stay with #51. Stage B carry
 list items that this slice's code reaches (S32 R1 first) are folded in. Touches: `kernel/`, `console/`, `provider/` if
 the consent passes through it, `design/TECHNICAL.md` 4, 9, 14. Boundary: TECHNICAL 14 (adversary runs). Protects: *core*.
+
+### S39: Alice installs the agent mod in her watane app and talks to her real Claude Code in its console
+(in flight, cloud, builder codex, reviewer claude; rule 3: last two handed out S38 codex, S103 claude, so Codex builds;
+asked by the human, 2026-11-24: "the harness ui integrated into the harness backend as a complete mod"; sketched by
+deputy-3; Codex task https://chatgpt.com/local/6b058467-f1e8-83ed-936f-4c8adb37c047, dispatched ~12:30 UTC; BLOCKED 12:58 at 3ac6a3f as PR #53 (+470/-19): both releases build and install in the app and the console opens, but a scratch turn ends `no-app`: watane's app never gives the host its Settings accounts (`HostConfirm` has no `accounts()`). watane S103 (PR #26) adds exactly that (`app/src/confirm.rs`), so S39 holds until S103 merges, then continues from `slice/S39` in the same Codex task: prove the installed scratch journey on watane main. No round runs meanwhile. Changed 2026-11-24 15:20 UTC under the new deputy rule (a dependent slice does not wait; mboogerd/claude-plugin#1, the human's go-ahead): continued now against watane `slice/s103`, rerun on watane main once PR #26 merges. DELIVERED 15:50 UTC at 29606b1 (outcomes 2, 3, 5 on watane slice/s103 1ffb3b1; CI gate and installed-agent green; desktop CI pinned to that watane revision until PR #26 merges); r1: Claude review routine, fires 15:53 UTC; r1 (16:18): 0/5, VERDICT approve (validator PASS/RETURN regraded, adversary HELD, user-sim ACCEPTED, all 5 outcomes on watane slice/s103 1838d16). Before merge: once watane PR #26 merges, the same Codex task moves the CI pin (`.github/workflows/installed-agent.yml:22`) to watane main, takes P1.1 (two Mac notes) and A1.1's four lines (test the provider pin before building), and a confirming round reads that diff. watane PR #26 merged at a923a8dc (2026-11-24); pre-merge brief sent into the Codex task ~19:00 UTC; answered at dbba42b (CI pinned to watane main a923a8dc, outcomes 2, 3, 5 rerun; P1.1; A1.1), CI green; r2: Claude confirming read, fires 19:17 UTC; r2 (19:19): 0/0, VERDICT approve, gate and installed-agent green at dbba42b on watane main a923a8dc; waits on the human's merge word.)
+Why: today the kernel, its console and the provider run only in `watane-dev serve`, assembled by test scripts
+(`kernel/wasm/ui` and `logic.wasm` are git-ignored build outputs). The agent layer is a mod (VISION) and must install and
+run like one. This is stage C's "the same on the real `claude`" (TECHNICAL 17), for scratch sessions.
+
+Outcomes (user-sim on the real watane app, CI on dev's fake `claude`):
+1. One command from a clean checkout builds the complete agent mod (kernel logic, the console as its page) and the
+   `claude-code` provider, and publishes them as releases with `watane-dev publish` to a local test site; the built mod
+   passes `watane-dev check`.
+2. In a fresh watane app home, Alice pastes the agent mod's link into "Install from link": one consent window lists the
+   kernel and the provider it needs with their grants in words, she approves, and both are installed.
+3. She opens the agent mod from her launcher: its page is the console; with dev's fake `claude` set as the Claude Code
+   binary (Settings, S102), she starts a scratch session, sees the reply stream, answers a tool ask, stops a long turn,
+   and after quitting and restarting the app the transcript is back.
+4. The same with her real `claude` binary and login: the human's check on the Mac, not CI's (no cloud team can sign in
+   to the human's account). The PR says how to run it in a few commands.
+5. Existing gates stay green; `npm run test:host` and the kernel tests still pass.
+
+Interface: watane's install of a mod with a dependency (as the app fixtures `recommendations` and `reading-list`), host
+19.3 (Claude Code launch, scratch workspaces), app 19.1/19.3 (the Claude Code binary setting). Constraints: picked
+folders and their consent are left out (watane S103, not merged; S38's folder field may stay but needs no new work); no
+real account in CI; no change to watane unless a gap blocks install, and then a question to the deputy first. Touches:
+`kernel/wasm/`, `provider/`, `console/` build, a build or release script, `factory/gate.sh` if the gate builds the mod,
+`design/TECHNICAL.md` 1 (layout) and 17. Boundary: TECHNICAL 14 (the provider's grants and the install consent: the
+adversary runs). Protects: *core*.
