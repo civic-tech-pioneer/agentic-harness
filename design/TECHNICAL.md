@@ -555,6 +555,7 @@ and `.husky/**`. No launch can remove them.
   - **Lifetime.** It outlives its stream and the session's `delete`; the host
     deletes it with its owner mod (host 19.3).
 - **Picked workspace:** `start-in-folder` takes an absolute path for a Claude profile.
+  It refuses paths containing control characters with `refused [{field: "folder"}]`.
   The kernel passes it to the same provider as a scratch launch. The host
   resolves and validates it before asking (host 19.3, 19.7), and
   `initialized.workspace` is its canonical path. `list` returns the picked
@@ -780,6 +781,7 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 |---|---|---|
 | `key` (a client key, also in `key/<owner>/<key>`) | 256 bytes | `too-large(256)` |
 | `title` | 256 bytes | `rename` refuses `too-large(256)` |
+| `requested-folder` | 4096 bytes | `start-in-folder` refuses `too-large(4096)` |
 | `children` | live children only, at most 20 (9.7); a finished child leaves the list, its id stays in the parent's transcript | – |
 | `allows` | at most 64 session allows and 64 KiB in all, each at most 1 KiB (its tool and key) | an answer `for: session` is refused `too-large(65536)`; the ask stays open |
 | `chunks` | 16 384 chunk starts, 8 bytes each (u64), so 128 KiB of the 512 KiB record | the session is at its quota: the turn ends `stopped {limit: quota}` and new input is refused `quota` |
