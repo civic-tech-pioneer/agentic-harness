@@ -1105,3 +1105,27 @@ fn r1_f1_6_a_server_compaction_writes_one_compaction_entry() {
         "{ks:?}"
     );
 }
+
+// ---- review r2
+
+/// F2.3 (9.3, 9.5 "Compaction items"): a compaction that came only in `response.completed` whose
+/// `compaction` entry cannot be stored past the quota stops the turn `stopped {quota}`; the
+/// completion does not overwrite that stop with `completed`, and no request follows.
+#[test]
+fn review_completion_only_compaction_preserves_quota_stop() {
+    let comp = json!({"type":"compaction","id":"cmp","encrypted_content":"c"});
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let s = stream_of(&mut k, &id);
+    feed(&mut k, &s, vec![sse_head()]);
+    k.limits.owner_bytes = Usage::load(&mut k.state, "quota/alice").bytes;
+    let n = starts(&k).len();
+    feed(&mut k, &s, vec![completed(1, 1, &[comp, message("ok")])]);
+    let turn = rec(&mut k, &id).turn;
+    assert!(
+        matches!(&turn, Turn::Idle { stop: Stop::Stopped { limit }, .. } if limit == "quota"),
+        "{turn:?}"
+    );
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    assert_eq!(starts(&k).len(), n, "no request follows");
+}
