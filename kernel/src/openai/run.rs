@@ -756,6 +756,11 @@ impl<S: State, H: Host> Kernel<S, H> {
                 }
             }
         }
+        if !rec.turn.is_active() {
+            // The marker not stored past the quota ended the turn `stopped {quota}` (9.3): the
+            // loop stops and the completion does not end the turn again.
+            return self.openai_stop(rec, ls, cx);
+        }
         let calls: Vec<Value> = output
             .into_iter()
             .filter(|i| i["type"] == "function_call")
