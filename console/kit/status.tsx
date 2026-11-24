@@ -43,7 +43,7 @@ function askSubject(view: SessionView): string {
 function failedWords(stop: { error: string; cause?: string }): string {
   if (stop.cause === "no-binary") return "Claude Code is not available here";
   if (stop.error === "provider-ended" && stop.cause === "gone") return "Connection to Claude Code ended";
-  const refused = stop.cause?.match(/^consent-refused\(workspace:[^:]+:(.*)\)$/s);
+  const refused = stop.cause?.match(/^consent-refused\(workspace:(?:[^:\/][^:]*:)?(\/.*)\)$/s);
   if (refused) return `Workspace access was refused for ${refused[1]}`;
   return stop.cause ?? stop.error;
 }

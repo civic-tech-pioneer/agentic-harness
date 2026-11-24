@@ -12,6 +12,7 @@ const turn = (state: object) => JSON.stringify({ _meta: { watane: { type: "turn"
 
 it.each([
   ["gone", "Connection to Claude Code ended"],
+  [`consent-refused(workspace:${folder})`, `Workspace access was refused for ${folder}`],
   [`consent-refused(${what})`, `Workspace access was refused for ${folder}`],
 ])("ac1_ac2_shows_the_folder_wait_and_outcome_%s", async (cause, words) => {
   let started = false;
