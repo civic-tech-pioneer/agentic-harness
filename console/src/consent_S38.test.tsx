@@ -7,12 +7,12 @@ import { served } from "./served";
 afterEach(cleanup);
 
 const folder = "/home/alice/Notes";
-const what = `workspace:local/claude-code:${folder}`;
+const what = `workspace:${folder}`;
 const turn = (state: object) => JSON.stringify({ _meta: { watane: { type: "turn", state } } });
 
 it.each([
   ["gone", "Connection to Claude Code ended"],
-  [`consent-refused(workspace:${folder})`, `Workspace access was refused for ${folder}`],
+  [`consent-refused(workspace:local/claude-code:${folder})`, `Workspace access was refused for ${folder}`],
   [`consent-refused(${what})`, `Workspace access was refused for ${folder}`],
 ])("ac1_ac2_shows_the_folder_wait_and_outcome_%s", async (cause, words) => {
   let started = false;

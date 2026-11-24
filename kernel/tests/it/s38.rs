@@ -3,7 +3,7 @@ use agent_kernel::{FakeHost, HostCall, Kernel, MemState, Record, SinkOutcome, St
 use serde_json::json;
 
 const FOLDER: &str = "/home/alice/notes";
-const WHAT: &str = "workspace:local/claude-code:/home/alice/notes";
+const WHAT: &str = "workspace:/home/alice/notes";
 
 #[test]
 fn ac1_ac2_ac3_workspace_stream_lifecycle() {
