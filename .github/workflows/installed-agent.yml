@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: civic-tech-pioneer/watane
-          ref: 1ffb3b1d614f46101e072cf41826677d3195408b # Watane PR #26, slice/s103
+          ref: a923a8dc04049e911fd8c10e51e8f910f5a6fe8f # Watane main
           path: work/watane
           persist-credentials: false
       - name: Install desktop build dependencies
