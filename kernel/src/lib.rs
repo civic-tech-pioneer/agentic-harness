@@ -7,6 +7,7 @@ pub mod call;
 pub mod check;
 pub mod error;
 pub mod launch;
+pub mod openai;
 pub mod overlay;
 pub mod profile;
 pub mod queue;
