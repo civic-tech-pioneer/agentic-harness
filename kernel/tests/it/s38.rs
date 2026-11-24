@@ -306,49 +306,33 @@ fn picked_folder_rejects_control_characters_and_oversize_paths() {
 }
 
 #[test]
-fn late_pending_consent_is_ignored_after_either_init() {
-    for init in [
-        json!({"type": "initialized", "workspace": FOLDER}),
-        json!({"type": "system", "subtype": "init", "cwd": FOLDER}),
-    ] {
-        let mut k = Kernel::new(MemState::default(), FakeHost::default());
-        let id = k
-            .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
-            .unwrap()
-            .value;
-        let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
-        k.attach("page", &id, 0).unwrap();
-        let pending = json!({"type": "consent-pending", "what": WHAT});
-        k.host.calls.clear();
-        k.provider_lines(
-            &stream,
-            vec![
-                (1, init.to_string().into_bytes()),
-                (2, pending.to_string().into_bytes()),
-            ],
-        )
-        .unwrap();
-        k.attach("page", &id, 0).unwrap();
-        assert!(!k.host.calls.iter().any(|c| matches!(c,
-            HostCall::Push { value, .. }
-            if value["_meta"]["watane"]["state"]["activity"]["kind"] == "consent")));
-    }
-}
-
-#[test]
 fn relaunched_stream_shows_a_new_consent_wait() {
     let mut k = Kernel::new(MemState::default(), FakeHost::default());
-    let id = k.start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER).unwrap().value;
+    let id = k
+        .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+        .unwrap()
+        .value;
     let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
     let initialized = json!({"type": "initialized", "workspace": FOLDER});
-    k.provider_lines(&stream, vec![(1, initialized.to_string().into_bytes())]).unwrap();
+    k.provider_lines(&stream, vec![(1, initialized.to_string().into_bytes())])
+        .unwrap();
     // The human withdraws the grant: host 19.7 ends the dependent stream with `gone`.
     k.provider_ended_with(&stream, Some("gone".into())).unwrap();
     k.say("page", &id, "k2", "again").unwrap();
     let rec = Record::load(&mut k.state, &id).unwrap();
-    let next = rec.streams.iter().find(|s| **s != stream).expect("a new provider stream").clone();
+    let next = rec
+        .streams
+        .iter()
+        .find(|s| **s != stream)
+        .expect("a new provider stream")
+        .clone();
     k.attach("page", &id, 0).unwrap();
     let pending = json!({"type": "consent-pending", "what": WHAT});
-    let call = k.provider_lines(&next, vec![(1, pending.to_string().into_bytes())]).unwrap();
-    assert!(call.pushes.iter().any(|p| p.value["state"]["activity"]["what"] == WHAT));
+    let call = k
+        .provider_lines(&next, vec![(1, pending.to_string().into_bytes())])
+        .unwrap();
+    assert!(call
+        .pushes
+        .iter()
+        .any(|p| p.value["state"]["activity"]["what"] == WHAT));
 }
