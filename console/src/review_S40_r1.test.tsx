@@ -38,7 +38,7 @@ describe("S40 r1 F1.1 the profile list is the kernel's", () => {
     render(<Console served={await served(f.w)} />);
     await tick();
     expect(screen.getAllByRole("radio")).toHaveLength(1);
-    expect(f.calls.filter((c) => c.fn === "sessions.check").map((c) => c.args.profile)).toEqual(["Sort"]);
+    expect(f.calls.filter((c) => c.fn === "sessions.check").map((c) => c.args.profile)).toEqual(["Sort"]);    expect(screen.getByRole("textbox", { name: "Message" })).toHaveAttribute("placeholder", "Message ChatGPT…"); // P1.3
   });
   it("r1_f1_1_profiles_and_check_are_required_of_a_kernel", () => {
     // `npm run typecheck` holds this: an optional call is not a function here (2.3: every client has both)

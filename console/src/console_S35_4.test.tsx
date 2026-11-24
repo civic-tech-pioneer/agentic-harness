@@ -29,6 +29,7 @@ describe("S35-4 AC2 the new-session view", () => {
   it("ac2_with_no_session_the_view_shows_the_stage_B_words_only", async () => {
     const f = setup();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(screen.getByRole("heading", { name: "New session" })).toBeInTheDocument();
     expect(screen.getByTitle("Profile").textContent).toBe("Profile scratch"); // the stored name, as the session header shows it (S35 r1 D1.1)
     expect(text()).toContain("A new scratch folder");
@@ -40,6 +41,7 @@ describe("S35-4 AC2 the new-session view", () => {
   it.each(["", "   "])("ac2_send_starts_with_a_fresh_scratch_key_for_blank_folder_%j", async (folder) => {
     const f = setup();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(screen.getByRole("textbox", { name: "Folder path" }), { target: { value: folder } });
     fireEvent.change(box(), { target: { value: "hi" } });
     fireEvent.keyDown(box(), { key: "Enter" });
@@ -57,6 +59,7 @@ describe("S35-4 AC2 the new-session view", () => {
   it("ac2_the_button_starts_too_and_a_new_session_after_it_shows_the_view_again", async () => {
     const f = setup();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "hi" } });
     fireEvent.click(screen.getByRole("button", { name: "Start session" }));
     await tick();
@@ -67,6 +70,7 @@ describe("S35-4 AC2 the new-session view", () => {
   it("ac2_with_sessions_the_newest_opens_and_New_session_shows_the_view", async () => {
     const f = setup({ "sessions.list": () => ({ ok: [{ id: "o", title: "Older", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 }, { id: "z", title: "Newest", profile: "scratch", backend: "claude-code", turn: "idle", updated: 7 }] }) });
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Newest");
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
     expect(screen.getByRole("heading", { name: "New session" })).toBeInTheDocument();
@@ -74,6 +78,7 @@ describe("S35-4 AC2 the new-session view", () => {
   it("ac2_a_refused_start_keeps_the_text_and_alerts_in_words", async () => {
     const f = setup({ "sessions.start": () => ({ err: "busy" }) });
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "hi" } });
     fireEvent.keyDown(box(), { key: "Enter" });
     await tick();
@@ -87,23 +92,28 @@ describe("S35-4 AC4", () => {
   it("ac4b_the_draft_is_back_after_a_reload_until_sent", async () => {
     const f = setup();
     const a = render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "half a thought" } });
     a.unmount();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(box().value).toBe("half a thought");
     fireEvent.keyDown(box(), { key: "Enter" });
     await tick();
     cleanup();
     render(<Console served={await served(setup({ "sessions.list": () => ({ ok: [] }) }).w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(box().value).toBe("");
   });
   it("ac4b_a_session_keeps_its_own_draft", async () => {
     const f = setup({ "sessions.list": () => ({ ok: [{ id: "s", title: "T", profile: "scratch", backend: "claude-code", turn: "idle", updated: 1 }] }) });
     const a = render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "later" } });
     a.unmount();
     expect(sessionStorage.getItem("wa-draft:s")).toBe("later");
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(box().value).toBe("later");
   });
   it("ac4b_a_page_without_sessionStorage_still_works", async () => {
@@ -112,6 +122,7 @@ describe("S35-4 AC4", () => {
     Object.defineProperty(window, "sessionStorage", { configurable: true, get() { throw new Error("denied"); } });
     try {
       render(<Console served={await served(f.w)} />);
+      await tick(); // the view lists the kernel's profiles first (S40 r1)
       fireEvent.change(box(), { target: { value: "hi" } });
       expect(box().value).toBe("hi");
     } finally { Object.defineProperty(window, "sessionStorage", real); }
@@ -119,6 +130,7 @@ describe("S35-4 AC4", () => {
   it("ac4d_no_section_number_is_shown_or_read", async () => {
     const f = setup();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(document.body.innerHTML).not.toMatch(/\(1\d\.\d\)|18\.8/);
     expect(document.getElementById("wa-off-new")?.textContent).toBe(undefined);
     fireEvent.change(box(), { target: { value: "x" } });
@@ -137,6 +149,7 @@ describe("S35 r1 F1.5 every row's title and meta", () => {
       "sessions.read": (a: { session: string }) => ({ ok: { entries: a.session === "o" ? [user(1, "Earlier question about the folder")] : [], last: a.session === "o" ? 1 : 0 } }),
     });
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(await screen.findByRole("button", { name: /Earlier question/ }))
       .toBeInTheDocument();
   });
@@ -151,6 +164,7 @@ describe("S35 r1 D1.1, D1.2: the profile's one spelling; model and mode on the r
   it("r1_d1_1_the_new_session_view_and_the_header_spell_the_profile_alike", async () => {
     const f = setup();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     const before = screen.getByTitle("Profile").textContent;
     fireEvent.change(box(), { target: { value: "hi" } });
     fireEvent.keyDown(box(), { key: "Enter" });
@@ -167,6 +181,7 @@ describe("S35 r1 D1.1, D1.2: the profile's one spelling; model and mode on the r
   it("r1_d1_2_a_session_started_in_place_shows_none_either", async () => {
     const f = setup();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "hi" } });
     fireEvent.keyDown(box(), { key: "Enter" });
     await tick();
@@ -187,6 +202,7 @@ describe("S35 r2 F2.2, F2.3, F2.5", () => {
         : { ok: "n1" },
     });
     const page = render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     const submit = (value: string) => {
       fireEvent.change(box(), { target: { value } });
       fireEvent.keyDown(box(), { key: "Enter" });
@@ -199,6 +215,7 @@ describe("S35 r2 F2.2, F2.3, F2.5", () => {
     await act(async () => refuse(new Error("refused")));
     page.unmount();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(box().value).toBe("third remains unsent");
   });
   it("r2_f2_3_an_untitled_row_whose_first_message_came_in_parts_reads_it", async () => {
@@ -233,6 +250,7 @@ describe("S35 r2 F2.2, F2.3, F2.5", () => {
   it("r2_f2_5_a_session_started_in_place_claims_no_model_either", async () => {
     const f = setup();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "hi" } });
     fireEvent.keyDown(box(), { key: "Enter" });
     await tick();
@@ -250,6 +268,7 @@ describe("S35 r4: the kept draft (deputy's rule: unsent text only; TECHNICAL 18.
   it("r4_rule_1_unsent_text_is_kept_per_session_across_a_reload", async () => {
     const f = sessions(() => ({ ok: 1 }));
     const a = render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "for s" } });
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
     expect(box().value).toBe("");
@@ -258,17 +277,20 @@ describe("S35 r4: the kept draft (deputy's rule: unsent text only; TECHNICAL 18.
     expect(sessionStorage.getItem("wa-draft:s")).toBe("for s");
     expect(sessionStorage.getItem("wa-draft:new")).toBe("for a new one");
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(box().value).toBe("for s");
   });
   it("r4_rule_2_send_takes_the_text_out_of_the_composer_and_the_kept_draft_at_once", async () => {
     const f = sessions(() => new Promise(() => {}));
     const a = render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "pending" } });
     fireEvent.keyDown(box(), { key: "Enter" });
     expect(box().value).toBe("");
     expect(sessionStorage.getItem("wa-draft:s")).toBeNull();
     a.unmount();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(box().value).toBe(""); // the pending send is not offered as unsent (F4.1, F4.3)
   });
   it("r5_f5_1_send_clears_the_kept_draft_before_say_is_dispatched", async () => {
@@ -278,6 +300,7 @@ describe("S35 r4: the kept draft (deputy's rule: unsent text only; TECHNICAL 18.
       return new Promise(() => {});
     });
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "pending" } });
     fireEvent.keyDown(box(), { key: "Enter" });
     expect(draftWhenDispatched).toBeNull();
@@ -286,6 +309,7 @@ describe("S35 r4: the kept draft (deputy's rule: unsent text only; TECHNICAL 18.
     let refuse!: (r: unknown) => void;
     const f = sessions(() => new Promise((r) => { refuse = r; }));
     const a = render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "refused words" } });
     fireEvent.keyDown(box(), { key: "Enter" });
     await act(async () => refuse({ err: "busy" }));
@@ -294,12 +318,14 @@ describe("S35 r4: the kept draft (deputy's rule: unsent text only; TECHNICAL 18.
     expect(sessionStorage.getItem("wa-draft:s")).toBe("refused words");
     a.unmount();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(box().value).toBe("refused words");
   });
   it("r4_rule_3_text_typed_since_the_send_wins_over_the_refused_text", async () => {
     let refuse!: (r: unknown) => void;
     const f = sessions(() => new Promise((r) => { refuse = r; }));
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     fireEvent.change(box(), { target: { value: "refused words" } });
     fireEvent.keyDown(box(), { key: "Enter" });
     fireEvent.change(box(), { target: { value: "newer" } });
@@ -311,12 +337,14 @@ describe("S35 r4: the kept draft (deputy's rule: unsent text only; TECHNICAL 18.
     const settle: Array<(r: unknown) => void> = [];
     const f = sessions(() => new Promise((r) => { settle.push(r); }));
     const a = render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     for (const value of ["older", "newer"]) {
       fireEvent.change(box(), { target: { value } });
       fireEvent.keyDown(box(), { key: "Enter" });
     }
     a.unmount();
     render(<Console served={await served(f.w)} />);
+    await tick(); // the view lists the kernel's profiles first (S40 r1)
     expect(box().value).toBe("");
     fireEvent.change(box(), { target: { value: "typed later" } });
     await act(async () => { settle[1]!({ err: "busy" }); settle[0]!({ ok: 1 }); });

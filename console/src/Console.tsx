@@ -12,31 +12,36 @@ const NEW_KEY = "wa-draft:new";
 
 const BACKEND: Record<string, string> = { claude: "Claude Code", openai: "ChatGPT" };
 const backendName = (b: string) => BACKEND[b] ?? b;
-const SCRATCH: ProfileInfo = { name: "scratch", backend: "claude" };
 
-/** 18.2, 18.6 "New session": the profiles the console may use (`profiles`, read once on opening), the selected one's backend, the
- * kernel's own refusals for it (`check` on each selection, field by field), and the first message. A refusal is the kernel's, never a rule here. */
+/** 18.2, 18.6 "New session": the profiles the console may use (`profiles`, read once on opening; none listed, or no answer, offers none
+ * and Start stays off), the selected one's backend, the kernel's own refusals for it (`check` on each selection, field by field), and the
+ * first message. A refusal is the kernel's, never a rule here. */
 export function NewSession({ kernel, sessions, onNew, start }: { kernel: Kernel; sessions: SidebarSession[]; onNew: () => void; start: (input: string, folder: string | undefined, profile: ProfileInfo) => Promise<void> }) {
   const [folder, setFolder] = useState("");
-  const [profiles, setProfiles] = useState<ProfileInfo[]>([SCRATCH]);
+  const [profiles, setProfiles] = useState<ProfileInfo[] | null>(null);
   const [picked, setPicked] = useState(0);
   const [refusals, setRefusals] = useState<Refusal[]>([]);
-  // `profiles` once on opening; a kernel that cannot answer leaves the built-in scratch profile
+  // `profiles` once on opening: the list is the kernel's, an empty one too; a kernel that cannot answer offers none
   useEffect(() => {
     let live = true;
-    Promise.resolve().then(() => kernel.profiles?.()).then((p) => { if (live && Array.isArray(p) && p.length) { setProfiles(p); setPicked(0); } }, () => {});
+    Promise.resolve().then(() => kernel.profiles()).then(
+      (p) => { if (live) { setProfiles(Array.isArray(p) ? p : []); setPicked(0); } },
+      () => { if (live) setProfiles([]); });
     return () => { live = false; };
   }, [kernel]);
-  const profile = profiles[picked] ?? profiles[0]!;
+  const profile: ProfileInfo | undefined = profiles?.[picked] ?? profiles?.[0];
   // `check` on each selection: an answer for a profile no longer selected is dropped, and a new selection shows none until the kernel answers
   useEffect(() => {
     let live = true;
     setRefusals([]);
-    Promise.resolve().then(() => kernel.check?.(profile.name, "{}")).then((r) => { if (live && Array.isArray(r)) setRefusals(r); }, () => {});
+    if (!profile) return;
+    Promise.resolve().then(() => kernel.check(profile.name, "{}")).then((r) => { if (live && Array.isArray(r)) setRefusals(r); }, () => {});
     return () => { live = false; };
-  }, [kernel, profile.name]);
-  const on = backendName(profile.backend);
-  const blocked = refusals.length ? `Start is off: ${profile.name} cannot run on ${on} (${refusals.length} ${refusals.length === 1 ? "refusal" : "refusals"} above).` : undefined;
+  }, [kernel, profile?.name]);
+  const on = profile ? backendName(profile.backend) : "";
+  const blocked = profiles === null ? "Start is off until the kernel lists your profiles."
+    : !profile ? "Start is off: no profile is open to you."
+    : refusals.length ? `Start is off: ${profile.name} cannot run on ${on} (${refusals.length} ${refusals.length === 1 ? "refusal" : "refusals"} above).` : undefined;
   return (
     <div className="wa-app" data-view="new-session">
       <Sidebar sessions={sessions} onNew={onNew} />
@@ -44,7 +49,7 @@ export function NewSession({ kernel, sessions, onNew, start }: { kernel: Kernel;
         <header className="wa-header">
           <h1 className="wa-title">New session</h1>
           <div className="wa-chips">
-            <span className="wa-chip" title="Profile">Profile <b>{profile.name}</b></span>
+            <span className="wa-chip" title="Profile">Profile <b>{profile?.name ?? "none"}</b></span>
             <label className="wa-chip wa-folder-path">
               {FOLDER} Folder path
               <input value={folder} onChange={(e) => setFolder(e.target.value)}
@@ -56,7 +61,7 @@ export function NewSession({ kernel, sessions, onNew, start }: { kernel: Kernel;
         <div className="wa-scroll">
           <section className="wa-newbody">
             <div role="radiogroup" aria-label="Profile" className="wa-profiles">
-              {profiles.map((p, n) => (
+              {(profiles ?? []).map((p, n) => (
                 <label key={p.name} className="wa-pcard" data-on={n === picked ? "true" : undefined}>
                   <input type="radio" name="wa-profile" checked={n === picked} onChange={() => setPicked(n)} />
                   <b>{p.name}</b>
@@ -67,7 +72,7 @@ export function NewSession({ kernel, sessions, onNew, start }: { kernel: Kernel;
             <div className="wa-runson" role="group" aria-label="Runs on">
               <span className="wa-runson-label">Runs on</span>
               {Object.keys(BACKEND).map((b) => (
-                <button key={b} type="button" className="wa-seg" aria-pressed={b === profile.backend} disabled={b !== profile.backend} title={b === profile.backend ? undefined : "Set in the profile"}>{BACKEND[b]}</button>
+                <button key={b} type="button" className="wa-seg" aria-pressed={b === profile?.backend} disabled={b !== profile?.backend} title={b === profile?.backend ? undefined : "Set in the profile"}>{BACKEND[b]}</button>
               ))}
             </div>
             <div className="wa-refusals" role="status" aria-live="polite" data-on={refusals.length ? "true" : undefined}>
@@ -81,8 +86,8 @@ export function NewSession({ kernel, sessions, onNew, start }: { kernel: Kernel;
           </section>
         </div>
         <div className="wa-dock">
-          <Composer queued={0} draftKey={NEW_KEY} placeholder="Message Claude…" sendLabel="Start session" blocked={blocked}
-            actions={{ say: (input) => start(input, folder.trim() ? folder : undefined, profile), answer: () => {}, stop: () => {}, takeBack: () => {} }} />
+          <Composer queued={0} draftKey={NEW_KEY} placeholder={profile?.backend === "openai" ? "Message ChatGPT…" : "Message Claude…"} sendLabel="Start session" blocked={blocked}
+            actions={{ say: (input) => profile ? start(input, folder.trim() ? folder : undefined, profile) : Promise.resolve(), answer: () => {}, stop: () => {}, takeBack: () => {} }} />
         </div>
       </main>
     </div>

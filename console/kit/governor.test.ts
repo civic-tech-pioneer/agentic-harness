@@ -5,7 +5,7 @@ import { governor, openSession, type Kernel } from "./kernel";
 import type { SessionView } from "./model";
 
 const entry = (i: number) => JSON.stringify({ v: 1, i, kind: "message", at: i, body: { role: "user", content: [{ type: "text", text: `m${i}` }] } });
-const base = { say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, unqueue: async () => {}, takeBack: async () => {} };
+const base = { say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, unqueue: async () => {}, takeBack: async () => {}, profiles: async () => [], check: async () => [] };
 
 describe("S4-fix5", () => {
   it("ac2_one_session_never_exceeds_8_plus_4t_calls", async () => {

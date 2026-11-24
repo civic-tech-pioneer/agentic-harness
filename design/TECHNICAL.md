@@ -2586,7 +2586,11 @@ say (layout, spacing, words).
   view (frame `NewSession-2`). From stage D (S40) the view calls `profiles()`
   once when it opens and lists each profile as a radio row (its name, and
   `Claude Code` or `ChatGPT` with the model when there is one; the first is
-  selected; a kernel that cannot answer leaves `scratch` alone). "Runs on"
+  selected). The list is the kernel's: the view adds no profile of its own and
+  calls `check` only for a listed one; an empty list, or a kernel that cannot
+  answer, shows no profile and Start is off, saying why as text (S40 r1). The
+  composer's placeholder names the selected backend (`Message Claude…`,
+  `Message ChatGPT…`). "Runs on"
   marks the selected profile's backend; the other is not selectable (title
   "Set in the profile"). On each selection the view calls `check(name, "{}")`
   and lists every refusal under "Can't run on <backend>", each `field` and
