@@ -151,9 +151,7 @@ async function main() {
     });
     await check("check: Tidy is refused naming tools and allow, each once; Sort and scratch name none", async () => {
       const t = await post("sessions.check", { profile: "Tidy", overlay: "{}" });
-      ensure(same([...new Set(fields(t))].sort(), ["allow", "tools"]), `Tidy refusals ${JSON.stringify(t)}`);
-      // the kernel names `allow` twice for a path rule (the profile's own refusal and the openai table's): a field named once is the task's wording, so say it
-      if (fields(t).length !== 2) notes.push(`sessions.check("Tidy") names ${fields(t).join(", ")}: a field more than once (the task says each once)`);
+      ensure(same(fields(t), ["tools", "allow"]), `Tidy refusals ${JSON.stringify(t)}`); // each field once, in the kernel's order (S40 r1 P1.2)
       ensure(t.every((r) => r.backend === "openai" && r.reason), `refusals without backend or reason ${JSON.stringify(t)}`);
       const s = await post("sessions.check", { profile: "Sort", overlay: "{}" });
       ensure(s.length === 0, `Sort refusals ${JSON.stringify(s)}`);
@@ -193,7 +191,9 @@ async function main() {
       try {
         const id = await ok("sessions.start", { key: keyOf(), profile: "Sort", overlay: "{}", input: "sort my notes" });
         sortId = id;
-        const turn = await until(async () => (await transcript(id)).filter((e) => e.kind === "turn").pop()?.body, 10_000, "the turn to end idle");
+        // poll for the turn's end, idle {failed}, not its first running entry (S40 r1 P1.2)
+        const ended = (b) => b && /idle/.test(JSON.stringify(b.state ?? b)) && /failed/.test(JSON.stringify(b));
+        const turn = await until(async () => (await transcript(id)).filter((e) => e.kind === "turn").map((e) => e.body).find(ended), 10_000, "the turn to end idle {failed}");
         const text = JSON.stringify(turn);
         ensure(/idle/.test(JSON.stringify(turn.state ?? turn)) && /failed/.test(text), `the turn ended ${text.slice(0, 300)}`);
         ensure(/not signed in to ChatGPT/.test(text), `the failure does not name the account: ${text.slice(0, 300)}`);

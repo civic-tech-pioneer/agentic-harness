@@ -26,5 +26,7 @@ describe("test:host's exit for an error before its checks", () => {
     expect(outcomeOf(err("watane-dev add provider: error: unrecognized subcommand 'add'", { addFailed: true, out: "", err: "error: unrecognized subcommand 'add'" })).code).toBe(2);
     expect(outcomeOf(err("mod.invalid [wit] world imports watane:host/host-info@0.1.0, which this host does not have", { serveFailed: true, code: "mod.invalid" })).code).toBe(2);
     expect(outcomeOf(err("the first turn ended no-binary", { firstTurn: "no-binary" })).code).toBe(2);
+    // S40 r1 P1.1: a host without stage D's `https-stream` import is a missing prerequisite too
+    expect(outcomeOf(err("mod.invalid [wit] world imports watane:host/https-stream@0.1.0, which this host does not have", { serveFailed: true, code: "mod.invalid" })).code).toBe(2);
   });
 });

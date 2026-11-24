@@ -11,7 +11,7 @@ export function outcomeOf(e) {
   if (e instanceof NotRun || e?.notRun) return { code: 2, line: `NOT RUN test:host: ${msg}` };
   // watane-dev too old for `add` (clap's own words), or a host without the parts S99 added: the world's imports it does not have
   const oldDev = e?.addFailed && /unrecognized subcommand|unknown command|invalid subcommand/i.test(`${e.err ?? ""} ${e.out ?? ""} ${msg}`);
-  const oldHost = e?.serveFailed && e.code === "mod.invalid" && /watane:host\/(streams|host-info|claude-session|claude-types)\b/.test(msg);
+  const oldHost = e?.serveFailed && e.code === "mod.invalid" && /watane:host\/(streams|host-info|claude-session|claude-types|https-stream)\b/.test(msg);
   if (oldDev || oldHost)
     return { code: 2, line: `NOT RUN test:host: watane-dev or its host is too old for stage B (watane S99 not landed, or watane-dev older than rev 4f105a9): ${msg.split("\n")[0].slice(0, 240)}` };
   // the fake claude is not linked in the preview: the turn ends no-binary (dev 9.1 `preview.fake_claude_missing`)
