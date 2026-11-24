@@ -977,3 +977,33 @@ fn r1_f1_4_a_timed_pause_whose_profile_was_revoked_stays_paused_with_no_time() {
     assert!(rec(&mut k, &id).deadlines.is_empty());
     assert_eq!(slots(&mut k).timers, 0);
 }
+
+/// F1.3 (9.5 Items): a delta of a request that completed is not pushed into the next turn.
+#[test]
+fn r1_f1_3_a_late_delta_of_a_completed_request_is_ignored() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    k.attach("alice", &id, 0).unwrap();
+    let s = stream_of(&mut k, &id);
+    feed(
+        &mut k,
+        &s,
+        vec![
+            sse_head(),
+            item_done(&message("one")),
+            completed(1, 1, &[message("one")]),
+        ],
+    );
+    k.say("alice", &id, "q", r#"[{"type":"text","text":"two"}]"#)
+        .unwrap();
+    let s2 = stream_of(&mut k, &id);
+    assert_ne!(s, s2);
+    k.host.calls.clear();
+    let c = feed(&mut k, &s, vec![delta("late")]);
+    assert!(c.pushes.is_empty(), "{:?}", c.pushes);
+    assert!(!k
+        .host
+        .calls
+        .iter()
+        .any(|c| matches!(c, HostCall::Push { .. })));
+}
