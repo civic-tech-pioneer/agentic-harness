@@ -1672,6 +1672,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 | Responses `response.output_text.delta` | `AgentMessageChunk` |
 | Responses `function_call` items | `ToolCall`, then `ToolCallUpdate` with the job's output |
 | Responses `reasoning` summaries | `AgentThoughtChunk` |
+| Responses `compaction` items | a `compaction` entry, once per item (from `output_item.done`, or from `response.completed` when it did not stream) |
 | anything else | an `unknown` entry |
 
 Give nothing (no update, no entry): Claude `system` `init` (its facts go to the record, below), `status`,

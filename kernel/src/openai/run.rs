@@ -744,6 +744,18 @@ impl<S: State, H: Host> Kernel<S, H> {
                 "compact-at": COMPACT_THRESHOLD,
             }),
         ));
+        // A compaction that did not stream is marked now (9.5 "Compaction items").
+        for c in output
+            .iter()
+            .filter(|i| i["type"] == "compaction" && !streamed.contains(i))
+        {
+            let event = json!({"type": "response.output_item.done", "item": c});
+            for out in responses::event(&event, cx.now) {
+                if let Some(e) = out.entry {
+                    self.out_entry(rec, cx.past, e, cx.now, cx.work)?;
+                }
+            }
+        }
         let calls: Vec<Value> = output
             .into_iter()
             .filter(|i| i["type"] == "function_call")
