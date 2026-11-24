@@ -977,8 +977,10 @@ fn ac6_the_kernel_s_sixteen_job_slots_hold_for_a_third_owner() {
 
 // ---- AC7: restart
 
+/// 9.5 "After a restart" (the deputy, 2026-11-24): every open job is aborted, `idempotent` ones
+/// included; running them again is not built yet (case 22's idempotent half).
 #[test]
-fn ac7_a_restart_runs_idempotent_jobs_again_and_aborts_the_others() {
+fn ac7_a_restart_aborts_every_open_job_idempotent_ones_included() {
     let mut k = kernel();
     // notes_a is idempotent, notes_b is not.
     let id = session_with_calls(
@@ -993,27 +995,24 @@ fn ac7_a_restart_runs_idempotent_jobs_again_and_aborts_the_others() {
     assert_eq!(calls_of(&k).len(), 2);
     k.host.generation = 2;
     k.read("alice", &id, 0, None, 10).unwrap();
-    let calls = calls_of(&k);
-    assert_eq!(calls.len(), 3);
-    assert_eq!(calls[2].1, format!("{id}/c1"));
-    assert_eq!(lp(&mut k, &id)["state"], "tools");
-    let j = jobs(&mut k, &id);
-    assert_eq!(j.len(), 1);
-    assert_eq!(slots(&mut k).job, 1);
-    finish(&mut k, &j[0].1, json!("again"));
+    assert_eq!(calls_of(&k).len(), 2, "no job runs again");
+    assert_eq!(slots(&mut k).job, 0);
     let reqs = starts(&k);
     assert_eq!(reqs.len(), 2);
     assert_eq!(
         outputs(&reqs[1]),
         [
+            ("c1".to_string(), "aborted".to_string()),
             ("c2".to_string(), "aborted".to_string()),
-            ("c1".to_string(), r#""again""#.to_string()),
         ]
     );
+    assert_eq!(lp(&mut k, &id)["state"], "requesting");
 }
 
+/// Pending calls are aborted too: starting them would call `agent-tools` on the old boot's
+/// handle, under the origin of whatever call runs the step.
 #[test]
-fn ac7_a_restart_with_nothing_open_goes_ready_and_pending_calls_start() {
+fn ac7_a_restart_aborts_the_pending_calls_too() {
     let mut k = kernel();
     let calls: Vec<Value> = (1..=10)
         .map(|n| call_of(&format!("c{n}"), "notes_b", "{}"))
@@ -1022,16 +1021,10 @@ fn ac7_a_restart_with_nothing_open_goes_ready_and_pending_calls_start() {
     assert_eq!(calls_of(&k).len(), 8);
     k.host.generation = 2;
     k.read("alice", &id, 0, None, 10).unwrap();
-    // Eight idempotent... notes_b is not: its eight open jobs are aborted, the two pending start.
-    let started = calls_of(&k).len();
-    assert_eq!(started, 10);
-    assert_eq!(jobs(&mut k, &id).len(), 2);
-    for (_, s) in jobs(&mut k, &id) {
-        finish(&mut k, &s, json!(0));
-    }
+    assert_eq!(calls_of(&k).len(), 8, "the two pending calls do not start");
     let outs = outputs(&starts(&k)[1]);
     assert_eq!(outs.len(), 10);
-    assert_eq!(outs.iter().filter(|o| o.1 == "aborted").count(), 8);
+    assert!(outs.iter().all(|o| o.1 == "aborted"));
 }
 
 #[test]
@@ -1369,7 +1362,7 @@ fn review_the_restart_pass_makes_no_tools_effect_under_another_owner() {
     }
     assert!(ended, "the pass ends");
     assert_eq!(tools_effects(&k), [], "no agent-tools call in the pass");
-    for (id, n) in [(&a, 1), (&b, 10)] {
+    for id in [&a, &b] {
         assert_eq!(rec(&mut k, id).boot, 2);
         assert_eq!(lp(&mut k, id)["state"], "requesting");
         assert_eq!(lp(&mut k, id)["jobs"].as_u64().unwrap_or(0), 0);
@@ -1379,9 +1372,6 @@ fn review_the_restart_pass_makes_no_tools_effect_under_another_owner() {
     let mut outs: Vec<usize> = reqs.iter().map(|r| outputs(r).len()).collect();
     outs.sort();
     assert_eq!(outs, [1, 10]);
-    assert!(reqs
-        .iter()
-        .flat_map(outputs)
-        .all(|(_, o)| o == "aborted"));
+    assert!(reqs.iter().flat_map(outputs).all(|(_, o)| o == "aborted"));
     assert_eq!(slots(&mut k).job, 0);
 }
