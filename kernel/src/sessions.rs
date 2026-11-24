@@ -1873,8 +1873,15 @@ impl<S: State, H: Host> Kernel<S, H> {
                     "Claude Code needs an absolute folder path",
                 ));
             }
-            if folder.len() > crate::record::RECORD_BYTES {
-                return Err(KernelError::TooLarge(crate::record::RECORD_BYTES as u64));
+            if folder.chars().any(char::is_control) {
+                return Err(refused(
+                    "folder",
+                    "folder path contains a control character",
+                ));
+            }
+            const MAX_FOLDER_BYTES: usize = 4096;
+            if folder.len() > MAX_FOLDER_BYTES {
+                return Err(KernelError::TooLarge(MAX_FOLDER_BYTES as u64));
             }
         }
         let model = parsed.model.unwrap_or_else(|| "default".to_string());
@@ -2844,6 +2851,11 @@ impl<S: State, H: Host> Kernel<S, H> {
                     .into_iter()
                     .flat_map(|f| match f {
                         Fact::ConsentPending(what) => {
+                            if !Record::load(&mut self.state, &key.session)
+                                .is_some_and(|rec| rec.workspace.is_none() && !rec.init_seen)
+                            {
+                                return vec![];
+                            }
                             consent = Some(what.clone());
                             vec![ProviderEvent::Consent(Some(what))]
                         }
