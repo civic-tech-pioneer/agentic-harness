@@ -31,7 +31,7 @@ export function NewSession({ sessions, onNew, start }: { sessions: SidebarSessio
         <div className="wa-scroll" />
         <div className="wa-dock">
           <Composer queued={0} draftKey={NEW_KEY} placeholder="Message Claude…" sendLabel="Start session"
-            actions={{ say: (input) => start(input, folder || undefined), answer: () => {}, stop: () => {}, takeBack: () => {} }} />
+            actions={{ say: (input) => start(input, folder.trim() ? folder : undefined), answer: () => {}, stop: () => {}, takeBack: () => {} }} />
         </div>
       </main>
     </div>
