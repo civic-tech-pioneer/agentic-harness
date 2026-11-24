@@ -26,6 +26,7 @@ mod example;
 mod grammar;
 mod idle;
 mod meter;
+mod openai_answer;
 mod overlay;
 mod quota;
 mod record;
