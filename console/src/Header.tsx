@@ -42,7 +42,7 @@ export function Header({ info, view, actions }: { info: SessionInfo; view: Sessi
           <svg {...svg}><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" /></svg>
           {info.provider} · {info.judge ? "your judge checks calls" : "no judge"}
         </span>
-        {info.workspace ? <span className="wa-chip" title="Workspace">{FOLDER}<b>{info.workspace}</b></span> : null}
+        {info.workspace ? <span className="wa-chip wa-workspace" title="Workspace">{FOLDER}<b title={info.workspace}>{info.workspace}</b></span> : null}
         {view.allows.map((a) => (
           <button key={a.id} type="button" className="wa-chip wa-chip-allow grant" onClick={() => actions.takeBack(a.id)}>{a.reach} this session ×</button>
         ))}
