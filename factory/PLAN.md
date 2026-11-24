@@ -32,7 +32,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 ### S38: stage C, the consumer half: Alice gives Notes' agents a folder, sees the wait, and can take it back
 (in flight, cloud, builder codex, reviewer claude; rule 3: last two handed out watane S103 claude, S107 codex, so by the
 count Claude builds next; deputy reason: the watane side has S103 on Claude, and this slice is console and kernel work,
-where Codex had no round yet in this repository, so Codex builds it and Claude reviews; sketched 2026-11-24 by deputy-3; Codex task https://chatgpt.com/local/6b054293-b150-83ed-8869-70e96b05307e, dispatched ~07:53 UTC; DELIVERED 08:05 as PR #52 (507+/85-, pushed only slice/S38); r1: Claude review routine `trig_01LqzqTFjZfs2fKqkKTvzqbj`, fires 08:10 UTC; r1 (08:40): 2/8 findings, changes (2) (validator RETURN x2, adversary HELD, user-sim REJECTED on outcome 3, accepted as R1.1); answer r1 dispatched 08:45 UTC into the same Codex task.)
+where Codex had no round yet in this repository, so Codex builds it and Claude reviews; sketched 2026-11-24 by deputy-3; Codex task https://chatgpt.com/local/6b054293-b150-83ed-8869-70e96b05307e, dispatched ~07:53 UTC; DELIVERED 08:05 as PR #52 (507+/85-, pushed only slice/S38); r1: Claude review routine `trig_01LqzqTFjZfs2fKqkKTvzqbj`, fires 08:10 UTC; r1 (08:40): 2/8 findings, changes (2) (validator RETURN x2, adversary HELD, user-sim REJECTED on outcome 3, accepted as R1.1); answer r1 dispatched 08:45 UTC into the same Codex task; r1 answered at 2d87caf (F1.1, F1.2, P1.1, P1.3, P1.4 fixed; R1.1 recorded); r2: update+run of the routine fired the stale r1 brief in a new session `cse_01LxwP91yLzc3xcdJySnNMKD` at 08:45 UTC (stop refused by auto mode): it reviews head 2d87caf in full, counted as r2, the deputy applies the r1 rulings when weighing it.)
 spec-check: covered by the spec-chain review of 2026-11-23 (PR #51); its TECHNICAL errors 1, 2, 12 and 13 are this slice's.
 
 Story (J11, its consent part; TECHNICAL 17 stage C, "this repository" column): Alice starts a session with reach into
@@ -659,6 +659,8 @@ S2 writes each into the document that owns it.
   ships. Undo: (a) one refuse-table row; (b) a host component.
 
 ## Friction
+
+- 2026-11-24 (S38 r2) `RemoteTrigger` update then run fired the routine's old brief in a new session (second time after S35 r2): for a later round, create a new routine instead of update+run. (deputy-3)
 
 - 2026-11-20 po skill 0: "the order of work is the vision's steps"; this vision has none, the
   order is in TECHNICAL 17. The skill should allow "or the order of work the spec chain names".
