@@ -2851,11 +2851,6 @@ impl<S: State, H: Host> Kernel<S, H> {
                     .into_iter()
                     .flat_map(|f| match f {
                         Fact::ConsentPending(what) => {
-                            if !Record::load(&mut self.state, &key.session)
-                                .is_some_and(|rec| rec.workspace.is_none() && !rec.init_seen)
-                            {
-                                return vec![];
-                            }
                             consent = Some(what.clone());
                             vec![ProviderEvent::Consent(Some(what))]
                         }
