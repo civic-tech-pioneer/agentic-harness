@@ -45,3 +45,33 @@ Watane half: watane S100 (PR #15) is not merged yet (its last answer round runs)
 on watane `slice/s100` (host 19.3: ask/check items with the top-level `path`, `answer` and `ask-resolved {id, outcome}`,
 expiry, interrupt, `host-info.generation`); the user-sim runs on the real `watane-dev serve` built from watane
 `slice/s100` until S100 merges, then on main. Do not merge before S100 merges. The deputy merges (no auto-merge).
+
+### S38: stage C, the consumer half: Alice gives Notes' agents a folder, sees the wait, and can take it back
+(in flight, cloud, builder codex, reviewer claude; rule 3: last two handed out watane S103 claude, S107 codex, so by the
+count Claude builds next; deputy reason: the watane side has S103 on Claude, and this slice is console and kernel work,
+where Codex had no round yet in this repository, so Codex builds it and Claude reviews; sketched 2026-11-24 by deputy-3; Codex task https://chatgpt.com/local/6b054293-b150-83ed-8869-70e96b05307e, dispatched ~07:53 UTC; DELIVERED 08:05 as PR #52 (507+/85-, pushed only slice/S38); r1: Claude review routine `trig_01LqzqTFjZfs2fKqkKTvzqbj`, fires 08:10 UTC; r1 (08:40): 2/8 findings, changes (2) (validator RETURN x2, adversary HELD, user-sim REJECTED on outcome 3, accepted as R1.1); answer r1 dispatched 08:45 UTC into the same Codex task; r1 answered at 2d87caf (F1.1, F1.2, P1.1, P1.3, P1.4 fixed; R1.1 recorded); r2: update+run of the routine fired the stale r1 brief in a new session `cse_01LxwP91yLzc3xcdJySnNMKD` at 08:45 UTC (stop refused by auto mode): it reviews head 2d87caf in full, counted as r2, the deputy applies the r1 rulings when weighing it; r2 (09:10): 1/7, changes (1), F2.1 = F1.2 again (the reviewer never saw the ruling): ruled narrower, answer r2 dispatched 09:11 UTC into the Codex task; r2 answered at 1e0731c (F2.1 as ruled, P2.1, P2.4, R2.2 hardening); r3: scoped Claude review (validator only, user-sim not run: no outcome changed) routine `trig_01HfzzdxruNuMtibzfyM5kXq`, fires 09:15 UTC; r3 (09:21): 1/2, changes (1): F3.1 a regression from r2's optional R2.2 hardening (a relaunched stream hid a new consent wait); ruling: remove the hardening, R2.2 stays accepted; answer r3 dispatched 09:22 UTC. r4 check-in: worth one validator-only round, the fix is a revert plus the reviewer's own red test, trend 2, 1, 1 with each round's finding of a different kind; r3 answered at c97dd89 (F3.1 as ruled, P3.1, P3.2); r4: validator-only Claude review routine `trig_01DwPznkc4pxHumjXYngbaoz`, fires 09:27 UTC.)
+spec-check: covered by the spec-chain review of 2026-11-23 (PR #51); its TECHNICAL errors 1, 2, 12 and 13 are this slice's.
+
+Story (J11, its consent part; TECHNICAL 17 stage C, "this repository" column): Alice starts a session with reach into
+her notes folder. The kernel asks the host for the folder; while the app's consent waits, the console shows the
+`consent {what}` activity (9.3); she agrees and the agent works in that folder. She withdraws the consent in the manager
+mid-turn: the session's stream ends, the console says why, and the next session there asks again.
+
+Outcomes (user-sim on `watane-dev serve` with dev's fake `claude`; a real `claude` run is the human's, not CI's):
+1. A new session with a folder shows `running` with `activity: consent {what}` while the consent waits, and runs in
+   that folder once it is given; the transcript shows the turn.
+2. A refused consent ends the launch with its cause named in the console; no stream is left open, no folder key offered.
+3. A withdrawal mid-turn ends that session (state and transcript up to the last finished message kept; the cause named),
+   and the next session in that folder asks again.
+4. AGT-J4's folder line: a folder in `~/.ssh` (or any path the host refuses) is refused before any question reaches
+   the participant, and the console names the cause.
+5. Case 31 for `consent` passes; the stage C budgets hold.
+
+Interface: watane host 19.7 (consents, `consent-pending`, withdrawal) and 19.5 (H4) as watane's `host/TECHNICAL.md`
+states them; watane S103 builds them (in flight). Until it merges, fake them in dev's fake host or a test double at that
+interface, and say where; a gap between the fake and host 19.7 is a question to the deputy, not a guess. Once S103 merges,
+the last task runs outcomes 1-3 against it.
+Constraints: no shell grant (V27 waits on the human; build nothing that assumes its answer). Fix TECHNICAL errors 1, 2,
+12, 13 of PR #51's list in the sections this slice touches (with `spec-change`); the rest stay with #51. Stage B carry
+list items that this slice's code reaches (S32 R1 first) are folded in. Touches: `kernel/`, `console/`, `provider/` if
+the consent passes through it, `design/TECHNICAL.md` 4, 9, 14. Boundary: TECHNICAL 14 (adversary runs). Protects: *core*.

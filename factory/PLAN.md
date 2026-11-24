@@ -29,36 +29,6 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## Sketched
 
-### S38: stage C, the consumer half: Alice gives Notes' agents a folder, sees the wait, and can take it back
-(in flight, cloud, builder codex, reviewer claude; rule 3: last two handed out watane S103 claude, S107 codex, so by the
-count Claude builds next; deputy reason: the watane side has S103 on Claude, and this slice is console and kernel work,
-where Codex had no round yet in this repository, so Codex builds it and Claude reviews; sketched 2026-11-24 by deputy-3; Codex task https://chatgpt.com/local/6b054293-b150-83ed-8869-70e96b05307e, dispatched ~07:53 UTC; DELIVERED 08:05 as PR #52 (507+/85-, pushed only slice/S38); r1: Claude review routine `trig_01LqzqTFjZfs2fKqkKTvzqbj`, fires 08:10 UTC; r1 (08:40): 2/8 findings, changes (2) (validator RETURN x2, adversary HELD, user-sim REJECTED on outcome 3, accepted as R1.1); answer r1 dispatched 08:45 UTC into the same Codex task; r1 answered at 2d87caf (F1.1, F1.2, P1.1, P1.3, P1.4 fixed; R1.1 recorded); r2: update+run of the routine fired the stale r1 brief in a new session `cse_01LxwP91yLzc3xcdJySnNMKD` at 08:45 UTC (stop refused by auto mode): it reviews head 2d87caf in full, counted as r2, the deputy applies the r1 rulings when weighing it; r2 (09:10): 1/7, changes (1), F2.1 = F1.2 again (the reviewer never saw the ruling): ruled narrower, answer r2 dispatched 09:11 UTC into the Codex task; r2 answered at 1e0731c (F2.1 as ruled, P2.1, P2.4, R2.2 hardening); r3: scoped Claude review (validator only, user-sim not run: no outcome changed) routine `trig_01HfzzdxruNuMtibzfyM5kXq`, fires 09:15 UTC; r3 (09:21): 1/2, changes (1): F3.1 a regression from r2's optional R2.2 hardening (a relaunched stream hid a new consent wait); ruling: remove the hardening, R2.2 stays accepted; answer r3 dispatched 09:22 UTC. r4 check-in: worth one validator-only round, the fix is a revert plus the reviewer's own red test, trend 2, 1, 1 with each round's finding of a different kind; r3 answered at c97dd89 (F3.1 as ruled, P3.1, P3.2); r4: validator-only Claude review routine `trig_01DwPznkc4pxHumjXYngbaoz`, fires 09:27 UTC.)
-spec-check: covered by the spec-chain review of 2026-11-23 (PR #51); its TECHNICAL errors 1, 2, 12 and 13 are this slice's.
-
-Story (J11, its consent part; TECHNICAL 17 stage C, "this repository" column): Alice starts a session with reach into
-her notes folder. The kernel asks the host for the folder; while the app's consent waits, the console shows the
-`consent {what}` activity (9.3); she agrees and the agent works in that folder. She withdraws the consent in the manager
-mid-turn: the session's stream ends, the console says why, and the next session there asks again.
-
-Outcomes (user-sim on `watane-dev serve` with dev's fake `claude`; a real `claude` run is the human's, not CI's):
-1. A new session with a folder shows `running` with `activity: consent {what}` while the consent waits, and runs in
-   that folder once it is given; the transcript shows the turn.
-2. A refused consent ends the launch with its cause named in the console; no stream is left open, no folder key offered.
-3. A withdrawal mid-turn ends that session (state and transcript up to the last finished message kept; the cause named),
-   and the next session in that folder asks again.
-4. AGT-J4's folder line: a folder in `~/.ssh` (or any path the host refuses) is refused before any question reaches
-   the participant, and the console names the cause.
-5. Case 31 for `consent` passes; the stage C budgets hold.
-
-Interface: watane host 19.7 (consents, `consent-pending`, withdrawal) and 19.5 (H4) as watane's `host/TECHNICAL.md`
-states them; watane S103 builds them (in flight). Until it merges, fake them in dev's fake host or a test double at that
-interface, and say where; a gap between the fake and host 19.7 is a question to the deputy, not a guess. Once S103 merges,
-the last task runs outcomes 1-3 against it.
-Constraints: no shell grant (V27 waits on the human; build nothing that assumes its answer). Fix TECHNICAL errors 1, 2,
-12, 13 of PR #51's list in the sections this slice touches (with `spec-change`); the rest stay with #51. Stage B carry
-list items that this slice's code reaches (S32 R1 first) are folded in. Touches: `kernel/`, `console/`, `provider/` if
-the consent passes through it, `design/TECHNICAL.md` 4, 9, 14. Boundary: TECHNICAL 14 (adversary runs). Protects: *core*.
-
 ### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DONE 2026-11-23: PR #43 merged with --admin at 042b0dd on the human's word after the extra round, r6 changes 2 answered (F6.1 done on main, F6.2 fixed); was in flight, builder claude, reviewer codex; continuation DELIVERED 21:31 UTC at 8fc6db6 on watane c2a7d4d (routine `trig_01NpPnJxwNjH279WAFwnziDk`), screenshots in `factory/runs/S35/screens/`; r1: Codex review dispatched 21:40 UTC, https://chatgpt.com/local/6b035f75-9cbc-83eb-953f-4ea568e56065; r1: 8 Codex findings (validator RETURN, adversary BREACHED, user-sim REJECTED) plus deputy design findings D1.1, D1.2, answer dispatched 22:04 UTC (session `cse_01LxwP923RKBfVNTWsTUagAQ`); r1 answered at 4522428 (all 10 fixed); r2 (22:37): Codex `changes (6)`, validator RETURN, adversary HELD, user-sim ACCEPTED; answer r2 dispatched 23:10 UTC (session `cse_01LxwP8yPPmPVipCPszcmKqW`; a 23:00 fire carried the stale r1 brief and pushed nothing); r2 answered at ea98cb9 (all 6 fixed); r3: Codex review dispatched 23:29 UTC; r3 (23:58): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim ACCEPTED); answer r3 dispatched 00:01 UTC (session `cse_01LxwP8zfZtC4o6shbfqRvp7`); r3 answered at d0dfddd (all 3 fixed); r4: Codex review dispatched 00:20 UTC; r4 (00:26): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim REJECTED), all on the composer's kept draft; deputy ruling (same finding 4 rounds running) and answer r4 dispatched 00:51 UTC (session `cse_01LxwP92VSjjigxaiXQaSyiJ`); r4 answered at 8177ca5 (by the ruling); r5 (last): Codex review dispatched 01:12 UTC; r5 (01:18): `changes (1)` (validator RETURN, adversary HELD, user-sim ACCEPTED): **round cap reached, held for the human** (Waiting: S35-CAP); then the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
 
 Story: Alice runs `watane-dev serve` with the agent kernel and the unchecked provider installed,
@@ -122,6 +92,8 @@ reviewer claude. Cloud.
 
 ### Upkeep
 
+- **Polish from S38 (merged 2026-11-24):** P1.2 (assistant line without `session_id` in `kernel/tests/it/s38.rs`), P2.2 (TECHNICAL 18.5 words 'Workspace access was refused for …', 'Connection to Claude Code ended'), P2.3 (picked folders get no file write key at all: say so in 9.6 and 14), P2.5 (`start-in-folder` shares `start`'s key kind; its own refusals in 2.3/4.6), P2.6 ('Open the question' does nothing; show the folder in the wait, per `States-2`); stale half-streamed message after `gone` until reload (stage B carry).
+
 - **S38 after watane S103 merges:** run S38 outcomes 1-3 on a participant home with a fake `Confirm` (a preview refuses every consent, host 19.7), outcome 2 and 4 on `watane-dev serve`, and measure the stage C budgets (case 31 host part is S103's A3).
 
 - **S36 accepted limits (r7, the human merged it as it stood, 2026-11-24):** F7.1 and F7.2 are the S35 Send limit (TECHNICAL 18.6): an Edit send refused after leaving the session keeps only the original text, and a reload while an accepted take's reply is in flight can offer it once more. F7.3: the load check's 2x spacing failed once on timer jitter (40.585 ms delta gap); widen to 3x (60/600 ms) if it fails again. Also P7.1: exact just-over-limit fixtures in `console/test/host/load_check.test.ts`.
@@ -138,6 +110,8 @@ reviewer claude. Cloud.
   when cheap, e.g. alongside other composer work.
 
 ## Done
+
+- **S38** stage C consumer half (PR #52, merged 2026-11-24 ~09:45 UTC with `--admin` on the human's word, main 499c254; builder codex, reviewer claude, 4 rounds 2/8, 1/7, 1/2, 0/0; ~1.9 h in flight). Alice starts an agent session in a folder she picks; the console shows the consent wait, names a refusal and a forbidden folder, and a withdrawal ends the session with its transcript kept (shown as 'Connection to Claude Code ended', R1.1 accepted); tested against a double of watane host 19.7 until S103 merges. Decisions: Q38 left to the human (the spec cites 19.7), R1.1, R2.2 accepted. Friction: update+run of a routine fired a stale brief.
 
 - **S32** stage A end to end (PR #41, merged 2026-11-22 ~14:10 UTC by the PO with `--admin`; 2026-11-21 08:59-10:47,
   then 2026-11-22 12:06-13:42 on watane's real host, and a 15-min fix after the PO's comparison). Alice runs
