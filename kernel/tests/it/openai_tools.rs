@@ -1295,3 +1295,63 @@ fn ac10_a_decided_ask_that_leaves_ready_sends_the_request_in_its_own_call() {
         [("c1".to_string(), r#"{"error":"denied: no"}"#.to_string())]
     );
 }
+
+// ---- review r1
+
+/// F1.5 (9.5 "After a restart"): the host keeps handles in memory, so the restart step opens the
+/// toolsets again and the idempotent job starts again on the new handle, under its original key.
+#[test]
+fn r1_f1_5_a_restart_reopens_the_toolsets_before_running_jobs_again() {
+    let mut k = kernel();
+    let id = session_with_calls(&mut k, "alice", "k", &[call_of("c1", "notes_a", "{}")]);
+    let old = calls_of(&k)[0].0.clone();
+    k.host.calls.clear();
+    k.host.generation = 2;
+    k.read("alice", &id, 0, None, 10).unwrap();
+    let opened = k
+        .host
+        .calls
+        .iter()
+        .position(|c| matches!(c, HostCall::ToolsOpen { .. }))
+        .expect("the toolsets are opened again");
+    let called = k
+        .host
+        .calls
+        .iter()
+        .position(|c| matches!(c, HostCall::ToolsCall { .. }))
+        .expect("the idempotent job starts again");
+    assert!(opened < called, "the open comes before the job");
+    let again = calls_of(&k);
+    assert_eq!(again.len(), 1);
+    assert_ne!(again[0].0, old, "the job runs on the new handle");
+    assert_eq!(again[0].1, format!("{id}/c1"), "under its original key");
+    assert_eq!(lp(&mut k, &id)["tools"]["handle"], again[0].0.as_str());
+    assert_eq!(rec(&mut k, &id).handle.as_deref(), Some(again[0].0.as_str()));
+}
+
+/// F1.5: a session idle at the restart opens its toolsets again before its next step's jobs.
+#[test]
+fn r1_f1_5_an_idle_session_reopens_the_toolsets_after_a_restart() {
+    let mut k = kernel();
+    let id = session_with_calls(&mut k, "alice", "k", &[call_of("c1", "notes_a", "{}")]);
+    let j = jobs(&mut k, &id);
+    finish(&mut k, &j[0].1, json!(1));
+    let s = stream_of(&mut k, &id);
+    feed(&mut k, &s, vec![sse_head(), completed(&[])]);
+    k.provider_ended_with(&s, None).unwrap();
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    let old = calls_of(&k)[0].0.clone();
+    k.host.calls.clear();
+    k.host.generation = 2;
+    k.say("alice", &id, "q", IN).unwrap();
+    assert!(k
+        .host
+        .calls
+        .iter()
+        .any(|c| matches!(c, HostCall::ToolsOpen { .. })));
+    let s = stream_of(&mut k, &id);
+    feed(&mut k, &s, vec![sse_head(), completed(&[call_of("c2", "notes_a", "{}")])]);
+    let again = calls_of(&k);
+    assert_eq!(again.len(), 1);
+    assert_ne!(again[0].0, old);
+}
