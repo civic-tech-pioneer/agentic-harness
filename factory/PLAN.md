@@ -121,6 +121,8 @@ reviewer claude. Cloud.
 
 ### Upkeep
 
+- **From watane S103 r1 (2026-11-24):** Stop before `initialized` (while a folder consent waits) should cancel the stream, not send `interrupt`: an interrupt leaves the app's question open, and a later yes answers into an idle session. The host's cancel path drops the question and prevents the launch.
+
 - **Polish from S38 (merged 2026-11-24):** P1.2 (assistant line without `session_id` in `kernel/tests/it/s38.rs`), P2.2 (TECHNICAL 18.5 words 'Workspace access was refused for …', 'Connection to Claude Code ended'), P2.3 (picked folders get no file write key at all: say so in 9.6 and 14), P2.5 (`start-in-folder` shares `start`'s key kind; its own refusals in 2.3/4.6), P2.6 ('Open the question' does nothing; show the folder in the wait, per `States-2`); stale half-streamed message after `gone` until reload (stage B carry).
 
 - **S38 after watane S103 merges:** run S38 outcomes 1-3 on a participant home with a fake `Confirm` (a preview refuses every consent, host 19.7), outcome 2 and 4 on `watane-dev serve`, and measure the stage C budgets (case 31 host part is S103's A3).
