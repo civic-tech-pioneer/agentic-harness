@@ -33,7 +33,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S113 codex, S112 codex; the
 consumer-halves lane, sketched 2026-11-24 by deputy-3: it builds against watane `slice/s111` (PR #28), whose branch holds a
 first version of host 19.4 `https-stream` with the `openai` account and dev's scripted Responses server; it merges main
-and reruns on watane main once PR #28 merges; routine `trig_01MKpjib1FAYCnuVhuMx2RRD`, fires 19:05 UTC.)
+and reruns on watane main once PR #28 merges; routine `trig_01MKpjib1FAYCnuVhuMx2RRD`, fires 19:05 UTC; BLOCKED 20:05 as PR #54: a preview has no scripted OpenAI stream (watane dev question 15). Ruling (b): S40 is reviewed and merged on its kernel and console proof (cargo tests on FakeHost, the console's fake kernel, test:host:d's 5 checks on the real host); outcomes 2 to 4 on `watane-dev serve` and the stage D budgets move to Upkeep, for when watane S114 (dev 15 option (a), F-MAKE-4) merges. r1: Codex review, dispatched ~20:15 UTC.)
 Story (AGT-J2; TECHNICAL 17 stage D, "this repository" column: the OpenAI loop of 9.5 and the console): Alice switches a
 profile to an OpenAI model; the kernel refuses the fields OpenAI cannot honour and names them; with a profile it can run,
 the console shows the same kinds of events as with Claude; when her plan's limit runs out the session reads paused until
@@ -113,6 +113,8 @@ reviewer claude. Cloud.
 
 
 ### Upkeep
+
+- **S40 on `watane-dev serve` (after watane S114 merges):** turn the SKIP lines of `test:host:d` into checks, run S40 outcomes 2 to 4 on a preview with a scripted OpenAI stream, and add the stage D load test.
 
 - **From S39's review (2026-11-24), console, earlier slices:** after Stop the transcript shows 'An event this console does not know' (claude's `control_response` to the interrupt); a stopped turn's footer reads 'Completed'; with no Claude Code binary chosen the error does not point to Settings → Claude Code; S39 polish P1.2 to P1.5 (exit 2 when binaries are missing, full grant lists in the consent check, a commit id in `provider/BOUNDARIES.md`, `node -e` instead of `python3`). For watane: the consent window's Call line reads as an interface name, not words.
 
