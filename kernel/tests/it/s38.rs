@@ -49,29 +49,41 @@ fn ac1_ac2_ac3_workspace_stream_lifecycle() {
         Some(FOLDER)
     );
 
+    let response = json!({
+        "type": "assistant", "uuid": "answer-1",
+        "message": {"id": "message-1", "type": "message", "role": "assistant",
+            "model": "fake", "content": [{"type": "text", "text": "I read the notes."}]}
+    });
+    k.provider_lines(&stream, vec![(3, response.to_string().into_bytes())])
+        .unwrap();
     k.provider_ended_with(&stream, Some("gone".into())).unwrap();
     let rec = Record::load(&mut k.state, &id).unwrap();
     assert!(!rec.streams.contains(&stream));
     assert!(
         matches!(rec.turn, Turn::Idle { stop: Stop::Failed { cause: Some(cause), .. }, .. } if cause == "gone")
     );
-    assert!(k
-        .read("page", &id, 0, None, 20)
-        .unwrap()
-        .entries
-        .iter()
-        .any(|e| e.contains("hello")));
+    let entries = k.read("page", &id, 0, None, 20).unwrap().entries;
+    assert!(entries.iter().any(|e| e.contains("hello")));
+    assert!(entries.iter().any(|e| e.contains("I read the notes.")));
 
     let next = k
         .start_in_folder("page", "next", "scratch", "{}", "again", FOLDER)
         .unwrap()
         .value;
     let stream = Record::load(&mut k.state, &next).unwrap().streams[0].clone();
+    k.attach("page", &next, 0).unwrap();
+    let call = k
+        .provider_lines(&stream, vec![(1, pending.to_string().into_bytes())])
+        .unwrap();
+    assert!(call
+        .pushes
+        .iter()
+        .any(|p| p.value["state"]["activity"]["what"] == WHAT));
     let refused = format!("consent-refused({WHAT})");
     k.provider_ended_with(&stream, Some(refused.clone()))
         .unwrap();
     let rec = Record::load(&mut k.state, &next).unwrap();
-    assert!(rec.streams.is_empty());
+    assert_eq!(rec.streams, vec![rec.live.unwrap()]);
     assert!(rec.folder.is_none());
     assert!(
         matches!(rec.turn, Turn::Idle { stop: Stop::Failed { cause: Some(cause), .. }, .. } if cause == refused)
