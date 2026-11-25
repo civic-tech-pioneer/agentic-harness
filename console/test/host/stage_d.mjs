@@ -119,7 +119,7 @@ async function mixedLoad() {
   const fake = join(dirname(preview.home), "claude", "fake-claude.json");
   ensure(existsSync(fake), "the preview needs watane-dev's fake-claude");
   writeFileSync(fake, JSON.stringify({ steps: [
-    { do: "expect-user" }, { do: "load", rate: 50 }, { do: "idle" },
+    { do: "expect-user" }, { do: "load", rate: { deltas: 50, entries: 5, bytes: 4096, seconds: 20 } }, { do: "idle" },
   ] }));
   const sessions = [];
   try {
