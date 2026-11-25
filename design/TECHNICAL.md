@@ -67,8 +67,12 @@ in the same commit):
   state that charges each write)
 - planned: `kernel/src/broker.rs` (9.6, session allows) and
   `kernel/src/delegation.rs` (9.7: delegates, limits, counters)
-- planned: `kernel/src/openai/` (9.5: loop, repair, errors) and
-  `kernel/src/adapters/` (9.8); the WASM mod's exports and owner checks by
+- built (S40): `kernel/src/openai/` (9.5: `wire.rs` the wire history,
+  repair, the body and its budget; `answer.rs` the host's https items
+  classified; `run.rs` the loop's states, requests, retries, pauses, slots
+  and restart; `tools.rs` toolsets, the broker's OpenAI asks and the jobs)
+  and `kernel/src/named.rs` (2.3 `profiles` and `check` by name, 9.1
+  `access/`); `kernel/src/adapters/` (9.8); the WASM mod's exports and owner checks by
   `caller.identity()` (9.3) are in `kernel/wasm/src/lib.rs` (S32, 14)
 - `console/` (source) and `ui/` (built from it), 18
 
@@ -264,7 +268,8 @@ build uses `local/agent` for the unpublished kernel (10, R-B3).
 interface sessions {                                 // the owner only, by caller.identity()
   start: func(key: string, profile: string, overlay: string, input: string) -> result<string, error>;
   start-in-folder: func(key: string, profile: string, overlay: string, input: string, folder: string) -> result<string, error>;
-  check: func(profile: string, overlay: string) -> list<refusal>;
+  profiles: func() -> list<profile-info>;                // the profiles this caller may use (9.1)
+  check: func(profile: string, overlay: string) -> list<refusal>;   // by stored profile name, as `start` checks it (9.2)
   attach: func(session: string, after: u64, caps: string) -> result<stream-id, error>;
   read: func(session: string, after: u64, before: option<u64>, max: u32) -> result<page, error>;
   say: func(session: string, key: string, input: string) -> result<u64, error>;
@@ -281,6 +286,7 @@ interface sessions {                                 // the owner only, by calle
 record page { entries: list<string>, last: u64 }
 record session-info { id: string, title: string, profile: string, backend: string, workspace: option<string>, turn: string, updated: u64 }
 record queued-input { n: u64, input: string }
+record profile-info { name: string, backend: string, model: option<string> }
 record refusal { field: string, backend: string, model: string, reason: string }
 variant error { not-owner, unknown-session, refused(list<refusal>), queue-full, quota, paused(u64), backend(string), unknown-input, unknown-allow, behind(u64), too-large(u64), busy }
 
@@ -311,7 +317,7 @@ the `id` of the ask entry (9.4; the ask id of the deadlines in 9.3), never the
 tool call id. A check (`kind: "check"`, 9.4) is answered only by the checked
 provider (10); the owner's `answer` to it is refused, `{field: "ask"}`.
 `allow` in `take-back` is the id of an `allow`
-entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5), the session holds 64 pending answers (9.3, `pending-answers`), the active index is full at 1 024 sessions (9.3, A3), ; its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
+entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5), an OpenAI `start`, `say` or interrupt replacement finds no request slot (9.5 Slots), the session holds 64 pending answers (9.3, `pending-answers`), the active index is full at 1 024 sessions (9.3, A3), ; its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
 
 ## 3. Streams (H1)
 
@@ -712,7 +718,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | Key | Value |
 |---|---|
 | `profile/<name>` | a profile (9.2) |
-| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed, with one exception, the console's first run (S35): for the identity `page` only, an absent `access/page` allows the built-in profile `scratch` and nothing else (an unreadable one still allows none). `profile/scratch` absent reads as the built-in `{"backend":"claude","partial":true,"ask":true}`: Claude's default model, no built-in tools, mode `manual` with its asks sent to the owner (`ask: true`, 4.1: without it the host denies every `can_use_tool` at once and pushes no ask, host 19.3; S36), no allow rule, in a scratch workspace by default (4.6), which is less than any profile the participant can make: with no built-in tool and no `agent-handle`, `claude` has no tool to ask about, and every allow is the owner's own answer to one call. The first-run allowance covers only that built-in: a stored `profile/scratch` is a profile like any other and needs `access/page` to list it (S35 adversary), and a stored `access/page` replaces the allowance `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile may say so). A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
+| `access/<identity>` | a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (not a JSON array of strings) allows none: fail closed, with one exception, the console's first run (S35): for the identity `page` only, an absent `access/page` allows the built-in profile `scratch` and nothing else (an unreadable one still allows none). `profile/scratch` absent reads as the built-in `{"backend":"claude","partial":true,"ask":true}`: Claude's default model, no built-in tools, mode `manual` with its asks sent to the owner (`ask: true`, 4.1: without it the host denies every `can_use_tool` at once and pushes no ask, host 19.3; S36), no allow rule, in a scratch workspace by default (4.6), which is less than any profile the participant can make: with no built-in tool and no `agent-handle`, `claude` has no tool to ask about, and every allow is the owner's own answer to one call. The first-run allowance covers only that built-in: a stored `profile/scratch` is a profile like any other and needs `access/page` to list it (S35 adversary), and a stored `access/page` replaces the allowance `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile is refused `{field: "profile", reason: "no such profile"}`; `check` takes the profile by name, and an OpenAI profile without a model is refused `{field: "model"}`). `profiles()` lists the names the caller may use in this key's order, at most 64, each with the `backend` (default `claude`) and `model` of its stored profile, a name with no stored profile left out; it reads this key and at most 64 `profile/` keys, and for `page` with no `access/page` it lists the built-in `scratch` A child session's profile needs no entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
 | `adopted/<offer id>` | `{content hash, content}` |
 | `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
 | `session/<id>` | the session record (9.3) |
@@ -804,7 +810,7 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 | `running {activity?}` | a turn is under way; `activity` while it lasts: `checking {on}` (the checked provider asks its judge, 10), `compacting`, `consent {what}` (a request waits for the participant in the app, 8). The activity is live only: pushed as a `turn` update and kept out of the record and entries. Pending consent joins the provider stream cursor write so attachment during a wait can see it. `initialized` clears it |
 | `waiting {asks}` | an ask is open |
 | `paused {until}` | a usage limit, or retries ran out; the `resume` deadline resumes it (below) |
-| `idle {stop}` | `completed`, `interrupted`, `stopped {limit}` (names the limit), `failed {error}` (`failed {timers}` when a retry finds no timer slot, below) |
+| `idle {stop}` | `completed`, `interrupted`, `stopped {limit}` (names the limit; `stopped {limit: busy}` when an OpenAI turn's later request finds no request slot, 9.5 Slots), `failed {error}` (`failed {timers}` when a retry finds no timer slot, below) |
 | `unknown` | written by the restart step ("Restart", R4) for a Claude session that was `running` or `waiting` when watane stopped, and by nothing else; it ends with the next `say` (R5), which resumes the Claude session |
 | `resume-lost` | `claude` refused a resume; the next `say` starts a new Claude session seeded with a summary |
 
@@ -998,21 +1004,20 @@ wire") are this JSON; the entry has no `activity`.
     |---|---|
     | Claude, `running` or `waiting` | each open ask or check is decided `deny`, `by: kernel`, reason `restart` (a Claude ask has no kernel deadline, 9.6; it expires only at the host, 4.5), and each ask with a pending answer is decided with that answer (9.8 rule 4); the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
     | `paused`, either backend | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` (9.5); 9.8 gives nothing for a Claude rate limit, so a slice that adds one adds its row here |
-    | OpenAI, `requesting` or `ready` (waiting in the FIFO or not) | goes to `ready`, takes a request slot or waits in the FIFO under this boot (9.5); the turn stays `running` |
-    | OpenAI, `retrying` | stays `retrying`; its `retry` deadline and timer are kept (7) and the request goes when it fires (9.5); nothing is sent at once, so no request is sent twice |
-    | OpenAI, `tools` | stays `tools`; its open jobs of `idempotent` tools start again under their keys (taking job slots or waiting, as 9.5 "Slots"), the others get `aborted`; `pending` calls stay pending and start in waves as before, the first at once up to the free job slots; when no call is left open or pending, it goes to `ready` as above (9.5) |
-    | OpenAI, `waiting` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
+    | OpenAI, `running` (loop `requesting`, `ready` in the FIFO or not, `retrying` or `tools`) or `waiting` (a tool approval open) | the turn stops: each open ask is decided `deny`, `by: kernel`, reason `restart`, and its `ask` deadline goes; every open job gets `aborted`, `idempotent` ones included, and every `pending` call too; the `retry` deadline goes; the loop goes to `idle` and the turn becomes `unknown` (written as a `turn` entry and pushed), with the transcript up to the last finished message, and the session leaves `active/`; the queue is kept. A `stopped {quota}` that recording the aborts gives stays. The step makes no model request, no toolset operation (open, describe or call) and no consent for it, whatever origin runs it (the pass runs under another owner's call); cancelling a stale timer is housekeeping it may do. An OpenAI turn does not continue by itself after a restart, and an idempotent job is not run again under its key: known limits (the deputy's cut, 2026-11-25; case 22). A message finished in the window between its transcript entry and `response.completed` when the host restarts is shown but is not in the model's history; the owner can repeat it: a known limit (the deputy, r4 F4.3) |
     | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, in every state (as built), `restart` for an open one and its answer for a pending one, the turn kept; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` opens a new provider stream and resumes with `session {resume}` (`persist: false`: a fresh session), as after the idle release; no slot count is decremented for it (R1 zeroed the kernel's, the owner's reads zero by its boot tag) |
 
     AGT-F-27 applies to the tool jobs of 6 (the OpenAI loop, row `tools`),
     the only calls a mod marks safe to repeat. AGT-F-10: no stored turn is
     shown as `running` unless something drives it: a Claude turn becomes
-    `unknown`; an OpenAI turn is `running` because its step starts it again;
+    `unknown`; so does a `running` OpenAI turn;
     `list` reports the turn the step will give (R6).
   - **R5, Continue.** `say` on an `unknown` session starts a turn that resumes
     the Claude session with `session {resume}` (4.1), unless its profile sets
     `persist: false` (nothing was kept: a fresh session); if `claude` refuses the
-    resume, the turn becomes `resume-lost`. When inputs are queued, the `say`
+    resume, the turn becomes `resume-lost`. On an OpenAI session it starts a
+    turn whose request carries the wire history and the new input, in the
+    owner's own call (9.5 "After a restart"). When inputs are queued, the `say`
     input is still taken when the queue is full: the turn starts with the oldest
     queued input, then the new one joins the end of the queue, so order is kept
     and Continue is never refused `queue-full` for a queue that had room after
@@ -1296,6 +1301,14 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   `failed {too-large}` and the next `say` continues as for `resume-lost`,
   from a summary. Trimming starts a new prefix (cache), once. `instructions`
   stay byte-stable.
+  Settled by S40-1: an input takes the step number of the response before it
+  (`steps` when appended), so "the last 4 steps" are the items of the 4
+  highest step numbers present; the mark is a wire index, and the trim record
+  `{mark, through, stage}` trims the items below `through` (at most the mark),
+  by `stage`: `reasoning` leaves out their reasoning items, `outputs` also
+  cuts each tool output over 8 KiB to its first 8 KiB (at a character
+  boundary) plus ` [cut by watane: <n> bytes]`, `<n>` the original size. A
+  `wire/<id>/<n>` chunk is named by the wire index of its first item.
 - **Active history.** A compaction item returned by the server replaces every
   wire item before it. The loop state keeps `active`: the wire index of the
   newest compaction item, or of the summary that a `resume-lost` or `failed
@@ -1325,31 +1338,152 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   holds at most 8 job slots, and one owner at most half of each kind (4
   provider, 4 request, 8 job slots), on top of the per-session cap. A `start` or a `say` that needs a Claude session's provider stream when its owner holds 4, or all 8 are held, is refused `busy` (2.3, 12); it never waits. A Claude session idle for 10 minutes (the `idle` deadline, 9.3) releases its provider stream (the kernel cancels it; the next `say` resumes the Claude session with `session {resume}`, 4.1; with `persist: false` there is nothing to resume, and that `say` continues as for `resume-lost`), so slots do not stay held by idle sessions. A `task` child (9.7) refused `busy` gets the call output `{err: {code: busy}}`. A child session counts against its root's owner. Owners that are different mods acting together can still take every slot: an accepted limit (availability, not a boundary of 14). State: `slots` and `slots/wait/<n>` (9.1). The
   loop state keeps a step's calls not yet started (`pending`); they start in
-  waves as job slots free. A request that finds no request slot waits in
-  `ready` in the FIFO. Every `ended` of a kernel-consumed stream frees its
-  slot and starts the oldest waiting work whose session and owner are under
-  their caps in the same call; work at a cap stays in the FIFO and never
-  blocks another owner's. A FIFO entry whose session no longer waits
+  waves as job slots free. A `start`, `say` or interrupt replacement whose
+  request finds no request slot is refused `busy` and does not wait: the FIFO's
+  drain runs in whatever call frees a slot, and a session's model request is
+  sent only in its owner's call (the deputy's r4 ruling, F4.2); the owner sends
+  again. No model request of a session is ever sent under an origin other than
+  its owner's (the deputy's r5 ruling, F5.1), so no request waits in the FIFO
+  past the call that queued it: a request a turn makes later (after its jobs,
+  at a `retry` or `resume`, or for the next queued input) is sent in the call
+  that makes it, which runs under the owner's origin, when a request slot is
+  free; else, or when that call may be another owner's (the FIFO's drain, or an
+  item or `ended` of a job the drain started, below), nothing is sent and the
+  turn stops `idle {stopped {limit: busy}}` with its wire, outputs and queue
+  kept, as after a restart (9.3 R4); the owner's next message continues it in
+  her own call. No turn waits for a slot, so none hangs. Every `ended` of a
+  kernel-consumed stream frees its slot and starts the oldest waiting jobs
+  whose session and owner are under their caps in the same call; work at a cap
+  stays in the FIFO and never blocks another owner's. A FIFO entry whose session no longer waits
   (interrupt, cancel, delete) or whose entry is of an older boot is skipped and
   removed when reached. The first call of a boot sets the counts to zero (9.3,
   R1; streams are memory only, 3).
 - **Parallel:** the jobs of a step start together, up to the free job slots,
   only when every tool is `parallel`; else one after another, in call order.
-- **After a restart:** the session's restart step (9.3, R4) gives each loop
-  state one outcome: `requesting` and `ready` go to `ready` and take a request
-  slot or wait in the FIFO under the new boot; `retrying` stays, its `retry`
-  deadline and timer kept, and the request goes when it fires; `tools` stays,
-  its open jobs of `idempotent` tools start again under their keys (job slots
-  as above), the others get `aborted`, `pending` calls start in waves as
-  before, the first at once up to the free job slots, and with no call left
-  open or pending it goes to `ready`; `waiting` and `paused` are unchanged.
+- **After a restart:** the session's restart step (9.3, R4) stops a
+  `running` turn, in `requesting`, `ready`, `retrying` or `tools`, and a
+  `waiting` one (its open asks are denied `by: kernel`, reason `restart`, and
+  their deadlines go): every open job gets `aborted`, `idempotent` ones included, and every `pending` call
+  too; the `retry` deadline goes; the loop goes to `idle` and the turn to
+  `unknown`, not running, with the transcript up to the last finished
+  message (J11). A `stopped {quota}` that recording the aborts gives stays.
+  The step makes no model request, no toolset operation (open, describe or
+  call) and so no consent for the session, under any origin (it may run in
+  the restart pass, under another owner's call). `paused` is unchanged. The owner's next `say` continues the session in her own call:
+  its request carries the wire history, the aborted outputs included, and her
+  input (R5). Known limits for now (the deputy's cut, 2026-11-25): an OpenAI
+  turn does not continue by itself after a restart; an idempotent job is
+  aborted, not run again under its key (case 22's idempotent half, not yet
+  built); and the kernel opens no toolset again, so a handle kept from an
+  earlier boot (the host keeps handles in memory) fails each later job, whose
+  output is then the host's error.
+  Known limit (F6.1, the human, 2026-11-25): when the owner mod of an OpenAI session is disabled during a timed pause, the firing may send one more model request under the kernel's origin; a fix needs the host-resolved origin of a timer firing through the production adapter (Upkeep).
+- **Settled by S40-3 (the loop).**
+  - *The request.* `https-stream.start` gets exactly `{"url":"https://api.openai.com/v1/responses",
+    "method":"POST","headers":{"content-type":"application/json","accept":"text/event-stream"},
+    "body":<the body above, as text>,"account":"openai","idle-s":90}`. `reasoning` is
+    `{"effort": <the profile's effort>}` when the profile sets one, else absent. A `start`, `say` or
+    interrupt replacement sends it before its first write, so a host that refuses it
+    (`start-error`) refuses the call `backend(<cause>)` and nothing is written; a
+    request that finds no free slot refuses the call `busy` and writes nothing (Slots, above).
+  - *State.* `loop/<id>` is `{state, ...}`: `idle` (between turns), `ready {wait?, attempt}`,
+    `requesting {stream, attempt}`, `retrying {attempt}`, `paused`; with `model`, `effort`,
+    `instructions` (the profile's `system-prompt` text, then the overlay's
+    `system-prompt-append`, compiled once at `start`), `last-error`, `too-large`, the turn's
+    `turn-tokens` and `turn-calls`, and the wire fields (`next`, `active`, `wire-chunks`,
+    `steps`, `trim`). `attempt` counts the retries so far: the first request is
+    `requesting {attempt: 0}`; its failure sets `retrying {attempt: 1}` and the `retry`
+    deadline at now + `backoff_ms(1)`; the failure of retry 6 (the 7th failed request) finds no
+    backoff left and pauses with no time, `last-error` holding the error text (the turn JSON
+    of 9.3 does not change). A usage limit sets `paused {until}` and a `resume` deadline at
+    `until` (the reset time, at least 1 s ahead); the firing of either deadline sends the same
+    request again (the body is rebuilt from the wire and the trim record, so it is the same).
+  - *Items.* The first item of a request stream is its head `{status, headers}`; before it the
+    host may push `{"type":"consent-pending","what":<text>}` (host 19.4, 19.7): the turn shows
+    the live activity `consent {what}` (kept in `stream/<id>` for `attach`), cleared by the
+    head. A stream that then ends `consent-refused(<what>)` ends the turn `failed
+    {error: "consent-refused(<what>)"}`. A non-2xx status is classified over its body items joined (the first 64 KiB, kept in
+    `stream/<id>` `body`): as soon as they read as JSON, else at `ended`; the loop then cancels
+    the stream and frees its slot. `response.completed` appends the response's `output` items to the wire (step
+    `steps + 1`), adds its input and output tokens to the turn's, and pushes `{"type":"usage",
+    "context-used": <input tokens>, "context-window": 272000, "compact-at": 200000}`; with no
+    `function_call` item the turn ends `idle {completed, tokens}` (`tokens` the turn's input plus
+    output tokens, `tools` its call count when any), else the calls go to `openai_calls`. Items of
+    a stream that is no longer the loop's current one are ignored, and so is every item after
+    a stream's `response.completed` (deltas too: `stream/<id>` keeps `done`); the slot of a stream that is
+    not current (a completed response's, or one a cancel left) is freed at its `ended`.
+  - *Slots.* A request takes a slot when the kernel holds fewer than 8 requests and its owner
+    fewer than 4 (`quota/<owner>` `request`, tagged by boot as `provider` is); else a `start`,
+    `say` or interrupt replacement is refused `busy`, and a later request of the turn stops it
+    `busy` (Slots, above). Inside an items call (it cannot start a stream: it may still be
+    dropped) the request takes the place `slots.tail` in the FIFO: `slots/wait/<n>` `{session,
+    boot}`, and the loop is `ready {wait: n}`; the end of that same call sends it, first, with a
+    request slot free and its owner under 4, or stops the turn `busy`; no other call sends it. An
+    entry counts only while the loop is still `ready {wait: n}` (or `tools {wait: n}`) for it; any
+    other entry is skipped and removed when reached. Whatever frees a slot (an `ended`, a
+    cancelled or failed request, `interrupt`, `cancel`, `delete`) starts the oldest waiting jobs
+    whose owner is under its cap at the end of the call, each in a write of its own; a request
+    entry another call queued is never sent there: its turn stops `busy`.
+  - *Too large.* The turn ends `idle {failed {error: "too-large"}}` and `too-large` is set;
+    the next input restarts the wire from `Wire::restart_from_summary` with the text of the
+    transcript's last assistant messages joined by a blank line, the newest 32 KiB kept (cut at a
+    character boundary), then sends the input.
+
+- **Settled by S40-4 (the tool calls).**
+  - *Toolsets.* The first request of a session whose profile lists `toolsets` is preceded by
+    `agent-tools.open` and `describe` (6); the handle is kept in the record's `handle` and in
+    `loop/<id>` `tools`, with the request's `tools`: per tool `{"type":"function","name",
+    "description","parameters": <the input schema as JSON>,"strict":false}` in the order described,
+    kept as stored so every request sends the same bytes, and each tool's `parallel` and
+    `idempotent`. A profile with no toolsets opens nothing and sends no `tools`. `consent-pending(<what>)`
+    from either call sets the live activity `consent {what}` and the `retry` deadline of the
+    backoff above (the loop is `retrying`; the firing opens or describes again); `consent-refused`,
+    `not-granted` or any other failure ends the turn `idle {failed {error: <that text>}}`.
+    `cancel` and `delete` `close` the handle; `interrupt` keeps it.
+  - *Calls.* `loop/<id>` `calls` lists the step's calls with no output yet, each `{item, st}`:
+    `ask`, `pending` (allowed, not started) or `job {stream}`; `serial` says the step runs one call
+    at a time (some call's tool is not `parallel`); `jobs` counts the session's job streams that
+    have not ended; `items` keeps the `response.output_item.done` items of the response under way,
+    which `response.completed` uses when its `output` is empty (dev 18.3's scripted server). The
+    states are `waiting` (some call asks) and `tools {wait?}`. A call whose tool the session did not
+    describe gets `{"error":"unknown tool"}`, or `aborted` when the session has no toolsets.
+  - *Outputs.* A denied call's output is `{"error":"denied by the profile"}` (a deny rule, or a call
+    no rule allows in mode `dont-ask`); a denied ask's is `{"error":"denied: <reason>"}`, the
+    reason the owner's, or the kernel's `no-owner`, `expired`, `timers`, `busy`, `quota`; a job's
+    `{"ok":v}` is `v` as JSON text, its `{"err":{code,message}}` is
+    `{"error":"<code>: <message>"}`, a call that cannot start (`tools_call` failed) gets
+    `{"error":"<the host's error>"}`. Each output is stored in the wire at once and shown as the
+    Responses adapter maps a job output.
+  - *Jobs.* The job of a call is `tools_call(handle, "<session>/<call_id>", name, arguments)`; its
+    key is that string. Slots: 16 kernel-wide (`slots.job`), 8 per owner (`quota/<owner>` `job`,
+    tagged by boot), 8 per session; a slot is freed at the job stream's `ended`, which also starts
+    the next pending calls, in call order. A session whose pending calls wait for a kernel or owner
+    slot (or finds the FIFO not empty) takes a place in the FIFO (`tools {wait: n}`); the drain
+    starts its calls when slots free, oldest first, each in a write of its own. The drain may run
+    in another owner's call, so a job it starts is marked `drained` in `stream/<id>`: its items
+    and `ended` run under that origin and send no model request; when the step's request comes
+    in one of them the turn stops `busy` (Slots, above). A job that ends with no item gives
+    `aborted`. When every call has its output the loop is `ready`; inside an items call the
+    request is queued with the FIFO and sent at that call's end (*Slots*).
+  - *Restart, interrupt.* As the rows above; `interrupt` and `cancel` also write each open call's
+    `aborted` output (wire and tool entry) and deny each open ask `by: kernel`, reason `interrupted`
+    (`interrupt`) or `cancel` (`cancel`).
 
 ### 9.6 The broker
 
 - Rules: deny, then ask, then allow; the strictest match wins. A rule that
   does not parse disables its tool. A tool that no rule names asks.
 - Matching for OpenAI: tool names and `Name(arg)` with `*` and `?` globs;
-  path rules are refused at compilation.
+  path rules are refused at compilation. Settled by S40-4: the name of a
+  rule may hold `*` and `?` too (`notes_*`); it is replaced by the described
+  tools whose names it matches before the rules compile, and the profile
+  check accepts such a rule for `backend: "openai"` (the allowlist of Claude's
+  tools applies to Claude profiles only). A call is matched by its tool's name
+  alone (no `arg`). `ask-expiry` is in seconds and 600 when the profile sets
+  none. An OpenAI ask's id is its call's `call_id`; the owner's `answer` decides
+  it at once (decision entry `by: owner`), `{allow, for: session}` is refused
+  `{field: "decision"}` (no scope function for a toolset's tool), and the ask
+  has no `reach`.
 - An ask goes to the owner when it has an attached stream; otherwise, and for
   an `agent:` owner, it is denied. Kernel asks expire after `ask-expiry`
   (an `ask` deadline of the session's timer, 9.3; at the timer cap the ask is denied `timers`); Claude asks after 10 minutes (the host). A kernel ask that reaches its `ask-expiry` is denied, reason `expired`, as the host denies a Claude ask at its 10 minutes (4.5); an `ask-expiry` of 0 denies at once. The session is not allowed anything by it.
@@ -1544,7 +1678,8 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 - Cancelling a session cancels its children, depth first.
 - **Usage.** After each step the kernel pushes `usage` (9.4):
   `context-used` from the step's input tokens, `context-window` from the
-  model, and `compact-at` for OpenAI (the request's `compact_threshold`). For
+  model (272 000 for every OpenAI model until the catalog gives it, S40-3), and
+  `compact-at` for OpenAI (the request's `compact_threshold`). For
   Claude, `compact-at` is absent: Claude decides when it compacts.
 
 ### 9.8 Adapters
@@ -1562,6 +1697,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 | Responses `response.output_text.delta` | `AgentMessageChunk` |
 | Responses `function_call` items | `ToolCall`, then `ToolCallUpdate` with the job's output |
 | Responses `reasoning` summaries | `AgentThoughtChunk` |
+| Responses `compaction` items | a `compaction` entry, once per item (from `output_item.done`, or from `response.completed` when it did not stream) |
 | anything else | an `unknown` entry |
 
 Give nothing (no update, no entry): Claude `system` `init` (its facts go to the record, below), `status`,
@@ -1848,7 +1984,7 @@ section, and its code).
 | `allow`, `deny` | flags | the broker; a path rule refused |
 | `mode` | flag | `manual`, `dont-ask`; others refused |
 | `ask`, `pre-tool-check` | stdio, hook | the broker |
-| `skills` | plugin folder | a `skill` function; a skill with other files refused |
+| `skills` | plugin folder | a `skill` function, which stage F adds; until then any `skills` is refused (`skills`, "skills wait for the skill tool on openai"), and a skill with other files too |
 | `subagents`, `subagent-depth` | flags, env | `delegates` and `task`; a subagent with `tools` refused |
 | `sandbox`, `workspace` | settings, cwd | refused unless absent |
 | `json-schema` | flag; the kernel checks the answer; a missing `structured_output` fails | `text.format`; a schema outside the strict subset refused; the kernel checks the answer |
@@ -1872,7 +2008,7 @@ section, and its code).
 | `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id`, `bad-delay` | timers | 7 (`bad-delay`: a delay over 30 days) |
-| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider slot, 64 pending answers on the session, 1 024 active sessions, 9.3, A3) |
+| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider or request slot, 64 pending answers on the session, 1 024 active sessions, 9.3, A3) |
 | `not-owner`, `not-direct` | providers | 2.2, 10 (`not-owner`: the caller is not the kernel) |
 | `unknown-input`, `unknown-allow`, `behind {through}` (`through`: the high-water index) | kernel | 9.3, 9.6, 9.4 |
 | `too-large` | OpenAI loop outcome | 9.5, body budget |
@@ -1923,14 +2059,14 @@ stage E).
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
 | A mod in the middle gains no authority | host consent (8); the providers' `sessions` compare one pinned kernel identity (2.2, 10) | watane `host/` consent, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`); `factory/publish-test-mods.sh` pins the release identity |
-| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
-| A runaway agent stops | counters and delegation limits in the kernel (9.7) | `kernel/src/delegation.rs`, `kernel/src/openai/` |
+| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/src/openai/run.rs` and `kernel/src/openai/tools.rs` (the `request` and `job` streams, routed by `stream/<id>`, S40), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
+| A runaway agent stops | counters and delegation limits in the kernel (9.7); the OpenAI loop's slots, retries and pauses (9.5) | `kernel/src/delegation.rs`, `kernel/src/openai/` (`run.rs`, `tools.rs`), `kernel/src/quota.rs` (the slot limits) |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/src/call.rs` (a failed call commits no write, id or timer, 2.1), `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
 | A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first (the kernel reads only the item's resolved `path`, under the record's `folder` from the first `system/init`'s `cwd`, never the input's path; no `folder` or no `path`, no key); a session allow is refused unless its key renders to the `reach` its ask was opened with (S36 r1) and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
 | The console has no power a client lacks | it calls only 2.3, as the kernel's page identity (18.1); its one first-run default, the built-in `scratch` profile for `page` while `access/page` is absent (9.1), grants less than any profile a participant makes (PLAN R-B4) | `wit/world.wit` (staged as `kernel/wasm/wit/world.wit`, 1), `mod.toml`, `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs`, `console/`, `ui/` |
-| A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs`, `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/error.rs` |
+| A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs` (also the OpenAI rule names, 9.6), `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/named.rs` (`check` and `profiles` read `access/` first, 9.1), `kernel/src/error.rs` |
 
 Not protected: a revoked `access/` entry does not stop a turn already running: no call of 2.3 writes `access/` today, so the kernel learns of the change only when a call reads the key (9.7, "Revoking"); the slice that adds the call writing `access/` ends the turns of the sessions whose profile it removes (as `cancel`); the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
@@ -2051,7 +2187,9 @@ of `spec/VISION.md`.
 21. Kill after the commit of a request and before its effect: the effect
     happens once after restart.
 22. After a restart, an idempotent job runs again under its key; a
-    non-idempotent one gets `aborted`.
+    non-idempotent one gets `aborted`. (OpenAI: the idempotent half is not
+    yet built; every open job gets `aborted` and the turn becomes `unknown`,
+    9.5 "After a restart".)
 23. The turn limit leaves one last turn without tools; the tool-error and
     token limits stop the turn.
 24. A child beyond `delegates`, depth or live count is refused; cancelling
@@ -2140,7 +2278,13 @@ of `spec/VISION.md`.
 48. (9.5, AGT-F-55) One owner that asks for more than half of each slot kind
     gets 4 provider, 4 request and 8 job slots at most, and another owner's
     work still starts; a consumer that defers cannot spin: its `resume` in the
-    deferring call is dropped.
+    deferring call is dropped. Every model request is dispatched under its
+    session owner's origin or left unsent (the r5 assertion, checked over each
+    host call in the test): with every request slot held, a turn's request
+    after its jobs, after a job the FIFO started in another owner's call, or at
+    a `retry` sends nothing in that or any other owner's call, and the turn
+    stops `idle {stopped {limit: busy}}`; the owner's next `say` sends it, with
+    the step's outputs, in her call.
 49. (9.4) Paging backwards with `read` through a 3 MiB entry, with pages that
     end inside its part group, joins it whole, byte for byte.
 50. (10) `start` with the consent pending, `interrupt`, `say X`; after
@@ -2257,22 +2401,25 @@ of `spec/VISION.md`.
     resume gives `resume-lost`; with inputs queued, the new input joins the end
     and the oldest starts.
 70. (9.5, R4 OpenAI part) Kernel crate with the scripted Responses server:
-    after a restart an OpenAI session `running` in `requesting` or
-    `ready` goes to `ready` under the new boot, taking a request slot or
-    waiting in the FIFO (FIFO entries of an older boot are skipped); a
-    `retrying` one stays, keeps its `retry` deadline and timer, and sends its
-    request once, when it fires; in `tools`, open idempotent jobs run again
-    under their keys, the others get `aborted`, `pending` calls stay pending
-    and start up to the free job slots, and a `tools` loop with no call left
-    open or pending goes to `ready`; OpenAI `waiting` sessions and `paused`
-    ones (either backend) are unchanged, their
-    deadlines and timer kept; the turn stays `running` where it was.
+    after a restart an OpenAI session `running` in `requesting`, `ready`,
+    `retrying` or `tools`, or `waiting` (its asks denied `by: kernel`, reason
+    `restart`), becomes `unknown` with its loop `idle`: every open
+    job (idempotent ones included, case 22) and every `pending` call gets
+    `aborted`, the `retry` deadline goes, it takes no request slot and no FIFO
+    place, and the step (in the pass, under another owner's call, or in the
+    owner's own, R6) makes no model request, toolset operation or consent; a
+    `stopped {quota}` that recording the aborts gives stays, with no request;
+    the owner's next `say` sends one request, in her call, with the aborted
+    outputs; a `say` that finds no request slot is refused `busy`, queues
+    nothing, and nothing is sent for it in another owner's call. `paused`
+    sessions (either backend) are unchanged, their deadlines and timer kept.
 71. (9.3, R6) After a restart, each of `attach`, `read`, `say` and `answer`
     on a session of an older boot does its restart step first, in the
     same call, and acts on the new state (an `answer` to an ask the step denied
     is refused `{field: "ask"}`); the pass then skips that session.
     `list` over such sessions reads no extra record, reports `unknown` for a
-    Claude `running` or `waiting` one, and writes nothing.
+    `running` or `waiting` one of either backend, and writes
+    nothing.
 72. (9.4, 9.8) Kernel crate: an `ask` or `check` item whose `id` is not a
     non-empty string (`7`, `null`, `""`), one whose `input` is missing, `null`
     or not an object (`{}` is an ask), and one whose `expires-at` is negative,
@@ -2310,7 +2457,7 @@ of `spec/VISION.md`.
     `interrupt` with a replacement, Continue on an `unknown` session and
     `answer` with `allow` are each refused `{field: "profile"}`; the turn's
     end starts no queued input and the queue stays; a `resume` deadline
-    leaves the turn `paused` with no time (that half comes with the session timers, 9.5); `read`, `answer` with `deny`,
+    leaves the turn `paused` with no time and sends no request (the OpenAI loop's `resume`, 9.5; S40 r1); `read`, `answer` with `deny`,
     `cancel` and `delete` still work. An unreadable `access/` value acts as
     an empty one.
 75. (9.8) Kernel crate, adapter: an `Edit` ask's `toolCall` has `kind: edit`
@@ -2472,8 +2619,22 @@ say (layout, spacing, words).
   drops any item at or below it, and holds items of a stream whose `attach`
   has not answered yet. From stage B (S35) it opens the owner's newest
   session (`list`); with none, or on New session, it shows the new-session
-  view (frame `NewSession-2`) with profile `scratch` and an optional absolute
-  folder path. The first Send calls `start` for a blank path or
+  view (frame `NewSession-2`). From stage D (S40) the view calls `profiles()`
+  once when it opens and lists each profile as a radio row (its name, and
+  `Claude Code` or `ChatGPT` with the model when there is one; the first is
+  selected). The list is the kernel's: the view adds no profile of its own and
+  calls `check` only for a listed one; an empty list, or a kernel that cannot
+  answer, shows no profile and Start is off, saying why as text (S40 r1). The
+  composer's placeholder names the selected backend (`Message Claude…`,
+  `Message ChatGPT…`). "Runs on"
+  marks the selected profile's backend; the other is not selectable (title
+  "Set in the profile"). On each selection the view calls `check(name, "{}")`
+  and lists every refusal under "Can't run on <backend>", each `field` and
+  `reason`, in a `role="status"` `aria-live="polite"` region; while any holds,
+  Start is off and says why as text. The view has no refusal rule of its own.
+  A `start` refused `refused(list)` shows each refusal's `field: reason` in
+  the line above the composer and puts the text back. An optional absolute
+  folder path stays. The first Send calls `start` for a blank path or
   `start-in-folder` for a picked path. Both take a fresh key. The page
   opens the session and displays the picked path from `list`. Without `window.watane` (the
   component tests, `npm run dev`) it opens the scripted fake kernel

@@ -105,6 +105,15 @@ fn item_done(item: &Value) -> Option<Vec<Out>> {
             }])
         }
         "reasoning" => Some(vec![]),
+        // A server compaction (9.5 "Compaction items"): the entry marks it.
+        "compaction" => Some(vec![Out {
+            entry: Some(Entry {
+                kind: Kind::Compaction,
+                uuid: None,
+                body: json!({}),
+            }),
+            ..Out::default()
+        }]),
         "function_call" => {
             let (id, name, input) = call_parts(item)?;
             let call = ToolCall::new(id.to_string(), name.to_string())

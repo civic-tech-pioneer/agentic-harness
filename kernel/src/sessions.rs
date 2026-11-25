@@ -12,6 +12,8 @@ use crate::broker;
 use crate::check::check;
 use crate::error::{KernelError, Refusal};
 use crate::launch::launch;
+use crate::openai::run::{Cx, REQUEST};
+use crate::openai::tools::JOB;
 use crate::overlay::{apply_overlay, parse_overlay, Overlay};
 use crate::profile::{parse_profile, Backend};
 use crate::queue::{check_input, Queue, Queued};
@@ -73,6 +75,43 @@ pub trait Host {
     fn close_stream(&mut self, stream: &str, outcome: Outcome);
     /// The consumer's `resume` of a stream the kernel holds; it does nothing for one that is not deferred (3).
     fn resume_stream(&mut self, stream: &str);
+    /// `https-stream.start` (2.1, 5): the request's stream, or the host's `start-error` as text.
+    fn https_start(&mut self, request: &str) -> Result<String, String> {
+        let _ = request;
+        Err("not linked yet".into())
+    }
+    /// `agent-tools.open` (6): used by S40-4. The error is the `tools-error` case in kebab-case.
+    fn tools_open(&mut self, toolsets: &[String]) -> Result<String, String> {
+        let _ = toolsets;
+        Err("not linked yet".into())
+    }
+    fn tools_describe(&mut self, handle: &str) -> Result<Vec<Tool>, String> {
+        let _ = handle;
+        Err("not linked yet".into())
+    }
+    fn tools_call(
+        &mut self,
+        handle: &str,
+        key: &str,
+        tool: &str,
+        args: &str,
+    ) -> Result<String, String> {
+        let _ = (handle, key, tool, args);
+        Err("not linked yet".into())
+    }
+    fn tools_close(&mut self, handle: &str) {
+        let _ = handle;
+    }
+}
+
+/// One tool of a toolset, as `agent-tools.describe` gives it (6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tool {
+    pub name: String,
+    pub description: String,
+    pub input_schema: String,
+    pub parallel: bool,
+    pub idempotent: bool,
 }
 
 /// What the provider's `start` answers (2.2): the stream, and whether it is the host's own (10).
@@ -215,6 +254,25 @@ pub enum HostCall {
     Resume {
         stream: String,
     },
+    /// `https-stream.start`: a model request.
+    HttpsStart {
+        request: String,
+    },
+    ToolsOpen {
+        toolsets: Vec<String>,
+    },
+    ToolsDescribe {
+        handle: String,
+    },
+    ToolsCall {
+        handle: String,
+        key: String,
+        tool: String,
+        args: String,
+    },
+    ToolsClose {
+        handle: String,
+    },
 }
 
 /// A host for tests: a settable clock and generation, ids `s1`, `s2`, ..., and a log of what was asked.
@@ -237,6 +295,14 @@ pub struct FakeHost {
     pub start_error: Option<String>,
     /// `start_provider` answers `direct: false` (a checked provider's stream, 10).
     pub not_direct: bool,
+    /// `https_start` fails with this (the host's `start-error`).
+    pub https_error: Option<String>,
+    /// What `tools_describe` answers.
+    pub tools: Vec<Tool>,
+    /// Every `tools_*` that can fail fails with this.
+    pub tools_error: Option<String>,
+    /// Handles `tools_open` answered: `h1`, `h2`, ...
+    pub next_handle: u64,
 }
 
 impl FakeHost {
@@ -327,6 +393,59 @@ impl Host for FakeHost {
             stream: stream.to_string(),
         });
     }
+    fn https_start(&mut self, request: &str) -> Result<String, String> {
+        if let Some(cause) = &self.https_error {
+            return Err(cause.clone());
+        }
+        self.next_stream += 1;
+        self.calls.push(HostCall::HttpsStart {
+            request: request.to_string(),
+        });
+        Ok(format!("t{}", self.next_stream))
+    }
+    fn tools_open(&mut self, toolsets: &[String]) -> Result<String, String> {
+        if let Some(e) = &self.tools_error {
+            return Err(e.clone());
+        }
+        self.next_handle += 1;
+        self.calls.push(HostCall::ToolsOpen {
+            toolsets: toolsets.to_vec(),
+        });
+        Ok(format!("h{}", self.next_handle))
+    }
+    fn tools_describe(&mut self, handle: &str) -> Result<Vec<Tool>, String> {
+        if let Some(e) = &self.tools_error {
+            return Err(e.clone());
+        }
+        self.calls.push(HostCall::ToolsDescribe {
+            handle: handle.to_string(),
+        });
+        Ok(self.tools.clone())
+    }
+    fn tools_call(
+        &mut self,
+        handle: &str,
+        key: &str,
+        tool: &str,
+        args: &str,
+    ) -> Result<String, String> {
+        if let Some(e) = &self.tools_error {
+            return Err(e.clone());
+        }
+        self.next_stream += 1;
+        self.calls.push(HostCall::ToolsCall {
+            handle: handle.to_string(),
+            key: key.to_string(),
+            tool: tool.to_string(),
+            args: args.to_string(),
+        });
+        Ok(format!("t{}", self.next_stream))
+    }
+    fn tools_close(&mut self, handle: &str) {
+        self.calls.push(HostCall::ToolsClose {
+            handle: handle.to_string(),
+        });
+    }
 }
 
 /// What a provider reports for a session (an item call on its stream).
@@ -366,7 +485,7 @@ pub struct Push {
 }
 
 impl Push {
-    fn of(session: &str, value: Value) -> Self {
+    pub(crate) fn of(session: &str, value: Value) -> Self {
         Push {
             session: session.to_string(),
             value,
@@ -394,14 +513,23 @@ pub struct Kernel<S: State, H: Host> {
     /// What of the call's change in session bytes the record in hand already holds (`seal`).
     sealed: i64,
     /// The provider stream the call in hand opened: a call that then fails cancels it (7).
-    opened: Option<String>,
+    pub(crate) opened: Option<String>,
     /// While an item call may still be dropped whole (3, "Deferred batch"), the host calls it
     /// makes outside `request` wait here until the call commits.
-    held: Option<Vec<Effect>>,
+    pub(crate) held: Option<Vec<Effect>>,
+    /// A request slot was freed, or a request waits in the FIFO: the call's end sends the oldest
+    /// waiting one (9.5 Slots).
+    pub(crate) drain_due: bool,
+    /// The FIFO places of the model requests this call queued: the call's end sends them or stops
+    /// their turns `busy`; no other call sends them (9.5 Slots, the deputy's r5 ruling).
+    pub(crate) queued: Vec<u64>,
+    /// The call may run under an origin other than the session owner's: the FIFO's drain, or an
+    /// item or end of a job the drain started. It sends no model request (9.5 Slots).
+    pub(crate) foreign: bool,
 }
 
 /// What one item of an items call came to (`item_step`).
-enum Step {
+pub(crate) enum Step {
     Defer,
     Done {
         pushes: Vec<Push>,
@@ -412,7 +540,7 @@ enum Step {
 }
 
 /// A host call an item call makes that must not happen when the call defers.
-enum Effect {
+pub(crate) enum Effect {
     TimerAfter(String, u64),
     TimerCancel(String),
     Cancel(String),
@@ -420,21 +548,21 @@ enum Effect {
 
 /// Pushes and provider requests a call collects; requests leave only after the last write.
 #[derive(Default)]
-struct Work {
-    pushes: Vec<Push>,
-    requests: Vec<Request>,
+pub(crate) struct Work {
+    pub(crate) pushes: Vec<Push>,
+    pub(crate) requests: Vec<Request>,
     /// The index of the `message` or `tool` entry the call stored last (9.4, "The wire").
-    stored: Option<u64>,
+    pub(crate) stored: Option<u64>,
     /// The live owner stream of the session an item call acted on, as its record ends the call.
-    live: Option<String>,
+    pub(crate) live: Option<String>,
 }
 
 /// The owner's account and the kernel's, as read for a call and kept for its one write (9.3 Quota).
-struct Acct {
+pub(crate) struct Acct {
     /// Past quota when the accounts were read; only `accounts` makes it.
-    past: Past,
+    pub(crate) past: Past,
     owner_key: String,
-    owner: Usage,
+    pub(crate) owner: Usage,
     account: Usage,
     owner0: Usage,
     account0: Usage,
@@ -486,18 +614,52 @@ struct Kept {
 
 /// What `stream/<id>` holds (9.1): the session a stream serves and what kind of stream it is.
 #[derive(Serialize, Deserialize)]
-struct StreamKey {
-    session: String,
-    kind: String,
+pub(crate) struct StreamKey {
+    pub(crate) session: String,
+    pub(crate) kind: String,
     /// The last `seq` an items call took on this stream (2.1, case 7); 0 when none.
     #[serde(default, skip_serializing_if = "is_zero")]
-    last: u64,
+    pub(crate) last: u64,
     /// A provider stream the host does not feed directly (`direct: false`, 10).
     #[serde(default, skip_serializing_if = "is_false")]
-    checked: bool,
+    pub(crate) checked: bool,
     // Kept with the live stream cursor so an attaching page can see the pending question.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    consent: Option<String>,
+    pub(crate) consent: Option<String>,
+    /// A request stream's head: the status, and whether the body is an event stream (9.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) head: Option<u16>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) sse: bool,
+    /// A request stream whose response completed: its later items are of a finished request and
+    /// are ignored (9.5 Items), deltas too.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) done: bool,
+    /// The body of a non-2xx response so far, its items joined (at most `ERROR_BODY` bytes): it
+    /// is classified once it reads as JSON, or at `ended` (9.5).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) body: String,
+    /// A job the FIFO's drain started, in a call that may be another owner's: its items and end
+    /// run under that origin, so they send no model request (9.5 Slots).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) drained: bool,
+}
+
+impl StreamKey {
+    pub(crate) fn new(session: &str, kind: &str) -> Self {
+        StreamKey {
+            session: session.to_string(),
+            kind: kind.to_string(),
+            last: 0,
+            checked: false,
+            consent: None,
+            head: None,
+            sse: false,
+            done: false,
+            body: String::new(),
+            drained: false,
+        }
+    }
 }
 
 fn is_false(b: &bool) -> bool {
@@ -528,7 +690,7 @@ fn owner_page_key(owner: &str, n: u32) -> String {
 }
 
 /// The update of an `Out` that only forwards a delta: no entry, resolution, idle or usage.
-fn delta_only(out: &adapters::Out) -> Option<Value> {
+pub(crate) fn delta_only(out: &adapters::Out) -> Option<Value> {
     let bare = out.entry.is_none()
         && out.resolved.is_none()
         && out.watane.is_none()
@@ -538,7 +700,7 @@ fn delta_only(out: &adapters::Out) -> Option<Value> {
 }
 
 /// An ACP update as it goes on the wire: `_meta.watane.at`, and `i` when it finishes an entry (9.4).
-fn wire_update(mut update: Value, at: u64, i: Option<u64>) -> Value {
+pub(crate) fn wire_update(mut update: Value, at: u64, i: Option<u64>) -> Value {
     if let Some(o) = update.as_object_mut() {
         let meta = o.entry("_meta").or_insert_with(|| json!({}));
         if !meta.is_object() {
@@ -580,7 +742,7 @@ fn entry_push(session: &str, first: u64, e: &NewEntry, at: u64, work: &mut Work)
     }
 }
 
-fn turn_push(t: &Turn) -> Value {
+pub(crate) fn turn_push(t: &Turn) -> Value {
     json!({"type": "turn", "state": t.to_json()})
 }
 
@@ -684,7 +846,7 @@ fn parse_decision(s: &str) -> Result<Decision, KernelError> {
     })
 }
 
-fn waiting(asks: Vec<String>, expires_at: Option<u64>) -> Turn {
+pub(crate) fn waiting(asks: Vec<String>, expires_at: Option<u64>) -> Turn {
     Turn::Waiting { asks, expires_at }
 }
 
@@ -697,6 +859,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             sealed: 0,
             opened: None,
             held: None,
+            drain_due: false,
+            queued: Vec::new(),
+            foreign: false,
         }
     }
 
@@ -719,7 +884,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(slots)
     }
 
-    fn open_meter(&mut self) {
+    pub(crate) fn open_meter(&mut self) {
         self.state.open();
         self.sealed = 0;
     }
@@ -735,7 +900,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// Reads the owner's account and the kernel's (9.1).
-    fn accounts(&mut self, owner: &str) -> Acct {
+    pub(crate) fn accounts(&mut self, owner: &str) -> Acct {
         let owner_key = Usage::owner_key(owner);
         // 9.3 "Past": the owner's bytes or the kernel's account at or over their caps.
         let (past, owner, account) = Past::load(&mut self.state, &owner_key, &self.limits);
@@ -837,7 +1002,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// The profile's JSON: the stored one, or for `scratch` the built-in (9.1).
-    fn profile_json(&mut self, name: &str) -> Option<String> {
+    pub(crate) fn profile_json(&mut self, name: &str) -> Option<String> {
         match self.state.get(&format!("profile/{name}")) {
             Some(b) => Some(String::from_utf8_lossy(&b).into_owned()),
             None => (name == SCRATCH).then(|| SCRATCH_PROFILE.to_string()),
@@ -918,6 +1083,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             last: 0,
             checked: !started.direct,
             consent: None,
+            head: None,
+            sse: false,
+            done: false,
+            body: String::new(),
+            drained: false,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         self.state
@@ -977,7 +1147,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
     }
 
-    fn cancel_provider(&mut self, stream: &str) {
+    pub(crate) fn cancel_provider(&mut self, stream: &str) {
         match &mut self.held {
             Some(h) => h.push(Effect::Cancel(stream.to_string())),
             None => self.host.cancel_stream(stream),
@@ -1022,7 +1192,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// that fired needs no cancel, and is re-armed even when the deadlines did not change). The
     /// count follows the deadlines (AC8), the host timer only those this build handles
     /// (`next_due`). Whether `slots` changed.
-    fn sync_timer(
+    pub(crate) fn sync_timer(
         &mut self,
         rec: &Record,
         slots: &mut Slots,
@@ -1124,7 +1294,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// `finish`; `cannot_fail` is a call 9.3 lets past the ceiling (it charges what it wrote).
-    fn finish_as(
+    pub(crate) fn finish_as(
         &mut self,
         rec: Option<&mut Record>,
         a: &mut Acct,
@@ -1172,26 +1342,26 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn settle(
         &mut self,
         rec: &mut Record,
-        past: Past,
+        a: &mut Acct,
         slots: &mut Slots,
         work: &mut Work,
     ) -> Result<(), KernelError> {
         if rec.boot < slots.boot {
-            self.step(rec, past, slots, work)?;
+            self.step(rec, a, slots, work)?;
         }
         Ok(())
     }
 
     fn session(
         &mut self,
-        past: Past,
+        a: &mut Acct,
         caller: &str,
         id: &str,
         slots: &mut Slots,
         work: &mut Work,
     ) -> Result<Record, KernelError> {
         let mut rec = self.load_owned(caller, id)?;
-        self.settle(&mut rec, past, slots, work)?;
+        self.settle(&mut rec, a, slots, work)?;
         Ok(rec)
     }
 
@@ -1199,15 +1369,16 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// (and its page entry's) becomes the current one, a Claude session's open and pending asks
     /// close in every turn state, and a Claude turn nothing drives becomes `unknown`. Writes: at most its page (or `slots` and
     /// the page when it leaves the index), a decision entry per open ask and a `turn` entry (R3).
-    // An OpenAI `running` or `waiting` session only gets the stale keys and the boot here: its rows
-    // of the step table (9.5: requests, retries, tool jobs) come with stage D.
+    // A running or waiting OpenAI turn becomes `unknown` with no model request, toolset
+    // operation or consent (`openai_restart`, 9.5).
     fn step(
         &mut self,
         rec: &mut Record,
-        past: Past,
+        a: &mut Acct,
         slots: &mut Slots,
         work: &mut Work,
     ) -> Result<(), KernelError> {
+        let past = a.past;
         let now = self.host.now();
         rec.boot = slots.boot;
         let stale_streams = std::mem::take(&mut rec.streams);
@@ -1215,7 +1386,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let driven = rec.backend == "claude"
             && matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. });
         // Every open or pending Claude ask closes, whatever the turn state; a driven turn ends
-        // `unknown`. An OpenAI session's asks are the kernel's own: its `waiting` row is unchanged.
+        // `unknown`. An OpenAI session's asks are the kernel's own: `openai_restart` closes them.
         if rec.backend == "claude"
             && self.close_all_with(rec, past, "restart", now, work, !driven)?
         {
@@ -1233,6 +1404,13 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.drop_adapter(&s);
         }
         self.state.delete(&format!("live/{}", rec.id));
+        // 9.5 "After a restart": a running or waiting OpenAI turn stops `unknown` and sends nothing.
+        if rec.backend == "openai" && rec.turn.is_active() {
+            self.openai_restart(rec, a, slots, work, now)?;
+            if !rec.turn.is_active() {
+                self.sync_active(rec, slots, true)?;
+            }
+        }
         self.seal(rec)
     }
 
@@ -1326,7 +1504,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// An entry the provider sends: stored unless the owner or the account is past its quota or the
     /// session is at its chunk cap, keeping the room for one `turn` entry (9.3 Quota, case 53). Not
     /// stored, the active turn ends `stopped {limit: quota}` (`None`).
-    fn append_loose(
+    pub(crate) fn append_loose(
         &mut self,
         rec: &mut Record,
         past: Past,
@@ -1382,7 +1560,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// Stores a turn change: the record's turn and a `turn` entry, and pushes the turn. `activity`
     /// is live only (9.3): a change of it alone pushes and writes nothing.
-    fn turn_to(
+    pub(crate) fn turn_to(
         &mut self,
         rec: &mut Record,
         past: Past,
@@ -1429,7 +1607,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// `send`: the provider stream the input goes to as a request; none when the stream's own
     /// `start` carried it (10) or the session has no provider. Returns the message's index.
     #[allow(clippy::too_many_arguments)]
-    fn start_turn(
+    pub(crate) fn start_turn(
         &mut self,
         rec: &mut Record,
         past: Past,
@@ -1517,7 +1695,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// Takes an ask out of `open`; the turn follows when it was waiting on it.
-    fn close_ask(
+    pub(crate) fn close_ask(
         &mut self,
         rec: &mut Record,
         past: Past,
@@ -1550,7 +1728,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// Writes the one decision entry of the ask at `i`: its entry repeated, with `decision`; past
     /// its quota, counted at this write, the short form from the record alone (9.4).
     #[allow(clippy::too_many_arguments)]
-    fn write_decision(
+    pub(crate) fn write_decision(
         &mut self,
         rec: &mut Record,
         past: Past,
@@ -1584,7 +1762,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// The kernel's own closing step (`ended`, R4, `cancel`): each pending answer becomes its
     /// decision, each open ask or check `deny, by: kernel, reason`; both end empty.
     /// `follow` lets a `waiting` turn follow (R4 sets its own turn). Whether any closed.
-    fn close_all_with(
+    pub(crate) fn close_all_with(
         &mut self,
         rec: &mut Record,
         past: Past,
@@ -1658,7 +1836,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
     }
 
-    fn unknown_entry(
+    pub(crate) fn unknown_entry(
         &mut self,
         rec: &mut Record,
         past: Past,
@@ -1673,7 +1851,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// Moves the session in or out of `active/` as its end state asks (A2); one `slots` and one page.
     /// Whether it saved `slots`.
-    fn sync_active(
+    pub(crate) fn sync_active(
         &mut self,
         rec: &mut Record,
         slots: &mut Slots,
@@ -1693,7 +1871,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// The end of a call that did not defer: its pushes go to the session's live owner stream, then
     /// its requests leave (after the last write, 7).
-    fn flush(&mut self, work: Work, live: Option<&str>) -> Vec<Push> {
+    pub(crate) fn flush(&mut self, work: Work, live: Option<&str>) -> Vec<Push> {
         self.deliver(&work.pushes, live);
         for r in work.requests {
             self.host.request(r);
@@ -1702,14 +1880,14 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// The live owner stream of a session: `live/<session>` (9.1).
-    fn live_stream(&mut self, session: &str) -> Option<String> {
+    pub(crate) fn live_stream(&mut self, session: &str) -> Option<String> {
         let bytes = self.state.get(&format!("live/{session}"))?;
         String::from_utf8(bytes).ok()
     }
 
     /// Pushes, in order, to the live stream of their session (`live`, from its record or its key).
     /// The first failure: the stream gets no more.
-    fn send_live(&mut self, pushes: &[Push], live: Option<&str>) -> Option<StreamError> {
+    pub(crate) fn send_live(&mut self, pushes: &[Push], live: Option<&str>) -> Option<StreamError> {
         let o = live?;
         pushes
             .iter()
@@ -1717,7 +1895,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// Outside an item call a full owner stream cannot be waited for: it is closed `lagging` (9.4).
-    fn deliver(&mut self, pushes: &[Push], live: Option<&str>) {
+    pub(crate) fn deliver(&mut self, pushes: &[Push], live: Option<&str>) {
         let (Some(o), Some(first)) = (live, pushes.first()) else {
             return;
         };
@@ -1762,7 +1940,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// 9.1, 9.7: whether `access/<owner>` names the profile; absent or unreadable allows none.
     /// The console's first run (S35): with no `access/page` at all, the page may use `scratch`.
-    fn may_use(&mut self, owner: &str, profile: &str) -> bool {
+    pub(crate) fn may_use(&mut self, owner: &str, profile: &str) -> bool {
         match self.state.get(&format!("access/{owner}")) {
             None => {
                 owner == PAGE
@@ -1778,7 +1956,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         refused("profile", "this client may not use this profile")
     }
 
-    fn room(rec: &Record) -> Result<(), KernelError> {
+    pub(crate) fn room(rec: &Record) -> Result<(), KernelError> {
         if rec.chunks.len() + CHUNK_MARGIN > MAX_CHUNKS {
             return Err(KernelError::Quota(format!(
                 "{MAX_CHUNKS} transcript chunks per session"
@@ -1940,7 +2118,15 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             _ => None,
         };
+        // An OpenAI session's first request is sent, too, before the first write (9.5).
+        let openai = match backend {
+            Backend::Openai => {
+                Some(self.openai_prelaunch(&rec, Some(input), &slots, &acct, false)?)
+            }
+            Backend::Claude => None,
+        };
         let mut work = Work::default();
+        let mut slots_dirty = false;
         // The provider's `start` carries the first turn's input (10): no `Request::Turn`.
         self.start_turn(
             &mut rec,
@@ -1954,8 +2140,23 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(t) = started {
             self.open_provider(t, &mut rec, &mut slots, &mut acct)?;
         }
+        if let Some(p) = openai {
+            let mut cx = Cx {
+                slots: &mut slots,
+                a: &mut acct,
+                work: &mut work,
+                past,
+                now,
+                dirty: false,
+            };
+            self.openai_finish(&mut rec, p, &mut cx)?;
+            slots_dirty = cx.dirty;
+        }
         // The first turn is active: this saves `slots` with the slot taken.
         self.sync_active(&mut rec, &mut slots, false)?;
+        if slots_dirty {
+            slots.save(&mut self.state)?;
+        }
         page.push(id.clone());
         self.state
             .put(
@@ -2013,7 +2214,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let past = acct.past;
         self.refuse_past(&acct)?;
         let mut work = Work::default();
-        self.settle(&mut rec, past, &mut slots, &mut work)?;
+        self.settle(&mut rec, &mut acct, &mut slots, &mut work)?;
         let before = rec.deadlines.clone();
         // A pause with no time ends with the next `say` (9.3); one with a time queues until it
         // resumes on its own.
@@ -2053,6 +2254,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                     Some(_) => None,
                     None => self.target(&rec),
                 };
+                // An OpenAI turn sends its request before the first write (9.5).
+                let openai = match rec.backend.as_str() {
+                    "openai" => {
+                        Some(self.openai_prelaunch(&rec, Some(turn_input), &slots, &acct, false)?)
+                    }
+                    _ => None,
+                };
                 let now = self.host.now();
                 let n = match queued {
                     None => self.start_turn(
@@ -2082,8 +2290,21 @@ impl<S: State, H: Host> Kernel<S, H> {
                 if let Some(t) = started {
                     self.open_provider(t, &mut rec, &mut slots, &mut acct)?;
                 }
+                let mut sent = false;
+                if let Some(p) = openai {
+                    let mut cx = Cx {
+                        slots: &mut slots,
+                        a: &mut acct,
+                        work: &mut work,
+                        past,
+                        now,
+                        dirty: false,
+                    };
+                    self.openai_finish(&mut rec, p, &mut cx)?;
+                    sent = cx.dirty;
+                }
                 let timed = self.idle_after(&mut rec, &mut slots, &mut acct, was, &before, now);
-                if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed) {
+                if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed || sent) {
                     slots.save(&mut self.state)?;
                 }
                 rec.updated = now;
@@ -2157,13 +2378,16 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         // The step comes after the refusals that do not depend on it; an ask it denies is refused.
         let mut work = Work::default();
-        self.settle(&mut rec, past, &mut slots, &mut work)?;
+        self.settle(&mut rec, &mut acct, &mut slots, &mut work)?;
         let open = rec
             .open
             .iter()
             .find(|o| o.id == ask && o.kind == "ask")
             .cloned()
             .ok_or_else(|| refused("ask", "no open ask with this id"))?;
+        if rec.backend == "openai" {
+            return self.openai_answer(caller, session, key, ask, d, rec, acct, slots, work);
+        }
         let unreadable = || refused("ask", "the ask entry is unreadable");
         let body = self.ask_body(&rec, open.i).ok_or_else(unreadable)?;
         if rec.pending_answers.len() >= OPEN_ASKS {
@@ -2233,6 +2457,71 @@ impl<S: State, H: Host> Kernel<S, H> {
         })
     }
 
+    /// `answer` on an OpenAI ask (9.6): the kernel's own ask, so the owner's answer is its
+    /// decision at once. The call runs, or gets the denial as its output, and when no ask of the
+    /// step is left the loop goes on.
+    #[allow(clippy::too_many_arguments)]
+    fn openai_answer(
+        &mut self,
+        caller: &str,
+        session: &str,
+        key: &str,
+        ask: &str,
+        d: Decision,
+        mut rec: Record,
+        mut acct: Acct,
+        mut slots: Slots,
+        mut work: Work,
+    ) -> Result<Called<()>, KernelError> {
+        if d.for_session {
+            // The tools of a toolset have no scope function: an OpenAI ask offers no reach.
+            return Err(refused("decision", "this ask offers no session allow"));
+        }
+        let past = acct.past;
+        let now = self.host.now();
+        let before = rec.clone();
+        let was = rec.turn.is_active();
+        let mut ls = self
+            .loop_load(&rec.id)
+            .ok_or_else(|| refused("ask", "no open ask with this id"))?;
+        let before_ls = ls.clone();
+        let mut cx = Cx {
+            slots: &mut slots,
+            a: &mut acct,
+            work: &mut work,
+            past,
+            now,
+            dirty: false,
+        };
+        self.decide_ask(
+            &mut rec,
+            &mut ls,
+            &mut cx,
+            ask,
+            d.allow,
+            "owner",
+            d.reason.as_deref(),
+        )?;
+        self.after_asks(&mut rec, &mut ls, &mut cx)?;
+        let mut dirty = cx.dirty;
+        self.settle_openai(
+            &mut rec, &before, &mut slots, &mut acct, was, now, &mut dirty,
+        )?;
+        if dirty {
+            slots.save(&mut self.state)?;
+        }
+        if ls != before_ls {
+            self.loop_save(&rec.id, &ls)?;
+        }
+        rec.updated = now;
+        self.seal(&mut rec)?;
+        self.key_put("answer", caller, key, Some(session), &())?;
+        self.finish(None, &mut acct)?;
+        let pushes = self.flush(work, rec.live.as_deref());
+        self.after_call();
+        Ok(Called { value: (), pushes })
+    }
+
     /// Writes the `allow` entry of a session allow given or taken back (9.4); its live push.
     fn write_allow(
         &mut self,
@@ -2271,9 +2560,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             .position(|a| a.id == allow)
             .ok_or_else(|| KernelError::UnknownAllow(allow.to_string()))?;
         let mut acct = self.accounts(caller);
-        let past = acct.past;
         let mut work = Work::default();
-        self.settle(&mut rec, past, &mut slots, &mut work)?;
+        self.settle(&mut rec, &mut acct, &mut slots, &mut work)?;
         let taken = rec.allows.remove(at);
         let now = self.host.now();
         let push = self.write_allow(&mut rec, &taken.id, &taken.tool, &taken.key, false, now)?;
@@ -2317,7 +2605,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.refuse_past(&acct)?;
         }
         let mut work = Work::default();
-        self.settle(&mut rec, past, &mut slots, &mut work)?;
+        self.settle(&mut rec, &mut acct, &mut slots, &mut work)?;
         let was = rec.turn.is_active();
         let before = rec.deadlines.clone();
         if replacement.is_none() && !was {
@@ -2343,10 +2631,30 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             _ => None,
         };
+        // An OpenAI replacement sends its request before the first write; with no replacement the
+        // session's loop is stopped below (9.5).
+        let mut openai = match rec.backend.as_str() {
+            "openai" => Some(self.openai_prelaunch(&rec, replacement, &slots, &acct, true)?),
+            _ => None,
+        };
         // The stream the turn ran on, before a new one is registered.
         let live = self.target(&rec);
         let now = self.host.now();
+        let mut sent = false;
         if was {
+            // The calls and asks of an OpenAI loop end before its turn does (9.5).
+            if let Some(p) = openai.as_mut() {
+                let mut cx = Cx {
+                    slots: &mut slots,
+                    a: &mut acct,
+                    work: &mut work,
+                    past,
+                    now,
+                    dirty: false,
+                };
+                self.openai_stop(&mut rec, &mut p.ls, &mut cx)?;
+                sent = cx.dirty;
+            }
             self.end_interrupted(&mut rec, past, now, &mut work)?;
             if let Some((stream, direct)) = live.clone() {
                 // `claude` ends the interrupted turn with an `idle` of its own, later (S36).
@@ -2377,17 +2685,28 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(t) = started {
             self.open_provider(t, &mut rec, &mut slots, &mut acct)?;
         }
+        if let Some(p) = openai {
+            let mut cx = Cx {
+                slots: &mut slots,
+                a: &mut acct,
+                work: &mut work,
+                past,
+                now,
+                dirty: false,
+            };
+            self.openai_finish(&mut rec, p, &mut cx)?;
+            sent |= cx.dirty;
+        }
         let timed = self.idle_after(&mut rec, &mut slots, &mut acct, was, &before, now);
-        if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed) {
+        if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed || sent) {
             slots.save(&mut self.state)?;
         }
         rec.updated = now;
         // 9.3 "Past": an interrupt without a replacement only ends the turn.
         self.finish_as(Some(&mut rec), &mut acct, replacement.is_none())?;
-        Ok(Called {
-            value: (),
-            pushes: self.flush(work, rec.live.as_deref()),
-        })
+        let pushes = self.flush(work, rec.live.as_deref());
+        self.after_call();
+        Ok(Called { value: (), pushes })
     }
 
     fn end_interrupted(
@@ -2414,20 +2733,43 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut acct = self.accounts(caller);
         let past = acct.past;
         let mut work = Work::default();
-        let mut rec = self.session(past, caller, session, &mut slots, &mut work)?;
+        let mut rec = self.session(&mut acct, caller, session, &mut slots, &mut work)?;
         let now = self.host.now();
         let was = rec.turn.is_active();
         let closed = self.close_all_with(&mut rec, past, "cancel", now, &mut work, false)?;
+        // An OpenAI session's request streams and jobs end the same way, its calls get `aborted`
+        // and its handle closes (9.5).
+        let mut openai_freed = false;
+        if rec.backend == "openai" {
+            if let Some(mut ls) = self.loop_load(&rec.id) {
+                let mut cx = Cx {
+                    slots: &mut slots,
+                    a: &mut acct,
+                    work: &mut work,
+                    past,
+                    now,
+                    dirty: false,
+                };
+                // The deadlines go below, with the timer they hold.
+                let kept = rec.deadlines.clone();
+                self.openai_stop(&mut rec, &mut ls, &mut cx)?;
+                rec.deadlines = kept;
+                openai_freed = cx.dirty;
+                self.loop_save(&rec.id, &ls)?;
+                self.close_tools(&ls);
+            }
+        }
         if was {
             self.end_interrupted(&mut rec, past, now, &mut work)?;
         }
         // The host's `Cancel` ends the provider stream: its slot is free at once, and its later
         // `ended` finds no key (9.4).
         let provider = self.live_provider(&rec);
-        let mut freed = match &provider {
-            Some(t) => self.release_provider(&mut rec, t, &mut slots, &mut acct),
-            None => false,
-        };
+        let mut freed = openai_freed
+            || match &provider {
+                Some(t) => self.release_provider(&mut rec, t, &mut slots, &mut acct),
+                None => false,
+            };
         // 9.3: no deadline outlives a cancel; its timer goes with them.
         let before = std::mem::take(&mut rec.deadlines);
         freed |= self.sync_timer(&rec, &mut slots, &mut acct, &before, now, false);
@@ -2443,10 +2785,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         // 9.3 "Past": a cancel closes the session's work, so it cannot fail on quota.
         self.finish_as(Some(&mut rec), &mut acct, true)?;
-        Ok(Called {
-            value: (),
-            pushes: self.flush(work, rec.live.as_deref()),
-        })
+        let pushes = self.flush(work, rec.live.as_deref());
+        self.after_call();
+        Ok(Called { value: (), pushes })
     }
 
     /// `session` for a call that writes only when the restart step runs (R6): the step is charged.
@@ -2459,8 +2800,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut rec = self.load_owned(caller, id)?;
         if rec.boot < slots.boot {
             let mut acct = self.accounts(caller);
-            let past = acct.past;
-            self.settle(&mut rec, past, slots, &mut Work::default())?;
+            self.settle(&mut rec, &mut acct, slots, &mut Work::default())?;
             self.finish(None, &mut acct)?;
         }
         Ok(rec)
@@ -2480,9 +2820,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
-        let past = acct.past;
         let mut work = Work::default();
-        let mut rec = self.session(past, caller, session, &mut slots, &mut work)?;
+        let mut rec = self.session(&mut acct, caller, session, &mut slots, &mut work)?;
         let mut q = Queue::load(&mut self.state, &rec.id);
         q.remove(n)?;
         q.save(&mut self.state, &rec.id)?;
@@ -2512,10 +2851,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         check_title(title)?;
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
-        let past = acct.past;
         let mut rec = self.load_owned(caller, session)?;
         self.refuse_past(&acct)?;
-        self.settle(&mut rec, past, &mut slots, &mut Work::default())?;
+        self.settle(&mut rec, &mut acct, &mut slots, &mut Work::default())?;
         rec.title = title.to_string();
         self.finish(Some(&mut rec), &mut acct)
     }
@@ -2538,6 +2876,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         // The slots of this boot's provider streams; a stale record's streams were counted zero.
         let mut slot_freed = false;
         let mut owners = Vec::new();
+        let mut requests = Vec::new();
+        let mut jobs = Vec::new();
         let mut provider = String::new();
         if rec.boot == slots.boot {
             for s in &rec.streams {
@@ -2551,6 +2891,20 @@ impl<S: State, H: Host> Kernel<S, H> {
                         slot_freed = true;
                     }
                     Some(k) if k == OWNER => owners.push(s.clone()),
+                    Some(k) if k == JOB => {
+                        jobs.push(s.clone());
+                        slots.job = slots.job.saturating_sub(1);
+                        acct.owner.close_job(slots.boot);
+                        self.drain_due = true;
+                        slot_freed = true;
+                    }
+                    Some(k) if k == REQUEST => {
+                        requests.push(s.clone());
+                        self.drain_due = true;
+                        slots.request = slots.request.saturating_sub(1);
+                        acct.owner.close_request(slots.boot);
+                        slot_freed = true;
+                    }
                     _ => {}
                 }
             }
@@ -2574,6 +2928,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 .delete_uncharged(&crate::transcript::chunk_key(&rec.id, n));
         }
         self.state.delete_uncharged(&Queue::key_of(&rec.id));
+        if rec.backend == "openai" {
+            self.openai_delete(&rec.id);
+        }
         for s in &rec.streams {
             self.state.delete_uncharged(&stream_key(s));
             self.state.delete_uncharged(&adapter_key(s));
@@ -2605,10 +2962,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         for o in owners {
             self.host.close_stream(&o, Outcome::Closed);
         }
+        for r in requests.into_iter().chain(jobs) {
+            self.host.cancel_stream(&r);
+        }
         self.host.request(Request::Cancel {
             session: rec.id.clone(),
             stream: provider,
         });
+        self.after_call();
         Ok(())
     }
 
@@ -2653,8 +3014,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             if let Some(r) = Record::load(&mut self.state, id).filter(|r| r.owner == caller) {
                 // R6: the turn the restart step will give, without writing it.
+                // A Claude or an OpenAI turn, `running` or `waiting`, becomes `unknown` (R4).
                 let stale = r.boot < slots.boot
-                    && r.backend == "claude"
                     && matches!(r.turn, Turn::Running { .. } | Turn::Waiting { .. });
                 let turn = if stale { Turn::Unknown } else { r.turn };
                 out.push(SessionInfo {
@@ -2728,6 +3089,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         cause: Option<String>,
     ) -> Result<Called<()>, KernelError> {
         self.open_meter();
+        if let Some(key) = self.loop_key(stream) {
+            return self.request_ended(stream, key, cause.as_deref());
+        }
         let Some(key) = self.provider_key(stream) else {
             return Ok(Called {
                 value: (),
@@ -2817,6 +3181,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                 pushes: Vec::new(),
             })
         };
+        // A model request's stream (9.5): the OpenAI loop reads its items.
+        if let Some(key) = self.loop_key(stream) {
+            return self.request_lines(stream, key, items);
+        }
         let Some(key) = self.provider_key(stream) else {
             return taken();
         };
@@ -2894,14 +3262,14 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// Starts an items call: its writes and the host calls it makes outside `request` are held.
-    fn hold(&mut self) {
+    pub(crate) fn hold(&mut self) {
         self.state.hold();
         self.held = Some(Vec::new());
     }
 
     /// Ends an items call: dropped whole on an error or a deferral, else committed, its requests
     /// sent and any owner stream that turned out to have ended dropped.
-    fn finish_items(
+    pub(crate) fn finish_items(
         &mut self,
         step: Result<Step, KernelError>,
     ) -> Result<Called<SinkOutcome>, KernelError> {
@@ -3055,11 +3423,10 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Called<Attached>, KernelError> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
-        let past = acct.past;
         let mut rec = self.load_owned(caller, session)?;
         let stale = rec.boot < slots.boot;
         let mut work = Work::default();
-        self.settle(&mut rec, past, &mut slots, &mut work)?;
+        self.settle(&mut rec, &mut acct, &mut slots, &mut work)?;
         let mut meta = rec.meta();
         let replay = Transcript::new(&mut self.state, &rec.id, &mut meta).replay(after);
         let lines = match replay {
@@ -3104,6 +3471,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             .collect();
         items.push(json!({"_meta": {"watane": {"type": "synced", "through": meta.last}}}));
         let mut turn = rec.turn.clone();
+        if rec.backend == "openai" {
+            if let Turn::Running { activity, .. } = &mut turn {
+                *activity = self.openai_activity(&rec);
+            }
+        }
         if rec.requested_folder.is_some() {
             if let Turn::Running { activity, .. } = &mut turn {
                 *activity = self
@@ -3147,6 +3519,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             last: 0,
             checked: false,
             consent: None,
+            head: None,
+            sse: false,
+            done: false,
+            body: String::new(),
+            drained: false,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         let too_large = |e: crate::state::TooLarge| KernelError::TooLarge(e.0 as u64);
@@ -3435,7 +3812,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// An entry from the provider; an `ask` opens (or, with a decision, closes) an ask.
-    fn out_entry(
+    pub(crate) fn out_entry(
         &mut self,
         rec: &mut Record,
         past: Past,
@@ -3598,10 +3975,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 let _ = self.session_firing(session, &mut slots, &mut work);
             }
         }
-        Called {
-            value: (),
-            pushes: work.pushes,
-        }
+        let pushes = work.pushes;
+        self.after_call();
+        Called { value: (), pushes }
     }
 
     /// One firing of a session's timer (9.3): every due deadline is handled (`idle` releases the
@@ -3616,9 +3992,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         };
         let mut acct = self.accounts(&rec.owner);
-        let past = acct.past;
         let boot = rec.boot;
-        if self.settle(&mut rec, past, slots, work).is_err() {
+        if self.settle(&mut rec, &mut acct, slots, work).is_err() {
             self.lost_step(id, &mut acct);
             return Ok(());
         }
@@ -3643,6 +4018,33 @@ impl<S: State, H: Host> Kernel<S, H> {
                 self.release_provider(&mut rec, &t, slots, &mut acct);
             }
             rec.deadlines.retain(|d| !(d.at <= now && d.what == IDLE));
+        }
+        // 9.5: a `retry` or a `resume` that came due sends the request again.
+        if rec.backend == "openai" {
+            let due = |what: &str| rec.deadlines.iter().any(|d| d.at <= now && d.what == what);
+            let (retry, resume) = (due("retry"), due("resume"));
+            if retry || resume {
+                let was = rec.turn.is_active();
+                rec.deadlines
+                    .retain(|d| !(d.at <= now && (d.what == "retry" || d.what == "resume")));
+                // A firing cannot fail (9.3): what the loop could not do stays undone.
+                let _ = self.openai_fire(&mut rec, slots, &mut acct, work, now, (retry, resume));
+                self.sync_active(&mut rec, slots, was)?;
+            }
+        }
+        // 9.6: an `ask <id>` that came due denies the ask, reason `expired`.
+        if rec.backend == "openai" {
+            let ids: Vec<String> = rec
+                .deadlines
+                .iter()
+                .filter(|d| d.at <= now)
+                .filter_map(|d| d.what.strip_prefix("ask ").map(str::to_string))
+                .collect();
+            if !ids.is_empty() {
+                let was = rec.turn.is_active();
+                let _ = self.openai_expire(&mut rec, slots, &mut acct, work, now, &ids);
+                self.sync_active(&mut rec, slots, was)?;
+            }
         }
         // Due deadlines of later stages stay (and keep the count); the timer follows the rest.
         self.sync_timer(&rec, slots, &mut acct, &before, now, true);
@@ -3699,8 +4101,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 rec.active_page = Some(page);
                 let mut done = Work::default();
                 let mut acct = self.accounts(&rec.owner);
-                let past = acct.past;
-                let stepped = self.step(&mut rec, past, slots, &mut done).is_ok();
+                let stepped = self.step(&mut rec, &mut acct, slots, &mut done).is_ok();
                 if stepped {
                     work.pushes.append(&mut done.pushes);
                 }

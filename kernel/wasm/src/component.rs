@@ -5,10 +5,13 @@ use crate::exports::mods::agent::sessions;
 use crate::exports::watane::host::{stream_producer, stream_sink, timer_sink};
 use crate::map;
 use crate::mods::claude_code::sessions as provider;
-use crate::watane::host::{caller, claude_session, host_info, state, streams, timers};
+use crate::watane::host::{
+    agent_tools, caller, claude_session, host_info, https_stream, state, streams, timers,
+};
 use agent_kernel::call::{self, CallKernel};
 use agent_kernel::{
-    Attached, Host, KernelError, Outcome, Request, Started, State, StreamError, TooLarge, MAX_VALUE,
+    Attached, Host, KernelError, Outcome, Request, Started, State, StreamError, TooLarge, Tool,
+    MAX_VALUE,
 };
 use serde_json::Value;
 
@@ -127,6 +130,40 @@ impl Host for WitHost {
     fn resume_stream(&mut self, stream: &str) {
         let _ = streams::resume(stream);
     }
+    /// `https-stream.start`: an `Err` is the `start-error` as `map::start_error` names it.
+    fn https_start(&mut self, request: &str) -> Result<String, String> {
+        https_stream::start(request).map_err(map::start_error)
+    }
+    fn tools_open(&mut self, toolsets: &[String]) -> Result<String, String> {
+        agent_tools::open(toolsets).map_err(map::tools_error)
+    }
+    fn tools_describe(&mut self, handle: &str) -> Result<Vec<Tool>, String> {
+        agent_tools::describe(handle)
+            .map(|v| {
+                v.into_iter()
+                    .map(|t| Tool {
+                        name: t.name,
+                        description: t.description,
+                        input_schema: t.input_schema,
+                        parallel: t.parallel,
+                        idempotent: t.idempotent,
+                    })
+                    .collect()
+            })
+            .map_err(map::tools_error)
+    }
+    fn tools_call(
+        &mut self,
+        handle: &str,
+        key: &str,
+        tool: &str,
+        args: &str,
+    ) -> Result<String, String> {
+        agent_tools::call(handle, key, tool, args).map_err(map::tools_error)
+    }
+    fn tools_close(&mut self, handle: &str) {
+        agent_tools::close(handle)
+    }
 }
 
 /// Runs one crate call (S32 R1, `call::run`): `Ok` commits its writes, `Err` drops them.
@@ -164,15 +201,24 @@ impl sessions::Guest for Export {
             .map_err(map::error)
     }
 
-    /// Stage A: the crate has no name-based check (it checks a profile document for `start`),
-    /// so this answers one refusal that says so.
-    fn check(_profile: String, _overlay: String) -> Vec<sessions::Refusal> {
-        vec![sessions::Refusal {
-            field: "profile".into(),
-            backend: String::new(),
-            model: String::new(),
-            reason: "check by profile name is not available yet".into(),
-        }]
+    /// 9.1, 9.2: by profile name, as `start` would check it.
+    fn check(profile: String, overlay: String) -> Vec<sessions::Refusal> {
+        run(|k| Ok(k.check_named(&me(), &profile, &overlay)))
+            .unwrap_or_default()
+            .into_iter()
+            .map(map::refusal)
+            .collect()
+    }
+    fn profiles() -> Vec<sessions::ProfileInfo> {
+        run(|k| Ok(k.profiles(&me())))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| sessions::ProfileInfo {
+                name: p.name,
+                backend: p.backend,
+                model: p.model,
+            })
+            .collect()
     }
     /// `caps` is not used in stage A: the crate's `attach` takes no capabilities.
     fn attach(

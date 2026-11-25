@@ -4,12 +4,21 @@ import { parse } from "./wire";
 import { safeReduce, settle, settleShort, withUnknown } from "./reduce";
 import { joiner, partOf } from "./join";
 
+/** 2.3 `profiles`: a profile the console may use (WIT `profile-info`). */
+export interface ProfileInfo { name: string; backend: string; model?: string | null }
+/** 2.3 `check`: one refusal of a profile on its backend and model (WIT `refusal`). */
+export interface Refusal { field: string; backend: string; model: string; reason: string }
+
 export interface Kernel {
   attach(session: string, after: number, onMessage: (json: string) => void, onEnd: (reason: string) => void):
     Promise<{ ok: true } | { behind: number }>;
   read(session: string, after: number, max: number): Promise<string[]>;
   /** 2.3 `start`: the new session's id; an error rejects as `say`'s does. */
   start(key: string, profile: string, overlay: string, input: string, folder?: string): Promise<string>;
+  /** 2.3 `profiles`: the profiles this console may use, in the kernel's order. */
+  profiles(): Promise<ProfileInfo[]>;
+  /** 2.3 `check`: every refusal of the profile (with the overlay JSON) on its backend; none means it can start. */
+  check(profile: string, overlay: string): Promise<Refusal[]>;
   say(session: string, key: string, input: string): Promise<number>;
   answer(session: string, key: string, ask: string, decision: string): Promise<void>;
   interrupt(session: string, replacement?: string): Promise<void>;

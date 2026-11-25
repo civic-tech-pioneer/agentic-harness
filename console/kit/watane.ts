@@ -81,6 +81,14 @@ export function wataneKernel(w: Watane): Kernel {
     throw fail("unreadable", `${fn} returned an unreadable value`);
   }
 
+  /** `profiles` and `check` return a bare list in the WIT (2.3: no `result`), so the host's value is the array itself; a fake that wraps it in `{ok}` reads the same. */
+  async function list(fn: string, args: object): Promise<unknown> {
+    let r: any;
+    try { r = await w.call(fn, args); }
+    catch (e) { throw fail("host", `${fn} failed: ${(e as Error)?.message ?? String(e)}`); }
+    return r && typeof r === "object" && !Array.isArray(r) && "ok" in r ? r.ok : r;
+  }
+
   return {
     async attach(session, after, onMessage, onEnd) {
       pending++;
@@ -116,6 +124,16 @@ export function wataneKernel(w: Watane): Kernel {
       const r = await call(fn, { key, profile, overlay, input, ...(folder === undefined ? {} : { folder }) });
       if (typeof r !== "string") throw fail("unreadable", `${fn}: the session id is not a string`);
       return r;
+    },
+    async profiles() {
+      const r = await list("sessions.profiles", {});
+      if (!Array.isArray(r)) throw fail("unreadable", "sessions.profiles: not a list");
+      return r as { name: string; backend: string; model?: string | null }[];
+    },
+    async check(profile, overlay) {
+      const r = await list("sessions.check", { profile, overlay });
+      if (!Array.isArray(r)) throw fail("unreadable", "sessions.check: not a list");
+      return r as { field: string; backend: string; model: string; reason: string }[];
     },
     async say(session, key, input) {
       const r = await call("sessions.say", { session, key, input });

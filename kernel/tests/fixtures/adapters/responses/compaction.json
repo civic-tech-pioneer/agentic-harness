@@ -1,0 +1,28 @@
+{
+  "row": "Responses `compaction` items",
+  "input": [
+    {
+      "at": 1763600000000,
+      "event": {
+        "type": "response.output_item.done",
+        "sequence_number": 7,
+        "output_index": 0,
+        "item": {
+          "type": "compaction",
+          "id": "cmp_0a1b2c3d4e5f6071",
+          "encrypted_content": "gAAAA-opaque"
+        }
+      }
+    }
+  ],
+  "expected": [
+    [
+      {
+        "entry": {
+          "kind": "compaction",
+          "body": {}
+        }
+      }
+    ]
+  ]
+}

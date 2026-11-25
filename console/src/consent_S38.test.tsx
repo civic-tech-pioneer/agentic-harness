@@ -8,6 +8,7 @@ afterEach(cleanup);
 
 const folder = "/home/alice/Notes";
 const what = `workspace:${folder}`;
+const tick = () => act(async () => { await new Promise((r) => setTimeout(r, 60)); }); // the view lists the kernel's profiles first (S40 r1)
 const turn = (state: object) => JSON.stringify({ _meta: { watane: { type: "turn", state } } });
 
 it.each([
@@ -18,11 +19,14 @@ it.each([
   let started = false;
   const row = { id: "n1", title: "Notes session", profile: "scratch", backend: "claude", workspace: folder, updated: 1 };
   const host = fakeWatane({
+    "sessions.profiles": () => ({ ok: [{ name: "scratch", backend: "claude", model: null }] }),
+    "sessions.check": () => ({ ok: [] }),
     "sessions.list": () => ({ ok: started ? [row] : [] }),
     "sessions.start-in-folder": () => { started = true; return { ok: "n1" }; },
     "sessions.attach": () => ({ ok: "st1" }),
   });
   const page = render(<Console served={await served(host.w)} />);
+  await tick();
   fireEvent.change(screen.getByRole("textbox", { name: "Folder path" }), { target: { value: folder } });
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Read my notes" } });
   fireEvent.click(screen.getByRole("button", { name: "Start session" }));
@@ -40,15 +44,19 @@ it.each([
   expect(await screen.findByText(`Failed: ${words}`)).toBeInTheDocument();
   page.unmount();
   render(<Console served={await served(host.w)} />);
+  await tick();
   expect(screen.getByTitle("Workspace")).toHaveTextContent(folder);
 });
 
 it("ac1_keeps_the_folder_and_message_when_the_host_rejects_the_path", async () => {
   const host = fakeWatane({
+    "sessions.profiles": () => ({ ok: [{ name: "scratch", backend: "claude", model: null }] }),
+    "sessions.check": () => ({ ok: [] }),
     "sessions.list": () => ({ ok: [] }),
     "sessions.start-in-folder": () => ({ err: { backend: "bad-launch: workspace: protected folder" } }),
   });
   render(<Console served={await served(host.w)} />);
+  await tick();
   const path = screen.getByRole("textbox", { name: "Folder path" });
   const message = screen.getByRole("textbox", { name: "Message" });
   fireEvent.change(path, { target: { value: "/home/alice/.ssh" } });
@@ -67,12 +75,15 @@ it.each([
   const typed = "/home/alice/link-to-notes";
   let started = false;
   const host = fakeWatane({
+    "sessions.profiles": () => ({ ok: [{ name: "scratch", backend: "claude", model: null }] }),
+    "sessions.check": () => ({ ok: [] }),
     "sessions.list": () => started ? list : { ok: [] },
     "sessions.start-in-folder": () => { started = true; return { ok: "n1" }; },
     "sessions.attach": () => ({ ok: "st1" }),
     "sessions.read": () => ({ ok: { entries: [], last: 0 } }),
   });
   render(<Console served={await served(host.w)} />);
+  await tick();
   fireEvent.change(screen.getByRole("textbox", { name: "Folder path" }), { target: { value: typed } });
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Read" } });
   fireEvent.click(screen.getByRole("button", { name: "Start session" }));

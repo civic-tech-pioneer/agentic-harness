@@ -49,6 +49,9 @@ const fake = `(() => {
         return { ok: st };
       }
       if (fn === "sessions.read") return { ok: { entries: [], last: 4 } };
+      // S40 r1 F1.1: the view lists the kernel's profiles only
+      if (fn === "sessions.profiles") return [{ name: "scratch", backend: "claude", model: null }];
+      if (fn === "sessions.check") return [];
       return { ok: null };
     },
   };

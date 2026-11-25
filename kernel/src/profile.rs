@@ -648,6 +648,26 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
     None
 }
 
+/// An OpenAI rule is a tool name or `Name(arg)` (9.6): the name may hold `*` and `?`, which match
+/// the names of the described tools; `rules.rs` decides the rest (a path rule is no rule).
+pub(crate) fn openai_rule_problem(rule: &str) -> Option<String> {
+    let (head, rest) = match rule.find('(') {
+        Some(i) => rule.split_at(i),
+        None => (rule, ""),
+    };
+    let plain: String = head
+        .chars()
+        .map(|c| if matches!(c, '*' | '?') { 'x' } else { c })
+        .collect();
+    let list = [format!("{plain}{rest}")];
+    let (_, problems) = crate::rules::Rules::compile(&list, &[], &[]);
+    // A path rule is the refuse table's row (11, "a path rule is refused on openai"): named once.
+    problems
+        .into_iter()
+        .find(|p| !p.reason.contains("path rule"))
+        .map(|p| format!("rule {rule:?}: {}", p.reason))
+}
+
 pub(crate) fn rule_problem(rule: &str, is_allow: bool) -> Option<String> {
     if rule.chars().any(char::is_control) {
         return Some(format!("rule {rule:?} has a control character"));
@@ -821,9 +841,15 @@ pub fn grammar_problems(pr: &Profile) -> Vec<Problem> {
     for t in pr.tools.iter().filter(|t| !TOOLS.contains(&t.as_str())) {
         o.push(p("tools", format!("{t:?} is not a tool of the allowlist")));
     }
+    let openai = pr.backend.as_deref() == Some("openai");
     for (field, rules, is_allow) in [("allow", &pr.allow, true), ("deny", &pr.deny, false)] {
         for r in rules {
-            if let Some(reason) = rule_problem(r, is_allow) {
+            let problem = if openai {
+                openai_rule_problem(r)
+            } else {
+                rule_problem(r, is_allow)
+            };
+            if let Some(reason) = problem {
                 o.push(p(field, reason));
             }
         }

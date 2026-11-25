@@ -7,6 +7,8 @@ pub mod call;
 pub mod check;
 pub mod error;
 pub mod launch;
+pub mod named;
+pub mod openai;
 pub mod overlay;
 pub mod profile;
 pub mod queue;
@@ -20,6 +22,7 @@ pub mod transcript;
 
 pub use check::check;
 pub use error::{KernelError, Problem, Refusal};
+pub use named::{ProfileInfo, MAX_PROFILES};
 pub use overlay::{apply_overlay, parse_overlay, Overlay};
 pub use profile::{
     grammar_problems, parse_profile, Backend, PreToolCheck, Profile, Skill, Subagent, SystemPrompt,
@@ -38,7 +41,7 @@ pub use refuse::{refuse, Catalog, CatalogModel};
 pub use rules::{Rules, Verdict};
 pub use sessions::{
     input_text, Attached, Called, FakeHost, Host, HostCall, Kernel, Outcome, ProviderEvent, Push,
-    Request, SessionInfo, SinkOutcome, Started, StreamError, MAX_TIMER_MS,
+    Request, SessionInfo, SinkOutcome, Started, StreamError, Tool, MAX_TIMER_MS,
 };
 pub use state::{Buffered, Counts, MemState, State, TooLarge, MAX_VALUE};
 pub use transcript::{chunk_key, Joiner, Meta, NewEntry, Page, Replay, Transcript};

@@ -1,7 +1,7 @@
 //! The host-independent mappings between the crate's types and the WIT's (AC4, AC5, AC6).
 
 use crate::exports::mods::agent::sessions as wit;
-use crate::watane::host::{claude_types, streams};
+use crate::watane::host::{agent_tools, claude_types, streams};
 use agent_kernel::{KernelError, Outcome, Refusal, SinkOutcome, StreamError};
 use serde_json::Value;
 
@@ -71,6 +71,19 @@ pub fn start_error(e: claude_types::StartError) -> String {
         E::Full => "full".into(),
         E::NotOwner => "not-owner".into(),
         E::NotDirect => "not-direct".into(),
+    }
+}
+
+/// An `agent-tools` error as the crate's `Err(cause)`: the case in kebab-case, with its text for
+/// `consent-pending` and `consent-refused`.
+pub fn tools_error(e: agent_tools::ToolsError) -> String {
+    use agent_tools::ToolsError as E;
+    match e {
+        E::NotGranted => "not-granted".into(),
+        E::UnknownHandle => "unknown-handle".into(),
+        E::UnknownTool => "unknown-tool".into(),
+        E::ConsentPending(what) => format!("consent-pending({what})"),
+        E::ConsentRefused(what) => format!("consent-refused({what})"),
     }
 }
 
@@ -222,6 +235,22 @@ mod tests {
         assert_eq!(start_error(E::Full), "full");
         assert_eq!(start_error(E::NotOwner), "not-owner");
         assert_eq!(start_error(E::NotDirect), "not-direct");
+    }
+
+    #[test]
+    fn ac1_tools_errors_map_to_their_case_name() {
+        use agent_tools::ToolsError as E;
+        assert_eq!(tools_error(E::NotGranted), "not-granted");
+        assert_eq!(tools_error(E::UnknownHandle), "unknown-handle");
+        assert_eq!(tools_error(E::UnknownTool), "unknown-tool");
+        assert_eq!(
+            tools_error(E::ConsentPending("workspace:/a".into())),
+            "consent-pending(workspace:/a)"
+        );
+        assert_eq!(
+            tools_error(E::ConsentRefused("shell".into())),
+            "consent-refused(shell)"
+        );
     }
 
     #[test]
