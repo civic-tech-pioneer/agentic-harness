@@ -303,9 +303,6 @@ pub struct FakeHost {
     pub tools_error: Option<String>,
     /// Handles `tools_open` answered: `h1`, `h2`, ...
     pub next_handle: u64,
-    /// `caller.identity()` of the current call as the host resolved it (2.3); `None` when the
-    /// test does not model origins.
-    pub origin: Option<String>,
 }
 
 impl FakeHost {
