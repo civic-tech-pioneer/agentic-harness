@@ -30,7 +30,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 ## Sketched
 
 ### S40: stage D, the consumer half: Alice runs a profile on her ChatGPT plan in the console
-(deputy-4, 2026-11-25 07:25 UTC: r3 answered at 890caad by the cut; installed-agent red once on it ('Timed out waiting for Claude Code settings', green on 3f13dc1), rerun once. r4 check-in: worth one more round, a reading check of the cut against J11 with 2 blocking left in r3, both in the cut mechanism. r4: Codex review, a follow-up in https://chatgpt.com/local/6b05eeef-aae8-83eb-85bf-a60c3e428074, dispatched 08:10 UTC by deputy-4 from the Desktop app.)
+(deputy-4, 2026-11-25 07:25 UTC: r3 answered at 890caad by the cut; installed-agent red once on it ('Timed out waiting for Claude Code settings', green on 3f13dc1), rerun once. r4 check-in: worth one more round, a reading check of the cut against J11 with 2 blocking left in r3, both in the cut mechanism. r4: Codex review, a follow-up in https://chatgpt.com/local/6b05eeef-aae8-83eb-85bf-a60c3e428074, dispatched 07:28 UTC by deputy-4 from the Desktop app.)
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S113 codex, S112 codex; the
 consumer-halves lane, sketched 2026-11-24 by deputy-3: it builds against watane `slice/s111` (PR #28), whose branch holds a
 first version of host 19.4 `https-stream` with the `openai` account and dev's scripted Responses server; it merges main
