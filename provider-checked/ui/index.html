@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code, checked</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+  <h1>Claude Code, checked</h1>
+  <p>Every input, tool check and ask of a session is judged before it goes on. A call is safe when
+     every answer of the judge is at or under <em>safe at</em>, unsafe when any is at or over
+     <em>unsafe at</em>, and unsure in between; only a safe call goes on.</p>
+  <p>The judge's origin: <code id="origin">…</code>. The key is entered in the app, not here.</p>
+  <form id="form">
+    <label>Unsafe at <input id="unsafe-at" type="number" min="0" max="1" step="0.05" required></label>
+    <label>Safe at <input id="safe-at" type="number" min="0" max="1" step="0.05" required></label>
+    <button type="submit">Save</button>
+  </form>
+  <p id="status" role="status"></p>
+</main>
+<script src="/watane.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
