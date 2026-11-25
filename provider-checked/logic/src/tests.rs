@@ -187,7 +187,7 @@ fn judge_says(f: &mut Fake, j: &str, status: u64, body: &str) {
 }
 
 fn answers(harm: f64, intent: f64) -> String {
-    json!({"answers": {"harm": {"probability": harm}, "intent": {"probability": intent}}})
+    json!({"model": "jev-1.14.0", "answers": {"unsafe": {"type": "noul", "noul": harm}, "off_task": {"type": "noul", "noul": intent}}})
         .to_string()
 }
 
@@ -521,8 +521,8 @@ fn ac5_a_check_is_answered_none_when_safe_and_deny_otherwise() {
         f.calls("answer"),
         [
             "answer cl1 c1 none",
-            "answer cl1 c2 deny:harm: 0.50; intent: 0.10",
-            "answer cl1 c3 deny:harm: 0.10; intent: 0.80",
+            "answer cl1 c2 deny:unsafe: 0.50; off_task: 0.10",
+            "answer cl1 c3 deny:unsafe: 0.10; off_task: 0.80",
         ]
     );
     // The item reached the kernel's stream unchanged, then `checking`, then the verdict.
@@ -562,8 +562,8 @@ fn case42_an_ask_is_answered_only_deny_and_safe_leaves_it_unanswered() {
     assert_eq!(
         f.calls("answer"),
         [
-            "answer cl1 a2 deny:harm: 0.90; intent: 0.00",
-            "answer cl1 a3 deny:harm: 0.50; intent: 0.00",
+            "answer cl1 a2 deny:unsafe: 0.90; off_task: 0.00",
+            "answer cl1 a3 deny:unsafe: 0.50; off_task: 0.00",
         ]
     );
 }
@@ -1117,7 +1117,7 @@ fn ac11_the_thresholds_decide_the_verdict() {
     from_claude(&mut f, &claude, check("c2"));
     judge_p(&mut f, "j2", 0.8);
     assert_eq!(f.calls("answer")[0], "answer cl1 c1 none");
-    assert!(f.calls("answer")[1].starts_with("answer cl1 c2 deny:harm: 0.80"));
+    assert!(f.calls("answer")[1].starts_with("answer cl1 c2 deny:unsafe: 0.80"));
 }
 
 #[test]
