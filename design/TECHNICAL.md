@@ -1437,7 +1437,9 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     kept as stored so every request sends the same bytes, and each tool's `parallel` and
     `idempotent`. A profile with no toolsets opens nothing and sends no `tools`. A describe
     that returns `unknown-handle` immediately after opening waits for the opening call to commit.
-    The next retry describes that same handle before sending a request. `consent-pending(<what>)`
+    The next retry describes that same handle before sending a request.
+    On Watane this delays every toolset session’s first request by about 1 s and extends F6.1’s window to every such first request.
+    `consent-pending(<what>)`
     from either call sets the live activity `consent {what}` and the `retry` deadline of the
     backoff above (the loop is `retrying`; the firing opens or describes again); `consent-refused`,
     `not-granted` or any other failure ends the turn `idle {failed {error: <that text>}}`.
@@ -2541,6 +2543,20 @@ machine. A stage is done only within its budgets.
   250 ms, which the real run failed by timer jitter alone (review r6: worst 28.5 ms); S36 r6 set it at twice the nominal
   spacing and remeasured (the figures above). A host that exits as a zombie no one reaps (a container's init) counts as
   stopped (`/proc/<pid>/stat`).
+
+- **Stage D** (S128 r1, 2026-11-25, Linux 6.18.57 x86-64, 5 visible CPUs
+  with a 4-CPU quota, load average 4.20/2.81/2.24, Watane `548b4e1b` with the
+  test-only pacing and commit trace patch in `console/test/host/stage-d-tools/`).
+  `npm run test:load:d` ran eight Claude sessions at the Stage B rate and
+  eight OpenAI sessions at one four-tool step per second for a common
+  7.06 s. The scripted server alternated owners on a 125 ms grid. Four
+  sessions of each backend were attached in separate Chromium pages.
+  Item delay from source write to `watane.on` was **56.9 ms p95** across
+  1,697 items (Claude 57.1 ms, OpenAI 54.4 ms). The page's Stop button to
+  `idle {interrupted}` took **82.6 ms p95**. Actual host and mod commits,
+  including fsync, occupied **43.6%** of the common window. The kernel
+  state I/O check measured **647,004 bytes** per four-job step at 10 steps
+  and **628,788 bytes** at 1,000 steps, within 10% and below 4 MiB.
 
 ## 17. Build plan
 
