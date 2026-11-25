@@ -14,7 +14,7 @@ section 17. Since S2 the three design files are the contract; N5 stays open unti
 | B | H2 + unchecked provider + kernel Claude sessions; dev's fake `claude` | watane host, dev; kernel; provider | cross-project, waits |
 | C | H6 consents, app words, `claude` binary setting, plan line | watane app, pkg | cross-project, waits |
 | D | H3 accounts, OpenAI loop (kernel 9.5), scripted Responses server | watane host, dev; kernel | cross-project, waits |
-| E | Checked provider (needs a judge account, V7) | `provider-checked/` (R-B1); watane half done (S122) | ready: judge is Jev (Human answers, 2026-11-25) |
+| E | Checked provider (needs a judge account, V7) | `provider-checked/` (R-B1); watane half done (S122) | S127 in flight; V7 on Jev: p50 173 ms, p95 267 ms |
 | F | Delegation and counters (kernel 9.7), factory profiles | kernel | N5 = (a) for now |
 
 **Cross-project dependency.** Stages A to D put code in watane (`../../watane`: host, dev, pkg,
@@ -28,6 +28,37 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 ## In flight
 
 ## Sketched
+### S127: stage E: Alice's Claude session runs through the checked provider, with Jev as its judge
+(in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S126 codex, S125 codex; the main
+line, sketched 2026-11-25 by deputy-6; spec-check 382f793 (deputy-6, stage E scope: 14 points, folded in below).)
+Story (AGT-J3; TECHNICAL 17 stage E, "this repository" column): Alice installs the checked provider, enters her judge's key
+and origin in the app (watane S122), and runs a Claude session through it: before each tool call the console shows
+`checking`, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and after repeated denials
+the breaker stops the session and says why.
+Outcomes (user-sim on `watane-dev serve`, dev's fake `claude` and dev's scripted judge, plays through `Raw`):
+1. A tool call the judge scores safe runs; the console shows `checking` while the judge answers (case 31 for `checking`).
+2. A call scored unsafe, or in the unsure band, is denied before it runs, and the transcript shows the verdict and a
+   reason naming each question and its score (AGT-F-32, AGT-F-34).
+3. A judge that times out, answers garbage, refuses the key or has no key denies (cases 19 `judge`, 25, 44).
+4. Three denials in a row, or 10 of the last 50, interrupt the session with a verdict item that says why (the breaker).
+5. Cases 32, 33, 36, 37, 38, 42, 43, 46, 47, 50, 51 (provider parts) pass, and the stage E budgets of 17 hold.
+Decisions (deputy-6, Door C, listed for the human's veto): see Deputy decisions 2026-11-25 "judge wire shape". In short:
+the judge call is TypeSafe System One (`POST <origin>/v1/systemone`, Bearer, `noul` questions in one request); the
+provider maps the probabilities to `safe | unsafe | unsure` with thresholds kept on its own page (default: unsafe at
+>= 0.7, safe at <= 0.3, unsure between, for the harm question); `reasons` are provider-written text naming each
+question and its score. The origin stays the one Alice enters in the app (TECHNICAL 5; 10's "judge URL" setting goes);
+the provider's `[http]` lists `api.typesafe.ai` (and the fake's `judge.test` in tests); another judge API is a derived
+provider. V7 (Jev, the Mac, 2026-11-25): p50 173 ms, p95 267 ms, max 846 ms per call, new TLS each, 2 questions.
+Spec work in the slice (spec-change): TECHNICAL 10 (request shape, threshold rule, retries within one deadline, the
+`verdict`/`outcome` field names of 9.8 and 10 made one), 9.8's entry, 16 cases 25 and 44 (unsure is the band),
+FUNCTIONAL AGT-F-32/34 and line 36 wording ("scores" not "says"), and V7 into ARCHITECTURE-PROPOSAL 18.
+Constraints: **no cloud test calls an external provider** (the human, 2026-11-25): no Jev call in CI or a cloud
+session; tests use dev's scripted judge with `Raw` replies in System One's shape. No change to watane: dev's `Play`
+shape stays (Leftovers there); a gap is a question to the deputy. A real Jev run is the deputy's, on the Mac.
+Touches: `provider-checked/` (new, R-B1), `kernel/` (`checking` activity and verdict items only where 9.3/9.8 need it),
+`console/` (the activity and verdict display), `design/` (above). Boundary: TECHNICAL 14 (the key never reaches the
+provider or kernel; only the owner may spend the judge: adversary runs). Protects: *core*.
+
 
 ### S40: stage D, the consumer half: Alice runs a profile on her ChatGPT plan in the console
 (deputy-4, 2026-11-25 07:25 UTC: r3 answered at 890caad by the cut; installed-agent red once on it ('Timed out waiting for Claude Code settings', green on 3f13dc1), rerun once. r4 check-in: worth one more round, a reading check of the cut against J11 with 2 blocking left in r3, both in the cut mechanism. r4: Codex review, a follow-up in https://chatgpt.com/local/6b05eeef-aae8-83eb-85bf-a60c3e428074, dispatched 07:28 UTC by deputy-4 from the Desktop app; r4 (07:32): 3/1, changes (3) (validator RETURN, adversary BREACHED: a queued continuation can dispatch under another origin, user-sim REJECTED); trend 2 to 3, all in restart: the cut's last answer round. Deputy rulings (PR comment 7156848307): F4.1 stands (a turn waiting on an approval is mid-turn), F4.2 stands as an outcome (no request under any origin but the owner's; a busy refusal is fine), F4.3 accepted as a known limit (a message finished just before a restart is shown but not in the model's history; one line in 9.5), P4.1 taken; answer r4: Claude routine `trig_01WwvGqijC7yA3Tx3tB1XvrC`, fires 08:19 UTC. r5 check-in: worth one more round only as a check of F4.1 and F4.2 (2 blocking, one a breach); a new blocking finding in restart after it goes to the human as stalled; r4 answered at 10ed0a3 (F4.1 fixed; F4.2 by the busy refusal for start, say and interrupt; the builder named a residual: a running turn's later request can still wait in the FIFO); r5: Codex, same task, dispatched 08:30 UTC, checks F4.1, F4.2 and grades the residual.) [deputy-5, 2026-11-25: r5 (09:29, posted 12:13 UTC, Codex held by a signed-out pane): 1/0, changes (1), validator RETURN, adversary BREACHED, user-sim ACCEPTED on the cut; F4.1 fixed; F5.1 = F4.2 a second time (the builder's FIFO residual): stalled, cut by deputy-5 (PR comment 7162124773): no model request of an OpenAI session is sent under any origin but its owner's; a running turn's later request with no slot stops `busy` (state kept, owner's next message continues) or waits only for its own owner; general origin plumbing and slot fairness out of scope (Upkeep if wanted). r6 check-in: worth one focused round, 1 blocking left, a breach, trend falling 3, 1; a new blocking finding in restart or slots after r6 goes to the human. Answer r5: Claude routine `trig_01JVYBY9zA2NiNuDEi7Rff2o`, fires 12:17 UTC.; r5 answered at 553c95f (F5.1: a later request with no slot stops busy; `Origins` checker); r6: Codex, same task, 12:29 UTC; r6 (12:32): 1/0, changes (1), validator PASS, adversary BREACHED, user-sim ACCEPTED: F6.1 a retry or resume timer of a session whose owner mod was disabled fires under the kernel's origin (watane substitutes it); new after r6, so the human chose (a), then (b) if it fails (Human answers). CI green at 553c95f. Answer r6: Claude routine `trig_01GV5y7MPmh3LK88sd4xySkP`, fires 16:21 UTC; r7 to Codex in the same task, a check of F6.1 only; a blocking r7 means (b): accept F6.1 as a known limit, Upkeep, merge.; r6 answered at 91ae032; r7 (16:30): 1/0, changes (1), adversary HELD, user-sim REJECTED: F7.1 the r6 fix also stops a valid owner's timer firing (watane reports a timer callback's caller as `host`), so the automatic resume after a usage-limit reset broke; (a) did not succeed, so (b) (PR comment 7168348172): revert to 553c95f, F6.1 a known limit (one line in 9.5), Upkeep; answer r7: Claude routine `trig_01KGmYmFKpPqioTnJBgJxdtU`, fires 16:41 UTC; then a mechanical check (code diff against 553c95f is the 9.5 line only), green CI, merge with no further round.]
@@ -420,6 +451,16 @@ reviewer claude. Cloud.
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
+
+- 2026-11-25 (deputy-6, S127, **Door C, for the human's veto**) judge wire shape: Jev (the human's choice) speaks TypeSafe
+  System One, and no operator may sit between (VISION), so the checked provider's judge call is `POST
+  <origin>/v1/systemone` with `noul` questions in one request; it maps probabilities to `safe | unsafe | unsure` by
+  thresholds on its own page (default 0.7/0.3, the docs' starting values) and writes the reasons itself. Origin: entered
+  in the app only (TECHNICAL 5 wins over 10's "judge URL" setting). `[http]`: `api.typesafe.ai`; "a judge they chose"
+  (VISION V6) holds by choosing or deriving a provider, so no VISION edit. Clauses: Human answers 2026-11-25 (2), (4);
+  TECHNICAL 5, 10; dev TECHNICAL 17 item 17 (the provider fixes its shape and scripts `Raw`). Against: TECHNICAL 10's
+  `{safe|unsafe|unsure, reasons}` judge answer, fixed in S127. Undo: a second request shape in the provider (an adapter
+  per judge API), before any participant relies on it.
 
 - 2026-11-25 (deputy-4, S40 r4) F4.3 accepted as a known limit: a message finished in the window between its transcript write and `response.completed` when the host restarts is shown but missing from the model's history; Alice repeats it. Clause: rulings narrow; same kind as the accepted no-auto-continue limit (S40-CUT). Undo: write the finished message to request history with the transcript, a later slice.
 
