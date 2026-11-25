@@ -120,37 +120,51 @@ async function mixedLoad() {
   const fake = join(dirname(preview.home), "claude", "fake-claude.json");
   ensure(existsSync(fake), "the preview needs watane-dev's fake-claude");
   writeFileSync(fake, JSON.stringify({ steps: [
-    { do: "expect-user" }, { do: "load", rate: { deltas: 50, entries: 5, bytes: 4096, seconds: 20 } }, { do: "idle" },
+    { do: "expect-user" }, { do: "message", text: "ready" }, { do: "result" }, { do: "idle" },
+    { do: "expect-user" }, { do: "load", rate: { deltas: 50, entries: 5, bytes: 4096, seconds: 20 } },
+    { do: "idle" },
   ] }));
   const sessions = [];
+  async function startBatch(backend) {
+    const results = await Promise.allSettled(Array.from({ length: 8 }, async (_, index) => {
+      const own = index < 4;
+      const profile = backend === "openai" ? "Tools" : "scratch";
+      const args = { key: keyOf(), input: `load ${backend} ${index}` };
+      const id = own
+        ? await ok("sessions.start", { ...args, profile, overlay: "{}" })
+        : await ok(backend === "openai" ? "api.start-openai" : "api.start", args, preview.clientUrl);
+      const session = { id, own, backend };
+      sessions.push(session);
+      return session;
+    }));
+    return results.map((result) => {
+      if (result.status === "rejected") throw result.reason;
+      return result.value;
+    });
+  }
+  async function entriesOf({ id, own }) {
+    const args = { session: id, after: 0, max: 40 };
+    const entries = own
+      ? (await ok("sessions.read", { ...args, before: null })).entries
+      : await ok("api.read", args, preview.clientUrl);
+    return entries.map((entry) => typeof entry === "string" ? JSON.parse(entry) : entry);
+  }
   try {
-    for (const backend of ["claude", "openai"]) {
-      const batch = Array.from({ length: 8 }, async (_, index) => {
-        const own = index < 4;
-        const profile = backend === "openai" ? "Tools" : "scratch";
-        const args = { key: keyOf(), input: `load ${backend} ${index}` };
-        const id = own
-          ? await ok("sessions.start", { ...args, profile, overlay: "{}" })
-          : await ok(backend === "openai" ? "api.start-openai" : "api.start", args, preview.clientUrl);
-        const session = { id, own, backend };
-        sessions.push(session);
-        return session;
-      });
-      const results = await Promise.allSettled(batch);
-      for (const result of results) {
-        if (result.status === "rejected") throw result.reason;
-      }
-    }
-    await Promise.all(sessions.map(({ id, own, backend }) => until(async () => {
-      const args = { session: id, after: 0, max: 40 };
-      const entries = own
-        ? (await ok("sessions.read", { ...args, before: null })).entries
-        : await ok("api.read", args, preview.clientUrl);
-      const parsed = entries.map((entry) => typeof entry === "string" ? JSON.parse(entry) : entry);
-      return backend === "openai"
-        ? parsed.filter((entry) => entry.kind === "tool" && entry.body.status === "completed").length >= 4
-        : parsed.some((entry) => entry.kind === "message" && entry.body.role === "agent");
-    }, 30_000, `${backend} session ${id} to produce entries under mixed load`)));
+    const claude = await startBatch("claude");
+    await Promise.all(claude.map((session) => until(async () => (
+      (await entriesOf(session)).filter((entry) => entry.kind === "turn").at(-1)?.body.state === "idle"
+    ), 20_000, `Claude session ${session.id} to finish its warm-up turn`)));
+    await Promise.all(claude.map(({ id, own }) => {
+      const args = { session: id, key: keyOf(), input: "begin load" };
+      return own ? ok("sessions.say", args) : ok("api.say", args, preview.clientUrl);
+    }));
+    await startBatch("openai");
+    await Promise.all(sessions.map((session) => until(async () => {
+      const entries = await entriesOf(session);
+      return session.backend === "openai"
+        ? entries.filter((entry) => entry.kind === "tool" && entry.body.status === "completed").length >= 4
+        : entries.some((entry) => entry.kind === "message" && entry.body.content?.[0]?.text?.startsWith("entry "));
+    }, 30_000, `${session.backend} session ${session.id} to produce entries under mixed load`)));
   } finally {
     await Promise.all(sessions.map(({ id, own }) => own
       ? ok("sessions.interrupt", { session: id, replacement: null })
@@ -165,17 +179,18 @@ async function main() {
   if (!have.error && !/^wasm32-wasip2$/m.test(have.stdout)) execFileSync("rustup", ["target", "add", "wasm32-wasip2"], { stdio: "inherit" });
   execFileSync("cargo", ["build", "--release", "--target", "wasm32-wasip2", "-p", "agent-mod"], { cwd: join(root, "kernel"), stdio: "inherit" });
   const tdir = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--format-version", "1"], { cwd: join(root, "kernel"), encoding: "utf8" })).target_directory;
-  cpSync(join(tdir, "wasm32-wasip2", "release", "agent_mod.wasm"), join(wasmSrc, "logic.wasm"));
   execFileSync("npm", ["run", "build"], { cwd: consoleDir, stdio: "inherit" });
   execFileSync("cargo", ["build", "--release", "-q"], { cwd: join(consoleDir, "test", "host", "seed"), stdio: "inherit" });
-  rmSync(join(wasmSrc, "ui"), { recursive: true, force: true });
-  cpSync(join(root, "ui"), join(wasmSrc, "ui"), { recursive: true });
-  cpSync(wasmSrc, wasmDir, { recursive: true, filter: (s) => !s.includes("/target") });
+  cpSync(wasmSrc, wasmDir, { recursive: true, filter: (path) =>
+    path !== join(wasmSrc, "ui") && path !== join(wasmSrc, "logic.wasm") && !path.includes("/target"),
+  });
+  cpSync(join(tdir, "wasm32-wasip2", "release", "agent_mod.wasm"), join(wasmDir, "logic.wasm"));
+  cpSync(join(root, "ui"), join(wasmDir, "ui"), { recursive: true });
 
   // Dev stages the linked provider and rewrites its component. Keep it local
   // to this preview so another host test can build the same provider.
   cpSync(join(root, "provider"), providerDir, {
-    recursive: true, filter: (path) => !path.includes("/target"),
+    recursive: true, filter: (path) => path !== join(root, "provider", "logic.wasm") && !path.includes("/target"),
   });
   const added = dev(["add", providerDir], wasmDir);
   if (added.spawnError || added.status !== 0) {
