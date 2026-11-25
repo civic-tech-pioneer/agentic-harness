@@ -1383,8 +1383,13 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     // ---- restart
 
-    /// R4 (9.5 "After a restart"): `requesting` and `ready` go to `ready` and take a request slot
-    /// or wait; the other states stay.
+    /// R4 (9.5 "After a restart"; the deputy's cut, 2026-11-25): a `running` turn (`requesting`,
+    /// `ready`, `retrying` or `tools`) stops and becomes `unknown`, not running, with the
+    /// transcript up to its last finished message. Its open and pending calls get `aborted`; its
+    /// `retry` deadline goes. The step makes no host call for it: no request, no toolset, no
+    /// consent, under whatever origin runs the step. A `stopped {quota}` that recording the
+    /// aborts gave stays. `waiting` and `paused` are unchanged. The owner's next `say` continues
+    /// the session, in her own call.
     pub(crate) fn openai_restart(
         &mut self,
         rec: &mut Record,
@@ -1393,31 +1398,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         work: &mut Work,
         now: u64,
     ) -> Result<(), KernelError> {
+        if !matches!(rec.turn, Turn::Running { .. }) {
+            return Ok(());
+        }
         let Some(mut ls) = self.loop_load(&rec.id) else {
             return Ok(());
         };
+        let before = rec.deadlines.clone();
         let past = a.past;
-        if matches!(ls.phase, Phase::Tools { .. }) {
-            let mut cx = Cx {
-                slots,
-                a,
-                work,
-                past,
-                now,
-                dirty: false,
-            };
-            self.restart_tools(rec, &mut ls, &mut cx)?;
-            let dirty = cx.dirty;
-            self.loop_save(&rec.id, &ls)?;
-            if dirty {
-                slots.save(&mut self.state)?;
-            }
-            return Ok(());
-        }
-        let attempt = match &ls.phase {
-            Phase::Requesting { attempt, .. } | Phase::Ready { attempt, .. } => *attempt,
-            _ => return Ok(()),
-        };
         let mut cx = Cx {
             slots,
             a,
@@ -1426,13 +1414,13 @@ impl<S: State, H: Host> Kernel<S, H> {
             now,
             dirty: false,
         };
-        ls.phase = Phase::Ready {
-            wait: None,
-            attempt,
-        };
-        self.go(rec, &mut ls, &mut cx, Pending::default(), None, attempt)?;
-        let dirty = cx.dirty;
+        self.openai_stop(rec, &mut ls, &mut cx)?;
+        if rec.turn.is_active() {
+            self.turn_to(rec, past, Turn::Unknown, now, cx.work)?;
+        }
+        let mut dirty = cx.dirty;
         self.loop_save(&rec.id, &ls)?;
+        dirty |= self.sync_timer(rec, slots, a, &before, now, false);
         if dirty {
             slots.save(&mut self.state)?;
         }

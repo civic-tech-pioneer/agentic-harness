@@ -696,25 +696,6 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         Ok(())
     }
-
-    /// 9.5 "After a restart", the `tools` row: the jobs the old boot ran are gone, and its handle
-    /// with them. Every open call gets `aborted`, `idempotent` ones included, and so does every
-    /// pending one, with no host call: the step may run in the restart pass, under the origin of
-    /// another owner's call. The turn goes on as for any aborted job (the next request).
-    /// Running an idempotent job again is not built yet (the deputy, 2026-11-24).
-    pub(crate) fn restart_tools(
-        &mut self,
-        rec: &mut Record,
-        ls: &mut LoopState,
-        cx: &mut Cx,
-    ) -> Result<(), KernelError> {
-        ls.jobs = 0;
-        for call in std::mem::take(&mut ls.calls) {
-            self.put_output(rec, ls, cx, &call.item, "aborted".into(), false)?;
-        }
-        ls.phase = Phase::Tools { wait: None };
-        self.settle_calls(rec, ls, cx, false)
-    }
 }
 
 impl Call {

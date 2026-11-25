@@ -711,8 +711,10 @@ fn ac8_requests_wait_in_a_fifo_and_an_owner_at_its_cap_never_blocks_another() {
     assert_eq!(lp(&mut k, &d)["state"], "idle");
 }
 
+/// 9.5 "After a restart" (the deputy's cut, 2026-11-25): a running turn, requesting or retrying,
+/// becomes `unknown` and sends nothing; a pause is kept.
 #[test]
-fn ac9_a_restart_sends_the_loop_again_or_waits_and_keeps_retries_and_pauses() {
+fn ac9_a_restart_stops_a_running_loop_unknown_and_keeps_pauses() {
     let mut k = kernel();
     let req = started(&mut k, "alice", "k1");
     let retry = started(&mut k, "alice", "k2");
@@ -735,29 +737,26 @@ fn ac9_a_restart_sends_the_loop_again_or_waits_and_keeps_retries_and_pauses() {
     for _ in 0..4 {
         k.timer("restart");
     }
-    assert_eq!(
-        starts(&k).len(),
-        before + 1,
-        "only the requesting one is sent"
-    );
-    let l = lp(&mut k, &req);
-    assert_eq!(l["state"], "requesting");
-    assert_ne!(l["stream"], old.as_str());
-    assert!(matches!(turn(&mut k, &req), Turn::Running { .. }));
-    assert_eq!(slots(&mut k).request, 1);
-    assert_eq!(lp(&mut k, &retry)["state"], "retrying");
-    assert_eq!(rec(&mut k, &retry).deadlines, rec_retry.deadlines);
+    assert_eq!(starts(&k).len(), before, "nothing is sent");
+    assert!(!rec_retry.deadlines.is_empty());
+    for id in [&req, &retry] {
+        assert_eq!(lp(&mut k, id)["state"], "idle");
+        assert_eq!(turn(&mut k, id), Turn::Unknown);
+        assert!(
+            rec(&mut k, id).deadlines.is_empty(),
+            "the retry deadline goes"
+        );
+    }
+    assert_eq!(slots(&mut k).request, 0);
     assert_eq!(turn(&mut k, &paused), rec_paused.turn);
     assert_eq!(rec(&mut k, &paused).deadlines, rec_paused.deadlines);
-    for id in [&req, &retry, &paused] {
-        assert_ne!(turn(&mut k, id), Turn::Unknown);
-    }
     // The request of the old boot is gone with its key.
     assert!(k.state.get(&format!("stream/{old}")).is_none());
 }
 
+/// With every slot of the new boot held, the step still only stops the turn: nothing waits.
 #[test]
-fn ac9_a_restart_with_no_slot_free_waits_in_the_fifo() {
+fn ac9_a_restart_with_no_slot_free_takes_no_place_in_the_fifo() {
     let mut k = kernel();
     let id = started(&mut k, "alice", "k1");
     k.host.generation = 2;
@@ -773,9 +772,9 @@ fn ac9_a_restart_with_no_slot_free_waits_in_the_fifo() {
     assert_eq!(slots(&mut k).request, 8);
     let r = k.read("alice", &id, 0, None, 1);
     assert!(r.is_ok());
-    assert_eq!(lp(&mut k, &id)["state"], "ready");
-    assert!(lp(&mut k, &id)["wait"].is_u64());
-    assert!(matches!(turn(&mut k, &id), Turn::Running { .. }));
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    assert!(lp(&mut k, &id)["wait"].is_null());
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
 }
 
 #[test]

@@ -977,8 +977,9 @@ fn ac6_the_kernel_s_sixteen_job_slots_hold_for_a_third_owner() {
 
 // ---- AC7: restart
 
-/// 9.5 "After a restart" (the deputy, 2026-11-24): every open job is aborted, `idempotent` ones
-/// included; running them again is not built yet (case 22's idempotent half).
+/// 9.5 "After a restart" (the deputy, 2026-11-24 and 2026-11-25): every open job is aborted,
+/// `idempotent` ones included, and the turn becomes `unknown` with no request; running them
+/// again is not built yet (case 22's idempotent half). The owner's `say` sends the outputs.
 #[test]
 fn ac7_a_restart_aborts_every_open_job_idempotent_ones_included() {
     let mut k = kernel();
@@ -997,6 +998,10 @@ fn ac7_a_restart_aborts_every_open_job_idempotent_ones_included() {
     k.read("alice", &id, 0, None, 10).unwrap();
     assert_eq!(calls_of(&k).len(), 2, "no job runs again");
     assert_eq!(slots(&mut k).job, 0);
+    assert_eq!(starts(&k).len(), 1, "no request follows");
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    k.say("alice", &id, "s1", IN).unwrap();
     let reqs = starts(&k);
     assert_eq!(reqs.len(), 2);
     assert_eq!(
@@ -1006,7 +1011,6 @@ fn ac7_a_restart_aborts_every_open_job_idempotent_ones_included() {
             ("c2".to_string(), "aborted".to_string()),
         ]
     );
-    assert_eq!(lp(&mut k, &id)["state"], "requesting");
 }
 
 /// Pending calls are aborted too: starting them would call `agent-tools` on the old boot's
@@ -1022,25 +1026,24 @@ fn ac7_a_restart_aborts_the_pending_calls_too() {
     k.host.generation = 2;
     k.read("alice", &id, 0, None, 10).unwrap();
     assert_eq!(calls_of(&k).len(), 8, "the two pending calls do not start");
+    assert_eq!(starts(&k).len(), 1);
+    k.say("alice", &id, "s1", IN).unwrap();
     let outs = outputs(&starts(&k)[1]);
     assert_eq!(outs.len(), 10);
     assert!(outs.iter().all(|o| o.1 == "aborted"));
 }
 
 #[test]
-fn ac7_a_restart_with_every_job_aborted_goes_ready_and_sends_the_request() {
+fn ac7_a_restart_with_every_job_aborted_is_unknown_and_sends_nothing() {
     let mut k = kernel();
     let id = session_with_calls(&mut k, "alice", "k", &[call_of("c1", "notes_b", "{}")]);
     k.host.generation = 2;
     k.read("alice", &id, 0, None, 10).unwrap();
-    let reqs = starts(&k);
-    assert_eq!(reqs.len(), 2);
-    assert_eq!(
-        outputs(&reqs[1]),
-        [("c1".to_string(), "aborted".to_string())]
-    );
-    assert_eq!(lp(&mut k, &id)["state"], "requesting");
+    assert_eq!(starts(&k).len(), 1, "no request follows");
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
     assert_eq!(slots(&mut k).job, 0);
+    assert_eq!(slots(&mut k).request, 0);
 }
 
 #[test]
@@ -1311,8 +1314,8 @@ fn tools_effects(k: &K) -> Vec<HostCall> {
 // ---- review r2
 
 /// F2.1 (the deputy's ruling, 9.5 "After a restart"): an open job of an idempotent tool is
-/// aborted after a restart, like any other; no toolset is opened and no job is sent again, and
-/// the turn goes on with the next request.
+/// aborted after a restart, like any other; no toolset is opened and no job is sent again
+/// (and, by the r3 cut, no request: the turn is `unknown`).
 #[test]
 fn review_restart_aborts_an_idempotent_job_and_opens_and_calls_nothing() {
     let mut k = kernel();
@@ -1322,19 +1325,15 @@ fn review_restart_aborts_an_idempotent_job_and_opens_and_calls_nothing() {
     k.host.generation = 2;
     k.read("alice", &id, 0, None, 10).unwrap();
     assert_eq!(tools_effects(&k), [], "no ToolsOpen and no ToolsCall");
-    let reqs = starts(&k);
-    assert_eq!(reqs.len(), 1);
-    assert_eq!(
-        outputs(&reqs[0]),
-        [("c1".to_string(), "aborted".to_string())]
-    );
-    assert_eq!(lp(&mut k, &id)["state"], "requesting");
+    assert_eq!(starts(&k), Vec::<Value>::new(), "no request");
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
     assert_eq!(slots(&mut k).job, 0);
 }
 
 /// F2.2: the restart pass steps the sessions of every owner under the origin of the call that
 /// armed it; it makes no `agent-tools` call for them. Open jobs (idempotent ones included) and
-/// pending calls are aborted, and each turn goes on with its next request.
+/// pending calls are aborted, and each turn becomes `unknown` (the r3 cut: no request).
 #[test]
 fn review_the_restart_pass_makes_no_tools_effect_under_another_owner() {
     let mut k = kernel();
@@ -1364,9 +1363,14 @@ fn review_the_restart_pass_makes_no_tools_effect_under_another_owner() {
     assert_eq!(tools_effects(&k), [], "no agent-tools call in the pass");
     for id in [&a, &b] {
         assert_eq!(rec(&mut k, id).boot, 2);
-        assert_eq!(lp(&mut k, id)["state"], "requesting");
+        assert_eq!(lp(&mut k, id)["state"], "idle");
+        assert_eq!(turn(&mut k, id), Turn::Unknown);
         assert_eq!(lp(&mut k, id)["jobs"].as_u64().unwrap_or(0), 0);
     }
+    assert_eq!(starts(&k), Vec::<Value>::new(), "no request in the pass");
+    // Each owner's next message sends the aborted outputs, in her own call.
+    k.say("alice", &a, "s1", IN).unwrap();
+    k.say("bob", &b, "s1", IN).unwrap();
     let reqs = starts(&k);
     assert_eq!(reqs.len(), 2);
     let mut outs: Vec<usize> = reqs.iter().map(|r| outputs(r).len()).collect();
