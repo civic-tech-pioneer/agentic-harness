@@ -571,7 +571,7 @@ reviewer claude. Cloud.
 
 ## Human answers (2026-11-20, through the PO)
 
-- **2026-11-25, the human (to deputy-5):** (1) **S40-F6.1: (a)**, one more answer round with the narrow rule; if it does not succeed, (b): accept it as a known limit and fix it in Upkeep. (2) **V7: the judge is Jev.** Its API key is in the environment variable `TYPESAFE_API_KEY` on the Mac (never read it into a context or a log); spending limits are set at Jev, so the factory adds none. (3) **N5: (a) for now**, the Claude grant with shell and web; (b) may follow later.
+- **2026-11-25, the human (to deputy-5):** (1) **S40-F6.1: (a)**, one more answer round with the narrow rule; if it does not succeed, (b): accept it as a known limit and fix it in Upkeep. (2) **V7: the judge is Jev.** Its API key is in the environment variable `TYPESAFE_API_KEY` on the Mac (never read it into a context or a log); spending limits are set at Jev, so the factory adds none. (3) **N5: (a) for now**, the Claude grant with shell and web; (b) may follow later. (4) **The Jev key stays on the Mac only**: no GitHub or cloud secret. V7 and every check against the real judge run on the Mac, by the deputy, as a read-only probe with the key taken from the environment (never printed); cloud teams build and test against dev's scripted judge.
 
 - 2026-11-24 watane host 18 **Q38: (b)**, the human: a consent is kept per (origin client, provider, folder or account). TECHNICAL 8 cites watane host 19.7, which S103 writes to match; no change here.
 
