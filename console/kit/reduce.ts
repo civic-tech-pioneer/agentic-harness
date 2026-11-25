@@ -403,7 +403,7 @@ export function reduce(view: SessionView, message: string): SessionView {
       push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: m.given ? `Allowed ${m.reach} for this session` : `Took back ${m.reach}` });
       break;
     case "verdict":
-      push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: `${m.outcome}: ${m.toolCallId === undefined ? "the input" : toolTitle(v, m.toolCallId)}`, ...(m.reasons.length ? { reason: m.reasons.join("; ") } : {}) });
+      push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: m.by, what: m.breaker ? "Stopped by your judge's breaker" : `${m.outcome}: ${m.toolCallId === undefined ? "the input" : toolTitle(v, m.toolCallId)}`, ...(m.reasons.length ? { reason: m.reasons.join("; ") } : {}) });
       break;
     case "plan": v.plan = m.items; break;
     case "call": upsertCall(v, m.call, m.i); break;

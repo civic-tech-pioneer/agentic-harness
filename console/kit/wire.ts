@@ -10,7 +10,7 @@ export type Msg =
   /** 9.4 "The short decision": a decision that does not repeat its ask; `askI` is the ask entry's index. */
   | { t: "short"; i: number; id: string; kind: "ask" | "check"; askI: number; decision: Decision }
   | { t: "allow"; i: number; id: string; reach: string; given: boolean; by: string }
-  | { t: "verdict"; i: number; toolCallId?: string; outcome: string; reasons: string[]; by: string }
+  | { t: "verdict"; i: number; toolCallId?: string; breaker?: true; outcome: string; reasons: string[]; by: string }
   | { t: "turn"; i?: number; state: TurnState; extra: TurnExtra }
   | { t: "compaction"; i: number }
   | { t: "unreadable"; i?: number; raw: unknown }
@@ -135,9 +135,11 @@ function parseEntry(e: Rec): Msg {
     }
     case "verdict": {
       const id = str(b.toolCallId), outcome = str(b.outcome), by = str(b.by);
-      if (outcome === undefined || by === undefined || (id === undefined && b.on !== "input")) return bad;
+      // 9.4: `on` is an ask or check (with its `toolCallId`), `input`, or `breaker` (10)
+      if (outcome === undefined || by === undefined || (id === undefined && b.on !== "input" && b.on !== "breaker")) return bad;
       const reasons = Array.isArray(b.reasons) ? b.reasons.filter((r): r is string => typeof r === "string") : [];
-      return { t: "verdict", i, ...(id !== undefined ? { toolCallId: id } : {}), outcome, reasons, by };
+      const breaker = id === undefined && b.on === "breaker";
+      return { t: "verdict", i, ...(id !== undefined ? { toolCallId: id } : {}), ...(breaker ? { breaker: true as const } : {}), outcome, reasons, by };
     }
     case "turn": {
       const t = parseTurn(b);
