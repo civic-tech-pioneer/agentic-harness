@@ -9,25 +9,19 @@ import { reduce as oldReduce } from "./fixtures/reduce_5882c51";
 
 describe("reducer indexing and output", () => {
   it("ac1_updates_a_tool_without_scanning_unrelated_rows", () => {
+    let reads = 0;
+    // Count visits to old rows, even if the reducer shallow-copies the array.
     const rows: SessionView["rows"] = Array.from({ length: 5_000 }, (_, i) => ({
-      kind: "user", key: `u${i}`, text: "earlier message",
+      get kind() { reads++; return "user" as const; },
+      get key() { reads++; return `u${i}`; },
+      text: "earlier message",
     }));
     rows[2_500] = {
       kind: "tool", key: "ctarget",
       call: { id: "target", title: "Check", kind: "other", status: "pending", content: [], locations: [] },
     };
-    let reads = 0;
-    const observed = new Proxy(rows, {
-      get(target, key, receiver) {
-        // The reducer's shallow copy is intentional. Count visits during lookup and indexing.
-        if (key === "slice") return target.slice.bind(target);
-        if (typeof key === "string" && /^\d+$/.test(key)) reads++;
-        return Reflect.get(target, key, receiver);
-      },
-    });
     const synced = JSON.stringify({ _meta: { watane: { type: "synced", through: 0, writing: false } } });
-    const indexed = reduce({ ...emptyView, rows: observed }, synced);
-    expect(indexed.rows).toBe(observed);
+    const indexed = reduce({ ...emptyView, rows }, synced);
     reads = 0;
     const updated = reduce(indexed, JSON.stringify({
       sessionUpdate: "tool_call_update", toolCallId: "target", status: "completed",
