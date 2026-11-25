@@ -314,6 +314,25 @@ fn ac1_a_profile_with_no_toolsets_opens_nothing_and_sends_no_tools() {
 }
 
 #[test]
+fn ac1_waits_for_a_just_opened_toolset_to_commit_before_describing_it() {
+    let mut k = kernel();
+    k.host.tools_describe_error = Some("unknown-handle".into());
+    let id = k.start("alice", "k", "o", "{}", IN).unwrap().value;
+    assert!(starts(&k).is_empty());
+    assert_eq!(lp(&mut k, &id)["state"], "retrying");
+    assert!(lp(&mut k, &id).get("consent").is_none());
+    assert_eq!(k.host.next_handle, 1);
+
+    k.host.tools_describe_error = None;
+    k.host.now += 1_000;
+    k.timer(&format!("s/{id}"));
+    let requests = starts(&k);
+    assert_eq!(requests.len(), 1);
+    assert_eq!(body_of(&requests[0])["tools"][0]["name"], "notes_a");
+    assert_eq!(k.host.next_handle, 1);
+}
+
+#[test]
 fn ac1_consent_pending_shows_the_consent_and_retries_with_the_backoff() {
     let mut k = kernel();
     k.host.tools_error = Some("consent-pending(Let Notes' agents call: notes?)".into());
@@ -1873,4 +1892,63 @@ fn review_r5_a_retry_with_no_slot_stops_busy_and_never_goes_in_another_call() {
     );
     let sl = slots(&mut k);
     assert_eq!(sl.head, sl.tail, "nothing waits in the FIFO");
+}
+
+/// Stage D's state I/O budget (17): four parallel jobs per Responses step. Compare
+/// equally compacted active inputs at two different total history lengths.
+#[test]
+#[ignore = "slow: feeds 1,000 four-job Responses steps through the kernel"]
+fn s128_stage_d_state_bytes_per_step() {
+    fn measure(history: u64) -> (u64, u64) {
+        let mut k = kernel();
+        let id = k.start("alice", "load", "o", "{}", IN).unwrap().value;
+        attached(&mut k, "alice", &id);
+        let step = |k: &mut K, n, compact: bool| {
+            let stream = stream_of(k, &id);
+            let mut output: Vec<_> = (0..4)
+                .map(|j| call_of(&format!("{n}-{j}"), "notes_a", "{}"))
+                .collect();
+            if compact {
+                output.insert(
+                    0,
+                    json!({"type":"compaction","encrypted_content":"summary"}),
+                );
+            }
+            feed(k, &stream, vec![sse_head(), completed(&output)]);
+            k.provider_ended_with(&stream, None).unwrap();
+            let running = jobs(k, &id);
+            assert_eq!(running.len(), 4, "four jobs running at step {n}");
+            for (_, stream) in running {
+                finish(k, &stream, json!("fixture result"));
+            }
+            k.host.calls.clear();
+        };
+        for n in 1..=history {
+            step(&mut k, n, n % 10 == 0);
+        }
+        k.state.reset_counts();
+        const SAMPLE: u64 = 128;
+        for n in history + 1..=history + SAMPLE {
+            step(&mut k, n, n % 10 == 0);
+        }
+        let counts = k.state.counts();
+        (counts.bytes_read / SAMPLE, counts.bytes_written / SAMPLE)
+    }
+
+    let (early_read, early_write) = measure(10);
+    let (late_read, late_write) = measure(1_000);
+    let early = early_read + early_write;
+    let late = late_read + late_write;
+    println!(
+        "stage D bytes per step at 10: {early_read} read + {early_write} written;          at 1000: {late_read} read + {late_write} written"
+    );
+    assert!(early <= 4 << 20 && late <= 4 << 20);
+    assert!(
+        late_read.abs_diff(early_read) * 10 <= early_read,
+        "state reads changed from {early_read} to {late_read}"
+    );
+    assert!(
+        late.abs_diff(early) * 10 <= early,
+        "combined state I/O grew from {early} to {late}"
+    );
 }

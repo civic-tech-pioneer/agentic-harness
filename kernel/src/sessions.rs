@@ -299,6 +299,8 @@ pub struct FakeHost {
     pub https_error: Option<String>,
     /// What `tools_describe` answers.
     pub tools: Vec<Tool>,
+    /// A failure of `tools_describe` only.
+    pub tools_describe_error: Option<String>,
     /// Every `tools_*` that can fail fails with this.
     pub tools_error: Option<String>,
     /// Handles `tools_open` answered: `h1`, `h2`, ...
@@ -414,7 +416,11 @@ impl Host for FakeHost {
         Ok(format!("h{}", self.next_handle))
     }
     fn tools_describe(&mut self, handle: &str) -> Result<Vec<Tool>, String> {
-        if let Some(e) = &self.tools_error {
+        if let Some(e) = self
+            .tools_describe_error
+            .as_ref()
+            .or(self.tools_error.as_ref())
+        {
             return Err(e.clone());
         }
         self.calls.push(HostCall::ToolsDescribe {

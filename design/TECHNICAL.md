@@ -1435,7 +1435,9 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     `loop/<id>` `tools`, with the request's `tools`: per tool `{"type":"function","name",
     "description","parameters": <the input schema as JSON>,"strict":false}` in the order described,
     kept as stored so every request sends the same bytes, and each tool's `parallel` and
-    `idempotent`. A profile with no toolsets opens nothing and sends no `tools`. `consent-pending(<what>)`
+    `idempotent`. A profile with no toolsets opens nothing and sends no `tools`. A describe
+    that returns `unknown-handle` immediately after opening waits for the opening call to commit.
+    The next retry describes that same handle before sending a request. `consent-pending(<what>)`
     from either call sets the live activity `consent {what}` and the `retry` deadline of the
     backoff above (the loop is `retrying`; the firing opens or describes again); `consent-refused`,
     `not-granted` or any other failure ends the turn `idle {failed {error: <that text>}}`.
