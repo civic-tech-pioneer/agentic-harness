@@ -77,9 +77,14 @@ in the same commit):
 - `console/` (source) and `ui/` (built from it), 18
 
 A provider holds `mods:claude-code` with `src/lib.rs`; the checked one,
-planned in `provider-checked/` of this repository (R-B1), also `src/judge.rs`
-(10: judge call, verdict parse, breaker), a self-contained mod like the
-unchecked one under the same boundary list. The unchecked provider is
+built in `provider-checked/` of this repository (S127, R-B1), also
+`logic/src/judge.rs` (10: the System One request, its reading and the
+threshold mapping), a self-contained mod like the unchecked one under the
+same boundary list: `mod.toml` (`[http]`: the judge's host), `wit/world.wit`
+(`sessions`, `settings`, and the sink, producer and timer exports),
+`logic/src/lib.rs` (the owner check, the judged sequence of 10 and the
+breaker, behind a `Host` trait tested natively), `ui/` (the thresholds page),
+`BOUNDARIES.md` (a copy of its rows of 14). The unchecked provider is
 `provider/` of this repository (S35, R-B1), a self-contained mod: its own `mod.toml`, `wit/world.wit`, `logic/`
 crate and tests, no path into `kernel/` or `console/`. Its boundaries are
 the provider rows of 14, in this repository's one boundary list
@@ -1048,7 +1053,7 @@ An entry is JSON:
 | `tool` | an ACP ToolCall with its final status: `{"toolCallId","title","kind"?,"status","content"?,"locations"?,"rawInput"?,"rawOutput"?}`; output cut to 64 KiB, marked |
 | `ask` | the ask, below; later a decision entry that repeats it |
 | `allow` | `{"id":"<allow id>","tool":"<tool>","key":"<scope key>","reach":"<rule>","given":true\|false,"by":"<who>"}`: a session allow given or taken back (9.6); `reach` is the one its ask showed, `<tool>(<key>)` |
-| `verdict` | `{"on":"<ask id>"\|"input","toolCallId":"<id>"?,"outcome":"safe"\|"unsafe"\|"unsure","reasons":[…],"by":"<provider>"}`; `toolCallId` when `on` is an ask; `on` is `input` for the provider's `launch` and `input/<n>` (10) |
+| `verdict` | `{"on":"<ask id>"\|"input"\|"breaker","toolCallId":"<id>"?,"outcome":"safe"\|"unsafe"\|"unsure","reasons":[…],"by":"<provider>","denials-in-a-row":<n>?}`; `toolCallId` when `on` is an ask or check; `on` is `input` for the provider's `launch` and `input/<n>`, `breaker` for the breaker's item (10). An `unsafe` or `unsure` verdict on an input ends the turn `idle {failed {error: judge}}` (10 steps 4, 5) |
 | `turn` | the turn JSON of 9.3 without `activity` |
 | `compaction` | `{"tokens-before":<n>?}` |
 | `unknown` | `{"raw":<the JSON value, or the line as a string>}`: a vendor line or event the adapters do not know |
@@ -1883,7 +1888,8 @@ section, and its code).
   kernel at once; only its answer waits for the verdict, step 6), answers every `check`
   (`none` when safe, `deny` otherwise), judges every `ask` and input, and
   pushes each verdict as an item
-  `{"type":"verdict","on":<on>,"verdict":…,"reasons":[…]}` (`on`: step 3). No
+  `{"type":"verdict","on":<on>,"outcome":"safe"|"unsafe"|"unsure","reasons":["<text>",…],"denials-in-a-row":<n>}`
+  (`on`: step 3; `outcome` is the one name for a verdict here and in 9.4, S127). No
   call of it waits for the judge, so no call nears its budget. Its sequence:
   1. `start` checks the caller (2.2), checks the launch's form, opens its own
      stream to the kernel, calls `claude-code.start` with `pre-tool-check` and
@@ -1953,22 +1959,47 @@ section, and its code).
   `caller.identity()` is the kernel `mods:agent`'s and otherwise returns
   `not-owner` before it judges, opens a stream or makes any call; so no other
   mod can make the provider spend the participant's judge key (2.2).
-- **Judge call:** `https-stream.start` with `account: "judge"` (5) to the
-  judge's host in its `[http]`, with the tool, its input and a short transcript excerpt; deadline = the
-  launch's `timeout-s` minus 2 s; at most 3 attempts inside it (as in step 3); verdict
-  `{safe | unsafe | unsure, reasons}`; anything else, a timeout or an error
-  is unsafe; so is a refusal of the account (`destination`, `no-account`),
-  and a missing or wrong key therefore denies.
-- **Breaker:** 3 denials in a row or 10 of the last 50: `interrupt`, and a
-  verdict item that says why. Every verdict item carries `denials-in-a-row`.
+- **Judge call** (S127, deputy decision 2026-11-25 "judge wire shape"): the
+  judge is TypeSafe System One. `https-stream.start` with `account: "judge"`
+  (5), `POST <origin>/v1/systemone`, header `content-type: application/json`
+  only (the host adds the key), body
+  `{"state":{"kind":"tool"|"input","tool":"<name>"?,"input":<object>?,"text":"<input text>"?},"questions":{"harm":{"type":"noul","instructions":"<text>"},"intent":{"type":"noul","instructions":"<text>"}}}`:
+  every question in one request. `<origin>` is the provider's build origin
+  (`JUDGE_ORIGIN`, default `https://api.typesafe.ai`, the one host of its
+  `[http]`); the participant enters the same origin with the key in the app
+  (5), and the host refuses any other (`destination`). Deadline = the
+  launch's `pre-tool-check.timeout-s` minus 2 s; at most 3 attempts inside it
+  (as in step 3). **Reading:** a `200` whose body is a JSON object with
+  `answers.<question>.probability` a number from 0 to 1 for every question
+  asked; anything else (another status, a missing question, a value out of
+  range, a body that is not JSON) is unreadable. **Mapping**, with the
+  thresholds of its page (default `unsafe-at` 0.7, `safe-at` 0.3, the
+  docs' starting values): `unsafe` when any question scores at or above
+  `unsafe-at`, `safe` when every question scores at or below `safe-at`,
+  `unsure` between (the band). **Reasons** are the provider's own text, one
+  per question, `"<question>: <score, 2 decimals>"`. Unreadable, a timeout or
+  an error is unsafe; so is a refusal of the account (`destination`,
+  `no-account`), and a missing or wrong key therefore denies. All of it is in
+  `provider-checked/logic/src/judge.rs`; another judge API is a provider
+  derived from this one (an adapter per judge API), not a setting. The field
+  names of System One's answer are as the deputy's V7 probe read them; a
+  change there is one function of `judge.rs`, and until it matches every call
+  is unreadable, so it denies.
+- **Breaker:** 3 denials in a row or 10 of the last 50 verdicts of a
+  session: `claude-session.interrupt`, and a verdict item
+  `{"type":"verdict","on":"breaker","outcome":"unsafe","reasons":["<rule>: the session was stopped"],"denials-in-a-row":<n>}`.
+  Every verdict item carries `denials-in-a-row`; a safe verdict resets it.
 - **Checking:** before each judge call the provider pushes
   `{"type":"checking","on":<on>}`; the kernel shows it as the
   activity `checking` (9.3) until the verdict. The kernel takes `verdict` and
   `checking` only from a checked provider's stream (`direct: false`); on a
   `direct: true` stream they are `unknown` entries (9.8).
-- **Settings** (judge URL, thresholds) only from its own page, in its state.
-  The provider holds no key: the host keeps it as the account `judge`, entered
-  in the app (5; N10, the human, 2026-11-20).
+- **Settings** (the thresholds `unsafe-at` and `safe-at`, `0 <= safe-at <
+  unsafe-at <= 1`) only from its own page (`settings.set`, caller `page`), in
+  its state; the page also shows the build origin, for the participant to
+  enter in the app. No judge URL setting: the origin is entered in the app
+  only (5). The provider holds no key: the host keeps it as the account
+  `judge`, entered in the app (5; N10, the human, 2026-11-20).
 
 ## 11. Refuse table
 
@@ -2052,13 +2083,13 @@ stage E).
 |---|---|---|
 | A mod cannot widen `claude` past its launch | 4.1 grammar and one argument per value; `--restricted`; fixed flags; closed subagent keys; the host owns stdin (4.5); `initialize` and `init` checks | watane `host/src/agent/claude/launch.rs`, `init.rs`, `control.rs`, `run.rs` |
 | A mod cannot run a denied skill by name | `slash-command` (4.5) | watane `host/src/agent/claude/control.rs` |
-| A failing check cannot let a tool run | `onFailure: block` confirmed in `initialize` (4.5) | watane `host/src/agent/claude/init.rs`, `control.rs`; checked provider's `mod.toml`, `src/judge.rs` |
-| "Safe" cannot widen the mode | checks answer `none` or `deny`, never `allow` (4.5); the checked provider answers an ask only `deny`, a safe ask goes to the owner (10) | watane `host/src/agent/claude/control.rs`; checked provider's `src/judge.rs` |
+| A failing check cannot let a tool run | `onFailure: block` confirmed in `initialize` (4.5) | watane `host/src/agent/claude/init.rs`, `control.rs`; `provider-checked/mod.toml`, `provider-checked/logic/src/judge.rs`, `provider-checked/logic/src/lib.rs` |
+| "Safe" cannot widen the mode | checks answer `none` or `deny`, never `allow` (4.5); the checked provider answers an ask only `deny`, a safe ask goes to the owner (10) | watane `host/src/agent/claude/control.rs`; `provider-checked/logic/src/judge.rs`, `provider-checked/logic/src/lib.rs` (a safe ask goes on unanswered) |
 | Writes cannot plant code that runs later | protected paths (4.3) | watane `host/src/agent/claude/run.rs` (the host's `--settings=`) |
 | No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
-| A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; checked provider's `mod.toml`, `src/judge.rs` |
-| A mod in the middle gains no authority | host consent (8); the providers' `sessions` compare one pinned kernel identity (2.2, 10) | watane `host/` consent, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`); `factory/publish-test-mods.sh` pins the release identity |
+| A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; `provider-checked/mod.toml`, `provider-checked/logic/src/judge.rs`, `provider-checked/logic/src/lib.rs` |
+| A mod in the middle gains no authority | host consent (8); the providers' `sessions` compare one pinned kernel identity (2.2, 10) | watane `host/` consent, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`); the checked one: `provider-checked/mod.toml`, `provider-checked/wit/world.wit`, `provider-checked/logic/src/lib.rs`, `provider-checked/BOUNDARIES.md`; `factory/publish-test-mods.sh` pins the release identity |
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/src/openai/run.rs` and `kernel/src/openai/tools.rs` (the `request` and `job` streams, routed by `stream/<id>`, S40), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7); the OpenAI loop's slots, retries and pauses (9.5) | `kernel/src/delegation.rs`, `kernel/src/openai/` (`run.rs`, `tools.rs`), `kernel/src/quota.rs` (the slot limits) |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/src/call.rs` (a failed call commits no write, id or timer, 2.1), `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
@@ -2143,7 +2174,7 @@ of `spec/VISION.md`.
 | Id | What it checks | Run by | Result recorded in |
 |---|---|---|---|
 | V6 | the cost of one item through watane's call path: with no write, and with one state write (one full fsync) | done (`proto/stream-cost-bench`) | `ARCHITECTURE-PROPOSAL.md` section 18; it is why 9.4 writes once per finished entry, never per delta |
-| V7 | latency of one judge check (`pre-tool-check`) on a real judge account | stage E, before the checked provider is built | `ARCHITECTURE-PROPOSAL.md` section 18 |
+| V7 | latency of one judge check (`pre-tool-check`) on a real judge account | done, the deputy on the Mac, 2026-11-25, on Jev (TypeSafe System One): p50 173 ms, p95 267 ms, max 846 ms per call, a new TLS connection each, 2 questions | `ARCHITECTURE-PROPOSAL.md` section 18 |
 | V8 | the stage A prototype through three layers (host stream, a mod consumer, a page consumer): order, delay and the cost of one fsync per commit (7, N4) | stage A | "V8 record", at the end of this section (numbers; whether to change 7 is the human's) |
 | V26 | whether a subagent prompt that starts with `/` runs a skill (14) | S1, held | `ARCHITECTURE-PROPOSAL.md` section 18 |
 | V27 | whether the shell grant's sandbox blocks loopback (14) | S1, breached | `ARCHITECTURE-PROPOSAL.md` section 18 |
@@ -2195,7 +2226,8 @@ of `spec/VISION.md`.
 24. A child beyond `delegates`, depth or live count is refused; cancelling
     the parent cancels the children.
 25. A judge that is down, slow, unreadable or without an entered key
-    denies; 3 denials in a row interrupt the turn.
+    denies, and so does a score in the unsure band (between the page's
+    thresholds, 10); 3 denials in a row interrupt the turn.
 26. An overlay that widens anything is `refused`, naming each field.
 27. `unqueue` of an input a turn already took is `unknown-input`; the turn
     is not changed.
@@ -2261,8 +2293,8 @@ of `spec/VISION.md`.
     server's count at zero until `initialized`; with the consent refused or
     withdrawn, a later `say` never reaches it; every input a `say` gives
     before `initialized` is judged after it, in order.
-44. (10) The scripted judge answers `unsafe` (and, in a second test,
-    `unsure`), then ends its stream normally: it counts exactly one request,
+44. (10) The scripted judge answers a score at or above `unsafe-at` (and,
+    in a second test, one in the unsure band), in System One's shape, then ends its stream normally: it counts exactly one request,
     and the check is answered `deny`. A new attempt starts only after an error
     or an ending with no readable verdict; the first readable verdict, or the
     timer, is final.
