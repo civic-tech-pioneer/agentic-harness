@@ -175,6 +175,8 @@ impl ClaudeAdapter {
             Some("ask") => return self.ask(&value, "ask"),
             Some("check") => return self.ask(&value, "check"),
             Some("ask-resolved") => return self.resolved(&value),
+            Some("verdict") if !self.direct => return vec![verdict(value)],
+            Some("checking") if !self.direct => return vec![checking(value)],
             Some("wrapped") | Some("verdict") | Some("checking") => return vec![unknown(value)],
             Some("system")
                 if matches!(
@@ -654,4 +656,46 @@ fn todo_plan(input: &Value) -> Plan {
         })
         .unwrap_or_default();
     Plan::new(entries)
+}
+
+/// A checked provider's `verdict` item as an entry whose `on` is still the provider's; the kernel
+/// maps `on` and adds `toolCallId` from the record (9.4). Not of good shape: `unknown`.
+fn verdict(raw: Value) -> Out {
+    let on = str_of(&raw, "on").filter(|o| !o.is_empty());
+    let outcome = str_of(&raw, "outcome").filter(|o| ["safe", "unsafe", "unsure"].contains(o));
+    let reasons = raw
+        .get("reasons")
+        .and_then(Value::as_array)
+        .filter(|r| r.iter().all(Value::is_string));
+    let denials = match raw.get("denials-in-a-row") {
+        None => Some(None),
+        Some(d) => d.as_u64().map(Some),
+    };
+    let (Some(on), Some(outcome), Some(reasons), Some(denials)) = (on, outcome, reasons, denials)
+    else {
+        return unknown(raw);
+    };
+    let mut body = json!({"on": on, "outcome": outcome, "reasons": reasons, "by": "checked"});
+    if let Some(n) = denials {
+        body["denials-in-a-row"] = json!(n);
+    }
+    Out {
+        entry: Some(Entry {
+            kind: Kind::Verdict,
+            uuid: None,
+            body,
+        }),
+        ..Out::default()
+    }
+}
+
+/// A checked provider's `checking` item: live only. Not of good shape: `unknown`.
+fn checking(raw: Value) -> Out {
+    match str_of(&raw, "on").filter(|o| !o.is_empty()) {
+        Some(on) => Out {
+            checking: Some(on.to_string()),
+            ..Out::default()
+        },
+        None => unknown(raw),
+    }
 }
