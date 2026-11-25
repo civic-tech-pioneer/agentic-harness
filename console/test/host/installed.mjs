@@ -196,6 +196,10 @@ try {
   assert.match(sections.find(({ name }) => name === "Claude Code, unchecked").words, /Can start Claude Code with your Claude account/);
   await approve(alice);
   await until("both installed launcher tiles", () => alice.eval(main, "!!document.querySelector('[data-tile=agent]') && !!document.querySelector('[data-tile=claude-code]')"));
+  // The launcher refresh can render the tiles before the install action finishes.
+  // Its completion routes the manager to #mods and then shows this notice.
+  await until("the install action to finish routing to Mods", () => alice.eval(main,
+    "location.hash === '#mods' && !document.querySelector('#installed-note').hidden"));
   console.log("PASS AC1 one consent installs the agent and provider");
 
   const fake = join(work, "fake-claude");
