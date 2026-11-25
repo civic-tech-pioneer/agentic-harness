@@ -1370,6 +1370,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             dirty: false,
         };
         match (&ls.phase, due) {
+            (Phase::Retrying { .. }, (true, _)) if self.foreign => {
+                // F6.1: a firing under another origin sends no retry (9.5 Slots).
+                self.stop_busy(rec, &mut ls, &mut cx)?;
+            }
             (Phase::Retrying { attempt }, (true, _)) => {
                 let attempt = *attempt;
                 self.go(rec, &mut ls, &mut cx, Pending::default(), None, attempt)?;
@@ -1382,12 +1386,17 @@ impl<S: State, H: Host> Kernel<S, H> {
                     self.turn_to(rec, past, paused, now, cx.work)?;
                     return Ok(());
                 }
-                let running = Turn::Running {
-                    since: now,
-                    activity: None,
-                };
-                self.turn_to(rec, past, running, now, cx.work)?;
-                self.go(rec, &mut ls, &mut cx, Pending::default(), None, 0)?;
+                if self.foreign {
+                    // F6.1: a firing under another origin resumes nothing (9.5 Slots).
+                    self.stop_busy(rec, &mut ls, &mut cx)?;
+                } else {
+                    let running = Turn::Running {
+                        since: now,
+                        activity: None,
+                    };
+                    self.turn_to(rec, past, running, now, cx.work)?;
+                    self.go(rec, &mut ls, &mut cx, Pending::default(), None, 0)?;
+                }
             }
             _ => {}
         }

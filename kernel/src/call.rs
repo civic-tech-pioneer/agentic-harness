@@ -110,6 +110,9 @@ impl<S: State, H: Host> Host for CallHost<S, H> {
     fn tools_close(&mut self, handle: &str) {
         self.inner.tools_close(handle)
     }
+    fn origin(&mut self) -> Option<String> {
+        self.inner.origin()
+    }
 }
 
 /// The kernel one call runs.

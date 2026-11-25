@@ -1347,8 +1347,9 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   past the call that queued it: a request a turn makes later (after its jobs,
   at a `retry` or `resume`, or for the next queued input) is sent in the call
   that makes it, which runs under the owner's origin, when a request slot is
-  free; else, or when that call may be another owner's (the FIFO's drain, or an
-  item or `ended` of a job the drain started, below), nothing is sent and the
+  free; else, or when that call may be another owner's (the FIFO's drain, an
+  item or `ended` of a job the drain started, below, or a timer's firing whose
+  host-resolved origin is not the owner's), nothing is sent and the
   turn stops `idle {stopped {limit: busy}}` with its wire, outputs and queue
   kept, as after a restart (9.3 R4); the owner's next message continues it in
   her own call. No turn waits for a slot, so none hangs. Every `ended` of a
@@ -1397,6 +1398,13 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     of 9.3 does not change). A usage limit sets `paused {until}` and a `resume` deadline at
     `until` (the reset time, at least 1 s ahead); the firing of either deadline sends the same
     request again (the body is rebuilt from the wire and the trim record, so it is the same).
+    A timer fires under the origin of the call that set it, or under the kernel's own when
+    that mod is disabled (watane): the kernel reads the firing's `caller.identity()`, and when
+    it is not the session owner's the firing sends no model request and starts no other host
+    work for the session (no toolset operation, no consent); the turn stops `idle {stopped
+    {limit: busy}}` with its wire, outputs and queue kept, as after a restart, and the owner's
+    next message continues it (the human's ruling on r6 F6.1, 2026-11-25). The call origin is
+    read only here; the kernel does not carry it in general.
   - *Items.* The first item of a request stream is its head `{status, headers}`; before it the
     host may push `{"type":"consent-pending","what":<text>}` (host 19.4, 19.7): the turn shows
     the live activity `consent {what}` (kept in `stream/<id>` for `attach`), cleared by the
@@ -2283,7 +2291,11 @@ of `spec/VISION.md`.
     after its jobs, after a job the FIFO started in another owner's call, or at
     a `retry` sends nothing in that or any other owner's call, and the turn
     stops `idle {stopped {limit: busy}}`; the owner's next `say` sends it, with
-    the step's outputs, in her call.
+    the step's outputs, in her call. A `retry` or `resume` timer that the host
+    fires under the kernel's own origin (the owner's mod disabled during the
+    wait; the test host resolves the origin as watane does) sends no request
+    and makes no toolset call, the turn stops `busy` with its wire kept, and the
+    owner's next `say` continues it (r6 F6.1).
 49. (9.4) Paging backwards with `read` through a 3 MiB entry, with pages that
     end inside its part group, joins it whole, byte for byte.
 50. (10) `start` with the consent pending, `interrupt`, `say X`; after

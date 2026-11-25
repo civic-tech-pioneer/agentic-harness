@@ -164,6 +164,9 @@ impl Host for WitHost {
     fn tools_close(&mut self, handle: &str) {
         agent_tools::close(handle)
     }
+    fn origin(&mut self) -> Option<String> {
+        Some(me())
+    }
 }
 
 /// Runs one crate call (S32 R1, `call::run`): `Ok` commits its writes, `Err` drops them.

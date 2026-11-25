@@ -86,6 +86,9 @@ struct RefuseFirst {
 }
 
 impl Host for RefuseFirst {
+    fn origin(&mut self) -> Option<String> {
+        self.inner.origin()
+    }
     fn generation(&mut self) -> u64 {
         self.inner.generation()
     }
