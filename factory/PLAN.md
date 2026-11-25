@@ -33,6 +33,10 @@ S127 (main line, claude), S128 (upkeep, codex); watane S126 (upkeep, codex).
 ### S127: stage E: Alice's Claude session runs through the checked provider, with Jev as its judge
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S126 codex, S125 codex; the main
 line, sketched 2026-11-25 by deputy-6; routine `trig_01E1Ngk3t7NCGXJnEjBgEjHR`, fires 18:39 UTC; spec-check 382f793 (deputy-6, stage E scope: 14 points, folded in below).)
+DELIVERED 18:58 UTC as PR #56 (+3705/-38). Deputy D1.1 (blocking): the answer field is `noul`, not `probability`
+(PR comment 7171667656); BLOCKED question (outcome verification) ruled (b): merged on its native proof, `--scripted-judge`
+as watane S129, then `test:host:e` in Upkeep. r1: Codex review https://chatgpt.com/local/6b073026-11b0-83ed-b550-0ef125943064,
+dispatched 19:00 UTC.
 Story (AGT-J3; TECHNICAL 17 stage E, "this repository" column): Alice installs the checked provider, enters her judge's key
 and origin in the app (watane S122), and runs a Claude session through it: before each tool call the console shows
 `checking`, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and after repeated denials
@@ -133,7 +137,9 @@ reviewer claude. Cloud.
   wall-clock timings): no such assertion on a loaded runner; (4) case 22's idempotent half; (5) S40 on `watane-dev
   serve` (watane S114 is merged): SKIP lines of `test:host:d` become checks, S40 outcomes 2 to 4 on a preview, the stage D
   load test. Touches: kernel (timer adapter, restart), console/test/host, kit. No test calls an external provider.
-  Protects: *guard* (1-3), *core* (4, 5). Size: an upkeep slice. The items:
+  Protects: *guard* (1-3), *core* (4, 5). Size: an upkeep slice. BLOCKED 18:58 UTC (PR #57, draft): F6.1 and case 22
+  need a watane authority contract (a resolved origin for timer firings). Ruled (19:00): the alternative; items 1 and 4
+  cut, both stay known limits (9.5); the contract is held as a Door C question in watane PLAN Unsettled. The items:
 - **(guard, the human's (b) on S40 F6.1)** a timer firing of an OpenAI session whose owner mod was disabled during a timed pause may send one more model request under the kernel's origin. Fix: read the host-resolved origin of a timer firing through the production adapter (watane reports the caller of a timer callback as `host` and keeps the resolved origin apart), stop only foreign firings, and test it through the real adapter: an enabled owner's pause resumes by itself, a disabled owner's stops with no work.
 
 - **(guard, second sighting) `installed-agent` CI flake:** `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code settings' after AC1 passes; on S40 at 890caad and 10ed0a3, green on rerun. Find the race or give the wait a bound that measures it.
