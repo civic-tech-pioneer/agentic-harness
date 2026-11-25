@@ -30,7 +30,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 ## Sketched
 
 ### S40: stage D, the consumer half: Alice runs a profile on her ChatGPT plan in the console
-(deputy-4, 2026-11-25 07:25 UTC: r3 answered at 890caad by the cut; installed-agent red once on it ('Timed out waiting for Claude Code settings', green on 3f13dc1), rerun once. r4 check-in: worth one more round, a reading check of the cut against J11 with 2 blocking left in r3, both in the cut mechanism. r4: Codex review, a follow-up in https://chatgpt.com/local/6b05eeef-aae8-83eb-85bf-a60c3e428074, dispatched 07:28 UTC by deputy-4 from the Desktop app.)
+(deputy-4, 2026-11-25 07:25 UTC: r3 answered at 890caad by the cut; installed-agent red once on it ('Timed out waiting for Claude Code settings', green on 3f13dc1), rerun once. r4 check-in: worth one more round, a reading check of the cut against J11 with 2 blocking left in r3, both in the cut mechanism. r4: Codex review, a follow-up in https://chatgpt.com/local/6b05eeef-aae8-83eb-85bf-a60c3e428074, dispatched 07:28 UTC by deputy-4 from the Desktop app; r4 (07:32): 3/1, changes (3) (validator RETURN, adversary BREACHED: a queued continuation can dispatch under another origin, user-sim REJECTED); trend 2 to 3, all in restart: the cut's last answer round. Deputy rulings (PR comment 7156848307): F4.1 stands (a turn waiting on an approval is mid-turn), F4.2 stands as an outcome (no request under any origin but the owner's; a busy refusal is fine), F4.3 accepted as a known limit (a message finished just before a restart is shown but not in the model's history; one line in 9.5), P4.1 taken; answer r4: Claude routine `trig_01WwvGqijC7yA3Tx3tB1XvrC`, fires 08:19 UTC. r5 check-in: worth one more round only as a check of F4.1 and F4.2 (2 blocking, one a breach); a new blocking finding in restart after it goes to the human as stalled.)
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S113 codex, S112 codex; the
 consumer-halves lane, sketched 2026-11-24 by deputy-3: it builds against watane `slice/s111` (PR #28), whose branch holds a
 first version of host 19.4 `https-stream` with the `openai` account and dev's scripted Responses server; it merges main
@@ -416,6 +416,8 @@ reviewer claude. Cloud.
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
+
+- 2026-11-25 (deputy-4, S40 r4) F4.3 accepted as a known limit: a message finished in the window between its transcript write and `response.completed` when the host restarts is shown but missing from the model's history; Alice repeats it. Clause: rulings narrow; same kind as the accepted no-auto-continue limit (S40-CUT). Undo: write the finished message to request history with the transcript, a later slice.
 
 - 2026-11-24 (S40 r2) after a host restart every open job of an OpenAI session in `tools` is aborted, idempotent ones included; the kernel reopens no toolset and reissues no job (TECHNICAL 9.5 and the restart table say so; case 22's idempotent half not yet built). Clause: rulings narrow (stall by area: two blocking findings in code r1's answer added, one a breach). Undo: reissue under the session owner's origin once the handle is usable, a later slice.
 
