@@ -102,10 +102,6 @@ pub trait Host {
     fn tools_close(&mut self, handle: &str) {
         let _ = handle;
     }
-    /// `caller.identity()` of the current call as the host resolved it (2.3): for a timer's
-    /// firing, the origin of the call that set it, or the kernel's own when that mod is disabled.
-    /// `None` only from a test host that does not model origins.
-    fn origin(&mut self) -> Option<String>;
 }
 
 /// One tool of a toolset, as `agent-tools.describe` gives it (6).
@@ -447,9 +443,6 @@ impl Host for FakeHost {
             args: args.to_string(),
         });
         Ok(format!("t{}", self.next_stream))
-    }
-    fn origin(&mut self) -> Option<String> {
-        self.origin.clone()
     }
     fn tools_close(&mut self, handle: &str) {
         self.calls.push(HostCall::ToolsClose {
@@ -4001,13 +3994,6 @@ impl<S: State, H: Host> Kernel<S, H> {
         let Some(mut rec) = Record::load(&mut self.state, id) else {
             return Ok(());
         };
-        // F6.1: watane fires a timer under the origin that set it, or under the kernel's own
-        // when that mod is disabled. A firing whose host-resolved origin is not the owner's
-        // sends no model request and does no other host work for the session: a `retry` or
-        // `resume` that comes due stops the turn `busy`, its state kept (9.5 Slots).
-        if self.host.origin().is_some_and(|o| o != rec.owner) {
-            self.foreign = true;
-        }
         let mut acct = self.accounts(&rec.owner);
         let boot = rec.boot;
         if self.settle(&mut rec, &mut acct, slots, work).is_err() {

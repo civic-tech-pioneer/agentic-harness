@@ -85,9 +85,6 @@ struct Flaky {
 }
 
 impl Host for Flaky {
-    fn origin(&mut self) -> Option<String> {
-        self.inner.origin()
-    }
     fn generation(&mut self) -> u64 {
         self.inner.generation()
     }
