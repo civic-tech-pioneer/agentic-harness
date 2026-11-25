@@ -1355,7 +1355,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// (and its page entry's) becomes the current one, a Claude session's open and pending asks
     /// close in every turn state, and a Claude turn nothing drives becomes `unknown`. Writes: at most its page (or `slots` and
     /// the page when it leaves the index), a decision entry per open ask and a `turn` entry (R3).
-    // A running OpenAI turn becomes `unknown` with no host call (`openai_restart`, 9.5).
+    // A running or waiting OpenAI turn becomes `unknown` with no model request, toolset
+    // operation or consent (`openai_restart`, 9.5).
     fn step(
         &mut self,
         rec: &mut Record,
@@ -1371,7 +1372,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let driven = rec.backend == "claude"
             && matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. });
         // Every open or pending Claude ask closes, whatever the turn state; a driven turn ends
-        // `unknown`. An OpenAI session's asks are the kernel's own: its `waiting` row is unchanged.
+        // `unknown`. An OpenAI session's asks are the kernel's own: `openai_restart` closes them.
         if rec.backend == "claude"
             && self.close_all_with(rec, past, "restart", now, work, !driven)?
         {
@@ -1389,7 +1390,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.drop_adapter(&s);
         }
         self.state.delete(&format!("live/{}", rec.id));
-        // 9.5 "After a restart": a running OpenAI turn stops `unknown` and sends nothing.
+        // 9.5 "After a restart": a running or waiting OpenAI turn stops `unknown` and sends nothing.
         if rec.backend == "openai" && rec.turn.is_active() {
             self.openai_restart(rec, a, slots, work, now)?;
             if !rec.turn.is_active() {
@@ -2999,12 +3000,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             if let Some(r) = Record::load(&mut self.state, id).filter(|r| r.owner == caller) {
                 // R6: the turn the restart step will give, without writing it.
+                // A Claude or an OpenAI turn, `running` or `waiting`, becomes `unknown` (R4).
                 let stale = r.boot < slots.boot
-                    && match r.backend.as_str() {
-                        "claude" => matches!(r.turn, Turn::Running { .. } | Turn::Waiting { .. }),
-                        // 9.5 "After a restart": a running OpenAI turn becomes `unknown`.
-                        _ => matches!(r.turn, Turn::Running { .. }),
-                    };
+                    && matches!(r.turn, Turn::Running { .. } | Turn::Waiting { .. });
                 let turn = if stale { Turn::Unknown } else { r.turn };
                 out.push(SessionInfo {
                     id: r.id,

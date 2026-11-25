@@ -654,8 +654,11 @@ fn ac7_cancel_ends_the_stream_and_delete_removes_the_loop_and_the_wire() {
     assert_eq!(slots(&mut k).request, 0);
 }
 
+/// The deputy's r4 ruling (F4.2): a `start` or `say` whose request finds no slot, kernel-wide or
+/// at its owner's cap, is refused `busy` and waits in no FIFO, so no other origin's call sends
+/// it; the owner sends again once a slot is free, and an owner at her cap never blocks another.
 #[test]
-fn ac8_requests_wait_in_a_fifo_and_an_owner_at_its_cap_never_blocks_another() {
+fn ac8_a_request_with_no_slot_is_refused_busy_and_an_owner_at_its_cap_never_blocks_another() {
     let mut k = kernel();
     k.state.put("access/carol", br#"["o"]"#.to_vec()).unwrap();
     let mut a = Vec::new();
@@ -666,18 +669,16 @@ fn ac8_requests_wait_in_a_fifo_and_an_owner_at_its_cap_never_blocks_another() {
     }
     assert_eq!(slots(&mut k).request, 8);
     assert_eq!(starts(&k).len(), 8);
-    // The ninth waits.
-    let c = started(&mut k, "carol", "c0");
-    assert_eq!(starts(&k).len(), 8);
-    assert_eq!(lp(&mut k, &c)["state"], "ready");
-    assert_eq!(lp(&mut k, &c)["wait"], 0);
-    let w: Value = serde_json::from_slice(&k.state.get("slots/wait/0").unwrap()).unwrap();
-    assert_eq!(w, json!({"session": c, "boot": 1}));
-    assert!(matches!(turn(&mut k, &c), Turn::Running { .. }));
-    // A tenth, of alice, who is at her cap, waits behind it.
-    let a5 = started(&mut k, "alice", "a4");
-    assert_eq!(lp(&mut k, &a5)["state"], "ready");
-    // Bob's request ends: the oldest waiting one that may go is sent in that call.
+    // The ninth is refused, with nothing queued.
+    let r = k.start("carol", "c0", "o", "{}", IN);
+    assert!(
+        matches!(r, Err(KernelError::Busy(_))),
+        "{:?}",
+        r.map(|c| c.value)
+    );
+    let sl = slots(&mut k);
+    assert_eq!((sl.head, sl.tail), (0, 0));
+    // Bob's request ends: nothing is sent in that call.
     let sb = stream_of(&mut k, &b[0]);
     feed(
         &mut k,
@@ -685,30 +686,15 @@ fn ac8_requests_wait_in_a_fifo_and_an_owner_at_its_cap_never_blocks_another() {
         vec![sse_head(), completed(1, 1, &[message("x")])],
     );
     k.provider_ended_with(&sb, None).unwrap();
+    assert_eq!(starts(&k).len(), 8);
+    assert_eq!(slots(&mut k).request, 7);
+    // Alice, at her cap, is still refused; carol's start, sent again, goes.
+    let r = k.start("alice", "a4", "o", "{}", IN);
+    assert!(matches!(r, Err(KernelError::Busy(_))));
+    let c = started(&mut k, "carol", "c0");
     assert_eq!(starts(&k).len(), 9);
     assert_eq!(lp(&mut k, &c)["state"], "requesting");
-    assert_eq!(lp(&mut k, &a5)["state"], "ready", "alice is at her cap");
     assert_eq!(slots(&mut k).request, 8);
-    // One of alice's ends: her waiting session goes.
-    let sa = stream_of(&mut k, &a[0]);
-    feed(
-        &mut k,
-        &sa,
-        vec![sse_head(), completed(1, 1, &[message("x")])],
-    );
-    k.provider_ended_with(&sa, None).unwrap();
-    assert_eq!(starts(&k).len(), 10);
-    assert_eq!(lp(&mut k, &a5)["state"], "requesting");
-    assert!(k.state.get("slots/wait/1").is_none());
-    // A waiting session that is interrupted is skipped when reached.
-    let d = started(&mut k, "carol", "c1");
-    assert_eq!(lp(&mut k, &d)["state"], "ready");
-    k.interrupt("carol", &d, None).unwrap();
-    let sb1 = stream_of(&mut k, &b[1]);
-    k.provider_ended_with(&sb1, Some("idle-timeout".into()))
-        .unwrap();
-    assert_eq!(starts(&k).len(), 10);
-    assert_eq!(lp(&mut k, &d)["state"], "idle");
 }
 
 /// 9.5 "After a restart" (the deputy's cut, 2026-11-25): a running turn, requesting or retrying,

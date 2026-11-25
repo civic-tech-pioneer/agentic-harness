@@ -410,8 +410,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// What `start`, `say` and an `interrupt` replacement work out before their first write: the
-    /// loop state, the input as wire items, and the request, sent when a slot is free. A host
-    /// that refuses the request refuses the call (`backend`). `interrupting`: the request the
+    /// loop state, the input as wire items, and the request, sent at once. A host that refuses
+    /// the request refuses the call (`backend`); no free request slot refuses it `busy`. `interrupting`: the request the
     /// session holds is about to be freed.
     pub(crate) fn openai_prelaunch(
         &mut self,
@@ -428,8 +428,18 @@ impl<S: State, H: Host> Kernel<S, H> {
         let pending = self.pending_for(rec, &ls, input);
         let freeing = u32::from(interrupting && matches!(ls.phase, Phase::Requesting { .. }));
         let launch = self.launch(rec, &mut ls, slots, a, &pending, freeing);
-        if let Launch::Host(e) = launch {
-            return Err(KernelError::Backend(e));
+        match launch {
+            Launch::Host(e) => return Err(KernelError::Backend(e)),
+            // The deputy's r4 ruling (F4.2): a request of the owner's call that finds no slot
+            // does not wait in the FIFO, whose drain may run in another origin's call; the
+            // call is refused `busy` before its first write and the owner sends again.
+            Launch::Wait => {
+                return Err(KernelError::Busy(format!(
+                    "no request slot is free ({} in all, {} per owner)",
+                    self.limits.request, self.limits.owner_request
+                )))
+            }
+            _ => {}
         }
         Ok(Prelaunch {
             ls,
@@ -1383,13 +1393,14 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     // ---- restart
 
-    /// R4 (9.5 "After a restart"; the deputy's cut, 2026-11-25): a `running` turn (`requesting`,
-    /// `ready`, `retrying` or `tools`) stops and becomes `unknown`, not running, with the
-    /// transcript up to its last finished message. Its open and pending calls get `aborted`; its
-    /// `retry` deadline goes. The step makes no host call for it: no request, no toolset, no
-    /// consent, under whatever origin runs the step. A `stopped {quota}` that recording the
-    /// aborts gave stays. `waiting` and `paused` are unchanged. The owner's next `say` continues
-    /// the session, in her own call.
+    /// R4 (9.5 "After a restart"; the deputy's cut, 2026-11-25, and its r4 ruling): a mid-turn
+    /// turn, `running` (`requesting`, `ready`, `retrying` or `tools`) or `waiting` for a tool
+    /// approval, stops and becomes `unknown`, not running, with the transcript up to its last
+    /// finished message. Its open asks are denied `by: kernel`, reason `restart`; its open and
+    /// pending calls get `aborted`; its `retry` and `ask` deadlines go. The step makes no model
+    /// request, toolset operation or consent for it, under whatever origin runs the step. A
+    /// `stopped {quota}` that recording the aborts gave stays. `paused` is unchanged. The owner's
+    /// next `say` continues the session, in her own call.
     pub(crate) fn openai_restart(
         &mut self,
         rec: &mut Record,
@@ -1398,7 +1409,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         work: &mut Work,
         now: u64,
     ) -> Result<(), KernelError> {
-        if !matches!(rec.turn, Turn::Running { .. }) {
+        if !matches!(rec.turn, Turn::Running { .. } | Turn::Waiting { .. }) {
             return Ok(());
         }
         let Some(mut ls) = self.loop_load(&rec.id) else {
@@ -1406,6 +1417,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         let before = rec.deadlines.clone();
         let past = a.past;
+        self.close_all_with(rec, past, "restart", now, work, false)?;
         let mut cx = Cx {
             slots,
             a,

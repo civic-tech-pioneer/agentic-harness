@@ -1046,20 +1046,26 @@ fn ac7_a_restart_with_every_job_aborted_is_unknown_and_sends_nothing() {
     assert_eq!(slots(&mut k).request, 0);
 }
 
+/// A waiting turn is mid-turn too (the deputy's r4 ruling): the owner's read steps it to
+/// `unknown`, its ask is closed, and a late answer to it is refused.
 #[test]
-fn ac7_a_waiting_session_is_unchanged_by_a_restart() {
+fn ac7_a_waiting_session_is_stopped_by_a_restart_and_its_ask_closes() {
     let (mut k, id) = asking();
     k.host.generation = 2;
+    // R6: `list` reports the turn the step will give before it runs.
+    let listed = k.list("alice", None, 10).unwrap();
+    assert!(listed[0].turn.contains("unknown"), "{}", listed[0].turn);
     let r = k.read("alice", &id, 0, None, 10);
     assert!(r.is_ok());
-    assert_eq!(lp(&mut k, &id)["state"], "waiting");
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
     let r = rec(&mut k, &id);
-    assert_eq!(r.open.len(), 1);
-    assert!(r.deadlines.iter().any(|d| d.what == "ask c1"));
-    // The owner can still answer.
-    k.answer("alice", &id, "a1", "c1", r#"{"allow":true}"#)
-        .unwrap();
-    assert_eq!(lp(&mut k, &id)["state"], "tools");
+    assert!(r.open.is_empty());
+    assert!(r.deadlines.is_empty());
+    assert!(k
+        .answer("alice", &id, "a1", "c1", r#"{"allow":true}"#)
+        .is_err());
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
 }
 
 // ---- AC8: interrupt and cancel
