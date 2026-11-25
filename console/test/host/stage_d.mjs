@@ -2,7 +2,7 @@
 // can exercise the stage D host routing and the console together.
 import { execFileSync, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -114,11 +114,34 @@ function seed(key, value) {
   execFileSync(join(consoleDir, "test", "host", "seed", "target", "release", "seed-state"), [preview.home, "local/agent", key, value], { stdio: "inherit" });
 }
 
+// The dev fake emits a fixed Claude session id. Watane binds that id to
+// its first owner, so give each fake process its own id for the two-owner run.
+function wrapLoadClaude(folder) {
+  const link = join(folder, "fake-claude");
+  const real = join(folder, "scripted-claude");
+  renameSync(link, real);
+  writeFileSync(link, `#!/usr/bin/env python3
+import subprocess
+import sys
+import uuid
+
+child = subprocess.Popen([sys.argv[0], *sys.argv[1:]], executable=${JSON.stringify(real)}, stdout=subprocess.PIPE)
+original = b'"session_id":"fake-session"'
+session = b'"session_id":"' + str(uuid.uuid4()).encode() + b'"'
+for line in child.stdout:
+    sys.stdout.buffer.write(line.replace(original, session))
+    sys.stdout.buffer.flush()
+sys.exit(child.wait())
+`, { mode: 0o755 });
+}
+
 // Exercise both owner caps with both backends active in one preview. The
 // separately metered test in the kernel checks the state I/O half of the budget.
 async function mixedLoad() {
-  const fake = join(dirname(preview.home), "claude", "fake-claude.json");
+  const folder = join(dirname(preview.home), "claude");
+  const fake = join(folder, "fake-claude.json");
   ensure(existsSync(fake), "the preview needs watane-dev's fake-claude");
+  wrapLoadClaude(folder);
   writeFileSync(fake, JSON.stringify({ steps: [
     { do: "expect-user" }, { do: "message", text: "ready" }, { do: "result" }, { do: "idle" },
     { do: "expect-user" }, { do: "load", rate: { deltas: 50, entries: 5, bytes: 4096, seconds: 20 } },
@@ -152,7 +175,7 @@ async function mixedLoad() {
   try {
     const claude = await startBatch("claude");
     await Promise.all(claude.map((session) => until(async () => (
-      (await entriesOf(session)).filter((entry) => entry.kind === "turn").at(-1)?.body.state === "idle"
+      (await entriesOf(session)).filter((entry) => entry.kind === "turn").at(-1)?.body.stop?.kind === "completed"
     ), 20_000, `Claude session ${session.id} to finish its warm-up turn`)));
     await Promise.all(claude.map(({ id, own }) => {
       const args = { session: id, key: keyOf(), input: "begin load" };
