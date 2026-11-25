@@ -1967,14 +1967,15 @@ section, and its code).
   judge is TypeSafe System One. `https-stream.start` with `account: "judge"`
   (5), `POST <origin>/v1/systemone`, header `content-type: application/json`
   only (the host adds the key), body
-  `{"state":{"kind":"tool"|"input","tool":"<name>"?,"input":<object>?,"text":"<input text>"?},"questions":{"harm":{"type":"noul","instructions":"<text>"},"intent":{"type":"noul","instructions":"<text>"}}}`:
-  every question in one request. `<origin>` is the provider's build origin
+  `{"model":"jev-latest","state":{"kind":"tool"|"input","tool":"<name>"?,"input":<object>?,"text":"<input text>"?},"questions":{"unsafe":{"type":"noul","instructions":"<text>"},"off_task":{"type":"noul","instructions":"<text>"}}}`:
+  every question in one request, each phrased so that yes means harm
+  (`model` is required; the answer may name another version). `<origin>` is the provider's build origin
   (`JUDGE_ORIGIN`, default `https://api.typesafe.ai`, the one host of its
   `[http]`); the participant enters the same origin with the key in the app
   (5), and the host refuses any other (`destination`). Deadline = the
   launch's `pre-tool-check.timeout-s` minus 2 s; at most 3 attempts inside it
   (as in step 3). **Reading:** a `200` whose body is a JSON object with
-  `answers.<question>.probability` a number from 0 to 1 for every question
+  `answers.<question>.noul` (the probability of yes) a number from 0 to 1 for every question
   asked; anything else (another status, a missing question, a value out of
   range, a body that is not JSON) is unreadable. **Mapping**, with the
   thresholds of its page (default `unsafe-at` 0.7, `safe-at` 0.3, the
@@ -1985,8 +1986,10 @@ section, and its code).
   an error is unsafe; so is a refusal of the account (`destination`,
   `no-account`), and a missing or wrong key therefore denies. All of it is in
   `provider-checked/logic/src/judge.rs`; another judge API is a provider
-  derived from this one (an adapter per judge API), not a setting. The field
-  names of System One's answer are as the deputy's V7 probe read them; a
+  derived from this one (an adapter per judge API), not a setting. The shape
+  is the one the deputy's V7 probe read from Jev (2026-11-25, S127 D1.1):
+  `{"model":"jev-1.14.0","answers":{"<question>":{"type":"noul","noul":0.16},…},"usage":{…}}`;
+  errors are 400 `{"detail":…}` and 422 `{"detail":[…]}` (unreadable). A
   change there is one function of `judge.rs`, and until it matches every call
   is unreadable, so it denies.
 - **Breaker:** 3 denials in a row or 10 of the last 50 verdicts of a
