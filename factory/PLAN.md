@@ -139,7 +139,8 @@ reviewer claude. Cloud.
   load test. Touches: kernel (timer adapter, restart), console/test/host, kit. No test calls an external provider.
   Protects: *guard* (1-3), *core* (4, 5). Size: an upkeep slice. BLOCKED 18:58 UTC (PR #57, draft): F6.1 and case 22
   need a watane authority contract (a resolved origin for timer firings). Ruled (19:00): the alternative; items 1 and 4
-  cut, both stay known limits (9.5); the contract is held as a Door C question in watane PLAN Unsettled. The items:
+  cut, both stay known limits (9.5); the contract is held as a Door C question in watane PLAN Unsettled. DELIVERED
+  ~19:15 UTC (PR #57, +590/-100, CI green); r1: Claude review routine `trig_016nHNDkf4QGgFeMKcE6ZXVw`, 19:21 UTC. The items:
 - **(guard, the human's (b) on S40 F6.1)** a timer firing of an OpenAI session whose owner mod was disabled during a timed pause may send one more model request under the kernel's origin. Fix: read the host-resolved origin of a timer firing through the production adapter (watane reports the caller of a timer callback as `host` and keeps the resolved origin apart), stop only foreign firings, and test it through the real adapter: an enabled owner's pause resumes by itself, a disabled owner's stops with no work.
 
 - **(guard, second sighting) `installed-agent` CI flake:** `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code settings' after AC1 passes; on S40 at 890caad and 10ed0a3, green on rerun. Find the race or give the wait a bound that measures it.
