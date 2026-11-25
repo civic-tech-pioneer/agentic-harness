@@ -1672,19 +1672,31 @@ fn review_a_continuation_with_no_request_slot_is_refused_busy_and_never_sent_in_
 struct Origins {
     of: std::collections::BTreeMap<String, String>,
     seen: usize,
+    /// Each timer id, with the origin of the call that last set it (watane binds a timer there).
+    armed: std::collections::BTreeMap<String, String>,
+    /// Mods the human disabled: watane fires their timers under the kernel's own origin.
+    disabled: std::collections::BTreeSet<String>,
 }
+
+/// The kernel's own identity in a development build (2.2).
+const KERNEL: &str = "local/agent";
 
 impl Origins {
     fn new() -> Self {
         Origins {
             of: Default::default(),
             seen: 0,
+            armed: Default::default(),
+            disabled: Default::default(),
         }
     }
 
-    /// Runs `f` under `origin`, then checks each request it sent and notes the streams it opened.
+    /// Runs `f` under `origin` (the host's `caller.identity()` for it), then checks each request
+    /// it sent and notes the streams it opened and the timers it set.
     fn under<T>(&mut self, k: &mut K, origin: &str, f: impl FnOnce(&mut K) -> T) -> T {
+        k.host.origin = Some(origin.to_string());
         let r = f(k);
+        k.host.origin = None;
         let opened: Vec<String> = k
             .state
             .entries()
@@ -1696,6 +1708,9 @@ impl Origins {
         let calls: Vec<HostCall> = k.host.calls[self.seen..].to_vec();
         self.seen = k.host.calls.len();
         for c in calls {
+            if let HostCall::TimerAfter { id, .. } = &c {
+                self.armed.insert(id.clone(), origin.to_string());
+            }
             if let HostCall::HttpsStart { request } = c {
                 let req: Value = serde_json::from_str(&request).unwrap();
                 let session = body_of(&req)["prompt_cache_key"]
@@ -1710,6 +1725,19 @@ impl Origins {
             }
         }
         r
+    }
+
+    /// Timer `id` fires as watane fires it: under the origin that set it, or the kernel's own
+    /// when that mod is disabled. Returns the origin the host resolved.
+    fn fire(&mut self, k: &mut K, id: &str) -> String {
+        let armed = self.armed[id].clone();
+        let origin = if self.disabled.contains(&armed) {
+            KERNEL.to_string()
+        } else {
+            armed
+        };
+        self.under(k, &origin, |k| k.timer(id));
+        origin
     }
 
     /// An item batch or an end of `stream`, under the origin of the call that opened it.
@@ -1873,4 +1901,89 @@ fn review_r5_a_retry_with_no_slot_stops_busy_and_never_goes_in_another_call() {
     );
     let sl = slots(&mut k);
     assert_eq!(sl.head, sl.tail, "nothing waits in the FIFO");
+}
+
+fn head_429() -> Vec<u8> {
+    json!({"status": 429, "headers": {"content-type": "application/json"}})
+        .to_string()
+        .into_bytes()
+}
+
+fn usage_limit_body(secs: u64) -> Vec<u8> {
+    json!({"error":{"type":"usage_limit_reached","code":"usage_limit_reached","message":"limit","plan_type":"plus","resets_in_seconds":secs}})
+        .to_string()
+        .into_bytes()
+}
+
+/// F6.1: alice's mod is disabled while her turn waits on a `retry` or `resume` timer, and watane
+/// fires that timer under the kernel's own origin. The firing sends no model request and does
+/// no other host work for the session; the turn stops with its state kept, and alice's next
+/// message (her mod enabled again) continues it in her own call.
+fn a_timer_under_another_origin_sends_nothing(paused: bool) {
+    let mut k = kernel();
+    let mut o = Origins::new();
+    let id = o.under(&mut k, "alice", |k| {
+        k.start("alice", "k0", "o", "{}", IN).unwrap().value
+    });
+    let s = stream_of(&mut k, &id);
+    if paused {
+        o.on(&mut k, &s, |k| {
+            feed(k, &s, vec![head_429(), usage_limit_body(60)])
+        });
+        o.on(&mut k, &s, |k| k.provider_ended_with(&s, None).unwrap());
+        assert!(matches!(turn(&mut k, &id), Turn::Paused { until: Some(_) }));
+    } else {
+        o.on(&mut k, &s, |k| {
+            k.provider_ended_with(&s, Some("idle-timeout".into()))
+                .unwrap()
+        });
+        assert_eq!(lp(&mut k, &id)["state"], "retrying");
+    }
+    let wire_before = lp(&mut k, &id)["next"].clone();
+    let sent = starts(&k).len();
+    o.disabled.insert("alice".into());
+    k.host.now += 600_000;
+    let from = k.host.calls.len();
+    let origin = o.fire(&mut k, &format!("s/{id}"));
+    assert_eq!(origin, KERNEL, "watane resolved the kernel's own origin");
+    assert_eq!(starts(&k).len(), sent, "no model request under {origin}");
+    assert!(
+        !k.host.calls[from..].iter().any(|c| matches!(
+            c,
+            HostCall::HttpsStart { .. }
+                | HostCall::ToolsOpen { .. }
+                | HostCall::ToolsDescribe { .. }
+                | HostCall::ToolsCall { .. }
+        )),
+        "no host work for alice's session: {:?}",
+        &k.host.calls[from..]
+    );
+    assert!(
+        matches!(turn(&mut k, &id), Turn::Idle { stop, .. } if stop == busy_stop()),
+        "{:?}",
+        turn(&mut k, &id)
+    );
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    assert_eq!(lp(&mut k, &id)["next"], wire_before, "the wire is kept");
+    assert_eq!(slots(&mut k).request, 0);
+    o.disabled.clear();
+    o.under(&mut k, "alice", |k| {
+        k.say("alice", &id, "s1", r#"[{"type":"text","text":"go on"}]"#)
+            .unwrap()
+    });
+    assert_eq!(
+        starts(&k).len(),
+        sent + 1,
+        "alice's next message continues it"
+    );
+}
+
+#[test]
+fn review_r6_a_retry_whose_host_resolved_origin_is_not_the_owner_s_sends_nothing() {
+    a_timer_under_another_origin_sends_nothing(false);
+}
+
+#[test]
+fn review_r6_a_resume_whose_host_resolved_origin_is_not_the_owner_s_sends_nothing() {
+    a_timer_under_another_origin_sends_nothing(true);
 }
