@@ -60,14 +60,28 @@ impl Verdict {
     }
 }
 
-/// The state of a tool call (a `check` or an `ask`).
-pub fn tool_state(tool: &str, input: &Value) -> Value {
-    json!({"kind": "tool", "tool": tool, "input": input})
+/// The state of a tool call (a `check` or an `ask`), with the session's excerpt (D1.2).
+pub fn tool_state(tool: &str, input: &Value, excerpt: &[(&str, &str)]) -> Value {
+    with_excerpt(
+        json!({"kind": "tool", "tool": tool, "input": input}),
+        excerpt,
+    )
 }
 
-/// The state of an input.
-pub fn input_state(text: &str) -> Value {
-    json!({"kind": "input", "text": text})
+/// The state of an input, with the session's excerpt before it.
+pub fn input_state(text: &str, excerpt: &[(&str, &str)]) -> Value {
+    with_excerpt(json!({"kind": "input", "text": text}), excerpt)
+}
+
+/// Adds `transcript_excerpt` (`[{"role","text"}]`, oldest first) when there is any.
+fn with_excerpt(mut state: Value, excerpt: &[(&str, &str)]) -> Value {
+    if !excerpt.is_empty() {
+        state["transcript_excerpt"] = excerpt
+            .iter()
+            .map(|(role, text)| json!({"role": role, "text": text}))
+            .collect();
+    }
+    state
 }
 
 /// The `https-stream.start` request (TECHNICAL 5): a `POST <origin>/v1/systemone` on the account `judge`.
@@ -144,7 +158,7 @@ mod tests {
     fn ac6_request_is_a_post_on_the_judge_account_with_only_the_content_type() {
         let r: Value = serde_json::from_str(&request(
             "https://j.example",
-            &tool_state("Bash", &json!({"command": "ls"})),
+            &tool_state("Bash", &json!({"command": "ls"}), &[]),
         ))
         .unwrap();
         assert_eq!(r["url"], "https://j.example/v1/systemone");
@@ -172,14 +186,21 @@ mod tests {
             Some(vec![("unsafe", 0.16), ("off_task", 0.95)])
         );
         let r: Value =
-            serde_json::from_str(&request("https://j.example", &input_state("hi"))).unwrap();
+            serde_json::from_str(&request("https://j.example", &input_state("hi", &[]))).unwrap();
         let b: Value = serde_json::from_str(r["body"].as_str().unwrap()).unwrap();
         assert_eq!(b["model"], "jev-latest");
     }
 
     #[test]
     fn ac6_input_state_carries_the_text() {
-        assert_eq!(input_state("hi"), json!({"kind": "input", "text": "hi"}));
+        assert_eq!(
+            input_state("hi", &[]),
+            json!({"kind": "input", "text": "hi"})
+        );
+        assert_eq!(
+            input_state("hi", &[("user", "a"), ("assistant", "b")])["transcript_excerpt"],
+            json!([{"role": "user", "text": "a"}, {"role": "assistant", "text": "b"}])
+        );
     }
 
     #[test]

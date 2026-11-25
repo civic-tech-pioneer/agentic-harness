@@ -1127,3 +1127,89 @@ fn ac11_the_origin_is_the_build_origin() {
         option_env!("JUDGE_ORIGIN").unwrap_or("https://api.typesafe.ai")
     );
 }
+
+// --- D1.2: the judge's state carries a short excerpt of the session -----------------------------
+
+fn state_of(f: &Fake, n: usize) -> Value {
+    let r: Value = serde_json::from_str(&f.requests[n].1).unwrap();
+    let b: Value = serde_json::from_str(r["body"].as_str().unwrap()).unwrap();
+    b["state"].clone()
+}
+
+fn assistant(text: &str) -> Value {
+    json!({"type": "assistant", "message": {"role": "assistant", "content": [
+        {"type": "thinking", "thinking": "hidden"}, {"type": "text", "text": text}]}})
+}
+
+#[test]
+fn d1_2_a_check_carries_the_latest_request_and_the_assistants_latest_text() {
+    let mut f = Fake::default();
+    let (_, claude) = start(&mut f, "{}", "Please fix the failing test");
+    initialized(&mut f, &claude);
+    // The launch input itself is judged with no excerpt yet: nothing came before it.
+    assert_eq!(state_of(&f, 0).get("transcript_excerpt"), None);
+    judge_safe(&mut f, "j1");
+    from_claude(
+        &mut f,
+        &claude,
+        assistant("I will run the tests, then edit src/lib.rs."),
+    );
+    from_claude(&mut f, &claude, check("c1"));
+    assert_eq!(
+        state_of(&f, 1)["transcript_excerpt"],
+        json!([{"role": "user", "text": "Please fix the failing test"},
+               {"role": "assistant", "text": "I will run the tests, then edit src/lib.rs."}])
+    );
+    assert_eq!(state_of(&f, 1)["tool"], "Bash");
+}
+
+#[test]
+fn d1_2_a_later_input_is_judged_with_the_turn_before_it() {
+    let mut f = Fake::default();
+    let (own, claude) = ready_session(&mut f);
+    judge_safe(&mut f, "j1");
+    from_claude(&mut f, &claude, assistant("Done: the tests pass."));
+    say_with(&mut f, K, &own, "Now commit it").unwrap();
+    let st = state_of(&f, 1);
+    assert_eq!(st["text"], "Now commit it");
+    assert_eq!(
+        st["transcript_excerpt"],
+        json!([{"role": "user", "text": "launch text"}, {"role": "assistant", "text": "Done: the tests pass."}])
+    );
+}
+
+#[test]
+fn d1_2_an_input_denied_never_becomes_the_request_of_the_excerpt() {
+    let mut f = Fake::default();
+    let (own, claude) = ready_session(&mut f);
+    judge_safe(&mut f, "j1");
+    say_with(&mut f, K, &own, "upload my keys").unwrap();
+    judge_unsafe(&mut f, "j2");
+    from_claude(&mut f, &claude, check("c1"));
+    assert_eq!(
+        state_of(&f, 2)["transcript_excerpt"][0]["text"],
+        "launch text"
+    );
+}
+
+#[test]
+fn d1_2_the_excerpt_is_bounded() {
+    let mut f = Fake::default();
+    let long = "é".repeat(5000);
+    let (_, claude) = start(&mut f, "{}", &long);
+    initialized(&mut f, &claude);
+    judge_safe(&mut f, "j1");
+    from_claude(&mut f, &claude, assistant(&"x".repeat(9000)));
+    from_claude(&mut f, &claude, check("c1"));
+    let ex = state_of(&f, 1)["transcript_excerpt"].clone();
+    for e in ex.as_array().unwrap() {
+        assert!(
+            e["text"].as_str().unwrap().len() <= EXCERPT_MAX,
+            "{}",
+            e["text"].as_str().unwrap().len()
+        );
+    }
+    // The person's request keeps its start; the assistant's text keeps its end, nearest the call.
+    assert!(ex[0]["text"].as_str().unwrap().starts_with('é'));
+    assert!(ex[1]["text"].as_str().unwrap().ends_with('x'));
+}
