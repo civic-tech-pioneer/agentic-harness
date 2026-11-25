@@ -167,6 +167,8 @@ pub(crate) enum Launch {
     Started(String),
     TooLarge,
     Host(String),
+    /// The new toolset handle needs the opening call to commit.
+    OpeningToolset,
     /// The toolsets wait for the participant's consent (9.5): the request is tried again.
     Consent(String),
     /// The toolsets cannot be opened: the turn ends `failed`.
@@ -386,6 +388,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         match self.tools_setup(ls) {
             Ok(()) => {}
+            Err(SetupError::Opening) => return Launch::OpeningToolset,
             Err(SetupError::Consent(what)) => return Launch::Consent(what),
             Err(SetupError::Failed(e)) => return Launch::Failed(e),
         }
@@ -513,6 +516,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 self.end_turn(rec, ls, cx, failed("too-large"))
             }
             Launch::Host(e) | Launch::Failed(e) => self.end_turn(rec, ls, cx, failed(e)),
+            Launch::OpeningToolset => self.retry(rec, ls, cx, attempt, "opening toolset".into()),
             Launch::Consent(what) => {
                 ls.consent = Some(what.clone());
                 self.retry(rec, ls, cx, attempt, format!("consent-pending({what})"))?;

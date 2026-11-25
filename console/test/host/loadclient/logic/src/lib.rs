@@ -17,6 +17,17 @@ impl Guest for Api {
     fn interrupt(session: String) -> Result<(), String> {
         sessions::interrupt(&session, None).map_err(|e| format!("{e:?}"))
     }
+    fn start_openai(key: String, input: String) -> Result<String, String> {
+        sessions::start(&key, "Tools", "{}", &input).map_err(|e| format!("{e:?}"))
+    }
+    fn read(session: String, after: u64, max: u32) -> Result<Vec<String>, String> {
+        sessions::read(&session, after, None, max)
+            .map(|page| page.entries)
+            .map_err(|e| format!("{e:?}"))
+    }
+    fn note() -> String {
+        "preview tool result".to_owned()
+    }
     fn cancel(session: String) {
         sessions::cancel(&session)
     }

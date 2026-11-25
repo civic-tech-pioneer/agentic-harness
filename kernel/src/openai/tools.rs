@@ -114,9 +114,9 @@ fn consent_pending(e: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// The text a loop shows when `tools_open` or `tools_describe` says no: the consent a request
-/// waits for, or the failure that ends the turn.
+/// Why a request could not use its toolset yet.
 pub(crate) enum SetupError {
+    Opening,
     Consent(String),
     Failed(String),
 }
@@ -181,7 +181,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             Some(what) => SetupError::Consent(what),
             None => SetupError::Failed(e),
         };
-        if ls.tools.is_none() {
+        let opening = ls.tools.is_none();
+        if opening {
             let handle = self.host.tools_open(&ls.policy.toolsets).map_err(fail)?;
             ls.tools = Some(ToolSet {
                 handle,
@@ -191,7 +192,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         let Some(set) = ls.tools.as_mut().filter(|t| !t.described) else {
             return Ok(());
         };
-        let tools = self.host.tools_describe(&set.handle).map_err(fail)?;
+        let tools = self.host.tools_describe(&set.handle).map_err(|e| {
+            // Watane publishes the open only after this call commits.
+            if opening && e == "unknown-handle" {
+                SetupError::Opening
+            } else {
+                fail(e)
+            }
+        })?;
         set.described = true;
         set.defs = tools.iter().map(definition).collect();
         set.info = tools

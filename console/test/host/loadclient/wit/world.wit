@@ -7,6 +7,12 @@ interface api {
   say: func(session: string, key: string, input: string) -> result<u64, string>;
   interrupt: func(session: string) -> result<_, string>;
   cancel: func(session: string);
+  start-openai: func(key: string, input: string) -> result<string, string>;
+  read: func(session: string, after: u64, max: u32) -> result<list<string>, string>;
+  /// A test-only tool with a recognizable result.
+  /// @parallel
+  /// @idempotent
+  note: func() -> string;
 }
 
 world loadclient {

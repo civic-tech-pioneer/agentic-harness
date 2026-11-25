@@ -58,6 +58,9 @@ Each behaviour is proven at the lowest level that shows it
 | Stage D on watane's real host | `npm run test:host:d` in `console/`: the profile list, each refusal named and an OpenAI `start` that reaches the host's `https-stream` (the preview refuses the account, so the turn ends failed "not signed in to ChatGPT"); what needs a scripted Responses server is a SKIP naming watane dev question 15; needs `watane-dev` of watane slice/s111 or later on `PATH`; exit 2 means not run; by hand, not in the gate |
 | Installed release journey (slow) | `npm run test:installed` in `console/` with `WATANE_BIN_DIR` set to the Watane build directory containing `watane-app` (feature `driver`), `watane-dev`, and `fake-claude` (S39). Needs a desktop session or Xvfb. |
 | Stage B budgets (slow) | `npm run test:load` in `console/`: 8 fake sessions for 2 owners on `watane-dev serve`, item delay and Stop measured at the page (TECHNICAL 16 "Budget record"); needs `watane-dev`, `fake-claude`, `cargo` and `python3`; exit 2 means not run; by hand, on a quiet machine. The state bytes per entry: `cargo test -- --ignored s36_load` in `kernel/` |
+| Stage D on a scripted preview (slow) | `npm run test:host:d` in `console/` with `watane-dev`, `watane` and `scripted-responses` from Watane S114 or later and Chromium. The test requires `serve --script` before it starts a session. |
+| Stage D mixed load (slow) | `npm run test:load:d` in `console/` with the stage D preview tools and `fake-claude`. Exercises eight sessions of each backend across two owners. |
+| Stage D state I/O (slow) | `cargo test s128_stage_d_state_bytes_per_step -- --ignored --nocapture` in `kernel/`. Measures four-job Responses steps with the fake host at 10 and 1,000 steps. |
 | Probes of the real programs | `proto/claude-probes/probes.py`, `proto/agent-spike/chatgpt-probes.py` (by hand, after a `claude` update) |
 
 ## Do not touch
