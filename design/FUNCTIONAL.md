@@ -33,7 +33,7 @@ where it belongs.
 | origin client | The client at the start of a chain of calls. Consents name it. |
 | kernel | The mod `mods:agent`: profiles, sessions, transcripts, permissions, the OpenAI agent, delegation. |
 | provider | The mod that holds the Claude Code grant and starts `claude` for the kernel: unchecked, or checked by a judge. |
-| judge | A service that the participant chose, which reads an agent step and says whether it is safe. |
+| judge | A service that the participant chose, which reads an agent step and scores how likely it is to be unsafe. |
 | ask | A question from an agent for permission to use a tool. |
 | check | A question from the host to the checked provider before any tool runs. |
 | workspace | A folder in which agents may read and change files: one the participant picked for a client, or a scratch folder of one session. |
@@ -114,9 +114,9 @@ where it belongs.
 
 ### 3.8 The checked provider
 
-- **AGT-F-32** The checked provider shall ask its judge before a session's first input reaches Claude Code, before each input, before each tool call and before each permission ask. If the judge says unsafe or unsure, answers something unreadable, is slow or is down, then the provider shall deny. If the judge says safe, then the provider shall leave the decision to the profile. The provider shall send nothing of a session to its judge before the participant has consented to the session's workspace, and shall pass nothing to Claude Code before its verdict. Traces: F-AGENT-9.
+- **AGT-F-32** The checked provider shall ask its judge before a session's first input reaches Claude Code, before each input, before each tool call and before each permission ask. If the judge scores the step unsafe or unsure (by the thresholds on the provider's page), answers something unreadable, is slow or is down, then the provider shall deny. If the judge scores it safe, then the provider shall leave the decision to the profile. The provider shall send nothing of a session to its judge before the participant has consented to the session's workspace, and shall pass nothing to Claude Code before its verdict. Traces: F-AGENT-9.
 - **AGT-F-33** After 3 denials in a row, or 10 of the last 50, the checked provider shall stop the turn and say why. Traces: F-AGENT-9.
-- **AGT-F-34** The client shall see each verdict and its reasons. Traces: F-AGENT-6, F-AGENT-9.
+- **AGT-F-34** The client shall see each verdict and its reasons, which name each question the judge scored and its score. Traces: F-AGENT-6, F-AGENT-9.
 - **AGT-F-35** The plan of the checked provider shall name the host of its judge and say that it sends excerpts of sessions there. Traces: F-INST-1.
 - **AGT-F-53** The app shall keep the judge's key, which the participant enters in the app for one checked provider and one judge origin. The host shall add it only to that provider's requests to that origin, and no mod shall see it. The participant shall see that a key is kept and remove it. Traces: F-AGENT-9, AGT-F-23.
 
