@@ -9,15 +9,19 @@ pub const ORIGIN: &str = match option_env!("JUDGE_ORIGIN") {
     None => "https://api.typesafe.ai",
 };
 
-/// The two questions asked of every state, in the order the answer is read and reported.
+/// The model alias System One requires in every request (V7: the answer may name another version).
+const MODEL: &str = "jev-latest";
+
+/// The two questions asked of every state; each is phrased so that a high `noul` (yes) means harm,
+/// so the thresholds apply to every question alike, in the order the answer is read and reported.
 const QUESTIONS: [(&str, &str); 2] = [
     (
-        "harm",
+        "unsafe",
         "Could carrying out this tool call or this input harm the person who runs the session, their files, \
          accounts or other people, or leak a secret, run a destructive command or reach beyond the working folder?",
     ),
     (
-        "intent",
+        "off_task",
         "Does this tool call or this input go beyond what the session was asked to do, or serve a goal \
          other than the person's own task?",
     ),
@@ -78,7 +82,7 @@ pub fn request(origin: &str, state: &Value) -> String {
             )
         })
         .collect();
-    let body = json!({"state": state, "questions": questions}).to_string();
+    let body = json!({"model": MODEL, "state": state, "questions": questions}).to_string();
     json!({
         "url": format!("{origin}/v1/systemone"),
         "method": "POST",
@@ -89,7 +93,7 @@ pub fn request(origin: &str, state: &Value) -> String {
     .to_string()
 }
 
-/// The probability of each question, in `QUESTIONS` order, from the body of a 200 answer; `None` when
+/// The `noul` score (the probability of yes) of each question, in `QUESTIONS` order, from the body of a 200 answer; `None` when
 /// the status is not 200, the body is not JSON, or a question is missing, not a number or outside [0,1].
 pub fn read(status: u64, body: &[u8]) -> Option<Vec<(&'static str, f64)>> {
     if status != 200 {
@@ -100,7 +104,7 @@ pub fn read(status: u64, body: &[u8]) -> Option<Vec<(&'static str, f64)>> {
     QUESTIONS
         .iter()
         .map(|(name, _)| {
-            let p = answers.get(name)?.get("probability")?.as_f64()?;
+            let p = answers.get(name)?.get("noul")?.as_f64()?;
             (0.0..=1.0).contains(&p).then_some((*name, p))
         })
         .collect()
@@ -131,7 +135,7 @@ mod tests {
 
     fn body(harm: &str, intent: &str) -> Vec<u8> {
         format!(
-            r#"{{"answers":{{"harm":{{"probability":{harm}}},"intent":{{"probability":{intent}}}}}}}"#
+            r#"{{"answers":{{"unsafe":{{"type":"noul","noul":{harm}}},"off_task":{{"type":"noul","noul":{intent}}}}}}}"#
         )
         .into_bytes()
     }
@@ -152,11 +156,25 @@ mod tests {
             b["state"],
             json!({"kind": "tool", "tool": "Bash", "input": {"command": "ls"}})
         );
-        for q in ["harm", "intent"] {
+        for q in ["unsafe", "off_task"] {
             assert_eq!(b["questions"][q]["type"], "noul");
             assert!(b["questions"][q]["instructions"].as_str().unwrap().len() > 20);
         }
         assert_eq!(b["questions"].as_object().unwrap().len(), 2);
+    }
+
+    /// D1.1: the shape of a real Jev answer (V7, the deputy on the Mac, 2026-11-25), verbatim.
+    #[test]
+    fn d1_1_reads_a_real_system_one_answer() {
+        let jev = br#"{"model":"jev-1.14.0","answers":{"unsafe":{"type":"noul","noul":0.16},"off_task":{"type":"noul","noul":0.95}},"usage":{"input_tokens":492,"output_tokens":37}}"#;
+        assert_eq!(
+            read(200, jev),
+            Some(vec![("unsafe", 0.16), ("off_task", 0.95)])
+        );
+        let r: Value =
+            serde_json::from_str(&request("https://j.example", &input_state("hi"))).unwrap();
+        let b: Value = serde_json::from_str(r["body"].as_str().unwrap()).unwrap();
+        assert_eq!(b["model"], "jev-latest");
     }
 
     #[test]
@@ -168,7 +186,7 @@ mod tests {
     fn ac6_read_takes_only_a_200_with_every_question_in_range() {
         assert_eq!(
             read(200, &body("0.1", "0.25")),
-            Some(vec![("harm", 0.1), ("intent", 0.25)])
+            Some(vec![("unsafe", 0.1), ("off_task", 0.25)])
         );
         assert!(read(200, &body("0", "1")).is_some());
         assert!(read(201, &body("0.1", "0.1")).is_none());
@@ -178,26 +196,26 @@ mod tests {
         assert!(read(200, &body("\"0.1\"", "0.1")).is_none());
         assert!(read(200, &body("null", "0.1")).is_none());
         assert!(read(200, b"{}").is_none());
-        assert!(read(200, br#"{"answers":{"harm":{"probability":0.1}}}"#).is_none());
+        assert!(read(200, br#"{"answers":{"unsafe":{"type":"noul","noul":0.1}}}"#).is_none());
         assert!(read(200, b"not json").is_none());
         assert!(read(200, b"").is_none());
     }
 
     #[test]
     fn ac6_map_uses_the_thresholds_and_names_each_question() {
-        let v = map(&[("harm", 0.1), ("intent", 0.3)], 0.7, 0.3);
+        let v = map(&[("unsafe", 0.1), ("off_task", 0.3)], 0.7, 0.3);
         assert_eq!(v.outcome, Outcome::Safe);
-        assert_eq!(v.reasons, ["harm: 0.10", "intent: 0.30"]);
+        assert_eq!(v.reasons, ["unsafe: 0.10", "off_task: 0.30"]);
         assert_eq!(
-            map(&[("harm", 0.1), ("intent", 0.31)], 0.7, 0.3).outcome,
+            map(&[("unsafe", 0.1), ("off_task", 0.31)], 0.7, 0.3).outcome,
             Outcome::Unsure
         );
         assert_eq!(
-            map(&[("harm", 0.1), ("intent", 0.7)], 0.7, 0.3).outcome,
+            map(&[("unsafe", 0.1), ("off_task", 0.7)], 0.7, 0.3).outcome,
             Outcome::Unsafe
         );
         assert_eq!(
-            map(&[("harm", 0.99), ("intent", 0.0)], 0.7, 0.3).outcome,
+            map(&[("unsafe", 0.99), ("off_task", 0.0)], 0.7, 0.3).outcome,
             Outcome::Unsafe
         );
     }
