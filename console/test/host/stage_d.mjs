@@ -17,6 +17,7 @@ const tmp = mkdtempSync(join(tmpdir(), "stage-d-"));
 const wasmDir = join(tmp, "agent"); // a copy: dev rewrites the staged world
 const script = join(tmp, "responses.json");
 const clientDir = join(tmp, "loadclient");
+const providerDir = join(tmp, "claude-code");
 const tool = "loadclient_api_note";
 const load = process.argv.includes("--load");
 const env = { ...process.env, WATANE_HOME: join(tmp, "home"), WATANE_DEV_CACHE: join(tmp, "cache") };
@@ -171,8 +172,12 @@ async function main() {
   cpSync(join(root, "ui"), join(wasmSrc, "ui"), { recursive: true });
   cpSync(wasmSrc, wasmDir, { recursive: true, filter: (s) => !s.includes("/target") });
 
-  // the kernel's mod.toml names the claude-code provider: link it by its absolute folder (as stage_b.mjs)
-  const added = dev(["add", join(root, "provider")], wasmDir);
+  // Dev stages the linked provider and rewrites its component. Keep it local
+  // to this preview so another host test can build the same provider.
+  cpSync(join(root, "provider"), providerDir, {
+    recursive: true, filter: (path) => !path.includes("/target"),
+  });
+  const added = dev(["add", providerDir], wasmDir);
   if (added.spawnError || added.status !== 0) {
     const e = added.json?.errors?.[0] ?? added.json?.error;
     throw Object.assign(new Error(`watane-dev add provider: ${e ? `${e.code ?? ""} ${e.message ?? ""}` : (added.err || added.out).trim().split("\n")[0]}`), { addFailed: true, code: e?.code, out: added.out, err: added.err });
