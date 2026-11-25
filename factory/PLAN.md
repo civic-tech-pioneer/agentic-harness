@@ -27,10 +27,12 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
+S127 (main line, claude), S128 (upkeep, codex); watane S126 (upkeep, codex).
+
 ## Sketched
 ### S127: stage E: Alice's Claude session runs through the checked provider, with Jev as its judge
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S126 codex, S125 codex; the main
-line, sketched 2026-11-25 by deputy-6; spec-check 382f793 (deputy-6, stage E scope: 14 points, folded in below).)
+line, sketched 2026-11-25 by deputy-6; routine `trig_01E1Ngk3t7NCGXJnEjBgEjHR`, fires 18:39 UTC; spec-check 382f793 (deputy-6, stage E scope: 14 points, folded in below).)
 Story (AGT-J3; TECHNICAL 17 stage E, "this repository" column): Alice installs the checked provider, enters her judge's key
 and origin in the app (watane S122), and runs a Claude session through it: before each tool call the console shows
 `checking`, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and after repeated denials
@@ -124,7 +126,7 @@ reviewer claude. Cloud.
 ### Upkeep
 
 - **S128 (upkeep, in flight, cloud, builder codex, reviewer claude; rule 3: last two S127 claude, S126 codex; sketched
-  2026-11-25 by deputy-6; beside S127: S127 owns the kernel's turn/verdict code and the console's activity and verdict
+  2026-11-25 by deputy-6; Codex task https://chatgpt.com/local/6b072ad7-d4b0-83ed-80af-2de03a41f066, 18:40 UTC; beside S127: S127 owns the kernel's turn/verdict code and the console's activity and verdict
   display, S128 edits none of them).** Outcomes, each item's check: (1, guard) the F6.1 fix below, through the real adapter;
   (2, guard) the `installed-agent` flake, now 4 sightings (S40 890caad, 10ed0a3, a2235d6 twice): find the race or bound
   the wait by what it measures; (3, guard) `kit/s7_fix1.test.ts:34` failed on main 716782c by 5 µs (a ratio of two
