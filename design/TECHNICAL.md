@@ -1004,21 +1004,21 @@ wire") are this JSON; the entry has no `activity`.
     |---|---|
     | Claude, `running` or `waiting` | each open ask or check is decided `deny`, `by: kernel`, reason `restart` (a Claude ask has no kernel deadline, 9.6; it expires only at the host, 4.5), and each ask with a pending answer is decided with that answer (9.8 rule 4); the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
     | `paused`, either backend | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` (9.5); 9.8 gives nothing for a Claude rate limit, so a slice that adds one adds its row here |
-    | OpenAI, `requesting` or `ready` (waiting in the FIFO or not) | goes to `ready`, takes a request slot or waits in the FIFO under this boot (9.5); the turn stays `running` |
-    | OpenAI, `retrying` | stays `retrying`; its `retry` deadline and timer are kept (7) and the request goes when it fires (9.5); nothing is sent at once, so no request is sent twice |
-    | OpenAI, `tools` | every open job gets `aborted`, `idempotent` ones included, and every `pending` call too, with no host call (the step may run in the pass, under another owner's origin); with no call left it goes to `ready` as above (9.5). Running an idempotent job again under its key is not built yet: a known limit (the deputy, 2026-11-24) |
+    | OpenAI, `running` (loop `requesting`, `ready` in the FIFO or not, `retrying` or `tools`) | the turn stops: every open job gets `aborted`, `idempotent` ones included, and every `pending` call too; the `retry` deadline goes; the loop goes to `idle` and the turn becomes `unknown` (written as a `turn` entry and pushed), with the transcript up to the last finished message, and the session leaves `active/`; the queue is kept. A `stopped {quota}` that recording the aborts gives stays. The step makes no host call for it (no HTTPS request, no toolset open, describe or call, no consent), whatever origin runs it (the pass runs under another owner's call). An OpenAI turn does not continue by itself after a restart, and an idempotent job is not run again under its key: known limits (the deputy's cut, 2026-11-25; case 22) |
     | OpenAI, `waiting` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
     | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, in every state (as built), `restart` for an open one and its answer for a pending one, the turn kept; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` opens a new provider stream and resumes with `session {resume}` (`persist: false`: a fresh session), as after the idle release; no slot count is decremented for it (R1 zeroed the kernel's, the owner's reads zero by its boot tag) |
 
     AGT-F-27 applies to the tool jobs of 6 (the OpenAI loop, row `tools`),
     the only calls a mod marks safe to repeat. AGT-F-10: no stored turn is
     shown as `running` unless something drives it: a Claude turn becomes
-    `unknown`; an OpenAI turn is `running` because its step starts it again;
+    `unknown`; so does a `running` OpenAI turn;
     `list` reports the turn the step will give (R6).
   - **R5, Continue.** `say` on an `unknown` session starts a turn that resumes
     the Claude session with `session {resume}` (4.1), unless its profile sets
     `persist: false` (nothing was kept: a fresh session); if `claude` refuses the
-    resume, the turn becomes `resume-lost`. When inputs are queued, the `say`
+    resume, the turn becomes `resume-lost`. On an OpenAI session it starts a
+    turn whose request carries the wire history and the new input, in the
+    owner's own call (9.5 "After a restart"). When inputs are queued, the `say`
     input is still taken when the queue is full: the turn starts with the oldest
     queued input, then the new one joins the end of the queue, so order is kept
     and Continue is never refused `queue-full` for a queue that had room after
@@ -1349,19 +1349,23 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   R1; streams are memory only, 3).
 - **Parallel:** the jobs of a step start together, up to the free job slots,
   only when every tool is `parallel`; else one after another, in call order.
-- **After a restart:** the session's restart step (9.3, R4) gives each loop
-  state one outcome: `requesting` and `ready` go to `ready` and take a request
-  slot or wait in the FIFO under the new boot; `retrying` stays, its `retry`
-  deadline and timer kept, and the request goes when it fires; in `tools`,
-  every open job gets `aborted`, `idempotent` ones included, and every
-  `pending` call too, under no host origin: the step makes no `agent-tools`
-  call (it may run in the restart pass, under another owner's call), and the
-  turn goes on as for any aborted job, to `ready`; `waiting` and `paused` are
-  unchanged. Known limits for now (the deputy, 2026-11-24): an idempotent job
-  is aborted, not run again under its key (case 22's idempotent half), and the
-  kernel opens no toolset again, so a handle kept from an earlier boot (the
-  host keeps handles in memory) fails each later job, whose output is then the
-  host's error.
+- **After a restart:** the session's restart step (9.3, R4) stops a
+  `running` turn, in `requesting`, `ready`, `retrying` or `tools`: every open
+  job gets `aborted`, `idempotent` ones included, and every `pending` call
+  too; the `retry` deadline goes; the loop goes to `idle` and the turn to
+  `unknown`, not running, with the transcript up to the last finished
+  message (J11). A `stopped {quota}` that recording the aborts gives stays.
+  The step makes no host call for the session: no HTTPS request, no toolset
+  open, describe or call, and so no consent, under any origin (it may run in
+  the restart pass, under another owner's call). `waiting` and `paused` are
+  unchanged. The owner's next `say` continues the session in her own call:
+  its request carries the wire history, the aborted outputs included, and her
+  input (R5). Known limits for now (the deputy's cut, 2026-11-25): an OpenAI
+  turn does not continue by itself after a restart; an idempotent job is
+  aborted, not run again under its key (case 22's idempotent half, not yet
+  built); and the kernel opens no toolset again, so a handle kept from an
+  earlier boot (the host keeps handles in memory) fails each later job, whose
+  output is then the host's error.
 - **Settled by S40-3 (the loop).**
   - *The request.* `https-stream.start` gets exactly `{"url":"https://api.openai.com/v1/responses",
     "method":"POST","headers":{"content-type":"application/json","accept":"text/event-stream"},
@@ -2165,7 +2169,8 @@ of `spec/VISION.md`.
     happens once after restart.
 22. After a restart, an idempotent job runs again under its key; a
     non-idempotent one gets `aborted`. (OpenAI: the idempotent half is not
-    yet built; every open job gets `aborted`, 9.5 "After a restart".)
+    yet built; every open job gets `aborted` and the turn becomes `unknown`,
+    9.5 "After a restart".)
 23. The turn limit leaves one last turn without tools; the tool-error and
     token limits stop the turn.
 24. A child beyond `delegates`, depth or live count is refused; cancelling
@@ -2371,21 +2376,23 @@ of `spec/VISION.md`.
     resume gives `resume-lost`; with inputs queued, the new input joins the end
     and the oldest starts.
 70. (9.5, R4 OpenAI part) Kernel crate with the scripted Responses server:
-    after a restart an OpenAI session `running` in `requesting` or
-    `ready` goes to `ready` under the new boot, taking a request slot or
-    waiting in the FIFO (FIFO entries of an older boot are skipped); a
-    `retrying` one stays, keeps its `retry` deadline and timer, and sends its
-    request once, when it fires; in `tools`, every open job (idempotent
-    ones included, case 22) and every `pending` call gets `aborted` with no
-    `agent-tools` call, in the pass too, and the loop goes to `ready`; OpenAI `waiting` sessions and `paused`
-    ones (either backend) are unchanged, their
-    deadlines and timer kept; the turn stays `running` where it was.
+    after a restart an OpenAI session `running` in `requesting`, `ready`,
+    `retrying` or `tools` becomes `unknown` with its loop `idle`: every open
+    job (idempotent ones included, case 22) and every `pending` call gets
+    `aborted`, the `retry` deadline goes, it takes no request slot and no FIFO
+    place, and the step (in the pass, under another owner's call, or in the
+    owner's own, R6) makes no HTTPS, toolset or consent call; a
+    `stopped {quota}` that recording the aborts gives stays, with no request;
+    the owner's next `say` sends one request, in her call, with the aborted
+    outputs. OpenAI `waiting` sessions and `paused` ones (either backend) are
+    unchanged, their deadlines and timer kept.
 71. (9.3, R6) After a restart, each of `attach`, `read`, `say` and `answer`
     on a session of an older boot does its restart step first, in the
     same call, and acts on the new state (an `answer` to an ask the step denied
     is refused `{field: "ask"}`); the pass then skips that session.
     `list` over such sessions reads no extra record, reports `unknown` for a
-    Claude `running` or `waiting` one, and writes nothing.
+    Claude `running` or `waiting` one and an OpenAI `running` one, and writes
+    nothing.
 72. (9.4, 9.8) Kernel crate: an `ask` or `check` item whose `id` is not a
     non-empty string (`7`, `null`, `""`), one whose `input` is missing, `null`
     or not an object (`{}` is an ask), and one whose `expires-at` is negative,
