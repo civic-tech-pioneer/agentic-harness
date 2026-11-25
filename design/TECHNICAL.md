@@ -810,7 +810,7 @@ inputs and 2 MiB in all, counted in stored bytes: each input as the JSON string 
 | `running {activity?}` | a turn is under way; `activity` while it lasts: `checking {on}` (the checked provider asks its judge, 10), `compacting`, `consent {what}` (a request waits for the participant in the app, 8). The activity is live only: pushed as a `turn` update and kept out of the record and entries. Pending consent joins the provider stream cursor write so attachment during a wait can see it. `initialized` clears it |
 | `waiting {asks}` | an ask is open |
 | `paused {until}` | a usage limit, or retries ran out; the `resume` deadline resumes it (below) |
-| `idle {stop}` | `completed`, `interrupted`, `stopped {limit}` (names the limit), `failed {error}` (`failed {timers}` when a retry finds no timer slot, below) |
+| `idle {stop}` | `completed`, `interrupted`, `stopped {limit}` (names the limit; `stopped {limit: busy}` when an OpenAI turn's later request finds no request slot, 9.5 Slots), `failed {error}` (`failed {timers}` when a retry finds no timer slot, below) |
 | `unknown` | written by the restart step ("Restart", R4) for a Claude session that was `running` or `waiting` when watane stopped, and by nothing else; it ends with the next `say` (R5), which resumes the Claude session |
 | `resume-lost` | `claude` refused a resume; the next `say` starts a new Claude session seeded with a summary |
 
@@ -1342,11 +1342,19 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   request finds no request slot is refused `busy` and does not wait: the FIFO's
   drain runs in whatever call frees a slot, and a session's model request is
   sent only in its owner's call (the deputy's r4 ruling, F4.2); the owner sends
-  again. A request a turn makes later (inside an items call, or at a `retry`)
-  that finds no slot waits in `ready` in the FIFO. Every `ended` of a kernel-consumed stream frees its
-  slot and starts the oldest waiting work whose session and owner are under
-  their caps in the same call; work at a cap stays in the FIFO and never
-  blocks another owner's. A FIFO entry whose session no longer waits
+  again. No model request of a session is ever sent under an origin other than
+  its owner's (the deputy's r5 ruling, F5.1), so no request waits in the FIFO
+  past the call that queued it: a request a turn makes later (after its jobs,
+  at a `retry` or `resume`, or for the next queued input) is sent in the call
+  that makes it, which runs under the owner's origin, when a request slot is
+  free; else, or when that call may be another owner's (the FIFO's drain, or an
+  item or `ended` of a job the drain started, below), nothing is sent and the
+  turn stops `idle {stopped {limit: busy}}` with its wire, outputs and queue
+  kept, as after a restart (9.3 R4); the owner's next message continues it in
+  her own call. No turn waits for a slot, so none hangs. Every `ended` of a
+  kernel-consumed stream frees its slot and starts the oldest waiting jobs
+  whose session and owner are under their caps in the same call; work at a cap
+  stays in the FIFO and never blocks another owner's. A FIFO entry whose session no longer waits
   (interrupt, cancel, delete) or whose entry is of an older boot is skipped and
   removed when reached. The first call of a boot sets the counts to zero (9.3,
   R1; streams are memory only, 3).
@@ -1405,13 +1413,16 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     not current (a completed response's, or one a cancel left) is freed at its `ended`.
   - *Slots.* A request takes a slot when the kernel holds fewer than 8 requests and its owner
     fewer than 4 (`quota/<owner>` `request`, tagged by boot as `provider` is); else a `start`,
-    `say` or interrupt replacement is refused `busy`, and a later request of the turn takes the
-    place `slots.tail` in the FIFO: `slots/wait/<n>` `{session, boot}`, and the loop is `ready
-    {wait: n}`. An entry counts only while the loop is still `ready {wait: n}` for it; any other
-    entry is skipped and removed when reached. Whatever frees a slot (an `ended`, a cancelled or
-    failed request, `interrupt`, `cancel`, `delete`) or queues a request inside an items call (an
-    items call cannot start a stream: it may still be dropped) sends the oldest entries whose
-    owner is under its cap at the end of the call, each in a write of its own.
+    `say` or interrupt replacement is refused `busy`, and a later request of the turn stops it
+    `busy` (Slots, above). Inside an items call (it cannot start a stream: it may still be
+    dropped) the request takes the place `slots.tail` in the FIFO: `slots/wait/<n>` `{session,
+    boot}`, and the loop is `ready {wait: n}`; the end of that same call sends it, first, with a
+    request slot free and its owner under 4, or stops the turn `busy`; no other call sends it. An
+    entry counts only while the loop is still `ready {wait: n}` (or `tools {wait: n}`) for it; any
+    other entry is skipped and removed when reached. Whatever frees a slot (an `ended`, a
+    cancelled or failed request, `interrupt`, `cancel`, `delete`) starts the oldest waiting jobs
+    whose owner is under its cap at the end of the call, each in a write of its own; a request
+    entry another call queued is never sent there: its turn stops `busy`.
   - *Too large.* The turn ends `idle {failed {error: "too-large"}}` and `too-large` is set;
     the next input restarts the wire from `Wire::restart_from_summary` with the text of the
     transcript's last assistant messages joined by a blank line, the newest 32 KiB kept (cut at a
@@ -1447,9 +1458,12 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     tagged by boot), 8 per session; a slot is freed at the job stream's `ended`, which also starts
     the next pending calls, in call order. A session whose pending calls wait for a kernel or owner
     slot (or finds the FIFO not empty) takes a place in the FIFO (`tools {wait: n}`); the drain
-    starts its calls when slots free, oldest first, each in a write of its own. A job that ends
-    with no item gives `aborted`. When every call has its output the loop is `ready`; inside an
-    items call the request is queued with the FIFO and sent at the call's end.
+    starts its calls when slots free, oldest first, each in a write of its own. The drain may run
+    in another owner's call, so a job it starts is marked `drained` in `stream/<id>`: its items
+    and `ended` run under that origin and send no model request; when the step's request comes
+    in one of them the turn stops `busy` (Slots, above). A job that ends with no item gives
+    `aborted`. When every call has its output the loop is `ready`; inside an items call the
+    request is queued with the FIFO and sent at that call's end (*Slots*).
   - *Restart, interrupt.* As the rows above; `interrupt` and `cancel` also write each open call's
     `aborted` output (wire and tool entry) and deny each open ask `by: kernel`, reason `interrupted`
     (`interrupt`) or `cancel` (`cancel`).
@@ -2263,7 +2277,13 @@ of `spec/VISION.md`.
 48. (9.5, AGT-F-55) One owner that asks for more than half of each slot kind
     gets 4 provider, 4 request and 8 job slots at most, and another owner's
     work still starts; a consumer that defers cannot spin: its `resume` in the
-    deferring call is dropped.
+    deferring call is dropped. Every model request is dispatched under its
+    session owner's origin or left unsent (the r5 assertion, checked over each
+    host call in the test): with every request slot held, a turn's request
+    after its jobs, after a job the FIFO started in another owner's call, or at
+    a `retry` sends nothing in that or any other owner's call, and the turn
+    stops `idle {stopped {limit: busy}}`; the owner's next `say` sends it, with
+    the step's outputs, in her call.
 49. (9.4) Paging backwards with `read` through a 3 MiB entry, with pages that
     end inside its part group, joins it whole, byte for byte.
 50. (10) `start` with the consent pending, `interrupt`, `say X`; after

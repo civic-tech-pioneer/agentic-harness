@@ -520,6 +520,12 @@ pub struct Kernel<S: State, H: Host> {
     /// A request slot was freed, or a request waits in the FIFO: the call's end sends the oldest
     /// waiting one (9.5 Slots).
     pub(crate) drain_due: bool,
+    /// The FIFO places of the model requests this call queued: the call's end sends them or stops
+    /// their turns `busy`; no other call sends them (9.5 Slots, the deputy's r5 ruling).
+    pub(crate) queued: Vec<u64>,
+    /// The call may run under an origin other than the session owner's: the FIFO's drain, or an
+    /// item or end of a job the drain started. It sends no model request (9.5 Slots).
+    pub(crate) foreign: bool,
 }
 
 /// What one item of an items call came to (`item_step`).
@@ -633,6 +639,10 @@ pub(crate) struct StreamKey {
     /// is classified once it reads as JSON, or at `ended` (9.5).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub(crate) body: String,
+    /// A job the FIFO's drain started, in a call that may be another owner's: its items and end
+    /// run under that origin, so they send no model request (9.5 Slots).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(crate) drained: bool,
 }
 
 impl StreamKey {
@@ -647,6 +657,7 @@ impl StreamKey {
             sse: false,
             done: false,
             body: String::new(),
+            drained: false,
         }
     }
 }
@@ -849,6 +860,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             opened: None,
             held: None,
             drain_due: false,
+            queued: Vec::new(),
+            foreign: false,
         }
     }
 
@@ -1074,6 +1087,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             sse: false,
             done: false,
             body: String::new(),
+            drained: false,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         self.state
@@ -3509,6 +3523,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             sse: false,
             done: false,
             body: String::new(),
+            drained: false,
         };
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         let too_large = |e: crate::state::TooLarge| KernelError::TooLarge(e.0 as u64);

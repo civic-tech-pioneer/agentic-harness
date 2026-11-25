@@ -161,6 +161,9 @@ pub(crate) struct Pending {
 /// How `launch` found the request: sent (before any write), waiting, or not sendable.
 pub(crate) enum Launch {
     Wait,
+    /// No request slot is free for a request the turn makes later, or the call may be another
+    /// owner's: nothing is sent and the turn stops `busy` (9.5 Slots).
+    Busy,
     Started(String),
     TooLarge,
     Host(String),
@@ -370,13 +373,16 @@ impl<S: State, H: Host> Kernel<S, H> {
         pending: &Pending,
         freeing: u32,
     ) -> Launch {
+        if self.foreign {
+            return Launch::Busy;
+        }
         if self.held.is_some() {
             return Launch::Wait;
         }
         let room = slots.request.saturating_sub(freeing) < self.limits.request
             && a.owner.request_at(slots.boot).saturating_sub(freeing) < self.limits.owner_request;
         if !room {
-            return Launch::Wait;
+            return Launch::Busy;
         }
         match self.tools_setup(ls) {
             Ok(()) => {}
@@ -433,7 +439,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             // The deputy's r4 ruling (F4.2): a request of the owner's call that finds no slot
             // does not wait in the FIFO, whose drain may run in another origin's call; the
             // call is refused `busy` before its first write and the owner sends again.
-            Launch::Wait => {
+            Launch::Wait | Launch::Busy => {
                 return Err(KernelError::Busy(format!(
                     "no request slot is free ({} in all, {} per owner)",
                     self.limits.request, self.limits.owner_request
@@ -501,6 +507,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 self.register_request(rec, ls, cx, stream, attempt)
             }
             Launch::Wait => self.enqueue(rec, ls, cx, attempt),
+            Launch::Busy => self.stop_busy(rec, ls, cx),
             Launch::TooLarge => {
                 ls.too_large = true;
                 self.end_turn(rec, ls, cx, failed("too-large"))
@@ -549,6 +556,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         attempt: u32,
     ) -> Result<(), KernelError> {
         let n = self.fifo_entry(rec, cx)?;
+        self.queued.push(n);
         ls.phase = Phase::Ready {
             wait: Some(n),
             attempt,
@@ -637,6 +645,34 @@ impl<S: State, H: Host> Kernel<S, H> {
         cx.work.pushes.push(Push::of(&rec.id, q.push_value()));
         let pending = self.pending_for(rec, ls, &next.input);
         self.go(rec, ls, cx, pending, None, 0)
+    }
+
+    /// A request the turn makes later (after its jobs, at a retry, a resume or the next queued
+    /// input) finds no request slot, or comes in a call that may be another owner's: it does not
+    /// wait where another owner's call could send it (the deputy's r5 ruling). The turn stops
+    /// `idle {stopped {limit: busy}}`, its wire, outputs and queue kept, as after a restart; the
+    /// owner's next message continues it in her own call.
+    fn stop_busy(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+    ) -> Result<(), KernelError> {
+        let tokens = (ls.turn_tokens > 0).then_some(ls.turn_tokens);
+        let tools = (ls.turn_calls > 0).then_some(ls.turn_calls);
+        self.openai_stop(rec, ls, cx)?;
+        if !rec.turn.is_active() {
+            return Ok(());
+        }
+        let idle = Turn::Idle {
+            stop: Stop::Stopped {
+                limit: "busy".into(),
+            },
+            seconds: None,
+            tools,
+            tokens,
+        };
+        self.turn_to(rec, cx.past, idle, cx.now, cx.work)
     }
 
     /// Whether a session holding no timer yet finds none free (9.3).
@@ -836,6 +872,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let Some(last) = fresh.last().map(|(n, _)| *n) else {
             return taken();
         };
+        self.foreign |= key.kind == JOB && key.drained;
         self.hold();
         let mut done = (Vec::new(), Vec::new(), Vec::new());
         let mut prev = key.last;
@@ -860,7 +897,11 @@ impl<S: State, H: Host> Kernel<S, H> {
                     done.1.append(&mut requests);
                     done.2.extend(gone);
                 }
-                other => return self.finish_items(other),
+                other => {
+                    let r = self.finish_items(other);
+                    self.after_call();
+                    return r;
+                }
             }
             if self.state.get(&format!("stream/{stream}")).is_none() {
                 break;
@@ -1200,6 +1241,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         key: StreamKey,
         cause: Option<&str>,
     ) -> Result<Called<()>, KernelError> {
+        self.foreign |= key.kind == JOB && key.drained;
         let r = self.openai_ended(stream, key, cause);
         self.after_call();
         r
@@ -1447,10 +1489,20 @@ impl<S: State, H: Host> Kernel<S, H> {
         if std::mem::take(&mut self.drain_due) {
             self.openai_drain();
         }
+        self.queued.clear();
+        self.foreign = false;
     }
 
     fn openai_drain(&mut self) {
         let mut slots = Slots::load(&mut self.state);
+        // The requests this call queued go first: sent now, in the call that queued them, or
+        // their turns stop `busy` (9.5 Slots); none is left for another call.
+        for at in std::mem::take(&mut self.queued) {
+            let name = format!("slots/wait/{at}");
+            if let Some(bytes) = self.state.get(&name) {
+                self.drain_one(&mut slots, &name, at, &bytes, true);
+            }
+        }
         let (mut n, tail) = (slots.head, slots.tail);
         let mut first_kept: Option<u64> = None;
         let mut changed = false;
@@ -1461,7 +1513,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             let Some(bytes) = self.state.get(&name) else {
                 continue;
             };
-            match self.drain_one(&mut slots, &name, at, &bytes) {
+            match self.drain_one(&mut slots, &name, at, &bytes, false) {
                 Drain::Gone => changed = true,
                 Drain::Kept => {
                     first_kept.get_or_insert(at);
@@ -1485,8 +1537,18 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
     }
 
-    /// One FIFO entry: dropped when stale or sent now, or kept (its owner is at its cap).
-    fn drain_one(&mut self, slots: &mut Slots, name: &str, at: u64, bytes: &[u8]) -> Drain {
+    /// One FIFO entry: dropped when stale or sent now, or kept (its owner is at its cap). `mine`:
+    /// a request this call queued. A request entry is sent only then, with a slot free; any other
+    /// stops its turn `busy` (the call may be another owner's). Jobs are started with the call
+    /// marked `foreign`, so the request after them is not sent in it.
+    fn drain_one(
+        &mut self,
+        slots: &mut Slots,
+        name: &str,
+        at: u64,
+        bytes: &[u8],
+        mine: bool,
+    ) -> Drain {
         let stale = |this: &mut Self| {
             this.state.delete(name);
             Drain::Gone
@@ -1517,7 +1579,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         } else {
             slots.request >= self.limits.request
         };
-        if full {
+        if full && jobs {
             return Drain::Kept;
         }
         self.open_meter();
@@ -1527,10 +1589,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         } else {
             acct.owner.request_at(slots.boot) >= self.limits.owner_request
         };
-        if at_cap {
+        if at_cap && jobs {
             self.state.close();
             return Drain::Kept;
         }
+        // A request goes only in the call that queued it, with a slot free (launch checks it
+        // again); otherwise its turn stops `busy`.
+        let was_foreign = self.foreign;
+        self.foreign = jobs || !mine;
         if !jobs {
             self.state.delete(name);
         }
@@ -1558,6 +1624,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 attempt,
             )
         };
+        self.foreign = was_foreign;
         let mut dirty = cx.dirty;
         // A session still waiting for job slots keeps its place; the rest is done with.
         let kept = jobs && ls.phase == (Phase::Tools { wait: Some(at) });

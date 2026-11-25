@@ -571,7 +571,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         cx: &mut Cx,
         stream: &str,
     ) -> Result<(), KernelError> {
-        let key = StreamKey::new(&rec.id, JOB);
+        let mut key = StreamKey::new(&rec.id, JOB);
+        key.drained = self.foreign;
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         self.state
             .put(&format!("stream/{stream}"), bytes)
