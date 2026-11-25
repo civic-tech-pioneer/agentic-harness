@@ -1,14 +1,17 @@
 // Slow: only a scripted Watane preview with the production component and Chromium
 // can exercise the stage D host routing and the console together.
+// Exit 2 for a missing prerequisite. An unsupported serve --script exits 1.
 import { execFileSync, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { cpSync, existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
-import { tmpdir } from "node:os";
+import { cpus, loadavg, release, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
 import { NotRun, outcomeOf } from "./outcome.mjs";
+import { isInterrupted, loadWindow } from "./load_check.mjs";
+import { openaiCadence, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -20,7 +23,11 @@ const clientDir = join(tmp, "loadclient");
 const providerDir = join(tmp, "claude-code");
 const tool = "loadclient_api_note";
 const load = process.argv.includes("--load");
+const command = load ? "test:load:d" : "test:host:d";
+const clock = join(tmp, "load-clock");
 const env = { ...process.env, WATANE_HOME: join(tmp, "home"), WATANE_DEV_CACHE: join(tmp, "cache") };
+if (load) env.S128_LOAD_CLOCK = clock;
+else delete env.S128_LOAD_CLOCK;
 const vendor = join(process.env.WATANE_DEV_CACHE ?? join(process.env.HOME ?? "", ".cache", "watane-dev"), "vendor");
 if (existsSync(vendor)) cpSync(vendor, join(tmp, "cache", "vendor"), { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -58,7 +65,7 @@ function serve() {
   ensure(page, `missing agent page in ${JSON.stringify(res.pages)}`);
   const client = res.pages.find((entry) => entry.slug === "loadclient");
   ensure(client, "missing client page in the preview");
-  preview = { url: page.url, clientUrl: client.url, home: res.home };
+  preview = { url: page.url, clientUrl: client.url, home: res.home, log: res.log };
 }
 const zombie = (pid) => { try { return /^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, "utf8")); } catch { return false; } };
 async function stopHost() {
@@ -121,35 +128,57 @@ function wrapLoadClaude(folder) {
   const real = join(folder, "scripted-claude");
   renameSync(link, real);
   writeFileSync(link, `#!/usr/bin/env python3
+import re
 import subprocess
 import sys
+import time
 import uuid
 
 child = subprocess.Popen([sys.argv[0], *sys.argv[1:]], executable=${JSON.stringify(real)}, stdout=subprocess.PIPE)
 original = b'"session_id":"fake-session"'
-session = b'"session_id":"' + str(uuid.uuid4()).encode() + b'"'
-for line in child.stdout:
-    sys.stdout.buffer.write(line.replace(original, session))
-    sys.stdout.buffer.flush()
+identity = uuid.uuid4().hex.encode()
+session = b'"session_id":"' + identity + b'"'
+with open(${JSON.stringify(join(tmp, "claude.stamps"))}, "ab", buffering=0) as stamps:
+    for line in child.stdout:
+        match = re.search(rb'"text":"(delta|entry) ([0-9]+) ', line)
+        marker = None
+        if match:
+            marker = b"cl-" + identity + b"-" + match[1] + b"-" + match[2]
+            end = line.index(b'"', match.end())
+            extra = len(marker) - (match.end(2) - match.start(1))
+            suffix = end - extra if match[1] == b"entry" else end
+            line = line[:match.start(1)] + marker + line[match.end(2):suffix] + line[end:]
+        at = time.time_ns()
+        sys.stdout.buffer.write(line.replace(original, session))
+        sys.stdout.buffer.flush()
+        if marker:
+            stamps.write(str(at).encode() + b" " + marker + b"\\n")
 sys.exit(child.wait())
 `, { mode: 0o755 });
 }
 
-// Exercise both owner caps with both backends active in one preview. The
-// separately metered test in the kernel checks the state I/O half of the budget.
-async function mixedLoad() {
+function readStamps(path) {
+  ensure(existsSync(path), `missing telemetry: ${path}; see AGENTS.md for the instrumented Watane build`);
+  return new Map(readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((line) => {
+    const [at, marker] = line.split(" ");
+    return [marker, Number(at) / 1e6];
+  }));
+}
+
+async function mixedLoad(browser) {
   const folder = join(dirname(preview.home), "claude");
   const fake = join(folder, "fake-claude.json");
   ensure(existsSync(fake), "the preview needs watane-dev's fake-claude");
   wrapLoadClaude(folder);
+  const rate = { deltas: 50, entries: 5, bytes: 4096, seconds: 20 };
   writeFileSync(fake, JSON.stringify({ steps: [
     { do: "expect-user" }, { do: "message", text: "ready" }, { do: "result" }, { do: "idle" },
-    { do: "expect-user" }, { do: "load", rate: { deltas: 50, entries: 5, bytes: 4096, seconds: 20 } },
-    { do: "idle" },
+    { do: "expect-user" }, { do: "load", rate }, { do: "idle" },
   ] }));
   const sessions = [];
   async function startBatch(backend) {
-    const results = await Promise.allSettled(Array.from({ length: 8 }, async (_, index) => {
+    // Opening one page at a time lets the real console select the newest session.
+    for (let index = 0; index < 8; index++) {
       const own = index < 4;
       const profile = backend === "openai" ? "Tools" : "scratch";
       const args = { key: keyOf(), input: `load ${backend} ${index}` };
@@ -158,40 +187,127 @@ async function mixedLoad() {
         : await ok(backend === "openai" ? "api.start-openai" : "api.start", args, preview.clientUrl);
       const session = { id, own, backend };
       sessions.push(session);
-      return session;
-    }));
-    return results.map((result) => {
-      if (result.status === "rejected") throw result.reason;
-      return result.value;
-    });
+      if (own) {
+        const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+        session.page = page;
+        await page.addInitScript(pageProbe);
+        await page.goto(preview.url);
+        await page.waitForFunction((id) => window.loadAttach?.id === id, id, { timeout: 15_000 });
+      }
+    }
   }
   async function entriesOf({ id, own }) {
-    const args = { session: id, after: 0, max: 40 };
+    const args = { session: id, after: 0, max: 512 };
     const entries = own
       ? (await ok("sessions.read", { ...args, before: null })).entries
       : await ok("api.read", args, preview.clientUrl);
     return entries.map((entry) => typeof entry === "string" ? JSON.parse(entry) : entry);
   }
   try {
-    const claude = await startBatch("claude");
+    await startBatch("claude");
+    const claude = sessions.slice();
     await Promise.all(claude.map((session) => until(async () => (
       (await entriesOf(session)).filter((entry) => entry.kind === "turn").at(-1)?.body.stop?.kind === "completed"
     ), 20_000, `Claude session ${session.id} to finish its warm-up turn`)));
-    await Promise.all(claude.map(({ id, own }) => {
+    await startBatch("openai");
+
+    const start = Date.now() + 700;
+    const openai = sessions.slice(claude.length);
+    const schedule = Object.fromEntries(openai.map(({ id }, index) =>
+      [id, start + index % 4 * 250 + Math.floor(index / 4) * 125]));
+    writeFileSync(clock, JSON.stringify(schedule));
+    await Promise.all(claude.map(async ({ id, own }, index) => {
+      await sleep(index * 2);
       const args = { session: id, key: keyOf(), input: "begin load" };
       return own ? ok("sessions.say", args) : ok("api.say", args, preview.clientUrl);
     }));
-    await startBatch("openai");
-    await Promise.all(sessions.map((session) => until(async () => {
+    await sleep(Math.max(0, start + 8050 - Date.now()));
+    const pages = sessions.filter((session) => session.page);
+    const stopAt = await Promise.all(pages.map(({ page }) => page.evaluate(() => {
+      const button = document.querySelector(".wa-stop");
+      const at = performance.timeOrigin + performance.now();
+      button?.click();
+      return button ? at : null;
+    })));
+    const to = Math.min(...stopAt.map((at) => at ?? Infinity), Date.now());
+    await sleep(1250);
+    const scripted = readStamps(join(tmp, "load-clock.sse"));
+    const claudeStamps = readStamps(join(tmp, "claude.stamps"));
+    const claudeByProcess = new Map();
+    for (const [marker, at] of claudeStamps) {
+      const [, id, kind] = marker.split("-");
+      if (!claudeByProcess.has(id)) claudeByProcess.set(id, []);
+      claudeByProcess.get(id).push({ at, kind });
+    }
+    ensure(claudeByProcess.size === 8, `expected eight Claude sources, found ${claudeByProcess.size}`);
+    const window = loadWindow(claudeByProcess, to, rate, 6);
+    const from = Math.max(window.from, start + 1000);
+    const faults = [...window.faults];
+    const delays = [], stops = [];
+    const claudeSeen = new Set();
+    const aiDelays = [], claudeDelays = [];
+
+    for (const [index, { id, backend, page }] of pages.entries()) {
+      const captured = await page.evaluate(() => ({ items: window.loadItems, stream: window.loadAttach.stream }));
+      const seen = new Set();
+      const items = captured.items.filter((item) => item.stream === captured.stream).map(pageItem);
+      const end = stopAt[index];
+      const idle = end && items.find(({ at, turn }) => at >= end && isInterrupted(turn));
+      stops.push(idle ? idle.at - end : Infinity);
+      if (!idle) faults.push(`${id}: no page Stop to interrupted idle (last turn ${JSON.stringify(items.filter(({ turn }) => turn).at(-1)?.turn)})`);
+      const markers = new Set(items.map(({ marker }) => marker).filter(Boolean));
+      const claudeIds = new Set([...markers].filter((m) => m.startsWith("cl-")).map((m) => m.split("-")[1]));
+      if (backend === "claude") {
+        if (claudeIds.size !== 1) faults.push(`${id}: expected one Claude source, got ${claudeIds.size}`);
+        for (const source of claudeIds) {
+          if (claudeSeen.has(source)) faults.push(`${id}: Claude source on two pages`);
+          claudeSeen.add(source);
+        }
+      }
+      for (const { at, marker } of items) {
+        const sent = claudeStamps.get(marker) ?? scripted.get(marker);
+        if (!(sent >= from && sent < to)) continue;
+        if (seen.has(marker)) { faults.push(`${id}: duplicate ${marker}`); continue; }
+        seen.add(marker);
+        if (at < sent - 2) faults.push(`${id}: ${marker} arrived before its write`);
+        delays.push(at - sent);
+        (backend === "claude" ? claudeDelays : aiDelays).push(at - sent);
+      }
+      const expected = backend === "claude"
+        ? [...claudeStamps].filter(([m]) => claudeIds.has(m.split("-")[1]))
+        : [...scripted].filter(([m]) => m.startsWith(`oa-${id}-`));
+      const missing = expected.filter(([marker, at]) => at >= from && at < to && !seen.has(marker));
+      if (missing.length) faults.push(`${id}: ${missing.length} source items missing from page`);
+      if (backend === "openai") {
+        const fullSteps = expected.filter(([, at]) => at >= from && at < to - 50).length;
+        const delivered = [...seen].filter((marker) => marker.startsWith("call_")).length;
+        if (delivered < 4 * fullSteps) faults.push(`${id}: only ${delivered} tool calls reached the page across ${fullSteps} steps`);
+      }
+      if (!seen.size) faults.push(`${id}: no page measurements in the common window`);
+    }
+
+    for (const session of sessions.filter(({ backend }) => backend === "openai")) {
+      const stamps = [...scripted].filter(([marker]) => marker.startsWith(`oa-${session.id}-`)).map(([, at]) => at);
+      if (to - from < 6000 || !openaiCadence(stamps, from, to)) {
+        faults.push(`${session.id}: OpenAI cadence missed one step per second (${stamps.length} steps)`);
+      }
       const entries = await entriesOf(session);
-      return session.backend === "openai"
-        ? entries.filter((entry) => entry.kind === "tool" && entry.body.status === "completed").length >= 4
-        : entries.some((entry) => entry.kind === "message" && entry.body.content?.[0]?.text?.startsWith("entry "));
-    }, 30_000, `${session.backend} session ${session.id} to produce entries under mixed load`)));
+      const completed = entries.filter((entry) => entry.kind === "tool" && entry.body.status === "completed").length;
+      const fullSteps = stamps.filter((at) => at >= from && at < to - 1000).length;
+      if (completed < 4 * fullSteps) faults.push(`${session.id}: only ${completed} tools completed across ${fullSteps} measured steps`);
+    }
+    const commits = [...readFileSync(preview.log, "utf8").matchAll(/^S128_COMMIT (\d+) (\d+)$/gm)]
+      .map(([, start, end]) => [Number(start) / 1e6, Number(end) / 1e6]);
+    const busy = writerBusy(commits, from, to);
+    const delay = p95(delays), stop = p95(stops);
+    say(`Budget record Stage D | ${new Date().toISOString().slice(0, 10)} | ${process.platform} ${release()} ${process.arch} ${cpus().length} CPUs, load ${loadavg().map((n) => n.toFixed(2)).join("/")} | common window ${((to - from) / 1000).toFixed(2)} s | item p95 ${delay.toFixed(1)} ms (${delays.length} samples, Claude ${p95(claudeDelays).toFixed(1)}, OpenAI ${p95(aiDelays).toFixed(1)}) | Stop p95 ${stop.toFixed(1)} ms | writer busy ${busy.toFixed(1)}%`);
+    for (const fault of faults.slice(0, 20)) say(`FAULT ${fault}`);
+    ensure(!faults.length && delay <= 100 && stop <= 1000 && busy <= 60,
+      `over budget or invalid load (${faults.length} workload faults)`);
   } finally {
-    await Promise.all(sessions.map(({ id, own }) => own
-      ? ok("sessions.interrupt", { session: id, replacement: null })
-      : ok("api.interrupt", { session: id }, preview.clientUrl)));
+    await Promise.allSettled(sessions.map(({ id, own }) => own
+      ? post("sessions.interrupt", { session: id, replacement: null })
+      : post("api.interrupt", { session: id }, preview.clientUrl)));
   }
 }
 
@@ -267,10 +383,8 @@ async function main() {
   ] }));
 
   let browser;
-  if (!load) {
-    try { browser = await launch(); }
-    catch (e) { throw new NotRun(`Chromium cannot start: ${e.message.split("\n")[0]}`); }
-  }
+  try { browser = await launch(); }
+  catch (e) { throw new NotRun(`Chromium cannot start: ${e.message.split("\n")[0]}`); }
   try {
     // serve once so the host has its state, stop it, write the profiles (no kernel call writes `access/`, 9.1), serve again
     try { serve(); } catch (e) { if (e.serveFailed && /allowlist/.test(`${e.code} ${e.message}`) && !existsSync(vendor)) e.notRun = true; throw e; }
@@ -299,7 +413,7 @@ async function main() {
     say(`preview home: ${preview.home}`);
 
     if (load) {
-      await check("mixed load: eight Claude streams and eight four-tool OpenAI sessions across two owners", mixedLoad);
+      await check("mixed load: eight Claude streams and eight four-tool OpenAI sessions across two owners", () => mixedLoad(browser));
       return;
     }
 
@@ -423,7 +537,7 @@ try { await main(); }
 catch (e) {
   const o = outcomeOf(e);
   if (o.code === 2) code = 2; else fail++;
-  say(o.line.replace("test:host", "test:host:d"));
+  say(o.line.replace("test:host", command));
 } finally {
   stopPreview();
   if (redirectTarget?.listening) await new Promise((resolve) => redirectTarget.close(resolve));

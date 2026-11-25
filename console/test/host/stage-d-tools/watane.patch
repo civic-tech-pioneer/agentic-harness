@@ -1,0 +1,123 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index f6892bda..816c7081 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -19,0 +20,7 @@ opt-level = 1
++# Match optimized dependencies in the preview budget fixture.
++[profile.dev.package.watane-host]
++opt-level = 2
++
++[profile.dev.package.watane-dev]
++opt-level = 2
++
+diff --git a/dev/src/scripted.rs b/dev/src/scripted.rs
+index e065d556..e52a5f99 100644
+--- a/dev/src/scripted.rs
++++ b/dev/src/scripted.rs
+@@ -37,0 +38 @@ enum Out {
++    Paced(String, Vec<Vec<u8>>),
+@@ -367,0 +369,45 @@ fn serve_one<T: Clone>(
++    if let Some(clock) = std::env::var_os("S128_LOAD_CLOCK")
++        && side.log_sub == "responses"
++        && req.method == "POST"
++        && let Out::Write(chunks) = out
++    {
++        let input: serde_json::Value = serde_json::from_slice(&req.body).map_err(other)?;
++        let session = input["prompt_cache_key"]
++            .as_str()
++            .ok_or_else(|| other("missing session"))?;
++        let first: u64 = loop {
++            if stop.load(Ordering::SeqCst) {
++                return Ok(());
++            }
++            if let Ok(text) = std::fs::read_to_string(&clock)
++                && let Ok(schedule) = serde_json::from_str::<serde_json::Value>(&text)
++            {
++                break schedule[session]
++                    .as_u64()
++                    .ok_or_else(|| other("session missing from schedule"))?;
++            }
++            thread::sleep(Duration::from_millis(10));
++        };
++        static NEXT: std::sync::OnceLock<Mutex<std::collections::HashMap<String, u64>>> =
++            std::sync::OnceLock::new();
++        let mut times = lock(NEXT.get_or_init(Default::default));
++        let next = times.entry(session.to_owned()).or_insert(first);
++        let due = *next;
++        *next += 1000;
++        drop(times);
++        let marker = format!("oa-{session}-{due}");
++        let mut chunks = chunks;
++        chunks.insert(
++            1,
++            event(serde_json::json!({
++                "type": "response.output_text.delta", "item_id": "msg_1",
++                "output_index": 0, "content_index": 0, "delta": marker
++            })),
++        );
++        let mut remaining = due.saturating_sub(epoch_nanos() / 1_000_000);
++        while remaining > 0 && !stop.load(Ordering::SeqCst) {
++            thread::sleep(Duration::from_millis(remaining.min(25)));
++            remaining = due.saturating_sub(epoch_nanos() / 1_000_000);
++        }
++        out = Out::Paced(marker, chunks);
++    }
+@@ -380,0 +427,24 @@ fn serve_one<T: Clone>(
++            Out::Paced(marker, chunks) => {
++                for (i, c) in chunks.into_iter().enumerate() {
++                    let tag = if i == 1 {
++                        Some(marker.clone())
++                    } else {
++                        c.strip_prefix(b"data: ")
++                            .and_then(|json| serde_json::from_slice::<serde_json::Value>(json).ok())
++                            .and_then(|event| event["item"]["call_id"].as_str().map(str::to_owned))
++                    };
++                    let at = epoch_nanos();
++                    tls.write_all(&c)?;
++                    tls.flush()?;
++                    if let Some(tag) = tag {
++                        let mut log = std::fs::OpenOptions::new().create(true).append(true).open(
++                            PathBuf::from(std::env::var_os("S128_LOAD_CLOCK").expect("load clock"))
++                                .with_extension("sse"),
++                        )?;
++                        writeln!(log, "{at} {tag}")?;
++                    }
++                }
++                tls.conn.send_close_notify();
++                tls.flush()?;
++                return Ok(());
++            }
+@@ -393,0 +464,9 @@ fn serve_one<T: Clone>(
++fn epoch_nanos() -> u64 {
++    std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .expect("epoch")
++        .as_nanos()
++        .try_into()
++        .expect("timestamp")
++}
++
+diff --git a/host/src/bin/watane/scripted_openai.rs b/host/src/bin/watane/scripted_openai.rs
+index 36e67e48..d4c59dce 100644
+--- a/host/src/bin/watane/scripted_openai.rs
++++ b/host/src/bin/watane/scripted_openai.rs
+@@ -57,0 +58,4 @@ impl Options {
++        command.env_clear();
++        if let Some(clock) = std::env::var_os("S128_LOAD_CLOCK") {
++            command.env("S128_LOAD_CLOCK", clock);
++        }
+@@ -60 +63,0 @@ impl Options {
+-                .env_clear()
+diff --git a/host/src/state.rs b/host/src/state.rs
+index 38ffb200..7db8b64c 100644
+--- a/host/src/state.rs
++++ b/host/src/state.rs
+@@ -506,0 +507,8 @@ impl Stats {
++        if std::env::var_os("S128_LOAD_CLOCK").is_some() {
++            let elapsed = started.elapsed().as_nanos();
++            let end = std::time::SystemTime::now()
++                .duration_since(std::time::UNIX_EPOCH)
++                .expect("epoch")
++                .as_nanos();
++            eprintln!("S128_COMMIT {} {}", end - elapsed, end);
++        }
