@@ -22,8 +22,8 @@ describe("S127-4 verdicts", () => {
     expect(v.rows[0]).toMatchObject({ kind: "decision", who: "local/claude-code-checked", what: "Stopped by your judge's breaker", reason: "3 denials in a row: the session was stopped" });
   });
   it("ac2_a_verdict_on_the_input_names_the_input_and_each_score", () => {
-    const v = feed([entry(1, "verdict", { on: "input", outcome: "unsure", reasons: ["harm: 0.50", "intent: 0.10"], by: "checked" })]);
-    expect(v.rows[0]).toMatchObject({ kind: "decision", what: "unsure: the input", reason: "harm: 0.50; intent: 0.10" });
+    const v = feed([entry(1, "verdict", { on: "input", outcome: "unsure", reasons: ["unsafe: 0.50", "off_task: 0.10"], by: "checked" })]);
+    expect(v.rows[0]).toMatchObject({ kind: "decision", what: "unsure: the input", reason: "unsafe: 0.50; off_task: 0.10" });
   });
   it("ac2_a_breaker_verdict_with_another_on_value_is_unknown", () => {
     expect(feed([entry(1, "verdict", { on: "other", outcome: "unsafe", by: "checked" })]).rows[0]).toMatchObject({ kind: "unknown" });
