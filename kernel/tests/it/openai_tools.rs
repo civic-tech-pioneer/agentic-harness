@@ -1549,3 +1549,109 @@ fn review_the_owner_s_next_message_continues_under_her_own_call() {
     assert!(matches!(turn(&mut k, &id), Turn::Running { .. }));
     assert_eq!(lp(&mut k, &id)["state"], "requesting");
 }
+
+// ---- review r4 (the deputy's ruling, 2026-11-25)
+
+/// F4.1: a turn waiting for a tool approval is mid-turn too. After a restart its ask closes
+/// (`deny`, `by: kernel`, reason `restart`), its calls read `aborted`, the turn is `unknown`, the
+/// pass sends and opens nothing, and the owner's next message starts a turn in her own call.
+#[test]
+fn review_a_restart_while_an_approval_is_open_stops_the_turn_and_the_next_message_starts_one() {
+    let (mut k, id) = asking();
+    assert!(matches!(turn(&mut k, &id), Turn::Waiting { .. }));
+    k.host.generation = 2;
+    let from = k.host.calls.len();
+    k.list("carol", None, 1).unwrap();
+    run_pass(&mut k);
+    assert_eq!(
+        session_effects(&k, from),
+        [],
+        "the pass sends and opens nothing"
+    );
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    let r = rec(&mut k, &id);
+    assert!(r.open.is_empty(), "the ask is closed");
+    assert!(r.deadlines.is_empty(), "no ask deadline is left");
+    let asks = entries(&mut k, "alice", &id, "ask");
+    let decided = asks.last().unwrap();
+    assert_eq!(decided["body"]["decision"]["outcome"], "deny");
+    assert_eq!(decided["body"]["decision"]["by"], "kernel");
+    assert_eq!(decided["body"]["decision"]["reason"], "restart");
+    let from = k.host.calls.len();
+    k.say("alice", &id, "s1", r#"[{"type":"text","text":"continue"}]"#)
+        .unwrap();
+    let after: Vec<Value> = starts(&k)
+        .into_iter()
+        .skip(starts_before(&k, from))
+        .collect();
+    assert_eq!(after.len(), 1, "one request, in alice's say");
+    let mut out = outputs(&after[0]);
+    out.sort();
+    assert_eq!(
+        out,
+        [
+            ("c1".to_string(), "aborted".to_string()),
+            ("c2".to_string(), "aborted".to_string())
+        ]
+    );
+    assert!(matches!(turn(&mut k, &id), Turn::Running { .. }));
+    assert_eq!(lp(&mut k, &id)["state"], "requesting");
+}
+
+/// The HTTPS starts made before `from`.
+fn starts_before(k: &K, from: usize) -> usize {
+    k.host.calls[..from]
+        .iter()
+        .filter(|c| matches!(c, HostCall::HttpsStart { .. }))
+        .count()
+}
+
+/// F4.2: no model request of a session is dispatched under another origin. A continuation that
+/// finds no request slot is refused `busy`, with nothing queued; when another owner's request
+/// frees a slot in that owner's call, nothing is sent for it; the owner sends again.
+#[test]
+fn review_a_continuation_with_no_request_slot_is_refused_busy_and_never_sent_in_another_call() {
+    let mut k = kernel();
+    let id = session_with_calls(&mut k, "alice", "k0", &[call_of("c1", "notes_a", "{}")]);
+    restart_pass(&mut k, "carol");
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
+    // The kernel's eight request slots: alice 3, bob 4, carol 1.
+    let mut bobs = Vec::new();
+    for (owner, n) in [("alice", 3), ("bob", 4), ("carol", 1)] {
+        for i in 0..n {
+            let s = k
+                .start(owner, &format!("{owner}{i}"), "o", "{}", IN)
+                .unwrap()
+                .value;
+            if owner == "bob" {
+                bobs.push(s);
+            }
+        }
+    }
+    assert_eq!(slots(&mut k).request, 8);
+    let r = k.say("alice", &id, "s1", r#"[{"type":"text","text":"continue"}]"#);
+    assert!(
+        matches!(r, Err(KernelError::Busy(_))),
+        "{:?}",
+        r.map(|c| c.value)
+    );
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
+    let sl = slots(&mut k);
+    assert_eq!(sl.head, sl.tail, "nothing waits in the FIFO");
+    // Bob's request ends, in a call of bob's origin: nothing is sent for alice's session.
+    let from = k.host.calls.len();
+    let s = stream_of(&mut k, &bobs[0]);
+    feed(&mut k, &s, vec![sse_head(), completed(&[])]);
+    k.provider_ended_with(&s, None).unwrap();
+    let sent = k.host.calls[from..]
+        .iter()
+        .filter(|c| matches!(c, HostCall::HttpsStart { .. }))
+        .count();
+    assert_eq!(sent, 0, "no request under bob's call");
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
+    // Alice sends again, in her own call: it goes.
+    k.say("alice", &id, "s2", r#"[{"type":"text","text":"continue"}]"#)
+        .unwrap();
+    assert_eq!(lp(&mut k, &id)["state"], "requesting");
+}
