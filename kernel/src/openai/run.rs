@@ -515,7 +515,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                 ls.too_large = true;
                 self.end_turn(rec, ls, cx, failed("too-large"))
             }
-            Launch::Host(e) | Launch::Failed(e) => self.end_turn(rec, ls, cx, failed(e)),
+            Launch::Host(e) | Launch::Failed(e) => {
+                ls.last_error = Some(e.clone());
+                self.end_turn(rec, ls, cx, failed(e))
+            }
             Launch::OpeningToolset => self.retry(rec, ls, cx, attempt, "opening toolset".into()),
             Launch::Consent(what) => {
                 ls.consent = Some(what.clone());

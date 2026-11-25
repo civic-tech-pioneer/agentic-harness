@@ -336,6 +336,21 @@ fn ac1_waits_for_a_just_opened_toolset_to_commit_before_describing_it() {
 }
 
 #[test]
+fn retry_describe_failure_replaces_the_toolset_opening_reason() {
+    let mut k = kernel();
+    k.host.tools_describe_error = Some("unknown-handle".into());
+    let id = k.start("alice", "k", "o", "{}", IN).unwrap().value;
+    assert_eq!(lp(&mut k, &id)["last-error"], "opening toolset");
+
+    k.host.now += 1_000;
+    k.timer(&format!("s/{id}"));
+    assert_eq!(lp(&mut k, &id)["last-error"], "unknown-handle");
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    assert!(starts(&k).is_empty());
+    assert_eq!(k.host.next_handle, 1);
+}
+
+#[test]
 fn ac1_consent_pending_shows_the_consent_and_retries_with_the_backoff() {
     let mut k = kernel();
     k.host.tools_error = Some("consent-pending(Let Notes' agents call: notes?)".into());
