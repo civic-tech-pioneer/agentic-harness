@@ -36,6 +36,10 @@ pub struct Out {
     /// An `ask-resolved` the adapter checked; the kernel writes the decision (9.8 rule 4).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved: Option<Resolved>,
+    /// A checked provider's `checking` item of good shape: its `on`, as the provider wrote it
+    /// (10 "Checking"). Live only; the kernel maps it to the turn's activity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checking: Option<String>,
 }
 
 /// A host `ask-resolved` item of good shape: what the adapter reports, the kernel decides.
@@ -67,6 +71,7 @@ pub enum Kind {
     Tool,
     Ask,
     Compaction,
+    Verdict,
     Unknown,
 }
 

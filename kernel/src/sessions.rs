@@ -3678,8 +3678,42 @@ impl<S: State, H: Host> Kernel<S, H> {
                 }
             }
             ProviderEvent::Out(out) => {
-                if let Some(e) = out.entry {
+                if let Some(on) = out.checking {
+                    if let Turn::Running { since, .. } = rec.turn {
+                        let activity =
+                            Some(crate::record::Activity::Checking { on: judged_on(&on) });
+                        work.pushes.push(Push::of(
+                            &rec.id,
+                            turn_push(&Turn::Running { since, activity }),
+                        ));
+                    }
+                }
+                if let Some(mut e) = out.entry {
+                    let mut judged = false;
+                    if e.kind == Kind::Verdict {
+                        judged = self.verdict_entry(&rec, &mut e.body);
+                    }
+                    let verdict = e.kind == Kind::Verdict;
                     self.out_entry(&mut rec, past, e, now, &mut work)?;
+                    if judged && rec.turn.is_active() {
+                        let failed = Turn::Idle {
+                            stop: Stop::Failed {
+                                error: "judge".into(),
+                                cause: None,
+                            },
+                            seconds: None,
+                            tools: None,
+                            tokens: None,
+                        };
+                        self.turn_to(&mut rec, past, failed, now, &mut work)?;
+                    } else if let (true, Turn::Running { since, .. }) = (verdict, &rec.turn) {
+                        // The `checking` activity ends with the verdict (9.3).
+                        let t = Turn::Running {
+                            since: *since,
+                            activity: None,
+                        };
+                        work.pushes.push(Push::of(&rec.id, turn_push(&t)));
+                    }
                 }
                 if let Some(u) = out.update {
                     let push = Push::of(&rec.id, wire_update(u, now, work.stored));
@@ -3743,6 +3777,29 @@ impl<S: State, H: Host> Kernel<S, H> {
         )?;
         work.live = rec.live.clone();
         Ok(work)
+    }
+
+    /// Maps a checked provider's verdict body for the entry (9.4): `on` of an input, `toolCallId`
+    /// of the open ask or check it names. True when the verdict is an unsafe or unsure one on an
+    /// input, which ends the turn (10).
+    fn verdict_entry(&self, rec: &Record, body: &mut Value) -> bool {
+        let on = body["on"].as_str().unwrap_or_default().to_string();
+        let on_input = on == "launch" || on.starts_with("input/");
+        let bad = body["outcome"] != "safe";
+        if on_input {
+            body["on"] = json!("input");
+        } else if let Some(call) = rec
+            .open
+            .iter()
+            .map(|o| (&o.id, &o.call))
+            .chain(rec.pending_answers.iter().map(|(id, p)| (id, &p.call)))
+            .find(|(id, _)| **id == on)
+            .map(|(_, c)| c)
+            .filter(|c| !c.is_empty())
+        {
+            body["toolCallId"] = json!(call);
+        }
+        on_input && bad
     }
 
     /// Whether an ask item reuses the id of an open or pending ask, or shows another tool or input
@@ -4179,4 +4236,13 @@ fn short_decision(d: Option<&Value>) -> Option<Value> {
         Some(_) => return None,
     }
     Some(out)
+}
+
+/// The activity's `on` of a provider's `checking` item: `input` for the launch and an input (10).
+fn judged_on(on: &str) -> String {
+    if on == "launch" || on.starts_with("input/") {
+        "input".into()
+    } else {
+        on.into()
+    }
 }
