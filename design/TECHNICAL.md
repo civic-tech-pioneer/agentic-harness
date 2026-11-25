@@ -1963,9 +1963,16 @@ section, and its code).
   judge is TypeSafe System One. `https-stream.start` with `account: "judge"`
   (5), `POST <origin>/v1/systemone`, header `content-type: application/json`
   only (the host adds the key), body
-  `{"model":"jev-latest","state":{"kind":"tool"|"input","tool":"<name>"?,"input":<object>?,"text":"<input text>"?},"questions":{"unsafe":{"type":"noul","instructions":"<text>"},"off_task":{"type":"noul","instructions":"<text>"}}}`:
+  `{"model":"jev-latest","state":{"kind":"tool"|"input","tool":"<name>"?,"input":<object>?,"text":"<input text>"?,"transcript_excerpt":[{"role":"user"|"assistant","text":"<text>"}]?},"questions":{"unsafe":{"type":"noul","instructions":"<text>"},"off_task":{"type":"noul","instructions":"<text>"}}}`:
   every question in one request, each phrased so that yes means harm
-  (`model` is required; the answer may name another version). `<origin>` is the provider's build origin
+  (`model` is required; the answer may name another version).
+  **Excerpt** (S127 D1.2: without it `off_task` cannot be judged and an
+  ordinary edit falls in the unsure band): the person's latest input that
+  reached `claude` (its first 2 KiB) and the assistant's latest text after
+  it (the text blocks of its last `assistant` line, its last 2 KiB), oldest
+  first, the empty ones left out; an input is judged with the turn before
+  it; a denied input never becomes the excerpt's request. Kept in the
+  provider's state with the session, so at most 4 KiB per request. `<origin>` is the provider's build origin
   (`JUDGE_ORIGIN`, default `https://api.typesafe.ai`, the one host of its
   `[http]`); the participant enters the same origin with the key in the app
   (5), and the host refuses any other (`destination`). Deadline = the
@@ -2091,7 +2098,7 @@ stage E).
 | Writes cannot plant code that runs later | protected paths (4.3) | watane `host/src/agent/claude/run.rs` (the host's `--settings=`) |
 | No mod sees a credential | tokens and the judge's key in the app; MCP tokens on fd 3; handle names, not handles (5, 6) | watane `app/` account files, `host/src/agent/https_stream.rs`, `host/src/agent/tools.rs`; `mod.toml` |
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
-| A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5) | watane `host/src/agent/https_stream.rs`, `app/` judge account; `provider-checked/mod.toml`, `provider-checked/logic/src/judge.rs`, `provider-checked/logic/src/lib.rs` |
+| A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5); the same binding means the session's excerpt (the tool call, its input and the 4 KiB transcript excerpt of 10) leaves the machine only to the participant's own judge | watane `host/src/agent/https_stream.rs`, `app/` judge account; `provider-checked/mod.toml`, `provider-checked/logic/src/judge.rs`, `provider-checked/logic/src/lib.rs` |
 | A mod in the middle gains no authority | host consent (8); the providers' `sessions` compare one pinned kernel identity (2.2, 10) | watane `host/` consent, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`); the checked one: `provider-checked/mod.toml`, `provider-checked/wit/world.wit`, `provider-checked/logic/src/lib.rs`, `provider-checked/BOUNDARIES.md`; `factory/publish-test-mods.sh` pins the release identity |
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/src/openai/run.rs` and `kernel/src/openai/tools.rs` (the `request` and `job` streams, routed by `stream/<id>`, S40), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7); the OpenAI loop's slots, retries and pauses (9.5) | `kernel/src/delegation.rs`, `kernel/src/openai/` (`run.rs`, `tools.rs`), `kernel/src/quota.rs` (the slot limits) |
