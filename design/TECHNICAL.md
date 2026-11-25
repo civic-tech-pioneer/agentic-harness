@@ -317,7 +317,7 @@ the `id` of the ask entry (9.4; the ask id of the deadlines in 9.3), never the
 tool call id. A check (`kind: "check"`, 9.4) is answered only by the checked
 provider (10); the owner's `answer` to it is refused, `{field: "ask"}`.
 `allow` in `take-back` is the id of an `allow`
-entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5), the session holds 64 pending answers (9.3, `pending-answers`), the active index is full at 1 024 sessions (9.3, A3), ; its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
+entry (9.4). `too-large(u64)` carries the limit in bytes, always (9.3). `busy`: a Claude session's provider stream is not free (9.5), an OpenAI `start`, `say` or interrupt replacement finds no request slot (9.5 Slots), the session holds 64 pending answers (9.3, `pending-answers`), the active index is full at 1 024 sessions (9.3, A3), ; its message names the cap. `read`: 9.4. `read`'s `max` is 1 to 256: `max` 0 is `refused` with one refusal `{field: "max", reason}` (11), and a `max` over 256 reads as 256.
 
 ## 3. Streams (H1)
 
@@ -1004,8 +1004,7 @@ wire") are this JSON; the entry has no `activity`.
     |---|---|
     | Claude, `running` or `waiting` | each open ask or check is decided `deny`, `by: kernel`, reason `restart` (a Claude ask has no kernel deadline, 9.6; it expires only at the host, 4.5), and each ask with a pending answer is decided with that answer (9.8 rule 4); the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
     | `paused`, either backend | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` (9.5); 9.8 gives nothing for a Claude rate limit, so a slice that adds one adds its row here |
-    | OpenAI, `running` (loop `requesting`, `ready` in the FIFO or not, `retrying` or `tools`) | the turn stops: every open job gets `aborted`, `idempotent` ones included, and every `pending` call too; the `retry` deadline goes; the loop goes to `idle` and the turn becomes `unknown` (written as a `turn` entry and pushed), with the transcript up to the last finished message, and the session leaves `active/`; the queue is kept. A `stopped {quota}` that recording the aborts gives stays. The step makes no host call for it (no HTTPS request, no toolset open, describe or call, no consent), whatever origin runs it (the pass runs under another owner's call). An OpenAI turn does not continue by itself after a restart, and an idempotent job is not run again under its key: known limits (the deputy's cut, 2026-11-25; case 22) |
-    | OpenAI, `waiting` | unchanged; the asks are the kernel's own, and their deadlines and timer are kept (7) |
+    | OpenAI, `running` (loop `requesting`, `ready` in the FIFO or not, `retrying` or `tools`) or `waiting` (a tool approval open) | the turn stops: each open ask is decided `deny`, `by: kernel`, reason `restart`, and its `ask` deadline goes; every open job gets `aborted`, `idempotent` ones included, and every `pending` call too; the `retry` deadline goes; the loop goes to `idle` and the turn becomes `unknown` (written as a `turn` entry and pushed), with the transcript up to the last finished message, and the session leaves `active/`; the queue is kept. A `stopped {quota}` that recording the aborts gives stays. The step makes no model request, no toolset operation (open, describe or call) and no consent for it, whatever origin runs it (the pass runs under another owner's call); cancelling a stale timer is housekeeping it may do. An OpenAI turn does not continue by itself after a restart, and an idempotent job is not run again under its key: known limits (the deputy's cut, 2026-11-25; case 22). A message finished in the window between its transcript entry and `response.completed` when the host restarts is shown but is not in the model's history; the owner can repeat it: a known limit (the deputy, r4 F4.3) |
     | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, in every state (as built), `restart` for an open one and its answer for a pending one, the turn kept; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` opens a new provider stream and resumes with `session {resume}` (`persist: false`: a fresh session), as after the idle release; no slot count is decremented for it (R1 zeroed the kernel's, the owner's reads zero by its boot tag) |
 
     AGT-F-27 applies to the tool jobs of 6 (the OpenAI loop, row `tools`),
@@ -1339,8 +1338,12 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   holds at most 8 job slots, and one owner at most half of each kind (4
   provider, 4 request, 8 job slots), on top of the per-session cap. A `start` or a `say` that needs a Claude session's provider stream when its owner holds 4, or all 8 are held, is refused `busy` (2.3, 12); it never waits. A Claude session idle for 10 minutes (the `idle` deadline, 9.3) releases its provider stream (the kernel cancels it; the next `say` resumes the Claude session with `session {resume}`, 4.1; with `persist: false` there is nothing to resume, and that `say` continues as for `resume-lost`), so slots do not stay held by idle sessions. A `task` child (9.7) refused `busy` gets the call output `{err: {code: busy}}`. A child session counts against its root's owner. Owners that are different mods acting together can still take every slot: an accepted limit (availability, not a boundary of 14). State: `slots` and `slots/wait/<n>` (9.1). The
   loop state keeps a step's calls not yet started (`pending`); they start in
-  waves as job slots free. A request that finds no request slot waits in
-  `ready` in the FIFO. Every `ended` of a kernel-consumed stream frees its
+  waves as job slots free. A `start`, `say` or interrupt replacement whose
+  request finds no request slot is refused `busy` and does not wait: the FIFO's
+  drain runs in whatever call frees a slot, and a session's model request is
+  sent only in its owner's call (the deputy's r4 ruling, F4.2); the owner sends
+  again. A request a turn makes later (inside an items call, or at a `retry`)
+  that finds no slot waits in `ready` in the FIFO. Every `ended` of a kernel-consumed stream frees its
   slot and starts the oldest waiting work whose session and owner are under
   their caps in the same call; work at a cap stays in the FIFO and never
   blocks another owner's. A FIFO entry whose session no longer waits
@@ -1350,15 +1353,15 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 - **Parallel:** the jobs of a step start together, up to the free job slots,
   only when every tool is `parallel`; else one after another, in call order.
 - **After a restart:** the session's restart step (9.3, R4) stops a
-  `running` turn, in `requesting`, `ready`, `retrying` or `tools`: every open
-  job gets `aborted`, `idempotent` ones included, and every `pending` call
+  `running` turn, in `requesting`, `ready`, `retrying` or `tools`, and a
+  `waiting` one (its open asks are denied `by: kernel`, reason `restart`, and
+  their deadlines go): every open job gets `aborted`, `idempotent` ones included, and every `pending` call
   too; the `retry` deadline goes; the loop goes to `idle` and the turn to
   `unknown`, not running, with the transcript up to the last finished
   message (J11). A `stopped {quota}` that recording the aborts gives stays.
-  The step makes no host call for the session: no HTTPS request, no toolset
-  open, describe or call, and so no consent, under any origin (it may run in
-  the restart pass, under another owner's call). `waiting` and `paused` are
-  unchanged. The owner's next `say` continues the session in her own call:
+  The step makes no model request, no toolset operation (open, describe or
+  call) and so no consent for the session, under any origin (it may run in
+  the restart pass, under another owner's call). `paused` is unchanged. The owner's next `say` continues the session in her own call:
   its request carries the wire history, the aborted outputs included, and her
   input (R5). Known limits for now (the deputy's cut, 2026-11-25): an OpenAI
   turn does not continue by itself after a restart; an idempotent job is
@@ -1373,7 +1376,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     `{"effort": <the profile's effort>}` when the profile sets one, else absent. A `start`, `say` or
     interrupt replacement sends it before its first write, so a host that refuses it
     (`start-error`) refuses the call `backend(<cause>)` and nothing is written; a
-    request that finds no free slot waits (`ready {wait: n}`, below).
+    request that finds no free slot refuses the call `busy` and writes nothing (Slots, above).
   - *State.* `loop/<id>` is `{state, ...}`: `idle` (between turns), `ready {wait?, attempt}`,
     `requesting {stream, attempt}`, `retrying {attempt}`, `paused`; with `model`, `effort`,
     `instructions` (the profile's `system-prompt` text, then the overlay's
@@ -1401,7 +1404,8 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     a stream's `response.completed` (deltas too: `stream/<id>` keeps `done`); the slot of a stream that is
     not current (a completed response's, or one a cancel left) is freed at its `ended`.
   - *Slots.* A request takes a slot when the kernel holds fewer than 8 requests and its owner
-    fewer than 4 (`quota/<owner>` `request`, tagged by boot as `provider` is); else it takes the
+    fewer than 4 (`quota/<owner>` `request`, tagged by boot as `provider` is); else a `start`,
+    `say` or interrupt replacement is refused `busy`, and a later request of the turn takes the
     place `slots.tail` in the FIFO: `slots/wait/<n>` `{session, boot}`, and the loop is `ready
     {wait: n}`. An entry counts only while the loop is still `ready {wait: n}` for it; any other
     entry is skipped and removed when reached. Whatever frees a slot (an `ended`, a cancelled or
@@ -1989,7 +1993,7 @@ section, and its code).
 | `destination`, `forbidden-header`, `too-large`, `no-app`, `no-account` | https-stream | 5 (`no-account`: no judge key entered) |
 | `not-granted`, `unknown-handle`, `unknown-tool` | agent-tools | 6 |
 | `too-many`, `bad-id`, `bad-delay` | timers | 7 (`bad-delay`: a delay over 30 days) |
-| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider slot, 64 pending answers on the session, 1 024 active sessions, 9.3, A3) |
+| `not-owner`, `unknown-session`, `refused`, `queue-full`, `quota`, `paused`, `backend`, `busy`, `too-large {limit}` | kernel | 9, 9.3, 9.5 (`busy`: no provider or request slot, 64 pending answers on the session, 1 024 active sessions, 9.3, A3) |
 | `not-owner`, `not-direct` | providers | 2.2, 10 (`not-owner`: the caller is not the kernel) |
 | `unknown-input`, `unknown-allow`, `behind {through}` (`through`: the high-water index) | kernel | 9.3, 9.6, 9.4 |
 | `too-large` | OpenAI loop outcome | 9.5, body budget |
@@ -2377,21 +2381,23 @@ of `spec/VISION.md`.
     and the oldest starts.
 70. (9.5, R4 OpenAI part) Kernel crate with the scripted Responses server:
     after a restart an OpenAI session `running` in `requesting`, `ready`,
-    `retrying` or `tools` becomes `unknown` with its loop `idle`: every open
+    `retrying` or `tools`, or `waiting` (its asks denied `by: kernel`, reason
+    `restart`), becomes `unknown` with its loop `idle`: every open
     job (idempotent ones included, case 22) and every `pending` call gets
     `aborted`, the `retry` deadline goes, it takes no request slot and no FIFO
     place, and the step (in the pass, under another owner's call, or in the
-    owner's own, R6) makes no HTTPS, toolset or consent call; a
+    owner's own, R6) makes no model request, toolset operation or consent; a
     `stopped {quota}` that recording the aborts gives stays, with no request;
     the owner's next `say` sends one request, in her call, with the aborted
-    outputs. OpenAI `waiting` sessions and `paused` ones (either backend) are
-    unchanged, their deadlines and timer kept.
+    outputs; a `say` that finds no request slot is refused `busy`, queues
+    nothing, and nothing is sent for it in another owner's call. `paused`
+    sessions (either backend) are unchanged, their deadlines and timer kept.
 71. (9.3, R6) After a restart, each of `attach`, `read`, `say` and `answer`
     on a session of an older boot does its restart step first, in the
     same call, and acts on the new state (an `answer` to an ask the step denied
     is refused `{field: "ask"}`); the pass then skips that session.
     `list` over such sessions reads no extra record, reports `unknown` for a
-    Claude `running` or `waiting` one and an OpenAI `running` one, and writes
+    `running` or `waiting` one of either backend, and writes
     nothing.
 72. (9.4, 9.8) Kernel crate: an `ask` or `check` item whose `id` is not a
     non-empty string (`7`, `null`, `""`), one whose `input` is missing, `null`
