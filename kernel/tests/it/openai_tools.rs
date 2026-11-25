@@ -322,6 +322,9 @@ fn ac1_waits_for_a_just_opened_toolset_to_commit_before_describing_it() {
     assert_eq!(lp(&mut k, &id)["state"], "retrying");
     assert!(lp(&mut k, &id).get("consent").is_none());
     assert_eq!(k.host.next_handle, 1);
+    assert!(k.host.calls.iter().any(|call| matches!(
+        call, HostCall::TimerAfter { id: timer, delay_ms: 1_000 } if *timer == format!("s/{id}")
+    )));
 
     k.host.tools_describe_error = None;
     k.host.now += 1_000;

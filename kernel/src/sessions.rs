@@ -2157,6 +2157,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             };
             self.openai_finish(&mut rec, p, &mut cx)?;
             slots_dirty = cx.dirty;
+            slots_dirty |= self.sync_timer(&rec, &mut slots, &mut acct, &[], now, false);
         }
         // The first turn is active: this saves `slots` with the slot taken.
         self.sync_active(&mut rec, &mut slots, false)?;
