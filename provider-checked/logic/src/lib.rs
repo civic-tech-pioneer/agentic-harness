@@ -9,7 +9,7 @@
 //!
 //! | Key | Value |
 //! |---|---|
-//! | `s/<own stream>` | the session (`Session`): the `claude` stream, `timeout-s`, `initialized`, the next input number, the input queue (`launch` first), whether its head is being judged, the in-flight judge calls by `on` (kind, request, attempts, judge stream, status, a held answer), the run of denials and the last 50 verdicts |
+//! | `s/<own stream>` | the session (`Session`): the `claude` stream, `timeout-s`, `initialized`, the next input number, the input queue (`launch` first), whether its head is being judged, the in-flight judge calls by `on` (kind, request, attempts, judge stream, status, a held answer), the run of denials and the last 50 verdicts, and the judge's excerpt (`said`, `agent`: the person's latest input that reached `claude` and the assistant's latest text, 2 KiB each) |
 //! | `c/<claude stream>` | the own stream, to find the session from a `claude` item |
 //! | `j/<judge stream>` | `<own stream>\n<on>`, to find the call from a judge item |
 //! | `jb/<judge stream>` | the body bytes of the judge's answer so far |
@@ -58,6 +58,40 @@ const BREAKER_COUNT: usize = 10;
 const MAX_BODY: usize = 1 << 20;
 const DEFAULT_UNSAFE_AT: f64 = 0.7;
 const DEFAULT_SAFE_AT: f64 = 0.3;
+/// The bound of each text of the judge's excerpt, in bytes (D1.2): two texts, so at most 4 KiB.
+const EXCERPT_MAX: usize = 2048;
+
+/// The first `EXCERPT_MAX` bytes of `t`, cut at a character boundary.
+fn head(t: &str) -> String {
+    let mut end = t.len().min(EXCERPT_MAX);
+    while !t.is_char_boundary(end) {
+        end -= 1;
+    }
+    t[..end].to_string()
+}
+
+/// The last `EXCERPT_MAX` bytes of `t`, cut at a character boundary.
+fn tail(t: &str) -> String {
+    let mut start = t.len().saturating_sub(EXCERPT_MAX);
+    while !t.is_char_boundary(start) {
+        start += 1;
+    }
+    t[start..].to_string()
+}
+
+/// The text blocks of a `claude` `assistant` line, joined; none when it has no text.
+fn assistant_text(v: &Value) -> Option<String> {
+    let text = v
+        .get("message")?
+        .get("content")?
+        .as_array()?
+        .iter()
+        .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
+        .filter_map(|b| b.get("text").and_then(Value::as_str))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    (!text.is_empty()).then_some(text)
+}
 
 /// Every host call the provider makes, so the logic runs natively against a fake.
 trait Host {
@@ -259,6 +293,10 @@ struct Session {
     calls: BTreeMap<String, Call>,
     run: u32,
     window: Vec<bool>,
+    /// The person's latest input that reached `claude` (its start) and the assistant's latest text
+    /// (its end): the judge's excerpt of the session (10 "Judge call", D1.2).
+    said: String,
+    agent: String,
     // Not stored: what the current call may do when its own stream is full.
     /// A full own stream is an `Err(Full)`: the caller defers or retries and discards the session.
     strict: bool,
@@ -290,6 +328,18 @@ fn decision_from(v: &Value) -> Option<Decision> {
 }
 
 impl Session {
+    /// The judge's excerpt: the person's latest request and the assistant's latest text, each
+    /// bounded; empty parts are left out.
+    fn excerpt(&self) -> Vec<(&'static str, &str)> {
+        [
+            ("user", self.said.as_str()),
+            ("assistant", self.agent.as_str()),
+        ]
+        .into_iter()
+        .filter(|(_, t)| !t.is_empty())
+        .collect()
+    }
+
     fn new(own: &str, claude: &str, timeout_s: u64, queue: Vec<Input>) -> Session {
         Session {
             own: own.to_string(),
@@ -302,6 +352,8 @@ impl Session {
             calls: BTreeMap::new(),
             run: 0,
             window: Vec::new(),
+            said: String::new(),
+            agent: String::new(),
             strict: false,
             rollback: false,
             dead: false,
@@ -352,6 +404,16 @@ impl Session {
                 .iter()
                 .map(|b| b.as_bool())
                 .collect::<Option<_>>()?,
+            said: v
+                .get("said")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            agent: v
+                .get("agent")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
             strict: false,
             rollback: false,
             dead: false,
@@ -382,7 +444,7 @@ impl Session {
             "queue": self.queue.iter()
                 .map(|i| json!({"on": i.on, "text": i.text, "say": i.say}))
                 .collect::<Vec<_>>(),
-            "calls": calls,
+            "calls": calls, "said": self.said, "agent": self.agent,
         });
         h.put(&format!("s/{}", self.own), v.to_string().as_bytes());
     }
@@ -521,6 +583,8 @@ fn finish<H: Host>(h: &mut H, s: &mut Session, on: &str, v: judge::Verdict) -> R
             if safe {
                 if input.say {
                     let _ = h.say(&s.claude, &input.text);
+                    s.said = head(&input.text);
+                    s.agent.clear();
                 }
             } else if input.on == "launch" {
                 end_session(h, s, true, Some(StreamOutcome::Closed));
@@ -565,7 +629,8 @@ fn pump<H: Host>(h: &mut H, s: &mut Session) -> Result<(), Full> {
         return Ok(());
     };
     s.judging = true;
-    start_judge(h, s, &head.on, Kind::Input, judge::input_state(&head.text))
+    let state = judge::input_state(&head.text, &s.excerpt());
+    start_judge(h, s, &head.on, Kind::Input, state)
 }
 
 /// Drops every input waiting for a verdict or for `initialized` (10, step 8). The launch keeps its
@@ -806,7 +871,13 @@ fn claude_items<H: Host>(h: &mut H, own: &str, items: &[Vec<u8>]) -> Result<(), 
                 let kind = if t == "check" { Kind::Check } else { Kind::Ask };
                 let tool = v.get("tool").and_then(Value::as_str).unwrap_or("");
                 let input = v.get("input").cloned().unwrap_or(Value::Null);
-                start_judge(h, &mut s, id, kind, judge::tool_state(tool, &input))?;
+                let state = judge::tool_state(tool, &input, &s.excerpt());
+                start_judge(h, &mut s, id, kind, state)?;
+            }
+            Some("assistant") => {
+                if let Some(t) = assistant_text(&v) {
+                    s.agent = tail(&t);
+                }
             }
             _ => {}
         }
