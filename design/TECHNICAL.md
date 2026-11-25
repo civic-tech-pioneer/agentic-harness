@@ -1377,6 +1377,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   built); and the kernel opens no toolset again, so a handle kept from an
   earlier boot (the host keeps handles in memory) fails each later job, whose
   output is then the host's error.
+  Known limit (F6.1, the human, 2026-11-25): when the owner mod of an OpenAI session is disabled during a timed pause, the firing may send one more model request under the kernel's origin; a fix needs the host-resolved origin of a timer firing through the production adapter (Upkeep).
 - **Settled by S40-3 (the loop).**
   - *The request.* `https-stream.start` gets exactly `{"url":"https://api.openai.com/v1/responses",
     "method":"POST","headers":{"content-type":"application/json","accept":"text/event-stream"},
