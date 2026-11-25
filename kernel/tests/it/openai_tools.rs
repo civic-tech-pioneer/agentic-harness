@@ -1375,3 +1375,173 @@ fn review_the_restart_pass_makes_no_tools_effect_under_another_owner() {
     assert!(reqs.iter().flat_map(outputs).all(|(_, o)| o == "aborted"));
     assert_eq!(slots(&mut k).job, 0);
 }
+
+// ---- review r3 (the deputy's cut, 2026-11-25: J11 "shows the session as not running")
+
+/// What a session's recovery may not do outside its owner's call: a model request (HTTPS), a
+/// toolset open, describe or call (and the consent either can ask), or a provider start.
+fn session_effects(k: &K, from: usize) -> Vec<HostCall> {
+    k.host.calls[from..]
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                HostCall::HttpsStart { .. }
+                    | HostCall::ToolsOpen { .. }
+                    | HostCall::ToolsDescribe { .. }
+                    | HostCall::ToolsCall { .. }
+                    | HostCall::StartProvider { .. }
+                    | HostCall::Request(_)
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+/// Runs the restart pass to its end, armed by a call of `by` (another owner).
+fn restart_pass(k: &mut K, by: &str) {
+    k.host.generation = 2;
+    k.list(by, None, 1).unwrap();
+    run_pass(k);
+}
+
+fn run_pass(k: &mut K) {
+    for _ in 0..40 {
+        let before = k.host.calls.len();
+        k.timer("restart");
+        if k.host.calls[before..].contains(&HostCall::TimerCancel {
+            id: "restart".into(),
+        }) {
+            return;
+        }
+    }
+    panic!("the pass does not end");
+}
+
+/// F3.2: recording the aborts past the quota stops the turn `stopped {quota}`; after a restart
+/// that stop stays, and no request is sent.
+#[test]
+fn review_restart_abort_preserves_quota_stop_without_sending() {
+    let mut k = kernel();
+    let calls: Vec<Value> = (1..=10)
+        .map(|n| call_of(&format!("c{n}"), "notes_b", "{}"))
+        .collect();
+    let id = session_with_calls(&mut k, "alice", "k", &calls);
+    k.limits.owner_bytes = Usage::load(&mut k.state, "quota/alice").bytes;
+    let from = k.host.calls.len();
+    restart_pass(&mut k, "carol");
+    let turn = turn(&mut k, &id);
+    assert!(
+        matches!(&turn, Turn::Idle { stop: Stop::Stopped { limit }, .. } if limit == "quota"),
+        "{turn:?}"
+    );
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    let https: Vec<_> = k.host.calls[from..]
+        .iter()
+        .filter(|c| matches!(c, HostCall::HttpsStart { .. }))
+        .collect();
+    assert!(https.is_empty(), "no HTTPS launch: {https:?}");
+}
+
+/// F3.1: a restarted mid-turn OpenAI session reads not running (`unknown`) with its open and
+/// pending calls aborted, and the pass emits no session-scoped host effect for any session, in
+/// any loop state, whoever armed it.
+#[test]
+fn review_a_restarted_mid_turn_session_reads_not_running_and_the_pass_sends_nothing() {
+    let mut k = kernel();
+    // Tools: eight open jobs and two pending.
+    let calls: Vec<Value> = (1..=10)
+        .map(|n| call_of(&format!("c{n}"), "notes_a", "{}"))
+        .collect();
+    let tools = session_with_calls(&mut k, "alice", "k1", &calls);
+    // Requesting: a request in flight.
+    let req = k.start("bob", "k2", "o", "{}", IN).unwrap().value;
+    // Retrying: a 500.
+    let retry = k.start("bob", "k3", "o", "{}", IN).unwrap().value;
+    let s = stream_of(&mut k, &retry);
+    feed(
+        &mut k,
+        &s,
+        vec![
+            json!({"status":500,"headers":{"content-type":"application/json"}})
+                .to_string()
+                .into_bytes(),
+        ],
+    );
+    k.provider_ended_with(&s, None).unwrap();
+    assert_eq!(lp(&mut k, &retry)["state"], "retrying");
+    // Before the step, `list` already reports the turn the step will give (R6); bob's call
+    // arms the pass that steps alice's session.
+    k.host.generation = 2;
+    let from = k.host.calls.len();
+    let listed = k.list("bob", None, 10).unwrap();
+    assert_eq!(listed.len(), 2);
+    for info in &listed {
+        assert!(info.turn.contains("unknown"), "{}", info.turn);
+    }
+    run_pass(&mut k);
+    assert_eq!(
+        session_effects(&k, from),
+        [],
+        "the pass sends and opens nothing"
+    );
+    for id in [&tools, &req, &retry] {
+        assert_eq!(turn(&mut k, id), Turn::Unknown, "{id}");
+        assert_eq!(lp(&mut k, id)["state"], "idle", "{id}");
+        assert!(rec(&mut k, id).deadlines.is_empty(), "{id}");
+    }
+    assert_eq!(slots(&mut k).request, 0);
+    assert_eq!(slots(&mut k).job, 0);
+    // The ten calls read aborted, in the transcript.
+    let all = read_all(&mut k, "alice", &tools);
+    let aborted = all
+        .iter()
+        .filter(|e| e.to_string().contains("aborted"))
+        .count();
+    assert!(aborted >= 10, "{all:?}");
+    assert_eq!(
+        session_effects(&k, from),
+        [],
+        "reading sends nothing either"
+    );
+}
+
+/// The same under the owner's own call (R6): a read steps the session and sends nothing.
+#[test]
+fn review_a_read_after_a_restart_steps_the_session_and_sends_nothing() {
+    let mut k = kernel();
+    let id = session_with_calls(&mut k, "alice", "k", &[call_of("c1", "notes_a", "{}")]);
+    k.host.generation = 2;
+    let from = k.host.calls.len();
+    k.read("alice", &id, 0, None, 10).unwrap();
+    assert_eq!(session_effects(&k, from), []);
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
+}
+
+/// J11 "she sends 'continue'": the owner's next message continues the session in her own call,
+/// with the transcript up to the last finished message and the aborted outputs.
+#[test]
+fn review_the_owner_s_next_message_continues_under_her_own_call() {
+    let mut k = kernel();
+    let id = session_with_calls(&mut k, "alice", "k", &[call_of("c1", "notes_a", "{}")]);
+    restart_pass(&mut k, "carol");
+    assert_eq!(turn(&mut k, &id), Turn::Unknown);
+    let from = k.host.calls.len();
+    k.say("alice", &id, "s1", r#"[{"type":"text","text":"continue"}]"#)
+        .unwrap();
+    let after: Vec<Value> = k.host.calls[from..]
+        .iter()
+        .filter_map(|c| match c {
+            HostCall::HttpsStart { request } => Some(serde_json::from_str(request).unwrap()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(after.len(), 1, "one request, in alice's say");
+    assert_eq!(
+        outputs(&after[0]),
+        [("c1".to_string(), "aborted".to_string())]
+    );
+    assert!(body_of(&after[0]).to_string().contains("continue"));
+    assert!(matches!(turn(&mut k, &id), Turn::Running { .. }));
+    assert_eq!(lp(&mut k, &id)["state"], "requesting");
+}
