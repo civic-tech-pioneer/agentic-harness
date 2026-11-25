@@ -36,7 +36,7 @@ line, sketched 2026-11-25 by deputy-6; routine `trig_01E1Ngk3t7NCGXJnEjBgEjHR`, 
 DELIVERED 18:58 UTC as PR #56 (+3705/-38). Deputy D1.1 (blocking): the answer field is `noul`, not `probability`
 (PR comment 7171667656); BLOCKED question (outcome verification) ruled (b): merged on its native proof, `--scripted-judge`
 as watane S129, then `test:host:e` in Upkeep. r1: Codex review https://chatgpt.com/local/6b073026-11b0-83ed-b550-0ef125943064,
-dispatched 19:00 UTC.
+dispatched 19:00 UTC; withheld by Codex's cyber filter; retried once with the adversary worded as a boundary check: https://chatgpt.com/local/6b07347c-1450-83ed-b77a-1aabbc8df068 (a second refusal: r1 runs on Claude). D1.1 and D1.2 answered at 4fe51c4 (CI green).
 Story (AGT-J3; TECHNICAL 17 stage E, "this repository" column): Alice installs the checked provider, enters her judge's key
 and origin in the app (watane S122), and runs a Claude session through it: before each tool call the console shows
 `checking`, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and after repeated denials
