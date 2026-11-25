@@ -128,3 +128,20 @@ OpenAI loop), `console/`, `design/TECHNICAL.md` 9.5 and 17. Boundary: TECHNICAL 
 adversary runs). Protects: *core*.
 
 
+
+- **S128 (upkeep, in flight, cloud, builder codex, reviewer claude; rule 3: last two S127 claude, S126 codex; sketched
+  2026-11-25 by deputy-6; Codex task https://chatgpt.com/local/6b072ad7-d4b0-83ed-80af-2de03a41f066, 18:40 UTC; beside S127: S127 owns the kernel's turn/verdict code and the console's activity and verdict
+  display, S128 edits none of them).** Outcomes, each item's check: (1, guard) the F6.1 fix below, through the real adapter;
+  (2, guard) the `installed-agent` flake, now 4 sightings (S40 890caad, 10ed0a3, a2235d6 twice): find the race or bound
+  the wait by what it measures; (3, guard) `kit/s7_fix1.test.ts:34` failed on main 716782c by 5 µs (a ratio of two
+  wall-clock timings): no such assertion on a loaded runner; (4) case 22's idempotent half; (5) S40 on `watane-dev
+  serve` (watane S114 is merged): SKIP lines of `test:host:d` become checks, S40 outcomes 2 to 4 on a preview, the stage D
+  load test. Touches: kernel (timer adapter, restart), console/test/host, kit. No test calls an external provider.
+  Protects: *guard* (1-3), *core* (4, 5). Size: an upkeep slice. BLOCKED 18:58 UTC (PR #57, draft): F6.1 and case 22
+  need a watane authority contract (a resolved origin for timer firings). Ruled (19:00): the alternative; items 1 and 4
+  cut, both stay known limits (9.5); the contract is held as a Door C question in watane PLAN Unsettled. DELIVERED
+  ~19:15 UTC (PR #57, +590/-100, CI green); r1: Claude review routine `trig_016nHNDkf4QGgFeMKcE6ZXVw`, 19:21 UTC;
+  r1: 1/9, changes (1) (validator RETURN on F1.1 the load test measures no budgets, adversary HELD, user-sim not run:
+  no watane tools in the Claude cloud, the builder ran 9/9 and 1/1); answer r1 to Codex in the same task, ~19:45 UTC;
+  P1.2 accepted (deputy): ~1 s first-request delay, F6.1 window widens to every first request (one line in 9.5).
+  The items:
