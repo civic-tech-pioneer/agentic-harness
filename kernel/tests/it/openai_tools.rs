@@ -1661,3 +1661,216 @@ fn review_a_continuation_with_no_request_slot_is_refused_busy_and_never_sent_in_
         .unwrap();
     assert_eq!(lp(&mut k, &id)["state"], "requesting");
 }
+
+// ---- review r5 (F5.1, the deputy's ruling, 2026-11-25)
+
+/// The reviewer's r5 assertion as a checker: every queued model request is dispatched under its
+/// session owner's origin or left unsent. Each kernel call runs under an origin: a page call
+/// under its caller's, a timer under the origin of the call that set it, an item or end under the
+/// origin of the call that opened the stream (8, "Origin client"). Every HTTPS start is checked
+/// against the owner of the session it is for (`prompt_cache_key`).
+struct Origins {
+    of: std::collections::BTreeMap<String, String>,
+    seen: usize,
+}
+
+impl Origins {
+    fn new() -> Self {
+        Origins {
+            of: Default::default(),
+            seen: 0,
+        }
+    }
+
+    /// Runs `f` under `origin`, then checks each request it sent and notes the streams it opened.
+    fn under<T>(&mut self, k: &mut K, origin: &str, f: impl FnOnce(&mut K) -> T) -> T {
+        let r = f(k);
+        let opened: Vec<String> = k
+            .state
+            .entries()
+            .filter_map(|(key, _)| key.strip_prefix("stream/").map(str::to_string))
+            .collect();
+        for s in opened {
+            self.of.entry(s).or_insert_with(|| origin.to_string());
+        }
+        let calls: Vec<HostCall> = k.host.calls[self.seen..].to_vec();
+        self.seen = k.host.calls.len();
+        for c in calls {
+            if let HostCall::HttpsStart { request } = c {
+                let req: Value = serde_json::from_str(&request).unwrap();
+                let session = body_of(&req)["prompt_cache_key"]
+                    .as_str()
+                    .unwrap()
+                    .to_string();
+                let owner = rec(k, &session).owner;
+                assert_eq!(
+                    owner, origin,
+                    "a model request of {owner}'s session {session} went out under {origin}'s origin"
+                );
+            }
+        }
+        r
+    }
+
+    /// An item batch or an end of `stream`, under the origin of the call that opened it.
+    fn on<T>(&mut self, k: &mut K, stream: &str, f: impl FnOnce(&mut K) -> T) -> T {
+        let origin = self.of[stream].clone();
+        self.under(k, &origin, f)
+    }
+}
+
+/// Fills the kernel's eight request slots with new sessions: alice 3, bob 4, carol 1. Bob's.
+fn fill_requests(k: &mut K, o: &mut Origins) -> Vec<String> {
+    let mut bobs = Vec::new();
+    for (owner, n) in [("alice", 3), ("bob", 4), ("carol", 1)] {
+        for i in 0..n {
+            let s = o.under(k, owner, |k| {
+                k.start(owner, &format!("f-{owner}{i}"), "o", "{}", IN)
+                    .unwrap()
+                    .value
+            });
+            if owner == "bob" {
+                bobs.push(s);
+            }
+        }
+    }
+    assert_eq!(slots(k).request, 8);
+    bobs
+}
+
+/// Bob's first request completes and ends, in calls of bob's origin.
+fn bob_completes(k: &mut K, o: &mut Origins, bobs: &[String]) {
+    let s = stream_of(k, &bobs[0]);
+    o.on(k, &s, |k| feed(k, &s, vec![sse_head(), completed(&[])]));
+    o.on(k, &s, |k| k.provider_ended_with(&s, None).unwrap());
+}
+
+fn busy_stop() -> Stop {
+    Stop::Stopped {
+        limit: "busy".into(),
+    }
+}
+
+/// F5.1: the request after a step's jobs, with no request slot free, does not wait where
+/// another owner's call drains it: the turn stops `busy` with its state kept, nothing is sent in
+/// bob's call, and alice's next message sends the step's output in her own call.
+#[test]
+fn review_r5_a_request_after_the_jobs_with_no_slot_stops_busy_and_never_goes_in_another_call() {
+    let mut k = kernel();
+    let mut o = Origins::new();
+    let id = o.under(&mut k, "alice", |k| {
+        k.start("alice", "k0", "o", "{}", IN).unwrap().value
+    });
+    let s = stream_of(&mut k, &id);
+    o.on(&mut k, &s, |k| {
+        feed(
+            k,
+            &s,
+            vec![sse_head(), completed(&[call_of("c1", "notes_a", "{}")])],
+        )
+    });
+    o.on(&mut k, &s, |k| k.provider_ended_with(&s, None).unwrap());
+    let j = jobs(&mut k, &id);
+    assert_eq!(j.len(), 1);
+    let bobs = fill_requests(&mut k, &mut o);
+    o.on(&mut k, &j[0].1, |k| finish(k, &j[0].1, json!(1)));
+    bob_completes(&mut k, &mut o, &bobs);
+    assert!(
+        matches!(turn(&mut k, &id), Turn::Idle { stop, .. } if stop == busy_stop()),
+        "{:?}",
+        turn(&mut k, &id)
+    );
+    assert_eq!(lp(&mut k, &id)["state"], "idle");
+    let sl = slots(&mut k);
+    assert_eq!(sl.head, sl.tail, "nothing waits in the FIFO");
+    let from = starts(&k).len();
+    o.under(&mut k, "alice", |k| {
+        k.say("alice", &id, "s1", r#"[{"type":"text","text":"go on"}]"#)
+            .unwrap()
+    });
+    let after = starts(&k);
+    assert_eq!(after.len(), from + 1, "one request, in alice's say");
+    assert_eq!(outputs(&after[from]), [("c1".to_string(), "1".to_string())]);
+}
+
+/// F5.1: a job the FIFO started in bob's call runs under bob's origin, so the request after it
+/// is not sent there either: the turn stops `busy`, and alice's next message continues it.
+#[test]
+fn review_r5_the_request_after_a_job_the_fifo_started_in_another_call_is_not_sent_there() {
+    let mut k = kernel();
+    let mut o = Origins::new();
+    let eight: Vec<Value> = (1..=8)
+        .map(|n| call_of(&format!("c{n}"), "notes_a", "{}"))
+        .collect();
+    let with_calls = |k: &mut K, o: &mut Origins, owner: &str, key: &str, calls: &[Value]| {
+        let id = o.under(k, owner, |k| {
+            k.start(owner, key, "o", "{}", IN).unwrap().value
+        });
+        let s = stream_of(k, &id);
+        o.on(k, &s, |k| feed(k, &s, vec![sse_head(), completed(calls)]));
+        o.on(k, &s, |k| k.provider_ended_with(&s, None).unwrap());
+        id
+    };
+    let _a1 = with_calls(&mut k, &mut o, "carol", "k1", &eight);
+    let b = with_calls(&mut k, &mut o, "bob", "k1", &eight);
+    assert_eq!(slots(&mut k).job, 16);
+    let a2 = with_calls(
+        &mut k,
+        &mut o,
+        "alice",
+        "k2",
+        &[call_of("x1", "notes_a", "{}")],
+    );
+    assert_eq!(
+        jobs(&mut k, &a2).len(),
+        0,
+        "alice's call waits for a job slot"
+    );
+    // Bob's job ends in bob's call; the FIFO starts alice's job there.
+    let jb = jobs(&mut k, &b);
+    o.on(&mut k, &jb[0].1, |k| finish(k, &jb[0].1, json!(1)));
+    let ja = jobs(&mut k, &a2);
+    assert_eq!(ja.len(), 1);
+    o.on(&mut k, &ja[0].1, |k| finish(k, &ja[0].1, json!(2)));
+    assert!(
+        matches!(turn(&mut k, &a2), Turn::Idle { stop, .. } if stop == busy_stop()),
+        "{:?}",
+        turn(&mut k, &a2)
+    );
+    let from = starts(&k).len();
+    o.under(&mut k, "alice", |k| {
+        k.say("alice", &a2, "s1", r#"[{"type":"text","text":"go on"}]"#)
+            .unwrap()
+    });
+    let after = starts(&k);
+    assert_eq!(after.len(), from + 1, "one request, in alice's say");
+    assert_eq!(outputs(&after[from]), [("x1".to_string(), "2".to_string())]);
+}
+
+/// F5.1: a retry that finds no request slot does not wait in the FIFO: the turn stops `busy`
+/// and nothing is sent for it in bob's call.
+#[test]
+fn review_r5_a_retry_with_no_slot_stops_busy_and_never_goes_in_another_call() {
+    let mut k = kernel();
+    let mut o = Origins::new();
+    let id = o.under(&mut k, "alice", |k| {
+        k.start("alice", "k0", "o", "{}", IN).unwrap().value
+    });
+    let s = stream_of(&mut k, &id);
+    o.on(&mut k, &s, |k| {
+        k.provider_ended_with(&s, Some("idle-timeout".into()))
+            .unwrap()
+    });
+    assert_eq!(lp(&mut k, &id)["state"], "retrying");
+    let bobs = fill_requests(&mut k, &mut o);
+    k.host.now += 60_000;
+    o.under(&mut k, "alice", |k| k.timer(&format!("s/{id}")));
+    bob_completes(&mut k, &mut o, &bobs);
+    assert!(
+        matches!(turn(&mut k, &id), Turn::Idle { stop, .. } if stop == busy_stop()),
+        "{:?}",
+        turn(&mut k, &id)
+    );
+    let sl = slots(&mut k);
+    assert_eq!(sl.head, sl.tail, "nothing waits in the FIFO");
+}
