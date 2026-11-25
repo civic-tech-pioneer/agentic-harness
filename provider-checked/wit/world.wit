@@ -1,0 +1,43 @@
+package mods:claude-code@0.1.0;
+
+/// The calls of the checked Claude Code provider. Only the agent kernel may make them.
+interface sessions {
+  use watane:host/streams@0.1.0.{stream-id};
+  use watane:host/claude-types@0.1.0.{start-error, session-error, decision};
+
+  record started { %stream: stream-id, direct: bool }
+
+  start: func(launch: string, input: string) -> result<started, start-error>;
+  say: func(s: stream-id, content: string) -> result<_, session-error>;
+  answer: func(s: stream-id, ask: string, d: decision) -> result<_, session-error>;
+  interrupt: func(s: stream-id) -> result<_, session-error>;
+  compact: func(s: stream-id) -> result<_, session-error>;
+}
+
+/// The judge's thresholds and origin, for the provider's own page.
+interface settings {
+  record current { unsafe-at: f64, safe-at: f64, origin: string }
+  variant settings-error { not-owner, refused(string) }
+
+  get: func() -> current;
+  /// Only the caller `page`; 0 <= safe-at < unsafe-at <= 1.
+  set: func(unsafe-at: f64, safe-at: f64) -> result<_, settings-error>;
+}
+
+world claude-code-checked {
+  import watane:host/caller@0.1.0;
+  import watane:host/state@0.1.0;
+  import watane:host/streams@0.1.0;
+  import watane:host/claude-types@0.1.0;
+  import watane:host/claude-code@0.1.0;
+  import watane:host/claude-session@0.1.0;
+  import watane:host/https-stream@0.1.0;
+  import watane:host/timers@0.1.0;
+  export sessions;
+  export settings;
+  // `start` is the consumer of the `claude` stream and of each judge stream (host 19.2).
+  export watane:host/stream-sink@0.1.0;
+  // The provider produces its own stream to the kernel: `ready` resumes, `ended` stops the session.
+  export watane:host/stream-producer@0.1.0;
+  export watane:host/timer-sink@0.1.0;
+}

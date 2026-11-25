@@ -1,0 +1,5 @@
+name = "Claude Code, checked"
+summary = "Starts Claude Code for the agent kernel with a judge: every input, check and ask is judged by TypeSafe System One with the participant's judge key before it reaches Claude or is answered."
+
+[http]
+hosts = ["api.typesafe.ai"]
