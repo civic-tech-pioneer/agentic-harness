@@ -115,6 +115,8 @@ reviewer claude. Cloud.
 
 ### Upkeep
 
+- **(guard, second sighting) `installed-agent` CI flake:** `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code settings' after AC1 passes; on S40 at 890caad and 10ed0a3, green on rerun. Find the race or give the wait a bound that measures it.
+
 - **Case 22's idempotent half (from S40 r2):** after a restart, reissue an idempotent job under its key, with the toolset reopened under the session owner's origin and the job sent only once the handle is usable.
 
 - **S40 on `watane-dev serve` (after watane S114 merges):** turn the SKIP lines of `test:host:d` into checks, run S40 outcomes 2 to 4 on a preview with a scripted OpenAI stream, and add the stage D load test.
