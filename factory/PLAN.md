@@ -31,7 +31,7 @@ S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane
 
 ## Sketched
 ### S145 (upkeep) the console's last S142/S144 polish and its Stage D clocks, console/ only
-(sketched 2026-11-26 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: S144 codex, watane S143 claude); reviewer claude; spec-check not run: no spec text changes. Upkeep is exempt from the size rule.)
+(sketched 2026-11-26 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: S144 codex, watane S143 claude); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b0863c1-ae4c-83eb-8254-412ade2530c4, 16:58 UTC; spec-check not run: no spec text changes. Upkeep is exempt from the size rule.)
 Why: the console's Upkeep items left by S142 and S144, while S138 (approved, held on a watane release) keeps kernel/ and design/.
 Outcomes, each its Upkeep item's check (Upkeep lines "S144 r2 polish", "S144 deputy compare", "S144 r1 P1.6", "S144 r1 A1.1", "S142 r2, polish", "S142 deputy compare"):
 (1) at 390 px the consent diamond sits beside its words (the user-sim's red test `regress_S144_consent_shape_beside_word_at_phone`, committed unchanged first); a taken row's error does not wrap into a narrow column nor repeat above the composer;
