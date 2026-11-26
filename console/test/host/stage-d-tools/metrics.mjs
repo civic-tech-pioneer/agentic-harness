@@ -1,3 +1,5 @@
+import { isInterrupted } from "../load_check.mjs";
+
 export function p95(samples) {
   if (!samples.length) throw new Error("no measurements");
   return [...samples].sort((a, b) => a - b)[Math.ceil(samples.length * 0.95) - 1];
@@ -31,6 +33,38 @@ export function openaiCadence(stamps, from, to) {
   const gaps = inside.slice(1).map((at, i) => at - inside[i]);
   return inside.length >= 5 && inside[0] - begin <= 1200 && to - inside.at(-1) <= 1200
     && gaps.every((gap) => gap >= 800 && gap <= 1200);
+}
+
+// The TLS log marks writes, not batches accepted by the kernel. Stop may cancel the final
+// in-flight batch before it creates any durable tool outcome. An earlier gap still fails,
+// as does a missing page item for any batch with a tool outcome before the interrupted turn.
+export function openaiPageCoverage(wire, seen, stored, from, to) {
+  const faults = [];
+  const interrupted = stored.findLast(({ kind }) => kind === "turn");
+  const confirmed = isInterrupted(interrupted?.body);
+  if (!confirmed) faults.push("no stored interrupted turn");
+  const acceptedTools = new Set(stored
+    .filter(({ kind, i }) => kind === "tool" && (!confirmed || i < interrupted.i))
+    .map(({ body }) => body.toolCallId));
+  const steps = wire.filter(({ marker, step }) => marker === step).sort((a, b) => a.at - b.at);
+  const tail = confirmed ? steps.findLast(({ at }) => at <= interrupted.at) : undefined;
+  let cut = [];
+  for (const start of steps.filter(({ at }) => at >= from && at < to)) {
+    const writes = wire.filter(({ step }) => step === start.marker);
+    const calls = writes.filter(({ marker }) => marker.startsWith("call_"));
+    // Apply the same upper bound on a single step as the cadence check. This confines the
+    // exception to the Stop edge and cannot hide a stalled or disconnected source.
+    if (start === tail && interrupted.at - start.at <= 1200
+        && !calls.some(({ marker }) => acceptedTools.has(marker))) {
+      cut = writes;
+      continue;
+    }
+    if (calls.length !== 4) faults.push(`${start.marker}: source wrote ${calls.length} tool calls instead of four`);
+    for (const { marker } of [start, ...calls]) {
+      if (!seen.has(marker)) faults.push(`missing page marker ${marker}`);
+    }
+  }
+  return { faults, interrupted, cut };
 }
 
 export function pageProbe() {

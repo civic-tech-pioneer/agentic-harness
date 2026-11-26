@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
 import { NotRun, outcomeOf } from "./outcome.mjs";
 import { isInterrupted, loadWindow } from "./load_check.mjs";
-import { openaiCadence, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
+import { openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -238,7 +238,10 @@ async function mixedLoad(browser) {
       claudeByProcess.get(id).push({ at, kind });
     }
     ensure(claudeByProcess.size === 8, `expected eight Claude sources, found ${claudeByProcess.size}`);
-    const window = loadWindow(claudeByProcess, to, rate, 6);
+    // The fake ticks every 20 ms, but these are Python pipe-forwarding timestamps on the
+    // busy mixed preview. Allow three ticks (60 ms, covering the observed 57.2 ms gap).
+    // The same bound is checked at both window edges and for every source and kind.
+    const window = loadWindow(claudeByProcess, to, rate, 6, 3);
     const from = Math.max(window.from, start + 1000);
     const faults = [...window.faults];
     const delays = [], stops = [];
@@ -272,39 +275,27 @@ async function mixedLoad(browser) {
         delays.push(at - sent);
         (backend === "claude" ? claudeDelays : aiDelays).push(at - sent);
       }
-      const expected = backend === "claude"
-        ? [...claudeStamps].filter(([m]) => claudeIds.has(m.split("-")[1]))
-        : [...scripted].filter(([m]) => m.startsWith(`oa-${id}-`));
-      const missing = expected.filter(([marker, at]) => at >= from && at < to && !seen.has(marker));
-      if (missing.length) faults.push(`${id}: ${missing.length} source items missing from page`);
-      if (backend === "openai") {
-        const fullSteps = expected.filter(([, at]) => at >= from && at < to - 50).length;
-        const delivered = [...seen].filter((marker) => marker.startsWith("call_")).length;
-        if (delivered < 4 * fullSteps) faults.push(`${id}: only ${delivered} tool calls reached the page across ${fullSteps} steps`);
-        if (missing.length || delivered < 4 * fullSteps) {
-          const offsets = ([marker, at]) => ({ marker, beforeStopMs: end == null ? null : Math.round(end - at) });
-          const measuredSteps = new Set(expected.filter(([, at]) => at >= from && at < to - 50).map(([marker]) => marker));
-          const missingSteps = new Set(missing.map(([marker]) => marker));
-          for (const { at, marker, step } of wire) {
-            if (at >= from && at < to && measuredSteps.has(step) && marker.startsWith("call_") && !seen.has(marker)) {
-              missingSteps.add(step);
-            }
-          }
-          const stored = await entriesOf(session);
-          const lastToolCalls = stored.filter(({ kind }) => kind === "tool").slice(-8);
-          say(`LOSS ${id} ${JSON.stringify({
+      if (backend === "claude") {
+        const missing = [...claudeStamps].filter(([marker, at]) =>
+          claudeIds.has(marker.split("-")[1]) && at >= from && at < to && !seen.has(marker));
+        if (missing.length) faults.push(`${id}: ${missing.length} source items missing from page`);
+      } else {
+        const responseWire = wire.filter(({ step }) => step.startsWith(`oa-${id}-`));
+        const stored = await entriesOf(session);
+        const coverage = openaiPageCoverage(responseWire, markers, stored, from, to);
+        for (const fault of coverage.faults) faults.push(`${id}: ${fault}`);
+        if (coverage.cut.length || coverage.faults.length) {
+          say(`${coverage.faults.length ? "LOSS" : "STOP CUT"} ${id} ${JSON.stringify({
             window: { from, to },
             stopAt: end,
             interruptedAt: idle?.at,
-            missing: missing.map(offsets),
-            // A different attachment may already have received items that the measured stream lacks.
+            lastStoredTurn: coverage.interrupted,
+            cutWrites: coverage.cut,
             streams: [...new Set(captured.items.map(({ stream }) => stream))],
             measuredStream: captured.stream,
-            missingStepWrites: wire.filter(({ step }) => missingSteps.has(step))
-              .map(({ marker, at, step }) => ({ step, ...offsets([marker, at]) })),
             lastPageTools: items.filter(({ marker }) => marker?.startsWith("call_")).slice(-8),
-            lastStoredTools: lastToolCalls.map(({ i, at, body }) => ({ i, at, id: body.toolCallId, status: body.status })),
-            lastStoredTurn: stored.findLast(({ kind }) => kind === "turn"),
+            lastStoredTools: stored.filter(({ kind }) => kind === "tool").slice(-8)
+              .map(({ i, at, body }) => ({ i, at, id: body.toolCallId, status: body.status })),
           })}`);
         }
       }
