@@ -38,6 +38,7 @@ describe("Dock", () => {
     const b = screen.getByRole("button", { name: "Queue message" });
     expect(b).toBeDisabled();
     expect(b).toHaveAccessibleDescription(/queue is full/);
+    expect(screen.getByText(/^The queue is full:/)).toHaveAttribute("role", "status");
   });
 
   it("ac5_stop_button_only_while_a_turn_runs_or_waits", async () => {

@@ -92,6 +92,7 @@ describe("S36-3", () => {
     await user.type(draft, "after takeover");
     act(() => ends[0]!("replaced"));
     expect(notice()).toHaveTextContent(NOTICE);
+    expect(screen.getAllByText(NOTICE)).toHaveLength(1);
     controls().forEach((control) => {
       expect(control).toBeDisabled();
       expect(control).toHaveAccessibleDescription(NOTICE);

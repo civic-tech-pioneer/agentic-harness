@@ -127,13 +127,18 @@ describe("S144 Stage B/C source spacing", () => {
     const by = new Map([["first", jittered], ["last", source(100, 7970)]]);
     expect(loadWindow(by, 7980, RATE, 6).faults).toEqual([]);
     for (const at of [160, 3060, 7920]) {
-      by.set("first", jittered.filter(({ at: stamp, kind }) => kind !== "delta" || stamp !== at));
-      expect(loadWindow(by, 7980, RATE, 6).faults).toHaveLength(1);
+      by.set("first", jittered.map((stamp) => stamp.kind === "delta" && stamp.at === at
+        ? { ...stamp, at: at + (at === 7920 ? -1 : 1) } : stamp));
+      expect(loadWindow(by, 7980, RATE, 6).faults).toEqual([expect.stringContaining("61.0 ms")]);
     }
     // 600 ms is the corresponding maximum for entries at 5/s.
     by.set("first", steady.filter(({ at, kind }) => kind !== "entry" || (at !== 3181 && at !== 3381)));
     expect(loadWindow(by, 7980, RATE, 6).faults).toEqual([]);
-    by.set("first", by.get("first")!.filter(({ at, kind }) => kind !== "entry" || at !== 3581));
-    expect(loadWindow(by, 7980, RATE, 6).faults).toHaveLength(1);
+    for (const lastEntry of [7380, 7379]) {
+      by.set("first", steady.filter(({ at, kind }) => kind !== "entry" || at <= 7381)
+        .map((stamp) => stamp.kind === "entry" && stamp.at === 7381 ? { ...stamp, at: lastEntry } : stamp));
+      const faults = loadWindow(by, 7980, RATE, 6).faults;
+      expect(faults).toEqual(lastEntry === 7380 ? [] : [expect.stringContaining("601.0 ms")]);
+    }
   });
 });

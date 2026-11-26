@@ -130,6 +130,11 @@ reviewer claude. Cloud.
 
 ### Upkeep
 
+- **(S144 r1 P1.1)** Reconcile TECHNICAL 16's Stage B budget record (2×, 40 ms for deltas and 400 ms for entries) with the approved 3× source-spacing limits in Stage B/C and the Stage D runner's 60 ms Claude gap check.
+- **(S144 r1 P1.2)** Reconcile TECHNICAL 18.6's placement of the full-queue reason above the composer with the visible live reason in the composer control row.
+- **(S144 r1 P1.6)** Review the queue label and Stop and send action after a failed turn or during a paused turn, when no turn is running.
+- **(S144 r1 A1.1, accepted)** At 390 px the folder-consent diamond wraps away from the status words on main as well as S144. Bring it beside the words and use the user-sim's red test `regress_S144_consent_shape_beside_word_at_phone` (intended path `console/test/regress_S144_consent_shape_beside_word_at_phone.slow.mjs`).
+
 - **(flake, S140 r1 and r2 reviews)** `console/kit/parts_S15.test.ts:42` replay test times out under the full console run, passes alone and in the gate (twice in a Codex cloud).
 
 - **(guard, S138 r2 P2.1)** no test pins `run_client`'s `me() == "page"` guard on arming `page-origin` (a non-page chain arming it would give page firings that mod's authority), nor "every successful client call drains what is owed": add a Harness step in `kernel/wasm/tests/harness/run.sh`. **(S138 r2 polish)** P2.2 `design/LOG.md:9` attributes D001 to the human while it is `human: pending`; P2.3 drain owed work in one layer (`Kernel::read` and `run_client`); P2.4 `harness/run.sh` and `production/run.sh` into CI `installed-agent` once the watane release exists; S138 r1 P1.1 to P1.8, P1.10 of https://github.com/civic-tech-pioneer/agentic-harness/pull/61.
