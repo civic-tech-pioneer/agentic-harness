@@ -27,9 +27,26 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane release); S140 merged.
+S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane release); S142 (upkeep, console, Codex build); S140 merged.
 
 ## Sketched
+### S142 (upkeep) the console's Stop and question fixes, stage E on a real host, and stage D's lost item, console/ only
+(sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder codex by rule 3 (last two S141 codex, S140 claude: Claude
+built one of them, so Codex); reviewer claude; spec-check not run: no spec text changes (below). Upkeep is exempt from the size rule.)
+Why: Upkeep's console items, while S138 (approved, held on a watane release) keeps kernel/ and design/.
+Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
+(1) *guard* Stop before `initialized`, while a folder consent waits, cancels the stream instead of sending `interrupt`,
+so no later yes answers into an idle session (watane S103 r1): a test that fails today, where the fix is in the console;
+(2) S131 F1.8 diagnosed: why one stage D load run lost 1 item and 4 tool calls of an OpenAI session at the page, shown
+by a run or a test, then fixed if the cause is in console/, else written as a kernel Upkeep line with the evidence;
+(3) `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (after S127);
+(4) S38 P2.6 'Open the question' opens it and the wait shows the folder (States-2); S36 user-sim: Edit and Undo keep a
+queued row's place, and Stop and send is not offered on a queued row while the session reads Not running.
+Touches: `console/` (src, kit, test/host), `ui/` (the built console). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface and no spec text change: an item that needs a rule change in design/ or a kernel change
+stays in Upkeep with a line in the PR body; a guard never weakens; a flake is never fixed by a retry alone.
+deputy compares: the consent wait and the queue rows against the console design (TECHNICAL 18).
+
 ### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
 (sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
 S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).) r1 answers at 07d910f (12:20 UTC; F1.1 to F1.3 fixed; F1.ci needs a watane release with S136, the human's, asked 12:23 UTC by Deputy Rock); r2: Claude routine `trig_014PqYzP7y2xYu5EcKcccLX4`, 12:22 UTC. r2: 0/4, VERDICT: approve on 07d910f (12:30 UTC); **approved, held**: merges once a watane release with S136 turns `installed-agent` green (Waiting on the human). Friction: the reviewer found no `.claude/factory/review-lead.md` in this repository and used the README's review-team row.
