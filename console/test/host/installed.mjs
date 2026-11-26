@@ -237,6 +237,9 @@ try {
   // Each section's whole grant list, in order, and the publisher its Call is bound to (S39 P1.3): an extra grant, a
   // missing one, or a Call bound to another provider fails here. Watane's consent window shows each grant as a label
   // "Allow: <words>[ · new]" and the release as "<slug> <version> by <publisher> · signature verified — <release>".
+  // The publisher check compares displayed labels: watane may shorten a fingerprint to ten characters, so two labels
+  // that match do not prove the same full key. That proof is elsewhere: `publish-test-mods.sh` checks each release's
+  // full link against the channel, and the provider pins the kernel's full identity (its `ac2_` test, before the build).
   const sections = await alice.eval(consent, `Array.from(document.querySelectorAll('main section'), s => ({
     name: s.querySelector('h2').textContent,
     release: Array.from(s.querySelectorAll(':scope > p'), p => p.textContent).find(t => t.includes(' · signature verified')) ?? null,
