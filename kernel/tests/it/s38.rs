@@ -50,7 +50,7 @@ fn ac1_ac2_ac3_workspace_stream_lifecycle() {
     );
 
     let response = json!({
-        "type": "assistant", "uuid": "answer-1",
+        "type": "assistant", "uuid": "answer-1", "session_id": "provider-1",
         "message": {"id": "message-1", "type": "message", "role": "assistant",
             "model": "fake", "content": [{"type": "text", "text": "I read the notes."}]}
     });
@@ -65,6 +65,20 @@ fn ac1_ac2_ac3_workspace_stream_lifecycle() {
     let entries = k.read("page", &id, 0, None, 20).unwrap().entries;
     assert!(entries.iter().any(|e| e.contains("hello")));
     assert!(entries.iter().any(|e| e.contains("I read the notes.")));
+    let entries: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|e| serde_json::from_str(e).unwrap())
+        .collect();
+    let said = |e: &&serde_json::Value| e.to_string().contains("I read the notes.");
+    let agent: Vec<_> = entries.iter().filter(said).collect();
+    assert_eq!(agent.len(), 1, "{entries:?}");
+    assert_eq!(agent[0]["kind"], "message");
+    assert_eq!(agent[0]["body"]["role"], "agent");
+    assert_eq!(agent[0]["body"]["content"][0]["text"], "I read the notes.");
+    assert!(
+        entries.iter().all(|e| e["kind"] != "unknown"),
+        "{entries:?}"
+    );
 
     let next = k
         .start_in_folder("page", "next", "scratch", "{}", "again", FOLDER)

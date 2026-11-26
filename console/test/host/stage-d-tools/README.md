@@ -8,6 +8,8 @@ and time actual commits, with fsync included.
 Apply the fixture patch on a disposable Watane worktree at
 `548b4e1b610fb152c2b5359d6e2aeebe6d847440` using
 `git apply --unidiff-zero /path/to/agentic-harness/console/test/host/stage-d-tools/watane.patch`.
+The patch is that rev's: it also applies at watane main c52d2aa, but `host/src/state.rs` moved there, so it does not
+compile (S131).
 In that worktree run `cargo build --locked -p watane-host -p watane-dev --bins`
 and put its `target/debug` on PATH. If `WATANE_BIN` or
 `WATANE_SCRIPTED_RESPONSES` is set, point it at the matching instrumented

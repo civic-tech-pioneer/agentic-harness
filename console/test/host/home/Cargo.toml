@@ -1,0 +1,28 @@
+[package]
+name = "stage-c-home"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Test-only (S131-4): a participant home whose app is a fake Confirm that the stage C tests answer."
+
+[[bin]]
+name = "stage-c-home"
+path = "src/main.rs"
+
+[dependencies]
+# watane main at S129 (host 19.7 consents). The runner points this at a local checkout with
+# WATANE_SRC (a cargo `patch`), so it builds the host the tests run against.
+watane-host = { git = "https://github.com/civic-tech-pioneer/watane", rev = "c52d2aae0bfd95c4297b4a714facf76cc802f53a" }
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "sync", "io-util", "io-std", "signal"] }
+serde_json = "1"
+axum = "0.8.9"
+
+# As watane's workspace, so a build in its target folder reuses its artifacts.
+[profile.dev]
+debug = "line-tables-only"
+[profile.dev.build-override]
+debug = "line-tables-only"
+[profile.dev.package."*"]
+opt-level = 1
+
+[workspace]

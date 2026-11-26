@@ -8,6 +8,8 @@ interface api {
   interrupt: func(session: string) -> result<_, string>;
   cancel: func(session: string);
   start-openai: func(key: string, input: string) -> result<string, string>;
+  /// The kernel's `start-in-folder` of a scratch Claude session (S131-4: the stage C load).
+  start-in-folder: func(key: string, input: string, folder: string) -> result<string, string>;
   read: func(session: string, after: u64, max: u32) -> result<list<string>, string>;
   /// A test-only tool with a recognizable result.
   /// @parallel

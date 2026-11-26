@@ -1,0 +1,19 @@
+diff --git a/host/src/state.rs b/host/src/state.rs
+index 38ffb20..7db8b64 100644
+--- a/host/src/state.rs
++++ b/host/src/state.rs
+@@ -504,6 +504,14 @@ impl Stats {
+         self.record(started);
+     }
+     fn record(&self, started: Instant) {
++        if std::env::var_os("S128_LOAD_CLOCK").is_some() {
++            let elapsed = started.elapsed().as_nanos();
++            let end = std::time::SystemTime::now()
++                .duration_since(std::time::UNIX_EPOCH)
++                .expect("epoch")
++                .as_nanos();
++            eprintln!("S128_COMMIT {} {}", end - elapsed, end);
++        }
+         self.commits.fetch_add(1, Ordering::Relaxed);
+         self.commit_nanos.fetch_add(
+             u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX),
