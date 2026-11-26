@@ -22,13 +22,14 @@ where it belongs.
 | Term | Meaning |
 |---|---|
 | agent session | A conversation between a client and an agent, with its turns, its transcript and its state. It lives until the owner deletes it. |
-| turn | One run of the agent from an input until it stops, waits for an answer, or is interrupted. |
+| turn | One run of the agent from an input until it stops or is interrupted. An ask or a retry can suspend the same turn. |
 | backend | What runs the agent: Claude Code (the participant's `claude` program) or OpenAI (the participant's ChatGPT plan). |
 | profile | A named, complete setting of an agent: instructions, model, tools, permissions, skills, subagents, limits and output format. The participant makes it. |
 | overlay | A change that a client asks for when it starts a session. It can only narrow the profile. |
 | offer | A skill or a profile that a mod proposes. It has no effect until the participant adopts it. |
 | skill | Instructions, and the files they need, that an agent can load when it needs them. |
-| subagent, child session | An agent that another agent starts for a part of its task. |
+| child session | An OpenAI kernel session an OpenAI root starts for part of its task. It belongs to the root's client. |
+| Claude subagent | A role configured at Claude launch that runs within that Claude session. |
 | client | The mod (or its page) that starts a session and reads it. It is the session's owner. |
 | origin client | The client at the start of a chain of calls. Consents name it. |
 | kernel | The mod `mods:agent`: profiles, sessions, transcripts, permissions, the OpenAI agent, delegation. |
@@ -57,9 +58,9 @@ where it belongs.
 
 ### 3.1 Profiles and offers
 
-- **AGT-F-1** The kernel shall let only the participant, in the kernel's own page, create, change and delete profiles, and say which client may use which profile. Traces: F-AGENT-8, F-RUN-5.
+- **AGT-F-1** The kernel shall let only the participant, in the kernel's own page, create, change and delete profiles, and say which client may start a root session with which profile. The participant sets the profiles an OpenAI root may delegate to (AGT-F-37). Traces: F-AGENT-8, F-RUN-5.
 - **AGT-F-2** When a mod offers a skill or a profile, the kernel shall show its content to the participant and use it only after the participant adopts it. If the offered content changes, then the kernel shall stop using it until the participant adopts it again. Traces: F-AGENT-8, F-AGENT-4.
-- **AGT-F-3** When a client starts a session with an overlay, the kernel shall accept an overlay that appends to the instructions, adds skills, removes tools, adds deny rules or lowers limits, and shall refuse one that adds tools, allow rules, workspaces, subagent profiles or a weaker permission mode. Traces: F-AGENT-8.
+- **AGT-F-3** When a client starts a session with an overlay, the kernel shall accept an overlay that appends to the instructions, adds skills, removes tools, adds deny rules or lowers a limit enabled for overlays, and shall refuse one that adds tools, allow rules, workspaces, subagent profiles or a weaker permission mode. Traces: F-AGENT-8.
 - **AGT-F-4** If a backend or a model cannot honour a field that a profile sets, then the kernel shall refuse the profile for that backend and model, and name every such field at once. It shall never drop a field. Traces: F-AGENT-8, F-QUAL-3.
 - **AGT-F-5** When a client asks to check a profile and overlay, the kernel shall return the refusals of AGT-F-4 without starting anything. Traces: F-AGENT-8.
 
@@ -122,13 +123,13 @@ where it belongs.
 
 ### 3.9 Limits and delegation
 
-- **AGT-F-36** The kernel shall count the turns, the failed tool calls in a row and the tokens of each session, for both backends, and stop the turn at a limit of the profile, with the limit named. At the turn limit the agent gets one last turn without tools to sum up. Traces: F-AGENT-8, F-QUAL-3.
-- **AGT-F-37** An agent shall start a child session only with a profile that its own profile names. A child shall only narrow its parent. The kernel shall limit the depth and the number of live children. An OpenAI child shall not start children. Traces: F-AGENT-8.
-- **AGT-F-44** The kernel shall report, after each step, how much of the model's context a session uses, and, where the backend says so, at what point it makes room by summarising. Traces: AGT-F-36, F-QUAL-3.
+- **AGT-F-36** The kernel shall report token totals for each turn when the backend supplies them. For OpenAI it shall count completed model steps, consecutive failed tool calls and input plus output tokens within each turn. It shall stop the turn with the limit named. At the model-step limit it shall allow at most one extra tool-free step to sum up, subject to the other limits. For Claude it shall use Claude's native model-turn limit and report that stop when Claude identifies it. Traces: F-AGENT-8, F-QUAL-3.
+- **AGT-F-37** An OpenAI root shall start child sessions only with profiles it names. The kernel shall check each child against the root's effective permissions and limits at dispatch, refuse a widening by field, and cap the number of live children. Children have the root's owner and no workspace, and cannot delegate. The parent receives one outcome per delegation, with the child's final answer on success. Claude subagents run within the launching session under Claude's launch-time depth limit. Traces: F-AGENT-8, AGT-F-28.
+- **AGT-F-44** After each completed OpenAI step the kernel shall report the model's context use and the threshold for summarising. For Claude it shall report context use at turn end when Claude supplies comparable usage and a window. Traces: AGT-F-36, F-QUAL-3.
 
 ### 3.10 Restart and quality
 
-- **AGT-F-38** After a restart of watane, the owner shall reattach to each session and continue it. If `claude` no longer has the session, then the kernel shall mark it as lost and continue in a new Claude session that starts from a summary. Traces: F-QUAL-3.
+- **AGT-F-38** After a restart of watane, the owner shall be able to reattach and continue by sending input. OpenAI delegation in progress ends at restart, with the child links and finished transcript entries kept. If `claude` no longer has the session, then the kernel shall mark it as lost and continue in a new Claude session that starts from a summary. Traces: F-QUAL-3.
 - **AGT-F-39** Every call into a mod of the agent layer shall return within its budget. Long work shall be a stream, a job or a timer. Traces: F-RUN-3.
 - **AGT-F-40** Each failure shall carry a fixed machine-readable code and a message that names the cause. Traces: F-QUAL-3.
 
@@ -138,13 +139,13 @@ The console's first target is the canvas row named in `VISION.md`. Each
 requirement here is met by what the backend requirements it traces give, and
 by nothing else.
 
-- **AGT-F-45** The kernel's page shall hold the console. The console shall reach the kernel only through the calls every client has, and shall show and change only the sessions it started. Traces: AGT-F-7, F-AGENT-6. It shall never show the sessions of other clients (N11, decided).
+- **AGT-F-45** The kernel's page shall hold the console. The console shall reach the kernel only through the calls every client has, and shall show and change only the sessions it owns, including children of its own roots. Traces: AGT-F-7, F-AGENT-6. It shall never show the sessions of other clients (N11, decided).
 - **AGT-F-46** When the participant starts a session in the console, the console shall offer the profiles the console may use and both backends, and let them narrow the profile for that session. Before anything starts, it shall show every refusal of AGT-F-4 for that backend and keep Start off while one holds. It shall show what the session can reach: what is already allowed and what will be asked. Traces: AGT-F-3, AGT-F-4, AGT-F-5, AGT-F-28.
-- **AGT-F-47** The console shall show a session's transcript from its stored entries and live updates: inputs, thinking, tool calls, asks, verdicts, decisions with who made them, and the end of each turn with its time, tools and tokens. Reads and searches in a row shall fold into one line. Edits, program runs, asks and failures shall show in full, and a failed call shall show open. After a reload or a restart of watane, the same transcript shall show again, nothing missing or doubled. Traces: AGT-F-8, AGT-F-9, AGT-F-34, AGT-F-38.
+- **AGT-F-47** The console shall show a session's transcript from its stored entries and live updates: inputs, thinking, tool calls, asks, verdicts, decisions with who made them, and the end of each turn with its time, tools and tokens. An OpenAI delegation that starts a child shall show a link to its transcript. Reads and searches in a row shall fold into one line. Edits, program runs, asks and failures shall show in full, and a failed call shall show open. After a reload or a restart of watane, the same transcript shall show again, nothing missing or doubled. Traces: AGT-F-8, AGT-F-9, AGT-F-34, AGT-F-37, AGT-F-38.
 - **AGT-F-48** The console shall show one status line for the current turn: a word, a shape for each state that does not rely on colour, the time running or, for an ask, the time left, and the key that acts on it. It shall show no state, time or plan that the kernel did not report. Traces: AGT-F-10, AGT-F-42.
 - **AGT-F-49** When an ask waits, the console shall show it inside its tool call, with every argument and, for an edit, the change. It shall keep a "Needs you" pointer until the ask is answered, and offer: allow once; allow for the session, with its reach named; and deny with a reason the agent receives. A session allow shall stay shown until the session ends or the participant takes it back. Traces: AGT-F-14, AGT-F-15, AGT-F-42, AGT-F-43.
 - **AGT-F-50** The console shall accept input during a turn and show the queue: the participant shall take a queued input back to edit it, remove it with an undo, and interrupt the turn to send one now. When the queue is full, sending shall be off and the console shall say why. Stop shall show "Stopping…" until the kernel reports the turn ended. Traces: AGT-F-11, AGT-F-41.
-- **AGT-F-51** The console shall list its sessions grouped by need (needs you, running, then recent) and shall not move a row while the pointer is over the list. It shall show how full the context is and warn before the kernel makes room. Traces: AGT-F-10, AGT-F-44.
+- **AGT-F-51** The console shall list its sessions grouped by need (needs you, running, then recent) and shall not move a row while the pointer is over the list. It shall show how full the context is when reported and use the reported compaction threshold for any advance warning. Traces: AGT-F-10, AGT-F-44.
 - **AGT-F-52** The console shall work with the keyboard alone and with a screen reader, shall honour the participant's setting for reduced motion, and shall never carry a state by colour alone. It shall keep the reader's place: it follows new output only while the reader is at the end. Traces: F-QUAL-3.
 
 ## 4. Journeys
@@ -194,11 +195,12 @@ reads another mod's session, and is refused. Each refusal names its cause.
 
 ### AGT-J5: An agent that delegates
 
-The factory's product owner runs as a session of a mod, with a profile that
-names "foreman" as a profile it may start. It starts a foreman session for a
-slice; the foreman starts a validator child. The kernel refuses a fourth
-level and a profile not named. Alice cancels the product owner's session,
-and both children stop.
+The factory's product owner runs as an OpenAI session of Alice's mod. Its
+profile names "foreman" and "validator" and allows two live children. The
+product owner starts them as siblings for one slice. A request for an unnamed
+profile is refused and a child cannot start a grandchild. Alice sees both
+children in the parent's transcript through her client. Alice cancels the
+product owner's session while the children are live, and both stop.
 
 ### AGT-J6: Watching a session in the console
 
