@@ -127,12 +127,22 @@ fn ac5_live_cap() {
     assert_eq!(live_cap(&root(json!({}))), 4);
     assert_eq!(live_cap(&root(json!({"subagent-limits": {"live": 2}}))), 2);
     let r = root(json!({}));
-    let rs = admit(&r, "m", false, 4, "kid", |_| panic!("loaded")).unwrap_err();
+    let rs = admit(&r, "m", false, 4, "kid", |_| Some(kid(json!({})))).unwrap_err();
     assert_eq!(rs.len(), 1);
     assert_eq!(rs[0].field, "subagent-limits.live");
     assert!(admit(&r, "m", false, 3, "kid", |_| Some(kid(json!({})))).is_ok());
     let r2 = root(json!({"subagent-limits": {"live": 1}}));
-    assert!(admit(&r2, "m", false, 1, "kid", |_| panic!("loaded")).is_err());
+    assert!(admit(&r2, "m", false, 1, "kid", |_| Some(kid(json!({})))).is_err());
+}
+
+/// S134 r1 F1.6: step 3 (membership and load) comes before the live cap of step 4, so a named
+/// but missing delegate at the cap is refused `profile`.
+#[test]
+fn r1_f1_6_a_missing_delegate_at_the_cap_is_refused_on_profile() {
+    let r = root(json!({}));
+    let rs = admit(&r, "m", false, 4, "kid", |_| None).unwrap_err();
+    assert_eq!(rs.len(), 1);
+    assert_eq!(rs[0].field, "profile");
 }
 
 #[test]
@@ -242,4 +252,38 @@ fn a_candidate_that_does_not_parse_is_refused() {
     let r = root(json!({}));
     assert!(run(&r, "not json".into()).is_err());
     assert!(run(&r, "[]".into()).is_err());
+}
+
+/// S134 r1 F1.3: an absent `ask-expiry` is the 600-second default (9.6), not unbounded: a child
+/// may not set a longer window under a root that sets none, and may set 600 or less.
+#[test]
+fn r1_f1_3_an_absent_root_ask_expiry_is_the_600_second_default() {
+    let (r, ps) = parse_profile(
+        &oa(
+            json!({"delegates": ["kid"], "max-turns": 10, "max-tool-errors": 5,
+            "max-tokens": 1000}),
+        )
+        .to_string(),
+    );
+    assert!(ps.is_empty(), "{ps:?}");
+    let child = |v: Value| {
+        oa(merge(
+            json!({"max-turns": 10, "max-tool-errors": 5, "max-tokens": 1000}),
+            v,
+        ))
+        .to_string()
+    };
+    let rs = admit(&r, "m", false, 0, "kid", |_| {
+        Some(child(json!({"ask-expiry": 601})))
+    })
+    .unwrap_err();
+    assert_eq!(
+        rs.iter().map(|x| x.field.as_str()).collect::<Vec<_>>(),
+        ["ask-expiry"]
+    );
+    assert!(admit(&r, "m", false, 0, "kid", |_| Some(child(
+        json!({"ask-expiry": 600})
+    )))
+    .is_ok());
+    assert!(admit(&r, "m", false, 0, "kid", |_| Some(child(json!({})))).is_ok());
 }

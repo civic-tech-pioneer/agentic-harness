@@ -204,7 +204,7 @@ fn child_step(k: &mut K, child: &str) -> u64 {
 
 /// Mean bytes per root step, per child step and per whole cycle over `SAMPLE` cycles of each owner
 /// after `history` cycles of each, then each root stopped with two live children.
-fn measure(history: u64) -> (u64, u64, u64) {
+fn measure(history: u64) -> (u64, u64, u64, u64, u64) {
     // Long enough to span whole chunk cycles (64 KiB of wire or transcript), as D's 128 steps do:
     // the bytes read depend on where in its chunk the active history sits.
     const SAMPLE: u64 = 128;
@@ -217,6 +217,8 @@ fn measure(history: u64) -> (u64, u64, u64) {
         k.attach(o, r, 0).unwrap();
     }
     let (mut root_bytes, mut child_bytes, mut cycles, mut child_count) = (0, 0, 0, 0);
+    // Each sampled step's bytes, for the p95 of 17 ("All p95"; S134 r1 F1.9).
+    let (mut root_steps, mut child_steps): (Vec<u64>, Vec<u64>) = (Vec::new(), Vec::new());
     for n in 1..=history + SAMPLE {
         let sampled = n > history;
         if n == history + 1 {
@@ -225,10 +227,15 @@ fn measure(history: u64) -> (u64, u64, u64) {
         for (o, root) in OWNERS.iter().zip(&roots) {
             let (kids, rb) = root_step(&mut k, root, n);
             let mut cb = 0;
+            let mut each = Vec::new();
             for kid in &kids {
-                cb += child_step(&mut k, kid);
+                let b = child_step(&mut k, kid);
+                each.push(b);
+                cb += b;
             }
             if sampled {
+                root_steps.push(rb);
+                child_steps.extend(each);
                 root_bytes += rb;
                 child_bytes += cb;
                 cycles += rb + cb;
@@ -261,7 +268,16 @@ fn measure(history: u64) -> (u64, u64, u64) {
         root_bytes / per_root,
         child_bytes / child_count,
         cycles / per_root,
+        p95(root_steps),
+        p95(child_steps),
     )
+}
+
+/// The 95th percentile (nearest rank) of a sample.
+fn p95(mut v: Vec<u64>) -> u64 {
+    v.sort_unstable();
+    let rank = (v.len() * 95).div_ceil(100).max(1);
+    v[rank - 1]
 }
 
 /// Stage F's state I/O budget (17): the bytes read and written per root step and per child step
@@ -269,8 +285,15 @@ fn measure(history: u64) -> (u64, u64, u64) {
 #[test]
 #[ignore = "slow: feeds 1,000 root steps with two children of two tool jobs each, for two owners"]
 fn s134_stage_f_state_bytes_per_step() {
-    let (early_root, early_child, early) = measure(10);
-    let (late_root, late_child, late) = measure(1_000);
+    let (early_root, early_child, early, early_root95, early_child95) = measure(10);
+    let (late_root, late_child, late, late_root95, late_child95) = measure(1_000);
+    println!(
+        "stage F bytes p95 per root step at 10: {early_root95}, at 1000: {late_root95}; \
+         per child step at 10: {early_child95}, at 1000: {late_child95}"
+    );
+    for v in [early_root95, early_child95, late_root95, late_child95] {
+        assert!(v <= 4 << 20, "a step's p95 exceeds 4 MiB: {v}");
+    }
     println!(
         "stage F bytes (read + written) per root step at 10: {early_root}, at 1000: {late_root}; \
          per child step at 10: {early_child}, at 1000: {late_child}; \

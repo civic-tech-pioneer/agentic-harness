@@ -445,7 +445,8 @@ fn check_restarted(k: &mut K, root: &str, a: &str, b: &str) {
     // The links stay.
     assert_eq!(rec(k, a).parent.as_deref(), Some(root));
     assert_eq!(rec(k, b).parent.as_deref(), Some(root));
-    assert_eq!(rec(k, root).children, [a, b]);
+    // R4 clears the live child map (9.3); the `child` entries and `parent` links keep them.
+    assert!(rec(k, root).children.is_empty());
     assert_eq!(kind_entries(k, root, "child").len(), 2);
     assert_eq!(calls_of(k, root), 0);
 }
@@ -502,4 +503,29 @@ fn ac5_a_late_end_of_an_older_boot_child_writes_nothing_to_the_root() {
     assert_eq!(bodies(&k).len(), n);
     assert_eq!(rec(&mut k, &root).turn, Turn::Unknown);
     assert_eq!(calls_of(&mut k, &root), 0);
+}
+
+/// S134 r1 F1.2: the `resume` deadline of a paused child checks the root's access (9.7
+/// "Revoking"), as `say` does: a child authorized only through its root resumes, and once the
+/// root's profile is withdrawn the child stays paused with no time, even when the child's own
+/// profile is granted separately.
+#[test]
+fn r1_f1_2_a_paused_childs_resume_checks_the_roots_access() {
+    let mut k = kernel("");
+    let (_root, a, b) = root_with_two(&mut k);
+    pause(&mut k, &a, 60);
+    k.host.now += 61_000;
+    k.timer(&format!("s/{a}"));
+    assert!(
+        matches!(rec(&mut k, &a).turn, Turn::Running { .. }),
+        "resumed through the root's access: {:?}",
+        rec(&mut k, &a).turn
+    );
+    pause(&mut k, &b, 60);
+    k.state
+        .put("access/alice", br#"["foreman","validator"]"#.to_vec())
+        .unwrap();
+    k.host.now += 61_000;
+    k.timer(&format!("s/{b}"));
+    assert_eq!(rec(&mut k, &b).turn, Turn::Paused { until: None });
 }

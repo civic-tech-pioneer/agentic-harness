@@ -622,3 +622,24 @@ fn ac7_the_adapter_reports_the_limit_with_the_idle() {
     let out = a.line(result("success", "").as_bytes(), 3);
     assert!(out[0].limit.is_none());
 }
+
+/// S134 r1 F1.8: a loop saved by a build before stage F has no limits in its policy; when it is
+/// next loaded the profile's caps are compiled in, so the turn in flight and later turns stop.
+#[test]
+fn r1_f1_8_a_loop_saved_before_stage_f_gets_the_profiles_limits() {
+    let mut k = kernel(r#","max-tokens":100"#);
+    let id = start(&mut k);
+    // Rewrite the loop as an earlier build saved it: no caps, no marker.
+    let key = format!("loop/{id}");
+    let mut v: Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
+    let o = v.as_object_mut().unwrap();
+    o.remove("limits-compiled");
+    let p = o["policy"].as_object_mut().expect("the policy");
+    assert!(p.remove("max-tokens").is_some(), "the cap is in the policy");
+    assert!(v.get("limits-compiled").is_none());
+    k.state.put(&key, serde_json::to_vec(&v).unwrap()).unwrap();
+    // The turn in flight stops at the cap.
+    reply_with(&mut k, &id, &[text("big")], Some((60, 50)));
+    assert_eq!(stop_of(&mut k, &id), stopped("max-tokens"));
+    assert_eq!(lp(&mut k, &id)["limits-compiled"], true);
+}

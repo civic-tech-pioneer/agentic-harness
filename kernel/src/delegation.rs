@@ -52,15 +52,17 @@ pub fn admit(
     if !root.delegates.iter().any(|d| d == name) {
         return one("profile", "not in the delegates of the calling profile");
     }
+    // Step 3 ends with the load: a named but missing profile is refused `profile` before the
+    // live cap of step 4 is looked at (9.7 Admission, S134 r1 F1.6).
+    let Some(json) = load(name) else {
+        return one("profile", "the delegate profile is missing or not adopted");
+    };
     if live >= live_cap(root) {
         return one(
             "subagent-limits.live",
             "the live child limit of the calling profile is reached",
         );
     }
-    let Some(json) = load(name) else {
-        return one("profile", "the delegate profile is missing or not adopted");
-    };
 
     let (c, mut problems) = parse_profile(&json);
     problems.extend(grammar_problems(&c));
@@ -107,7 +109,10 @@ pub fn admit(
     if !cap_ok(root.max_tokens, c.max_tokens) {
         bad.push(("max-tokens", "absent or higher than the calling profile's"));
     }
-    if !cap_ok(root.ask_expiry, c.ask_expiry) {
+    // `ask-expiry` always has an effective value: absent is the 600-second default (9.6), so
+    // an absent root value is not unbounded (S134 r1 F1.3).
+    let expiry = |p: &Profile| Some(p.ask_expiry.unwrap_or(crate::openai::tools::ASK_EXPIRY_S));
+    if !cap_ok(expiry(root), expiry(&c)) {
         bad.push(("ask-expiry", "absent or higher than the calling profile's"));
     }
     if !c.delegates.is_empty() {

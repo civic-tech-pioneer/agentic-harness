@@ -1431,6 +1431,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.state.delete(&format!("live/{}", rec.id));
         // R4: a child's delegated call belongs to the boot that opened it (9.7).
         rec.task_call = None;
+        // R4 clears the root's live child map (9.3 `children`: live delegation only); the links
+        // stay in each child's `parent` and the root's `child` entries. Cleared before the turn
+        // stops, so the stop's cleanup touches no child (no recursive restart).
+        rec.children.clear();
         // 9.5 "After a restart": a running or waiting OpenAI turn stops `unknown` and sends nothing;
         // a paused child loses its automatic resume (R4).
         if rec.backend == "openai"

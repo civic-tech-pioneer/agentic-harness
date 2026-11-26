@@ -1711,11 +1711,11 @@ expansion over described tools, so admission opens nothing.
 | Field | Child rule |
 |---|---|
 | `backend`, `model` | Both are OpenAI on the same model. |
-| `toolsets`, `skills` | Subsets of the root's effective toolset and adopted skill identities, with the same adopted revisions. Toolset grants and handles are acquired for the child under the root's owner through normal host checks. |
+| `toolsets`, `skills` | `toolsets`: a subset of the root's effective toolset names; a toolset has no adopted revision in the kernel (it is a host grant by name, 6), so the child's own handle is acquired under the root's owner through the normal host checks (origin consent, the grant), which decide what it reaches. `skills`: a subset of the root's adopted skill identities with the same adopted revisions (refused on OpenAI until `skill` is built, 11). |
 | `tools`, `workspace`, `extra-workspaces` | OpenAI's existing absence rules apply. The child has no workspace handle, folder or requested folder. It inherits no folder consent or session allows. |
 | `mode`, `ask`, `pre-tool-check` | Same effective values. |
 | `allow`, `deny` | Exact-rule subset of allows and superset of denies, after compilation, compared as written (above). |
-| `persist` | `false` when the root's is `false`: a root that keeps nothing cannot start a child that stores its `input`. |
+| `persist` | `false` when the root's is `false`: a root that keeps nothing cannot start a child that stores its `input`, once OpenAI `persist: false` is built (11: not yet, for any OpenAI session). |
 | `max-turns`, `max-tool-errors`, `max-tokens`, `ask-expiry` | Equal or lower effective values. For an optional cap, absent means unbounded. |
 | `delegates`, `subagent-limits` | No named delegates or child-supplied delegation limits. |
 
@@ -1752,7 +1752,10 @@ with delegates and omit it from child requests and tool-free summaries.
 An attempted call from a child is refused even if the model emits it.
 Apply the broker's profile rules for the function name `task` before
 starting a child. Refuse a toolset function whose name collides with an
-active built-in (`task` or `skill`) on `toolsets` before sending a request.
+active built-in on `toolsets` before sending a request, on every request
+(a description kept from an earlier request is checked too). `task` is
+active in a root that names delegates; `skill` becomes active when the
+`skill` function is built (11), and until then its name is free.
 The function permits parallel calls, and is never retried as an
 idempotent job.
 
@@ -2228,7 +2231,7 @@ section, and its code).
 | `max-tool-errors`, `max-tokens` | refused | stage F, per-turn counters |
 | `max-budget-usd` | flag | refused |
 | `ask-expiry` | refused unless 600 (seconds) or absent | an `ask` deadline of the session timer (9.3) |
-| `persist` | flag | `false` keeps the transcript in memory only |
+| `persist` | flag | `false` keeps the transcript in memory only; not built for OpenAI yet (S134 r1): an OpenAI session stores its transcript and wire whatever `persist` says, a root and its children alike, a known limit until a slice builds it (PLAN, Upkeep) |
 
 ## 12. Errors
 
@@ -2448,8 +2451,10 @@ of `spec/VISION.md`.
     continue a session under R5 without rejoining an old call. An
     `interrupt` of a live child resolves the parent's call `interrupted`,
     and a `cancel` or `delete` of a live child resolves it `aborted`. A
-    toolset that describes a function named `task` or `skill` is refused
-    on `toolsets` before any request.
+    toolset that describes a function named `task` in a root that names
+    delegates is refused on `toolsets` before any request; in a session
+    without delegates the name is free (and so is `skill` until it is built).
+    A root that stops at a limit with a live child interrupts that child.
 25. A judge that is down, slow, unreadable or without an entered key
     denies, and so does a score in the unsure band (between the page's
     thresholds, 10); 3 denials in a row interrupt the turn.
@@ -2808,11 +2813,14 @@ machine. A stage is done only within its budgets.
   per root step (its dispatch call) 145 206 at 10 and 158 240 at 1 000 (+9.0%); per child step
   (its two jobs and its answer, which resolves the root's call) 160 577 and 176 107 (+9.7%); the
   whole cycle (root step and both children) 466 362 and 510 454 (+9.5%); budget 4 MiB per step,
-  within 10%. The thin margin is the chunk phase of a finite window. A Stop of each root with two
+  within 10%. The thin margin is the chunk phase of a finite window. p95 per step (S134 r1,
+  same run shape, 2026-11-26): root 232 992 at 10 and 247 311 at 1 000, child 266 047 and
+  276 991, each within 4 MiB; the means of that rerun were within 0.4% of those above. A Stop of each root with two
   live children (`interrupt`: all four children and both roots `interrupted`, the roots' lists
   empty) costs 300 261 bytes for the two roots at 10 and 485 525 at 1 000. Page-level budgets
   (item delay, Stop through the last child at the page, writer busy share) not run: no
-  `watane-dev` here.
+  `watane-dev` here, and no stage F page runner exists yet; stage F is not done until they are
+  measured (17), which waits on a machine with the stage D preview tools (PLAN, Upkeep).
 
 - **Stage D** (S128 r1, 2026-11-25, Linux 6.18.57 x86-64, 5 visible CPUs
   with a 4-CPU quota, load average 4.20/2.81/2.24, Watane `548b4e1b` with the

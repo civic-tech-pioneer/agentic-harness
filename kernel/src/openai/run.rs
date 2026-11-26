@@ -109,6 +109,10 @@ pub struct LoopState {
     /// or a pause keeps it tool-free, and its response ends the turn.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub summary: bool,
+    /// The policy holds the stage F limits (S134). A loop saved before them has none: its limits
+    /// are compiled from the profile and overlay when it is next loaded (S134 r1 F1.8).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub limits_compiled: bool,
     /// What the loop reads of the profile, compiled once at `start` (9.6).
     #[serde(skip_serializing_if = "Policy::is_empty")]
     pub policy: Policy,
@@ -300,9 +304,31 @@ impl<S: State, H: Host> Kernel<S, H> {
     // ---- the loop state
 
     pub(crate) fn loop_load(&mut self, id: &str) -> Option<LoopState> {
-        self.state
+        let mut ls: LoopState = self
+            .state
             .get(&format!("loop/{id}"))
-            .and_then(|b| serde_json::from_slice(&b).ok())
+            .and_then(|b| serde_json::from_slice(&b).ok())?;
+        if !ls.limits_compiled {
+            // A loop saved before stage F has no limits (S134 r1 F1.8): they are compiled from
+            // the profile and overlay as they are now, once (fail closed: a cap the profile sets
+            // applies, also to a turn in flight); the rest stays as compiled at `start`, and such
+            // a root names no delegates. Saved with the loop's next change.
+            if let Some(rec) = Record::load(&mut self.state, id) {
+                let c = self.compiled_of(&rec);
+                ls.policy.max_turns = c.max_turns;
+                ls.policy.max_tool_errors = c.max_tool_errors;
+                ls.policy.max_tokens = c.max_tokens;
+            }
+            ls.limits_compiled = true;
+        }
+        Some(ls)
+    }
+
+    /// The session's profile with its overlay applied (9.2).
+    fn compiled_of(&mut self, rec: &Record) -> crate::profile::Profile {
+        let json = self.profile_json(&rec.profile).unwrap_or_default();
+        let base = parse_profile(&json).0;
+        apply_overlay(&base, &rec.overlay.clone().unwrap_or_default()).0
     }
 
     pub(crate) fn loop_save(&mut self, id: &str, ls: &LoopState) -> Result<(), KernelError> {
@@ -318,10 +344,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(ls) = self.loop_load(&rec.id) {
             return ls;
         }
-        let json = self.profile_json(&rec.profile).unwrap_or_default();
-        let base = parse_profile(&json).0;
-        let compiled = apply_overlay(&base, &rec.overlay.clone().unwrap_or_default()).0;
+        let compiled = self.compiled_of(rec);
+        let base = parse_profile(&self.profile_json(&rec.profile).unwrap_or_default()).0;
         LoopState {
+            limits_compiled: true,
             model: base.model.unwrap_or_default(),
             effort: base.effort,
             policy: Policy {
@@ -457,7 +483,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if !room {
             return Launch::Busy;
         }
-        match self.tools_setup(ls) {
+        let task_active = rec.parent.is_none() && !ls.policy.delegates.is_empty();
+        match self.tools_setup(ls, task_active) {
             Ok(()) => {}
             Err(SetupError::Opening) => return Launch::OpeningToolset,
             Err(SetupError::Consent(what)) => return Launch::Consent(what),
@@ -1530,7 +1557,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             (Phase::Paused, (_, true)) if matches!(rec.turn, Turn::Paused { .. }) => {
                 // 9.7 "Revoking": a profile the owner may no longer use sends nothing; the turn
                 // stays paused with no time.
-                if !self.may_use(&rec.owner, &rec.profile) {
+                if !self.may_work(&rec.owner.clone(), rec) {
                     let paused = Turn::Paused { until: None };
                     self.turn_to(rec, past, paused, now, cx.work)?;
                     return Ok(());

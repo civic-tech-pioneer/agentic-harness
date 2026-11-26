@@ -204,7 +204,14 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// The session's `agent-tools` handle and the tools it describes (AC1): opened and described
     /// at the first request, kept in the loop state, never again. A profile with no toolsets
     /// opens nothing.
-    pub(crate) fn tools_setup(&mut self, ls: &mut LoopState) -> Result<(), SetupError> {
+    /// `task_active`: the session advertises `task` (a root that names delegates, 9.7), so a
+    /// toolset function named `task` collides. `skill` is not built yet, so it is no active
+    /// built-in and its name is free (S134 r1 F1.7).
+    pub(crate) fn tools_setup(
+        &mut self,
+        ls: &mut LoopState,
+        task_active: bool,
+    ) -> Result<(), SetupError> {
         if ls.policy.toolsets.is_empty() {
             return Ok(());
         }
@@ -221,7 +228,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             });
         }
         let Some(set) = ls.tools.as_mut().filter(|t| !t.described) else {
-            return Ok(());
+            // A description kept from an earlier request is checked too: the collision depends
+            // on what the session advertises, not on when the toolset was described.
+            return self.collision(ls, task_active, None);
         };
         let tools = self.host.tools_describe(&set.handle).map_err(|e| {
             // Watane publishes the open only after this call commits.
@@ -231,15 +240,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                 fail(e)
             }
         })?;
-        // 9.7: a toolset function named like a built-in is refused before any request.
-        if let Some(t) = tools.iter().find(|t| t.name == TASK || t.name == "skill") {
+        // 9.7: a toolset function named like an active built-in is refused before any request.
+        if task_active && tools.iter().any(|t| t.name == TASK) {
             let handle = set.handle.clone();
-            let name = t.name.clone();
-            ls.tools = None;
-            self.host.tools_close(&handle);
-            return Err(SetupError::Failed(format!(
-                "toolsets: the function {name} collides with a built-in of the kernel"
-            )));
+            return self.collision(ls, task_active, Some(handle));
         }
         set.described = true;
         set.defs = tools.iter().map(definition).collect();
@@ -252,6 +256,32 @@ impl<S: State, H: Host> Kernel<S, H> {
             })
             .collect();
         Ok(())
+    }
+
+    /// 9.7: a described toolset function named `task` while `task` is active fails the turn
+    /// before any request, naming `toolsets`; the handle is closed and dropped. `fresh`: the
+    /// handle of a description just read (not yet kept).
+    fn collision(
+        &mut self,
+        ls: &mut LoopState,
+        task_active: bool,
+        fresh: Option<String>,
+    ) -> Result<(), SetupError> {
+        let kept = ls
+            .tools
+            .as_ref()
+            .is_some_and(|t| t.info.iter().any(|i| i.name == TASK));
+        if !task_active || (fresh.is_none() && !kept) {
+            return Ok(());
+        }
+        let handle = fresh.or_else(|| ls.tools.as_ref().map(|t| t.handle.clone()));
+        ls.tools = None;
+        if let Some(h) = handle {
+            self.host.tools_close(&h);
+        }
+        Err(SetupError::Failed(format!(
+            "toolsets: the function {TASK} collides with a built-in of the kernel"
+        )))
     }
 
     /// Ends the session's handle (`cancel`, `delete`).
@@ -809,6 +839,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         ls: &mut LoopState,
         cx: &mut Cx,
     ) -> Result<(), KernelError> {
+        // A live child's call is closed with the others, so the child stops too: interrupt
+        // semantics, as the cleanup of 9.5 (S134 r1 F1.1: a limit or quota stop of the root
+        // leaves no child running). A child its root's interrupt, cancel or delete already
+        // stopped has left `children` and is skipped.
+        self.stop_children(rec, ls, cx, false)?;
         self.close_all_with(rec, cx.past, "interrupted", cx.now, cx.work, false)?;
         for s in rec.streams.clone() {
             let kind = self

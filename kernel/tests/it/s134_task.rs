@@ -867,22 +867,61 @@ fn ac8_manual_mode_asks_and_the_child_starts_after_the_allow() {
 // ---- AC9: a toolset function named like a built-in
 
 #[test]
-fn ac9_a_toolset_function_named_task_or_skill_fails_the_turn_before_any_request() {
+fn ac9_a_toolset_function_named_task_fails_a_delegating_root_before_any_request() {
+    let failed = |k: &mut K, id: &str| match rec(k, id).turn {
+        Turn::Idle {
+            stop: Stop::Failed { error, .. },
+            ..
+        } => assert!(
+            error.contains("toolsets") && error.contains("task"),
+            "{error}"
+        ),
+        t => panic!("{t:?}"),
+    };
+    // A root that names delegates advertises `task`: a toolset function of that name collides.
+    let mut k = kernel(r#","toolsets":["notes"]"#);
+    k.host.tools = vec![tool("notes_a", true), tool("task", true)];
+    let id = start_root(&mut k);
+    assert!(bodies(&k).is_empty(), "no request");
+    failed(&mut k, &id);
+    // S134 r1 F1.7: only active built-ins collide. `o` names no delegates, so `task` is free
+    // there, and `skill` is not built yet, so it is free everywhere.
     for name in ["task", "skill"] {
         let mut k = kernel("");
         k.host.tools = vec![tool("notes_a", true), tool(name, true)];
         let id = k.start("bob", "b", "o", "{}", IN).unwrap().value;
-        assert!(bodies(&k).is_empty(), "no request");
-        match rec(&mut k, &id).turn {
-            Turn::Idle {
-                stop: Stop::Failed { error, .. },
-                ..
-            } => assert!(
-                error.contains("toolsets") && error.contains(name),
-                "{error}"
-            ),
-            t => panic!("{t:?}"),
-        }
+        assert_eq!(bodies(&k).len(), 1, "{name}: the request is sent");
+        assert!(rec(&mut k, &id).turn.is_active(), "{name}");
+    }
+    let mut k = kernel(r#","toolsets":["notes"]"#);
+    k.host.tools = vec![tool("notes_a", true), tool("skill", true)];
+    start_root(&mut k);
+    assert_eq!(bodies(&k).len(), 1, "skill is no active built-in");
+}
+
+/// S134 r1 F1.7: a description kept from an earlier request is checked as a fresh one is.
+#[test]
+fn r1_f1_7_a_kept_description_naming_task_fails_the_next_request() {
+    let mut k = kernel(r#","toolsets":["notes"]"#);
+    let id = start_root(&mut k);
+    reply(&mut k, &id, &[]);
+    assert!(!rec(&mut k, &id).turn.is_active());
+    let key = format!("loop/{id}");
+    let mut v: Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
+    v["tools"]["info"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name": "task", "parallel": true, "idempotent": false}));
+    k.state.put(&key, serde_json::to_vec(&v).unwrap()).unwrap();
+    let sent = bodies(&k).len();
+    k.say("alice", &id, "s2", "again").unwrap();
+    assert_eq!(bodies(&k).len(), sent, "no request");
+    match rec(&mut k, &id).turn {
+        Turn::Idle {
+            stop: Stop::Failed { error, .. },
+            ..
+        } => assert!(error.contains("toolsets"), "{error}"),
+        t => panic!("{t:?}"),
     }
 }
 
@@ -1049,4 +1088,71 @@ fn a_full_root_stream_defers_the_whole_resolution() {
         .unwrap();
     assert_eq!(out.value, SinkOutcome::Taken);
     assert_eq!(rec(&mut k, &kid).task_call, None);
+}
+
+/// S134 r1 F1.1: a root that stops at a limit while a child is live stops that child too (the
+/// interrupt cleanup of 9.5): the child's turn ends `interrupted`, it leaves the live map, and
+/// its end writes no second output.
+#[test]
+fn r1_f1_1_a_root_stopped_at_max_tool_errors_interrupts_its_live_child() {
+    let mut k = kernel("");
+    k.state
+        .put(
+            "profile/root",
+            openai(
+                r#","toolsets":["notes"],"delegates":["foreman"],"allow":["task","notes_*"],"max-tool-errors":1"#,
+            )
+            .into_bytes(),
+        )
+        .unwrap();
+    k.state
+        .put(
+            "profile/foreman",
+            openai(r#","max-tool-errors":1"#).into_bytes(),
+        )
+        .unwrap();
+    let root = start_root(&mut k);
+    let job_call =
+        json!({"type":"function_call","id":"f","call_id":"c2","name":"notes_a","arguments":"{}"});
+    reply(&mut k, &root, &[task("c1", "foreman", "x"), job_call]);
+    let kid = children(&mut k, &root)[0].clone();
+    assert!(rec(&mut k, &kid).turn.is_active(), "the child is live");
+    // The root's job fails while the child runs: the streak reaches the cap.
+    let job = lp(&mut k, &root)["calls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|c| c["stream"].as_str().map(str::to_string))
+        .expect("the job runs");
+    k.provider_lines(
+        &job,
+        vec![(1, br#"{"err":{"code":"e","message":"m"}}"#.to_vec())],
+    )
+    .unwrap();
+    let r = rec(&mut k, &root);
+    assert!(
+        matches!(&r.turn, Turn::Idle { stop: Stop::Stopped { limit }, .. } if limit == "max-tool-errors"),
+        "{:?}",
+        r.turn
+    );
+    assert!(r.children.is_empty(), "the live map is empty");
+    let c = rec(&mut k, &kid);
+    assert!(
+        matches!(
+            c.turn,
+            Turn::Idle {
+                stop: Stop::Interrupted,
+                ..
+            }
+        ),
+        "{:?}",
+        c.turn
+    );
+    assert!(c.task_call.is_none());
+    // The root's call got the cleanup's `aborted`, once.
+    let outs: Vec<Value> = entries(&mut k, &root)
+        .into_iter()
+        .filter(|e| e["kind"] == "tool" && e["body"]["toolCallId"] == "c1")
+        .collect();
+    assert_eq!(outs.len(), 1, "{outs:?}");
 }

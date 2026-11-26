@@ -388,6 +388,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             })
             .collect();
         for id in ids {
+            if !root.children.contains(&id) {
+                continue;
+            }
             root.children.retain(|c| *c != id);
             let Some(mut child) = Record::load(&mut self.state, &id) else {
                 continue;
