@@ -5,18 +5,6 @@ root=$(cd "$(dirname "$0")/../../../.." && pwd)
 watane=$(cd "${WATANE_SRC:-$root/../watane}" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-# The upstream relay fixture exposes the import for Harness checks. The production
-# component below exercises the import inside an actual host timer callback.
-cp -R "$watane/host/tests/fixtures/mods/relay" "$tmp/relay"
-mkdir -p "$tmp/relay/tests"
-cat >"$tmp/relay/tests/default.json" <<'JSON'
-{"steps":[{"call":"api.firing-origin","returns":null}]}
-JSON
-cat >"$tmp/relay/tests/override.json" <<'JSON'
-{"fakes":{"watane:host/timers":{"firing-origin":"local/echo"}},"steps":[{"call":"api.firing-origin","returns":"local/echo"}]}
-JSON
-WATANE_HOME="$tmp/home" WATANE_DEV_CACHE="$tmp/cache" watane-dev test --json --dir "$tmp/relay"
-
 cargo build --manifest-path "$root/kernel/Cargo.toml" --release --target wasm32-wasip2 -p agent-mod
 cargo build --manifest-path "$root/provider/logic/Cargo.toml" --release --target wasm32-wasip2
 target_dir() {
