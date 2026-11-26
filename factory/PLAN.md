@@ -27,12 +27,35 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S131 (upkeep, codex review r2); watane S133 (design). (S127, S132 merged 2026-11-26; next: S134, the stage F build on S132's design, builder claude by rule 3.)
+S131 (upkeep, answer r2); watane S133 (design, Codex build); S134 (stage F build, sketched, handed out after its spec-check). The consumer half of S133 waits for a first version of the interface on watane's `slice/s133`.
 
 ## Sketched
+### S134 stage F: an OpenAI agent delegates to two children, and every turn stops at its limits
+(sketched 2026-11-26 by Deputy Paper, the main line; builder claude, reviewer codex by rule 3 (last two S133 codex,
+S132 codex); spec-check of 9.7 since 10abec0 before hand-out. Size: a whole stage, likely over 1,500 lines.)
+Why: stage F of TECHNICAL 17, on S132's design (9.7, merged at 95ec3bc7). The factory as mods needs an agent that hands
+named work to other agents and a turn that cannot run away.
+Outcomes (user-sim on the real programs, scripted Responses and dev's fake `claude`, no real provider):
+1. AGT-J5: Alice runs an OpenAI root profile with two named delegates; the console shows two sibling children as indexed
+   `child` entries, each opens its own transcript, and the root's final answer uses both children's results.
+2. Admission (9.7, cases 23 and 24): a child that calls `task`, a name outside `delegates`, and a candidate wider than
+   its root (one row of the child-rule table each) are refused with that field named, and no child session exists.
+3. Counters (AGT-F-36, case 52 `task` part): an OpenAI turn stops at `max-turns` (with at most one tool-free summary step),
+   at `max-tool-errors` and at `max-tokens`, each naming the limit; a Claude turn's native `max-turns` stop is reported;
+   a Claude profile with `max-tokens` or `max-tool-errors` is refused (S132's Door C choice).
+4. Revoking: once `access/<owner>` no longer names the root's profile, a `task` call gets the `profile` refusal as its
+   output, and reads still work.
+5. The stage F budgets of TECHNICAL 17 are measured and recorded in Suite time.
+Touches: `kernel/src/` (9.7), `console/src/` and `console/kit/` (child entries), their tests, `design/` only where the
+build finds a gap (through spec-change). Not S131's files (`console/test/host/`, `kernel/tests/it/s36_firing.rs`,
+`s38.rs`, `AGENTS.md`) until S131 merges; then merge main.
+Constraints: S132's nine Door C choices stand (PR #59 body), do not reopen them; fold S132's review polish P1.1 to P1.12
+(PR #59, comment 'Review r1 by Claude') in where cheap. Factory profiles wait on N5 (Waiting on the human): out of
+scope. No watane change: if one is needed, BLOCKED with the interface it needs.
+
 ### S131 (upkeep) the host tests check what they skip: stage C on a participant home, stage B and D test polish
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S130 codex, S129 codex; the upkeep
-lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC; PR #58 opened ~07:20 at 495975c (+6524/-60, 5.3k of it the test home's Cargo.lock; shares only AGENTS.md with S127); r1: Codex review https://chatgpt.com/local/6b07deda-2b30-83ed-ae72-c1ec08020061, 07:27 UTC; r1: 8/2 `changes (8)` (boundary HELD; outcome check could not run, no watane-dev in Codex), posted ~07:40 with Deputy Rock's ruling (F1.1/P1.1 sketch amended, F1.2 a named known gap with the console fix to Upkeep, F1.7/F1.8 narrowed); answer by the build session itself (idle at 07:24; a new answer routine only if no push by ~08:05); answered by the build session at 461bb74 (~08:21, all 8, main merged in: squash at merge); r2: Codex review https://chatgpt.com/local/6b07ec6b-3124-83ed-8204-bae83a42b053, 08:24 UTC. Size: an upkeep slice.)
+lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC; PR #58 opened ~07:20 at 495975c (+6524/-60, 5.3k of it the test home's Cargo.lock; shares only AGENTS.md with S127); r1: Codex review https://chatgpt.com/local/6b07deda-2b30-83ed-ae72-c1ec08020061, 07:27 UTC; r1: 8/2 `changes (8)` (boundary HELD; outcome check could not run, no watane-dev in Codex), posted ~07:40 with Deputy Rock's ruling (F1.1/P1.1 sketch amended, F1.2 a named known gap with the console fix to Upkeep, F1.7/F1.8 narrowed); answer by the build session itself (idle at 07:24; a new answer routine only if no push by ~08:05); answered by the build session at 461bb74 (~08:21, all 8, main merged in: squash at merge); r2: Codex review https://chatgpt.com/local/6b07ec6b-3124-83ed-8204-bae83a42b053, 08:24 UTC; r2: 1/1 `changes (1)` (F2.1 the expiry test accepts a host cancellation; P2.1 a red run for the stream assertion; boundary HELD), posted 08:33 by Deputy Paper with the answer brief as a PR comment (the build session answers PR comments). Size: an upkeep slice.)
 Outcomes, each item's check (re-check each against main first; drop the ones already true and say so):
 1. S38 after watane S103: S38 outcomes 1 to 3 run on a participant home with a fake `Confirm` (host 19.7), outcomes 2 and 4
    on `watane-dev serve`, and the stage C budgets of TECHNICAL 17 are measured and recorded in the Suite time table.
