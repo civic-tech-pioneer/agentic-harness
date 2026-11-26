@@ -235,3 +235,16 @@ Constraints: S132's nine Door C choices stand (PR #59 body), do not reopen them;
 (PR #59, comment 'Review r1 by Claude') in where cheap. Factory profiles wait on N5 (Waiting on the human): out of
 scope. No watane change: if one is needed, BLOCKED with the interface it needs.
 
+
+### S139 (upkeep) the console's known gaps and the `installed-agent` flake
+(sketched 2026-11-26 by Deputy Scissors, the upkeep lane; builder codex, reviewer claude by rule 3; in flight, cloud, Codex task https://chatgpt.com/local/6b081583-0fe0-83ed-9e52-86ea878b7056, 11:23 UTC; DELIVERED as PR #62 at 148004e (+259/-97; also ui/); r1: Claude routine `trig_01WWHnzB9VfNZRDLjpxzK4Q1`, 11:54 UTC; exempt from the size
+rule (upkeep).)
+Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
+1. *guard* the `installed-agent` CI flake (`console/test/host/installed.mjs:216`, second sighting): the race found and
+   fixed, or a wait with a bound that measures it.
+2. S131 F1.2: the console's consent activity names the folder the app asks for; `stage_c.mjs`'s KNOWN GAP becomes a check.
+3. S39 review, console: after Stop no 'An event this console does not know'; a stopped turn's footer does not read
+   'Completed'; with no Claude Code binary chosen the error points to Settings → Claude Code.
+4. S36 polish P1.2 and P1.3 (console tests), and S36's felt-wrong list where cheap.
+Touches: `console/` only. Not `kernel/` or `design/` (S138); a spec gap goes to Upkeep, not into `design/TECHNICAL.md`.
+

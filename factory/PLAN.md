@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S138 (consumer half of watane S133/S136, Codex build); S139 (upkeep, console, Codex build).
+S138 (consumer half of watane S133/S136, Codex build); S139 merged.
 
 ## Sketched
 ### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
@@ -54,18 +54,6 @@ mismatch through a front mod fails safe) and P1.12 (no install generation: a kno
 spec-change (https://raw.githubusercontent.com/mboogerd/claude-plugin/main/skills/spec-change/SKILL.md). Case 22's
 idempotent half stays a known limit (S133 gives no restart callback). Adversary: a front mod or another owner whose
 firing tries to make the kernel act for a different owner (TECHNICAL 14).
-
-### S139 (upkeep) the console's known gaps and the `installed-agent` flake
-(sketched 2026-11-26 by Deputy Scissors, the upkeep lane; builder codex, reviewer claude by rule 3; in flight, cloud, Codex task https://chatgpt.com/local/6b081583-0fe0-83ed-9e52-86ea878b7056, 11:23 UTC; DELIVERED as PR #62 at 148004e (+259/-97; also ui/); r1: Claude routine `trig_01WWHnzB9VfNZRDLjpxzK4Q1`, 11:54 UTC; exempt from the size
-rule (upkeep).)
-Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
-1. *guard* the `installed-agent` CI flake (`console/test/host/installed.mjs:216`, second sighting): the race found and
-   fixed, or a wait with a bound that measures it.
-2. S131 F1.2: the console's consent activity names the folder the app asks for; `stage_c.mjs`'s KNOWN GAP becomes a check.
-3. S39 review, console: after Stop no 'An event this console does not know'; a stopped turn's footer does not read
-   'Completed'; with no Claude Code binary chosen the error points to Settings → Claude Code.
-4. S36 polish P1.2 and P1.3 (console tests), and S36's felt-wrong list where cheap.
-Touches: `console/` only. Not `kernel/` or `design/` (S138); a spec gap goes to Upkeep, not into `design/TECHNICAL.md`.
 
 ### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DONE 2026-11-23: PR #43 merged with --admin at 042b0dd on the human's word after the extra round, r6 changes 2 answered (F6.1 done on main, F6.2 fixed); was in flight, builder claude, reviewer codex; continuation DELIVERED 21:31 UTC at 8fc6db6 on watane c2a7d4d (routine `trig_01NpPnJxwNjH279WAFwnziDk`), screenshots in `factory/runs/S35/screens/`; r1: Codex review dispatched 21:40 UTC, https://chatgpt.com/local/6b035f75-9cbc-83eb-953f-4ea568e56065; r1: 8 Codex findings (validator RETURN, adversary BREACHED, user-sim REJECTED) plus deputy design findings D1.1, D1.2, answer dispatched 22:04 UTC (session `cse_01LxwP923RKBfVNTWsTUagAQ`); r1 answered at 4522428 (all 10 fixed); r2 (22:37): Codex `changes (6)`, validator RETURN, adversary HELD, user-sim ACCEPTED; answer r2 dispatched 23:10 UTC (session `cse_01LxwP8yPPmPVipCPszcmKqW`; a 23:00 fire carried the stale r1 brief and pushed nothing); r2 answered at ea98cb9 (all 6 fixed); r3: Codex review dispatched 23:29 UTC; r3 (23:58): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim ACCEPTED); answer r3 dispatched 00:01 UTC (session `cse_01LxwP8zfZtC4o6shbfqRvp7`); r3 answered at d0dfddd (all 3 fixed); r4: Codex review dispatched 00:20 UTC; r4 (00:26): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim REJECTED), all on the composer's kept draft; deputy ruling (same finding 4 rounds running) and answer r4 dispatched 00:51 UTC (session `cse_01LxwP92VSjjigxaiXQaSyiJ`); r4 answered at 8177ca5 (by the ruling); r5 (last): Codex review dispatched 01:12 UTC; r5 (01:18): `changes (1)` (validator RETURN, adversary HELD, user-sim ACCEPTED): **round cap reached, held for the human** (Waiting: S35-CAP); then the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
 
@@ -129,6 +117,8 @@ reviewer claude. Cloud.
 
 
 ### Upkeep
+
+- **(S139 r1 polish)** P1.1 to P1.7 of https://github.com/civic-tech-pioneer/agentic-harness/pull/62 (review r1): tests for `cannotInterrupt` on the taken-row retry and the control-ack fold; the older `workspace:/abs` consent form; `stage_c.mjs:316` asserts `q.what`; P1.5 spec drift in `design/`; the 240-char preview as a slice; a folder with a newline.
 
 - **(from S131 F1.8)** a stage D load run lost 1 item and 4 tool calls of one OpenAI session at the page (1 of 3 runs, undiagnosed; maybe its last step cut by Stop). Diagnose before the stage D Budget row can close.
 - **(after S127)** `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (watane S129 has merged).
@@ -442,6 +432,7 @@ reviewer claude. Cloud.
   `profile`; 15 gains the H2 rows. User-sim ACCEPTED; adversary HELD, BREACHED 2 (a Unicode
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 - **S134** stage F: an OpenAI root delegates to two named sibling children (AGT-J5), each a `child` link in the console with its own transcript; a child that would widen its root (calls `task`, a name outside `delegates`, a wider rule) is refused with no session; stopping, cancelling or deleting the root stops its children, live and stored; every OpenAI turn stops at `max-turns`, `max-tool-errors` or `max-tokens` and names it; Claude reports its native `max-turns` and refuses the other two. PR #60, squash-merged 2026-11-26 11:16 UTC at f8c0fe0d by Deputy Scissors, no bypass; builder claude, reviewer codex, 4 rounds (9/1, 3/1, 1/1, 0/0); ~2.7 h in flight. Adversary BREACHED in r1 (F1.1 to F1.8), every breach fixed by r4; outcome check on scripted Responses, `watane-dev` absent (page-level budgets a known limit). Accepted: F1.5 (`persist: false` not built for OpenAI). F1.4 on the builder's reading. F3.1 ruled (no path drops `Work.stopped`). CI: one gate timeout at 15 min on 5535d7f, green on rerun (Friction). Sketch in factory/DONE.md.
+- **S139** (upkeep) the console names the folder a consent waits for (stage C checks it), a stopped turn reads stopped (no unknown-event row, no "Completed" footer), a missing Claude Code binary points to Settings → Claude Code, S36 polish done, and the `installed-agent` wait is bounded and measured (both red runs predated S128's guard). PR #62, rebase-merged 2026-11-26 ~12:20 UTC at 41353b37 by Deputy Scissors, no bypass; builder codex, reviewer claude, 1 round (0/7); ~1 h in flight. Polish P1.1 to P1.7 in Upkeep. Sketch in factory/DONE.md.
 
 ## Deputy decisions
 
