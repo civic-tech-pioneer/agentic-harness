@@ -1757,20 +1757,30 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.finish_dispatch(false);
     }
 
+    /// A successful client call can drain work a timer left in persistent state.
+    pub fn drain_owed(&mut self) {
+        let slots = Slots::load(&mut self.state);
+        if slots.drain_owed {
+            self.openai_drain(slots, false);
+            self.queued.clear();
+            self.foreign = false;
+        }
+    }
+
     pub(crate) fn after_timer(&mut self) {
         self.finish_dispatch(true);
     }
 
     fn finish_dispatch(&mut self, from_timer: bool) {
         if std::mem::take(&mut self.drain_due) {
-            self.openai_drain(from_timer);
+            let slots = Slots::load(&mut self.state);
+            self.openai_drain(slots, from_timer);
         }
         self.queued.clear();
         self.foreign = false;
     }
 
-    fn openai_drain(&mut self, from_timer: bool) {
-        let mut slots = Slots::load(&mut self.state);
+    fn openai_drain(&mut self, mut slots: Slots, from_timer: bool) {
         // The requests this call queued go first: sent now, in the call that queued them, or
         // their turns stop `busy` (9.5 Slots); none is left for another call.
         for at in std::mem::take(&mut self.queued) {
@@ -1781,11 +1791,17 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         // Existing FIFO jobs may belong to another owner. A timer may only drain work it queued.
         if from_timer {
+            // Reload because dispatch of a request queued by this callback can save slots.
+            let mut current = Slots::load(&mut self.state);
+            if !current.drain_owed && current.head < current.tail {
+                current.drain_owed = true;
+                let _ = current.save(&mut self.state);
+            }
             return;
         }
         let (mut n, tail) = (slots.head, slots.tail);
         let mut first_kept: Option<u64> = None;
-        let mut changed = false;
+        let mut changed = std::mem::take(&mut slots.drain_owed);
         while n < tail && (slots.request < self.limits.request || slots.job < self.limits.job) {
             let at = n;
             n += 1;

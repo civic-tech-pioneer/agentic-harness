@@ -2972,7 +2972,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut slots = self.begin()?;
         let rec = self.read_session(caller, session, &mut slots)?;
         let mut meta = rec.meta();
-        Transcript::new(&mut self.state, &rec.id, &mut meta).read(after, before, max)
+        let page = Transcript::new(&mut self.state, &rec.id, &mut meta).read(after, before, max)?;
+        if slots.drain_owed {
+            self.drain_owed();
+        }
+        Ok(page)
     }
 
     pub fn rename(&mut self, caller: &str, session: &str, title: &str) -> Result<(), KernelError> {

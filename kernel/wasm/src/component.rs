@@ -186,6 +186,7 @@ fn run_client<T>(
 ) -> Result<T, KernelError> {
     run(|k| {
         let value = f(k)?;
+        k.drain_owed();
         if me() == "page" {
             k.arm_page_origin();
         }

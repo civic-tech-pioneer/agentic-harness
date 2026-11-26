@@ -575,21 +575,44 @@ fn s138_ac3_a_foreign_child_timer_cannot_continue_its_parent_or_drain_the_fifo()
 #[test]
 fn adv_s138_root_job_freed_by_foreign_child_firing_hangs_bobs_fifo() {
     let mut k = kernel("");
-    k.state.put("profile/root",
-        openai(r#","delegates":["foreman"],"toolsets":["notes"],"allow":["task","notes_*"]"#).into_bytes()).unwrap();
+    k.state
+        .put(
+            "profile/root",
+            openai(r#","delegates":["foreman"],"toolsets":["notes"],"allow":["task","notes_*"]"#)
+                .into_bytes(),
+        )
+        .unwrap();
     let root = start_root(&mut k);
-    reply(&mut k, &root, &[task("c1", "foreman", "do A"),
-        json!({"type":"function_call","id":"fj","call_id":"j1","name":"notes_a","arguments":"{}"})]);
+    reply(
+        &mut k,
+        &root,
+        &[
+            task("c1", "foreman", "do A"),
+            json!({"type":"function_call","id":"fj","call_id":"j1","name":"notes_a","arguments":"{}"}),
+        ],
+    );
     let kids = children(&mut k, &root);
     assert_eq!(kids.len(), 1, "{}", lp(&mut k, &root));
     let a = kids[0].clone();
-    let tools_calls = |k: &K| k.host.calls.iter().filter(|c| matches!(c, HostCall::ToolsCall { .. })).count();
+    let tools_calls = |k: &K| {
+        k.host
+            .calls
+            .iter()
+            .filter(|c| matches!(c, HostCall::ToolsCall { .. }))
+            .count()
+    };
     assert_eq!(tools_calls(&k), 1, "the root's job runs");
     assert_eq!(Slots::load(&mut k.state).job, 1);
     pause(&mut k, &a, 1);
     k.limits.job = 1;
     let bob = k.start("bob", "k", "o", "{}", IN).unwrap().value;
-    reply(&mut k, &bob, &[json!({"type":"function_call","id":"other","call_id":"b1","name":"notes_a","arguments":"{}"})]);
+    reply(
+        &mut k,
+        &bob,
+        &[
+            json!({"type":"function_call","id":"other","call_id":"b1","name":"notes_a","arguments":"{}"}),
+        ],
+    );
     assert!(lp(&mut k, &bob)["wait"].is_u64(), "bob waits for the slot");
     k.host.now += 1_000;
     k.host.firing_origin = Some("front".into());
@@ -600,6 +623,9 @@ fn adv_s138_root_job_freed_by_foreign_child_firing_hangs_bobs_fifo() {
     k.read("bob", &bob, 0, None, 16).unwrap();
     let _ = k.say("bob", &bob, "still there?", IN);
     let _ = k.say("alice", &root, "again", IN);
-    assert!(tools_calls(&k) > 1 || lp(&mut k, &bob)["wait"].is_null(),
-        "bob's tool call hangs in the FIFO with a free slot: {}", lp(&mut k, &bob));
+    assert!(
+        tools_calls(&k) > 1 || lp(&mut k, &bob)["wait"].is_null(),
+        "bob's tool call hangs in the FIFO with a free slot: {}",
+        lp(&mut k, &bob)
+    );
 }

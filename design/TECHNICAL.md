@@ -1432,7 +1432,10 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   Cleanup may cancel streams and record aborted jobs or resolve a delegated
   call locally. It makes no new model request, toolset operation or consent
   request. Timer callbacks dispatch only work queued by that callback, so a
-  slot freed by cleanup cannot run another owner's queued job. The global
+  slot freed by cleanup cannot run another owner's queued job. A callback
+  that owes a drain of the existing FIFO persists `drain-owed` in `slots`.
+  The next successful ordinary client call drains it using the existing
+  FIFO rules. The global
   restart pass and Claude idle release perform housekeeping.
   A durable timed pause of an enabled owner mod can resume after restart.
   Case 22 still applies to jobs and running turns.
