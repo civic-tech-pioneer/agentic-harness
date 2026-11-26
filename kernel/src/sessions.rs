@@ -3689,13 +3689,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                     }
                 }
                 if let Some(mut e) = out.entry {
-                    let mut judged = false;
+                    let mut judged = None;
                     if e.kind == Kind::Verdict {
                         judged = self.verdict_entry(&rec, &mut e.body);
                     }
                     let verdict = e.kind == Kind::Verdict;
                     self.out_entry(&mut rec, past, e, now, &mut work)?;
-                    if judged && rec.turn.is_active() {
+                    if let (Some(terminal), true) = (judged, rec.turn.is_active()) {
                         let failed = Turn::Idle {
                             stop: Stop::Failed {
                                 error: "judge".into(),
@@ -3705,8 +3705,14 @@ impl<S: State, H: Host> Kernel<S, H> {
                             tools: None,
                             tokens: None,
                         };
-                        // As any turn end: a queued input starts the next turn (S127 r1 F1.3).
-                        self.change_turn(&mut rec, past, failed, now, &mut work)?;
+                        if terminal {
+                            // The launch's denial closes the provider's session: a queued input
+                            // stays queued for the next launch, never sent to it (S127 r2 F2.2).
+                            self.turn_to(&mut rec, past, failed, now, &mut work)?;
+                        } else {
+                            // As any turn end: a queued input starts the next turn (r1 F1.3).
+                            self.change_turn(&mut rec, past, failed, now, &mut work)?;
+                        }
                     } else if let (true, Turn::Running { since, .. }) = (verdict, &rec.turn) {
                         // The `checking` activity ends with the verdict (9.3).
                         let t = Turn::Running {
@@ -3783,7 +3789,9 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// Maps a checked provider's verdict body for the entry (9.4): `on` of an input, `toolCallId`
     /// of the open ask or check it names. True when the verdict is an unsafe or unsure one on an
     /// input, which ends the turn (10).
-    fn verdict_entry(&self, rec: &Record, body: &mut Value) -> bool {
+    /// Fills a verdict entry's `on` and `toolCallId`; for a denied input, `Some(terminal)`:
+    /// `true` for the launch, whose denial ends the provider's session (10 step 4).
+    fn verdict_entry(&self, rec: &Record, body: &mut Value) -> Option<bool> {
         let on = body["on"].as_str().unwrap_or_default().to_string();
         let on_input = on == "launch" || on.starts_with("input/");
         let bad = body["outcome"] != "safe";
@@ -3800,7 +3808,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         {
             body["toolCallId"] = json!(call);
         }
-        on_input && bad
+        (on_input && bad).then_some(on == "launch")
     }
 
     /// Whether an ask item reuses the id of an open or pending ask, or shows another tool or input
