@@ -10,12 +10,12 @@
     "test:host": "node test/host/stage_b.mjs",
     "test:host:c": "node test/host/stage_c.mjs",
     "test:host:d": "node test/host/stage_d.mjs",
+    "test:host:e": "node test/host/stage_e.mjs",
     "test:installed": "node test/host/installed.mjs",
     "test:load:d": "node test/host/stage_d.mjs --load",
     "test:load": "node test/host/load_b.mjs",
     "test:load:c": "node test/host/load_b.mjs --home",
-    "typecheck": "tsc --noEmit",
-    "test:host:e": "node test/host/stage_e.mjs"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "6.6.3",
