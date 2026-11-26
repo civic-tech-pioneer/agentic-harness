@@ -243,7 +243,8 @@ async function mixedLoad(browser) {
     const claudeSeen = new Set();
     const aiDelays = [], claudeDelays = [];
 
-    for (const [index, { id, backend, page }] of pages.entries()) {
+    for (const [index, session] of pages.entries()) {
+      const { id, backend, page } = session;
       const captured = await page.evaluate(() => ({ items: window.loadItems, stream: window.loadAttach.stream }));
       const seen = new Set();
       const items = captured.items.filter((item) => item.stream === captured.stream).map(pageItem);
@@ -278,6 +279,24 @@ async function mixedLoad(browser) {
         const fullSteps = expected.filter(([, at]) => at >= from && at < to - 50).length;
         const delivered = [...seen].filter((marker) => marker.startsWith("call_")).length;
         if (delivered < 4 * fullSteps) faults.push(`${id}: only ${delivered} tool calls reached the page across ${fullSteps} steps`);
+        if (missing.length || delivered < 4 * fullSteps) {
+          const offsets = ([marker, at]) => ({ marker, beforeStopMs: Math.round(end - at) });
+          const stored = await entriesOf(session);
+          const lastToolCalls = stored.filter(({ kind }) => kind === "tool").slice(-8);
+          say(`LOSS ${id} ${JSON.stringify({
+            stopAt: end,
+            interruptedAt: idle?.at,
+            missing: missing.map(offsets),
+            // A different attachment may already have received items that the measured stream lacks.
+            streams: [...new Set(captured.items.map(({ stream }) => stream))],
+            measuredStream: captured.stream,
+            writesNearMissing: [...scripted].filter(([marker, at]) =>
+              marker.startsWith("call_") && missing.some(([, time]) => Math.abs(at - time) <= 100)).map(offsets),
+            lastPageTools: items.filter(({ marker }) => marker?.startsWith("call_")).slice(-8),
+            lastStoredTools: lastToolCalls.map(({ i, at, body }) => ({ i, at, id: body.id, status: body.status })),
+            lastStoredTurn: stored.filter(({ kind }) => kind === "turn").at(-1)?.body,
+          })}`);
+        }
       }
       if (!seen.size) faults.push(`${id}: no page measurements in the common window`);
     }
