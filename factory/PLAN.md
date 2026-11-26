@@ -445,6 +445,8 @@ reviewer claude. Cloud.
 
 ## Deputy decisions
 
+- 2026-11-26 (Deputy Scissors, rung 2, Door C, for the human's veto) S138 F1.1: a console (page-owned) session's timer firing carries its owner's authority when it reads the kernel's own installed identity, its origin client (TECHNICAL 8); every other owner stays strict, so F6.1 stays closed. Codex and Claude agreed blind. Record: factory/decisions/D001-page-timer-authority.md. Undo: one comparison and two sentences in 9.5.
+
 - 2026-11-26 (Deputy Scissors) S134 F1.5 accepted as a known limit: OpenAI `persist: false` is not built for any session (root and child alike); no VISION or FUNCTIONAL clause promises it; recorded in TECHNICAL 11. Undo: an upkeep slice that builds it. S134 F1.4 settled on the builder's reading (toolsets carry no adopted revision; host consent decides).
 
 - 2026-11-26 (deputy-7) S127 cut at r2: F2.1 accepted (the denial and cancellation stay immediate and every §14 row HELD; only the reason text can be lost when the kernel-facing stream is full at a launch deadline or Claude ends before ready; two unusual events together). Clause: the stall rule (findings in code the last answer added). undo: an upkeep item, drain the outbox before close.
