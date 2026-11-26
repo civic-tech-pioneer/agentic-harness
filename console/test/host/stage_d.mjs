@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
 import { NotRun, outcomeOf } from "./outcome.mjs";
 import { isInterrupted, loadWindow } from "./load_check.mjs";
-import { openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
+import { ITEM_DELAY_MS, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -282,7 +282,7 @@ async function mixedLoad(browser) {
       } else {
         const responseWire = wire.filter(({ step }) => step.startsWith(`oa-${id}-`));
         const stored = await entriesOf(session);
-        const coverage = openaiPageCoverage(responseWire, markers, stored, from, to);
+        const coverage = openaiPageCoverage(responseWire, markers, stored, from, to, end);
         for (const fault of coverage.faults) faults.push(`${id}: ${fault}`);
         if (coverage.cut.length || coverage.faults.length) {
           say(`${coverage.faults.length ? "LOSS" : "STOP CUT"} ${id} ${JSON.stringify({
@@ -321,7 +321,7 @@ async function mixedLoad(browser) {
     const delay = p95(delays), stop = p95(stops);
     say(`Budget record Stage D | ${new Date().toISOString().slice(0, 10)} | ${process.platform} ${release()} ${process.arch} ${cpus().length} CPUs, load ${loadavg().map((n) => n.toFixed(2)).join("/")} | common window ${((to - from) / 1000).toFixed(2)} s | item p95 ${delay.toFixed(1)} ms (${delays.length} samples, Claude ${p95(claudeDelays).toFixed(1)}, OpenAI ${p95(aiDelays).toFixed(1)}) | Stop p95 ${stop.toFixed(1)} ms | writer busy ${busy.toFixed(1)}% | cadence ${paced}/8 OpenAI sessions at one step a second`);
     for (const fault of faults.slice(0, 20)) say(`FAULT ${fault}`);
-    ensure(!faults.length && delay <= 100 && stop <= 1000 && busy <= 60,
+    ensure(!faults.length && delay <= ITEM_DELAY_MS && stop <= 1000 && busy <= 60,
       `over budget or invalid load (${faults.length} workload faults)`);
   } finally {
     await Promise.allSettled(sessions.map(({ id, own }) => own

@@ -35,10 +35,13 @@ export function openaiCadence(stamps, from, to) {
     && gaps.every((gap) => gap >= 800 && gap <= 1200);
 }
 
+export const ITEM_DELAY_MS = 100;
+const sourceMarker = (text) => /^(oa-s\d+-\d+|cl-[a-f\d]+-(?:delta|entry)-\d+)(?: |$)/.exec(text)?.[1];
+
 // The TLS log marks writes, not batches accepted by the kernel. Stop may cancel the final
 // in-flight batch before it creates any durable tool outcome. An earlier gap still fails,
 // as does a missing page item for any batch with a tool outcome before the interrupted turn.
-export function openaiPageCoverage(wire, seen, stored, from, to) {
+export function openaiPageCoverage(wire, seen, stored, from, to, stopAt) {
   const faults = [];
   const interrupted = stored.findLast(({ kind }) => kind === "turn");
   const confirmed = isInterrupted(interrupted?.body);
@@ -50,6 +53,9 @@ export function openaiPageCoverage(wire, seen, stored, from, to) {
     .filter(({ kind, i, body }) => kind === "tool" && (!confirmed || i < interrupted.i)
       && (body.status === "completed" || body.status === "failed"))
     .map(({ body }) => body.toolCallId));
+  const acceptedMessages = new Set(stored
+    .filter(({ kind, i, body }) => kind === "message" && body.role === "agent" && confirmed && i < interrupted.i)
+    .map(({ body }) => sourceMarker(body.content?.[0]?.text ?? "")));
   const steps = wire.filter(({ marker, step }) => marker === step).sort((a, b) => a.at - b.at);
   const tail = confirmed ? steps.findLast(({ at }) => at <= interrupted.at) : undefined;
   let cut = [];
@@ -63,11 +69,14 @@ export function openaiPageCoverage(wire, seen, stored, from, to) {
     const completions = writes.filter(({ marker }) => marker === `${start.marker}/completed`);
     const missing = [start, ...calls].filter(({ marker }) => !seen.has(marker));
     const complete = completions.length === 1 && calls.length === 4;
-    // Apply the cadence check's upper bound at the Stop edge. With no completion
-    // write, require a logged write to overlap the durable interrupt itself.
+    // Bound the last wire write and any missing marker by the page item-delay budget
+    // around the actual click. A partial batch must also overlap the durable interrupt.
     const overlaps = completions.length === 0 && writes.some(({ at }) => at >= interrupted?.at);
-    if (start === tail && interrupted.at - start.at <= 1200 && validCalls
-        && (complete || overlaps) && !calls.some(({ marker }) => acceptedTools.has(marker))) {
+    const lastWrite = Math.max(...writes.map(({ at }) => at));
+    const nearClick = Number.isFinite(stopAt) && Math.abs(lastWrite - stopAt) <= ITEM_DELAY_MS
+      && missing.every(({ at }) => at >= stopAt - ITEM_DELAY_MS);
+    if (start === tail && nearClick && validCalls && (complete || overlaps)
+        && !acceptedMessages.has(start.marker) && !calls.some(({ marker }) => acceptedTools.has(marker))) {
       if (missing.length) cut = writes;
       continue;
     }
@@ -113,7 +122,7 @@ export function pageItem({ at, body }) {
   const o = JSON.parse(body);
   const w = o._meta?.watane;
   const text = o.content?.text ?? w?.entry?.body?.content?.[0]?.text ?? "";
-  const marker = /^(oa-s\d+-\d+|cl-[a-f\d]+-(?:delta|entry)-\d+)(?: |$)/.exec(text)?.[1];
+  const marker = sourceMarker(text);
   return {
     at,
     marker: marker ?? (o.sessionUpdate === "tool_call" && o.status === "pending" ? o.toolCallId : undefined),
