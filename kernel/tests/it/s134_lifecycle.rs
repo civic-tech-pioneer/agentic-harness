@@ -515,6 +515,7 @@ fn r1_f1_2_a_paused_childs_resume_checks_the_roots_access() {
     let (_root, a, b) = root_with_two(&mut k);
     pause(&mut k, &a, 60);
     k.host.now += 61_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{a}"));
     assert!(
         matches!(rec(&mut k, &a).turn, Turn::Running { .. }),
@@ -526,6 +527,105 @@ fn r1_f1_2_a_paused_childs_resume_checks_the_roots_access() {
         .put("access/alice", br#"["foreman","validator"]"#.to_vec())
         .unwrap();
     k.host.now += 61_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{b}"));
     assert_eq!(rec(&mut k, &b).turn, Turn::Paused { until: None });
+}
+
+#[test]
+fn s138_ac3_a_foreign_child_timer_cannot_continue_its_parent_or_drain_the_fifo() {
+    let mut k = kernel("");
+    let (root, a, b) = root_with_two(&mut k);
+    pause(&mut k, &a, 1);
+    let job_cap = k.limits.job;
+    k.limits.job = 0;
+    let bob = k.start("bob", "k", "o", "{}", IN).unwrap().value;
+    reply(
+        &mut k,
+        &bob,
+        &[json!({"type":"function_call","id":"other","call_id":"b1",
+                "name":"notes_a","arguments":"{}"})],
+    );
+    let wait = lp(&mut k, &bob)["wait"].as_u64().unwrap();
+    k.limits.job = job_cap;
+    k.host.now += 1_000;
+    k.host.firing_origin = Some("bob".into());
+    let n = bodies(&k).len();
+
+    k.timer(&format!("s/{a}"));
+
+    assert_eq!(bodies(&k).len(), n);
+    for id in [&a, &root] {
+        assert!(matches!(
+            rec(&mut k, id).turn,
+            Turn::Idle { stop: Stop::Failed { error, .. }, .. } if error.contains("authority")
+        ));
+    }
+    assert!(matches!(rec(&mut k, &b).turn, Turn::Idle { .. }));
+    assert_eq!(calls_of(&mut k, &root), 0);
+    assert_eq!(Slots::load(&mut k.state).timers, 0);
+    assert_eq!(lp(&mut k, &bob)["wait"], wait);
+    assert!(!k
+        .host
+        .calls
+        .iter()
+        .any(|c| matches!(c, HostCall::ToolsCall { .. })));
+}
+
+#[test]
+fn adv_s138_root_job_freed_by_foreign_child_firing_hangs_bobs_fifo() {
+    let mut k = kernel("");
+    k.state
+        .put(
+            "profile/root",
+            openai(r#","delegates":["foreman"],"toolsets":["notes"],"allow":["task","notes_*"]"#)
+                .into_bytes(),
+        )
+        .unwrap();
+    let root = start_root(&mut k);
+    reply(
+        &mut k,
+        &root,
+        &[
+            task("c1", "foreman", "do A"),
+            json!({"type":"function_call","id":"fj","call_id":"j1","name":"notes_a","arguments":"{}"}),
+        ],
+    );
+    let kids = children(&mut k, &root);
+    assert_eq!(kids.len(), 1, "{}", lp(&mut k, &root));
+    let a = kids[0].clone();
+    let tools_calls = |k: &K| {
+        k.host
+            .calls
+            .iter()
+            .filter(|c| matches!(c, HostCall::ToolsCall { .. }))
+            .count()
+    };
+    assert_eq!(tools_calls(&k), 1, "the root's job runs");
+    assert_eq!(Slots::load(&mut k.state).job, 1);
+    pause(&mut k, &a, 1);
+    k.limits.job = 1;
+    let bob = k.start("bob", "k", "o", "{}", IN).unwrap().value;
+    reply(
+        &mut k,
+        &bob,
+        &[
+            json!({"type":"function_call","id":"other","call_id":"b1","name":"notes_a","arguments":"{}"}),
+        ],
+    );
+    assert!(lp(&mut k, &bob)["wait"].is_u64(), "bob waits for the slot");
+    k.host.now += 1_000;
+    k.host.firing_origin = Some("front".into());
+    k.timer(&format!("s/{a}"));
+    k.host.firing_origin = None;
+    assert_eq!(Slots::load(&mut k.state).job, 0, "cleanup freed the slot");
+    assert_eq!(tools_calls(&k), 1, "the timer itself starts nothing (held)");
+    k.read("bob", &bob, 0, None, 16).unwrap();
+    let _ = k.say("bob", &bob, "still there?", IN);
+    let _ = k.say("alice", &root, "again", IN);
+    assert!(
+        tools_calls(&k) > 1 || lp(&mut k, &bob)["wait"].is_null(),
+        "bob's tool call hangs in the FIFO with a free slot: {}",
+        lp(&mut k, &bob)
+    );
 }

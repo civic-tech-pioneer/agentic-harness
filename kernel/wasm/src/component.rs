@@ -61,6 +61,9 @@ impl Host for WitHost {
     fn timer_cancel(&mut self, id: &str) {
         timers::cancel(id);
     }
+    fn timer_firing_origin(&mut self) -> Option<String> {
+        timers::firing_origin()
+    }
     /// A direct stream takes the request on `claude-session`, a `direct: false` one on the
     /// provider; a `session-error` is ignored, the turn's end comes on the stream (2.1).
     fn request(&mut self, r: Request) {
@@ -178,6 +181,19 @@ fn me() -> String {
     caller::identity()
 }
 
+fn run_client<T>(
+    f: impl FnOnce(&mut CallKernel<WitState, WitHost>) -> Result<T, KernelError>,
+) -> Result<T, KernelError> {
+    run(|k| {
+        let value = f(k)?;
+        k.drain_owed();
+        if me() == "page" {
+            k.arm_page_origin();
+        }
+        Ok(value)
+    })
+}
+
 impl sessions::Guest for Export {
     fn start(
         key: String,
@@ -185,7 +201,7 @@ impl sessions::Guest for Export {
         overlay: String,
         input: String,
     ) -> Result<String, sessions::Error> {
-        run(|k| k.start(&me(), &key, &profile, &overlay, &input))
+        run_client(|k| k.start(&me(), &key, &profile, &overlay, &input))
             .map(|c| c.value)
             .map_err(map::error)
     }
@@ -196,21 +212,21 @@ impl sessions::Guest for Export {
         input: String,
         folder: String,
     ) -> Result<String, sessions::Error> {
-        run(|k| k.start_in_folder(&me(), &key, &profile, &overlay, &input, &folder))
+        run_client(|k| k.start_in_folder(&me(), &key, &profile, &overlay, &input, &folder))
             .map(|c| c.value)
             .map_err(map::error)
     }
 
     /// 9.1, 9.2: by profile name, as `start` would check it.
     fn check(profile: String, overlay: String) -> Vec<sessions::Refusal> {
-        run(|k| Ok(k.check_named(&me(), &profile, &overlay)))
+        run_client(|k| Ok(k.check_named(&me(), &profile, &overlay)))
             .unwrap_or_default()
             .into_iter()
             .map(map::refusal)
             .collect()
     }
     fn profiles() -> Vec<sessions::ProfileInfo> {
-        run(|k| Ok(k.profiles(&me())))
+        run_client(|k| Ok(k.profiles(&me())))
             .unwrap_or_default()
             .into_iter()
             .map(|p| sessions::ProfileInfo {
@@ -226,7 +242,7 @@ impl sessions::Guest for Export {
         after: u64,
         _caps: String,
     ) -> Result<streams::StreamId, sessions::Error> {
-        match run(|k| k.attach(&me(), &session, after)) {
+        match run_client(|k| k.attach(&me(), &session, after)) {
             Ok(c) => match c.value {
                 Attached::Live { stream } => Ok(stream),
                 Attached::Behind { through } => Err(sessions::Error::Behind(through)),
@@ -240,7 +256,7 @@ impl sessions::Guest for Export {
         before: Option<u64>,
         max: u32,
     ) -> Result<sessions::Page, sessions::Error> {
-        run(|k| k.read(&me(), &session, after, before, max))
+        run_client(|k| k.read(&me(), &session, after, before, max))
             .map(|p| sessions::Page {
                 entries: p.entries,
                 last: p.last,
@@ -248,7 +264,7 @@ impl sessions::Guest for Export {
             .map_err(map::error)
     }
     fn say(session: String, key: String, input: String) -> Result<u64, sessions::Error> {
-        run(|k| k.say(&me(), &session, &key, &input))
+        run_client(|k| k.say(&me(), &session, &key, &input))
             .map(|c| c.value)
             .map_err(map::error)
     }
@@ -258,23 +274,23 @@ impl sessions::Guest for Export {
         ask: String,
         decision: String,
     ) -> Result<(), sessions::Error> {
-        run(|k| k.answer(&me(), &session, &key, &ask, &decision))
+        run_client(|k| k.answer(&me(), &session, &key, &ask, &decision))
             .map(|_| ())
             .map_err(map::error)
     }
     fn interrupt(session: String, replacement: Option<String>) -> Result<(), sessions::Error> {
-        run(|k| k.interrupt(&me(), &session, replacement.as_deref()))
+        run_client(|k| k.interrupt(&me(), &session, replacement.as_deref()))
             .map(|_| ())
             .map_err(map::error)
     }
     fn cancel(session: String) {
-        let _ = run(|k| k.cancel(&me(), &session));
+        let _ = run_client(|k| k.cancel(&me(), &session));
     }
     fn list(
         after: Option<String>,
         max: u32,
     ) -> Result<Vec<sessions::SessionInfo>, sessions::Error> {
-        run(|k| k.list(&me(), after.as_deref(), max))
+        run_client(|k| k.list(&me(), after.as_deref(), max))
             .map(|v| {
                 v.into_iter()
                     .map(|i| sessions::SessionInfo {
@@ -291,13 +307,13 @@ impl sessions::Guest for Export {
             .map_err(map::error)
     }
     fn rename(session: String, title: String) -> Result<(), sessions::Error> {
-        run(|k| k.rename(&me(), &session, &title)).map_err(map::error)
+        run_client(|k| k.rename(&me(), &session, &title)).map_err(map::error)
     }
     fn delete(session: String) -> Result<(), sessions::Error> {
-        run(|k| k.delete(&me(), &session)).map_err(map::error)
+        run_client(|k| k.delete(&me(), &session)).map_err(map::error)
     }
     fn queued(session: String) -> Result<Vec<sessions::QueuedInput>, sessions::Error> {
-        run(|k| k.queued(&me(), &session))
+        run_client(|k| k.queued(&me(), &session))
             .map(|v| {
                 v.into_iter()
                     .map(|q| sessions::QueuedInput {
@@ -309,12 +325,12 @@ impl sessions::Guest for Export {
             .map_err(map::error)
     }
     fn unqueue(session: String, n: u64) -> Result<(), sessions::Error> {
-        run(|k| k.unqueue(&me(), &session, n))
+        run_client(|k| k.unqueue(&me(), &session, n))
             .map(|_| ())
             .map_err(map::error)
     }
     fn take_back(session: String, allow: String) -> Result<(), sessions::Error> {
-        run(|k| k.take_back(&me(), &session, &allow))
+        run_client(|k| k.take_back(&me(), &session, &allow))
             .map(|_| ())
             .map_err(map::error)
     }

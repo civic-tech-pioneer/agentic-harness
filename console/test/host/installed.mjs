@@ -255,7 +255,7 @@ try {
   assert.deepEqual(section("Agentic harness").grants, [
     "Keep its own data on this device",
     "Connect to api.openai.com",
-    `Call mods:claude-code/sessions@0.1.0 of claude-code by ${providerPublisher}`,
+    `Call mods:claude-code/sessions@0.1.0 of claude-code by ${providerPublisher} · Call sessions of claude-code by ${providerPublisher}`,
   ], JSON.stringify(sections));
   assert.deepEqual(section("Claude Code, unchecked").grants, [
     "Can start Claude Code with your Claude account, to read and change files in folders you choose. Not checked by watane.",

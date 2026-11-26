@@ -68,6 +68,9 @@ impl<S: State, H: Host> Host for CallHost<S, H> {
     fn timer_cancel(&mut self, id: &str) {
         self.timers.push(Timer::Cancel(id.to_string()));
     }
+    fn timer_firing_origin(&mut self) -> Option<String> {
+        self.inner.timer_firing_origin()
+    }
     fn request(&mut self, r: Request) {
         self.inner.request(r)
     }

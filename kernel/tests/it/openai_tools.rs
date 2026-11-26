@@ -314,6 +314,73 @@ fn ac1_a_profile_with_no_toolsets_opens_nothing_and_sends_no_tools() {
 }
 
 #[test]
+fn s138_ac3_a_front_mods_retry_cannot_open_or_describe_tools() {
+    let mut k = kernel();
+    k.host.tools_error = Some("consent-pending(waiting)".into());
+    let id = k.start("alice", "k", "o", "{}", IN).unwrap().value;
+    assert_eq!(lp(&mut k, &id)["state"], "retrying");
+    k.host.tools_error = None;
+    k.host.firing_origin = Some("front".into());
+    k.host.now += 1_000;
+    k.host.calls.clear();
+
+    k.timer(&format!("s/{id}"));
+
+    assert!(starts(&k).is_empty());
+    assert_eq!(k.host.next_handle, 0);
+    assert!(!k.host.calls.iter().any(|c| matches!(
+        c,
+        HostCall::ToolsOpen { .. } | HostCall::ToolsDescribe { .. } | HostCall::ToolsCall { .. }
+    )));
+    assert!(rec(&mut k, &id).deadlines.is_empty());
+    assert!(matches!(
+        turn(&mut k, &id),
+        Turn::Idle { stop: Stop::Failed { error, .. }, .. } if error.contains("authority")
+    ));
+}
+
+#[test]
+fn s138_ac3_a_foreign_ask_expiry_never_reaches_the_tool_or_model() {
+    let (mut k, id) = asking();
+    let requests = starts(&k).len();
+    k.host.now += 600_000;
+    k.host.firing_origin = Some("bob".into());
+    k.host.calls.clear();
+
+    k.timer(&format!("s/{id}"));
+
+    assert!(rec(&mut k, &id).open.is_empty());
+    assert!(rec(&mut k, &id).deadlines.is_empty());
+    assert!(
+        starts(&k).is_empty(),
+        "{requests} requests preceded the firing"
+    );
+    assert!(calls_of(&k).is_empty());
+    let asks = entries(&mut k, "alice", &id, "ask");
+    assert_eq!(asks[1]["body"]["decision"]["reason"], "timer-origin");
+}
+
+#[test]
+fn s138_a_page_owned_toolset_retries_its_first_describe() {
+    let mut k = kernel();
+    k.state.put("access/page", br#"["o"]"#.to_vec()).unwrap();
+    k.host.tools_describe_error = Some("unknown-handle".into());
+    let id = k.start("page", "page", "o", "{}", IN).unwrap().value;
+    assert!(starts(&k).is_empty());
+    k.arm_page_origin();
+    k.host.firing_origin = Some("published/kernel".into());
+    k.timer("page-origin");
+
+    k.host.tools_describe_error = None;
+    k.host.now += 1_000;
+    k.timer(&format!("s/{id}"));
+
+    assert_eq!(starts(&k).len(), 1);
+    assert_eq!(body_of(&starts(&k)[0])["tools"][0]["name"], "notes_a");
+    assert_eq!(k.host.next_handle, 1);
+}
+
+#[test]
 fn ac1_waits_for_a_just_opened_toolset_to_commit_before_describing_it() {
     let mut k = kernel();
     k.host.tools_describe_error = Some("unknown-handle".into());
@@ -328,6 +395,7 @@ fn ac1_waits_for_a_just_opened_toolset_to_commit_before_describing_it() {
 
     k.host.tools_describe_error = None;
     k.host.now += 1_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{id}"));
     let requests = starts(&k);
     assert_eq!(requests.len(), 1);
@@ -343,6 +411,7 @@ fn retry_describe_failure_replaces_the_toolset_opening_reason() {
     assert_eq!(lp(&mut k, &id)["last-error"], "opening toolset");
 
     k.host.now += 1_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{id}"));
     assert_eq!(lp(&mut k, &id)["last-error"], "unknown-handle");
     assert_eq!(lp(&mut k, &id)["state"], "idle");
@@ -379,6 +448,7 @@ fn ac1_consent_pending_shows_the_consent_and_retries_with_the_backoff() {
     // The consent is held: the retry sends the request, the activity clears.
     k.host.tools_error = None;
     k.host.now += 1000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{id}"));
     assert_eq!(starts(&k).len(), 1);
     assert_eq!(lp(&mut k, &id)["state"], "requesting");
@@ -395,6 +465,7 @@ fn ac1_a_consent_that_stays_pending_backs_off_as_a_request_does() {
         let r = rec(&mut k, &id);
         assert_eq!(r.deadlines[0].at - k.host.now, want * 1000);
         k.host.now = r.deadlines[0].at;
+        k.host.firing_origin = Some("alice".into());
         k.timer(&format!("s/{id}"));
     }
     assert!(starts(&k).is_empty());
@@ -718,6 +789,7 @@ fn ac3_a_session_allow_is_refused_and_a_second_answer_too() {
 fn ac3_the_deadline_denies_the_ask_as_expired() {
     let (mut k, id) = asking();
     k.host.now += 600_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{id}"));
     assert!(rec(&mut k, &id).open.is_empty());
     assert_eq!(calls_of(&k).len(), 1);
@@ -741,6 +813,7 @@ fn ac3_the_deadline_denies_the_ask_as_expired() {
 fn ac3_an_answer_after_the_expiry_is_refused() {
     let (mut k, id) = asking();
     k.host.now += 600_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{id}"));
     assert!(k
         .answer("alice", &id, "a1", "c1", r#"{"allow":true}"#)
@@ -1901,6 +1974,7 @@ fn review_r5_a_retry_with_no_slot_stops_busy_and_never_goes_in_another_call() {
     assert_eq!(lp(&mut k, &id)["state"], "retrying");
     let bobs = fill_requests(&mut k, &mut o);
     k.host.now += 60_000;
+    k.host.firing_origin = Some("alice".into());
     o.under(&mut k, "alice", |k| k.timer(&format!("s/{id}")));
     bob_completes(&mut k, &mut o, &bobs);
     assert!(

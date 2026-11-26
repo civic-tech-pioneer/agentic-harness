@@ -24,6 +24,7 @@ pub struct Slots {
     pub restart: Option<u8>,
     pub head: u64,
     pub tail: u64,
+    pub drain_owed: bool,
 }
 
 impl Slots {

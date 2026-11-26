@@ -240,6 +240,7 @@ fn ac1_a_retry_of_the_summary_is_tool_free_again() {
     k.provider_ended_with(&s, None).unwrap();
     assert_eq!(lp(&mut k, &id)["state"], "retrying");
     k.host.now += 1_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{id}"));
     let reqs = starts(&k);
     assert_eq!(reqs.len(), 3);
@@ -422,6 +423,7 @@ fn ac6_a_retry_and_an_ask_inside_the_turn_keep_the_counters() {
     k.provider_ended_with(&s, None).unwrap();
     assert_eq!(lp(&mut k, &id)["turn-steps"], 1);
     k.host.now += 1_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{id}"));
     // Then it asks.
     reply(&mut k, &id, &[call("c2", "notes_c")]);

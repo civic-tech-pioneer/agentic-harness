@@ -4,6 +4,24 @@ A record (`AGENTS.md`, "Contracts and records"): why the contracts changed, newe
 project has not run `spec-adopt` yet, so its config has only the older `spec = [...]` list and no
 `spec-lint`; entries cite sections, not ids.
 
+## 2026-11-26: page timer origin under D001
+
+The human: "a page-owned session's timer firing carries its owner's authority when it reads the kernel's own installed identity (its origin client, TECHNICAL 8); every other owner stays strict, and a non-page owner's fallback to the kernel identity is still refused."
+
+- AGT-T-138 and TECHNICAL 2.1 use the page's host-reported origin client (must, said). An authenticated page call obtains that identity through a reserved timer, an implementation detail inferred from the existing host contract.
+- AGT-F-24's retry promise applies to the page's existing consent principal.
+- Decision record: `factory/decisions/D001-page-timer-authority.md` on main.
+
+## 2026-11-26: enforce session owner authority on timer firings
+
+The human: "the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)."
+
+- AGT-T-138 added (must, said). TECHNICAL 9.5 compares Watane's resolved firing origin against the session's bound owner and defines local cleanup on mismatch. This closes the F6.1 known limit.
+- TECHNICAL 2.1 and 15 copy the Watane S133 consumer contract. 9.3, 14 and case 22 reference that contract or its enforcement.
+- The bound identity is the session's immediate caller identity (S133 P1.5). A page's owner identity remains `page`. Watane resolves page-origin firings to the installed mod identity, so the owner check takes the local cleanup path.
+- Spec-check compared the owner check with AGT-F-26 and AGT-F-28. AGT-F-24's unconditional retry wording is in tension with the owner check. Its wording needs the product owner's decision about page authority.
+- Deferred: install-generation binding (S133 P1.12) and recovery of an idempotent job under its original key (case 22).
+
 ## 2026-11-26: S134 r3, answers (build team, Claude)
 
 No contract changed. The deputy's ruling on F3.1 recorded: if round 4 finds the live-update

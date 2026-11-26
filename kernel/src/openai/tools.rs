@@ -823,6 +823,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             return Ok(());
         }
+        if !self.timer_carries_owner(&rec.owner) {
+            return self.stop_for_timer_origin(rec, ls, cx);
+        }
         if self.stop_on_errors(rec, ls, cx)? {
             return Ok(());
         }
