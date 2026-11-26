@@ -14,11 +14,18 @@
 // Two test-only reaches, each named where it is used: the second owner's `access/local/loadclient` is written into the stopped preview's
 // kernel state by test/host/seed (no kernel call writes `access/`, 9.1), and the preview's fake-claude link is replaced by a wrapper that
 // stamps each stdout line with its write time and names the fake's first input (the fake writes no time of its own).
+//
+// `--home` (S131-4, `npm run test:load:c`): the stage C budgets (TECHNICAL 17, row C, "as B" on the fake, the kernel and host part)
+// on a participant home: the mods the preview built are installed into a home whose app is test/host/home's fake `Confirm`
+// (`--grant-all`: each consent is asked and granted at once), and each of the 8 sessions starts with `start-in-folder` in a folder new to
+// it, so every launch takes the consent path; Stop's budget is 2 s. Needs WATANE_SRC (or watane-dev inside a watane checkout's target/).
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline";
 import http from "node:http";
 import { tmpdir, loadavg, cpus } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
 import { isInterrupted, loadWindow } from "./load_check.mjs";
@@ -34,7 +41,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const say = (s) => console.log(s);
 class NotRun extends Error {}
 const SESSIONS = 4, SECONDS = 10, RATE = { deltas: 50, entries: 5, bytes: 4096, seconds: SECONDS };
-const BUDGET = { delay: 100, stop: 1000 };
+const HOME = process.argv.includes("--home");
+const STAGE = HOME ? "C" : "B", COMMAND = HOME ? "test:load:c" : "test:load";
+const BUDGET = { delay: 100, stop: HOME ? 2000 : 1000 }; // TECHNICAL 17: Stop to idle, B 1 s, C 2 s
 const WINDOW = 6; // seconds all 8 sources must overlap at the rate, before Stop
 
 function dev(args, dir) {
@@ -106,7 +115,7 @@ function arrivals(raw) {
 // The stamping wrapper (test-only): the host starts <P>/claude/fake-claude; the wrapper runs the real fake with the same argv[0] (so it
 // finds its script and log beside the link) and writes `<ns since epoch>\t<kind>\t<n>` per stdout line to stamps-<pid>.tsv.
 const WRAPPER = `#!/usr/bin/python3 -I
-import os, re, subprocess, sys, time, threading
+import os, re, subprocess, sys, time, threading, uuid
 real = REAL
 me = os.path.abspath(sys.argv[0])
 p = subprocess.Popen([me] + sys.argv[1:], executable=real, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -128,17 +137,17 @@ def feed():
     except Exception: pass
 threading.Thread(target=feed, daemon=True).start()
 pat = re.compile(rb'"text":"(delta|entry) (\\d+) ')
+# the fake's fixed session id becomes this process's own: watane binds a Claude session id to its first owner (as stage D's wrapper)
+own = b'"session_id":"' + uuid.uuid4().hex.encode() + b'"'
 for line in p.stdout:
-    sys.stdout.buffer.write(line); sys.stdout.buffer.flush()
+    sys.stdout.buffer.write(line.replace(b'"session_id":"fake-session"', own)); sys.stdout.buffer.flush()
     m = pat.search(line[:400])
     if m:
         with lock: out.write("%d\\t%s\\t%s\\n" % (time.time_ns(), m.group(1).decode(), m.group(2).decode()))
 sys.exit(p.wait())
 `;
-function wrapFake() {
-  const link = join(dirname(preview.home), "claude", "fake-claude");
-  const real = readlinkSync(link);
-  unlinkSync(link);
+function wrapFake(link = join(dirname(preview.home), "claude", "fake-claude"), real = readlinkSync(link)) {
+  if (existsSync(link)) unlinkSync(link);
   writeFileSync(link, WRAPPER.replace("REAL", JSON.stringify(real)));
   chmodSync(link, 0o755);
   writeFileSync(join(dirname(link), "fake-claude.json"), JSON.stringify({ steps: [{ do: "expect-user" }, { do: "message", text: "ready" }, { do: "result" }, { do: "idle" }, { do: "expect-user" }, { do: "load", rate: RATE }, { do: "expect-user" }] }));
@@ -161,8 +170,44 @@ function stamps(dir) {
 }
 const p95 = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * 0.95))] : NaN; };
 
+// ---- stage C: the participant home of test/host/home ----
+const onPath = (name) => (process.env.PATH ?? "").split(delimiter).map((d) => join(d, name)).find((f) => existsSync(f));
+function wataneSrc() {
+  if (process.env.WATANE_SRC) return resolve(process.env.WATANE_SRC);
+  const d0 = onPath("watane-dev");
+  if (!d0) return null;
+  for (let d = dirname(realpathSync(d0)); d !== dirname(d); d = dirname(d)) if (existsSync(join(d, "host", "Cargo.toml"))) return d;
+  return null;
+}
+function homeHarness() {
+  const src = wataneSrc();
+  if (!src) throw new NotRun("no watane checkout to link the home harness against: set WATANE_SRC");
+  const target = join(src, "target");
+  execFileSync("cargo", ["build", "-q", "--config", `patch."https://github.com/civic-tech-pioneer/watane".watane-host.path=${JSON.stringify(join(src, "host"))}`],
+    { cwd: join(consoleDir, "test", "host", "home"), stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: target } });
+  return join(target, "debug", "stage-c-home");
+}
+/** Starts the home; resolves with its ready line's pages; `stop()` ends it and waits until it exited. */
+async function startHome(bin, home, claude, folders) {
+  const child = spawn(bin, ["--home", home, "--fake-claude", claude, "--grant-all", ...folders], { stdio: ["pipe", "pipe", "inherit"] });
+  const asked = [];
+  const ready = await new Promise((ok, no) => {
+    child.on("exit", (c) => no(new Error(`stage-c-home exited ${c}`)));
+    createInterface({ input: child.stdout }).on("line", (l) => {
+      let m; try { m = JSON.parse(l); } catch { return; }
+      if (m.event === "error") no(new Error(`stage-c-home: ${m.message}`));
+      else if (m.event === "asked") asked.push(m);
+      else if (m.watane) ok(m);
+    });
+  });
+  const pageOf = (local) => ready.mods.find((m) => m.local === local)?.page;
+  return { home, agent: pageOf("agent"), client: pageOf("loadclient"), asked,
+    stop: async () => { child.stdin.end('{"op":"quit"}\n'); for (let k = 0; k < 150 && child.exitCode === null; k++) await sleep(100); if (child.exitCode === null) child.kill("SIGKILL"); } };
+}
+
 async function main() {
   for (const [p, a] of [["watane-dev", ["--version"]], ["cargo", ["--version"]], ["python3", ["--version"]]]) if (spawnSync(p, a).error) throw new NotRun(`${p} cannot run`);
+  const harness = HOME ? homeHarness() : null;
   // build: the kernel's logic and page (as test:host does), the seed helper
   execFileSync("cargo", ["build", "--release", "--target", "wasm32-wasip2", "-p", "agent-mod"], { cwd: join(root, "kernel"), stdio: "inherit" });
   const tdir = JSON.parse(execFileSync("cargo", ["metadata", "--no-deps", "--format-version", "1"], { cwd: join(root, "kernel"), encoding: "utf8" })).target_directory;
@@ -181,7 +226,27 @@ async function main() {
   await gone(stop());
   execFileSync(join(seedDir, "target", "release", "seed-state"), [preview.home, "local/agent", "access/local/loadclient", '["scratch"]'], { stdio: "inherit" });
   serve();
-  const claudeDir = wrapFake();
+  let claudeDir, homeRun = null, folderOf = null;
+  if (!HOME) claudeDir = wrapFake();
+  else {
+    // the mods the preview built, installed into a participant home (its app the fake Confirm); the second owner's access seeded there
+    const real = readlinkSync(join(dirname(preview.home), "claude", "fake-claude"));
+    const built = join(tmp, "built");
+    cpSync(join(preview.home, "mods"), built, { recursive: true });
+    spawnSync("watane-dev", ["serve", "--stop", "--json", "--dir", clientDir], { env, encoding: "utf8", timeout: 60_000 });
+    claudeDir = join(tmp, "claude");
+    mkdirSync(claudeDir, { recursive: true });
+    wrapFake(join(claudeDir, "fake-claude"), real);
+    const folders = ["claude-code", "agent", "loadclient"].map((m) => join(built, m));
+    const home = join(tmp, "home-c");
+    await (await startHome(harness, home, join(claudeDir, "fake-claude"), folders)).stop();
+    execFileSync(join(seedDir, "target", "release", "seed-state"), [home, "local/agent", "access/local/loadclient", '["scratch"]'], { stdio: "inherit" });
+    homeRun = await startHome(harness, home, join(claudeDir, "fake-claude"), []);
+    preview = { home, agent: homeRun.agent, client: homeRun.client };
+    // a folder new to each session: every launch asks (and the fake app grants) its consent
+    folderOf = (name) => { const f = join(tmp, "folders", name.replace(/ /g, "-")); mkdirSync(f, { recursive: true }); return realpathSync(f); };
+    say(`participant home ${home}: ${preview.agent}`);
+  }
 
   // 8 sessions: each page session shown in its own Chromium page (the console opens the owner's newest session), the client's 4 unattached
   const browser = await launch();
@@ -190,7 +255,9 @@ async function main() {
   const until = async (f, ms, what) => { const end = Date.now() + ms; for (;;) { const v = await f(); if (v) return v; if (Date.now() > end) throw new Error(`timed out waiting for ${what}`); await sleep(100); } };
   try {
     for (let k = 0; k < SESSIONS; k++) {
-      const s = await ok(preview.agent, "sessions.start", { key: `load-page-${k}`, profile: "scratch", overlay: "{}", input: `load ${k}` });
+      const s = HOME
+        ? await ok(preview.agent, "sessions.start-in-folder", { key: `load-page-${k}`, profile: "scratch", overlay: "{}", input: `load ${k}`, folder: folderOf(`load ${k}`) })
+        : await ok(preview.agent, "sessions.start", { key: `load-page-${k}`, profile: "scratch", overlay: "{}", input: `load ${k}` });
       pageSessions.push(s);
       await until(async () => (await turnOf(s)) === "idle", 15_000, `session load ${k}'s first turn to end`);
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -198,7 +265,9 @@ async function main() {
       await page.goto(preview.agent);
       await until(async () => (await page.evaluate(() => window.__attached?.session ?? null)) === s, 15_000, `page ${k} to attach to its session`);
       pages.push(page);
-      const t = await post(preview.client, "api.start", { key: `load-client-${k}`, input: `load client ${k}` });
+      const t = HOME
+        ? await post(preview.client, "api.start-in-folder", { key: `load-client-${k}`, input: `load client ${k}`, folder: folderOf(`load client ${k}`) })
+        : await post(preview.client, "api.start", { key: `load-client-${k}`, input: `load client ${k}` });
       if (!t || !("ok" in t)) throw new Error(`the second owner's start was refused: ${JSON.stringify(t)}`);
       clientSessions.push(t.ok);
     }
@@ -213,7 +282,10 @@ async function main() {
     await sleep(3000);
 
     const files = stamps(claudeDir);
-    for (const k of [...Array(SESSIONS).keys()]) for (const name of [`load ${k}`, `load client ${k}`]) if (!files.has(name)) throw new Error(`no stamped fake got the input ${name}`);
+    for (const k of [...Array(SESSIONS).keys()]) for (const name of [`load ${k}`, `load client ${k}`]) if (!files.has(name)) {
+      const client = clientSessions[k] && await post(preview.client, "api.read", { session: clientSessions[k], after: 0, max: 50 }).catch((e) => e.message);
+      throw new Error(`no stamped fake got the input ${name} (stamped: ${[...files.keys()].join(", ")}${homeRun ? `; asked: ${homeRun.asked.map((q) => `${q.origin} ${q.what}`).join(", ")}` : ""}; its session reads ${JSON.stringify(client).slice(0, 600)})`);
+    }
     const names = [...Array(SESSIONS).keys()].flatMap((k) => [`load ${k}`, `load client ${k}`]);
     const pageStops = stopAt.filter((x) => x !== null);
     const win = loadWindow(new Map(names.map((n) => [n, files.get(n)])), pageStops.length ? Math.min(...pageStops) : -Infinity, RATE, WINDOW);
@@ -252,15 +324,20 @@ async function main() {
     say(`item delay, the fake's write to the Chromium page: p95 ${dp95.toFixed(1)} ms over ${delays.length} items (budget ${BUDGET.delay}); max ${Math.max(...delays).toFixed(1)} ms`);
     say(`Stop in the page to idle {interrupted} in the page: p95 ${sp95.toFixed(1)} ms (budget ${BUDGET.stop}); each ${stops.map((x) => x.toFixed(1)).join(", ")} ms`);
     say(`machine: ${process.platform} ${cpus().length} cpus, load average ${loadavg().map((x) => x.toFixed(2)).join(" ")}`);
+    if (HOME) {
+      const consented = new Set(homeRun.asked.map((q) => q.what));
+      say(`stage C: ${homeRun.asked.length} consent questions granted by the fake app, for ${consented.size} folders`);
+      if (consented.size < 2 * SESSIONS) faults.push(`only ${consented.size} of the ${2 * SESSIONS} folders were asked for`);
+    }
     if (faults.length) throw new Error(`${faults.length} load, completeness or identity faults`);
     if (!delays.length) throw new Error("no item was measured");
     return dp95 <= BUDGET.delay && sp95 <= BUDGET.stop;
-  } finally { await browser.close(); }
+  } finally { await browser.close(); await homeRun?.stop(); }
 }
 
 let code = 0;
-try { code = (await main()) ? 0 : 1; say(code ? "OVER BUDGET" : "WITHIN BUDGET"); }
-catch (e) { code = e instanceof NotRun ? 2 : 1; say(`${code === 2 ? "NOT RUN" : "FAIL"} test:load: ${e.message}`); }
+try { code = (await main()) ? 0 : 1; say(`stage ${STAGE}: ${code ? "OVER BUDGET" : "WITHIN BUDGET"}`); }
+catch (e) { code = e instanceof NotRun ? 2 : 1; say(`${code === 2 ? "NOT RUN" : "FAIL"} ${COMMAND}: ${e.message}`); }
 finally {
   try { spawnSync("watane-dev", ["serve", "--stop", "--json", "--dir", clientDir], { env, encoding: "utf8", timeout: 60_000 }); } catch {}
   try { rmSync(tmp, { recursive: true, force: true }); } catch {}

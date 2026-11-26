@@ -20,6 +20,9 @@ impl Guest for Api {
     fn start_openai(key: String, input: String) -> Result<String, String> {
         sessions::start(&key, "Tools", "{}", &input).map_err(|e| format!("{e:?}"))
     }
+    fn start_in_folder(key: String, input: String, folder: String) -> Result<String, String> {
+        sessions::start_in_folder(&key, "scratch", "{}", &input, &folder).map_err(|e| format!("{e:?}"))
+    }
     fn read(session: String, after: u64, max: u32) -> Result<Vec<String>, String> {
         sessions::read(&session, after, None, max)
             .map(|page| page.entries)
