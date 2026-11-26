@@ -282,9 +282,11 @@ async function mixedLoad(browser) {
       if (!seen.size) faults.push(`${id}: no page measurements in the common window`);
     }
 
+    let paced = 0;
     for (const session of sessions.filter(({ backend }) => backend === "openai")) {
       const stamps = [...scripted].filter(([marker]) => marker.startsWith(`oa-${session.id}-`)).map(([, at]) => at);
-      if (to - from < 6000 || !openaiCadence(stamps, from, to)) {
+      if (to - from >= 6000 && openaiCadence(stamps, from, to)) paced++;
+      else {
         faults.push(`${session.id}: OpenAI cadence missed one step per second (${stamps.length} steps)`);
       }
       const entries = await entriesOf(session);
@@ -296,7 +298,7 @@ async function mixedLoad(browser) {
       .map(([, start, end]) => [Number(start) / 1e6, Number(end) / 1e6]);
     const busy = writerBusy(commits, from, to);
     const delay = p95(delays), stop = p95(stops);
-    say(`Budget record Stage D | ${new Date().toISOString().slice(0, 10)} | ${process.platform} ${release()} ${process.arch} ${cpus().length} CPUs, load ${loadavg().map((n) => n.toFixed(2)).join("/")} | common window ${((to - from) / 1000).toFixed(2)} s | item p95 ${delay.toFixed(1)} ms (${delays.length} samples, Claude ${p95(claudeDelays).toFixed(1)}, OpenAI ${p95(aiDelays).toFixed(1)}) | Stop p95 ${stop.toFixed(1)} ms | writer busy ${busy.toFixed(1)}%`);
+    say(`Budget record Stage D | ${new Date().toISOString().slice(0, 10)} | ${process.platform} ${release()} ${process.arch} ${cpus().length} CPUs, load ${loadavg().map((n) => n.toFixed(2)).join("/")} | common window ${((to - from) / 1000).toFixed(2)} s | item p95 ${delay.toFixed(1)} ms (${delays.length} samples, Claude ${p95(claudeDelays).toFixed(1)}, OpenAI ${p95(aiDelays).toFixed(1)}) | Stop p95 ${stop.toFixed(1)} ms | writer busy ${busy.toFixed(1)}% | cadence ${paced}/8 OpenAI sessions at one step a second`);
     for (const fault of faults.slice(0, 20)) say(`FAULT ${fault}`);
     ensure(!faults.length && delay <= 100 && stop <= 1000 && busy <= 60,
       `over budget or invalid load (${faults.length} workload faults)`);

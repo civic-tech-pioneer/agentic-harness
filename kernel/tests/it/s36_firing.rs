@@ -135,7 +135,9 @@ fn ac2_a_due_idle_firing_at_the_ceiling_releases_the_stream_and_commits() {
     let r = rec(&mut k, &id);
     assert!(r.streams.is_empty());
     assert!(r.deadlines.iter().all(|d| d.what != "idle"));
-    // the fixture really is past the account's cap: the next public call is refused `quota`
+    // the fixture really is at the account's cap: the firing charged its own writes, so pin the cap to
+    // exactly the bytes held now (equal is past, `>=`, 9.3); the next public call is refused `quota`
+    k.limits.account_bytes = bytes(&mut k, "quota");
     let refused = k.say("alice", &id, "again", IN);
     assert!(matches!(refused, Err(KernelError::Quota(_))), "{refused:?}");
 }
