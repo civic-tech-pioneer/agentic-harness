@@ -206,6 +206,11 @@
             "web_search_requests": 0
           },
           "service_tier": "standard"
+        },
+        "meter": {
+          "type": "usage",
+          "context-used": null,
+          "context-window": null
         }
       }
     ],
@@ -229,6 +234,11 @@
             "web_search_requests": 0
           },
           "service_tier": "standard"
+        },
+        "meter": {
+          "type": "usage",
+          "context-used": null,
+          "context-window": null
         }
       }
     ],
@@ -244,6 +254,11 @@
             "web_search_requests": 0
           },
           "service_tier": "standard"
+        },
+        "meter": {
+          "type": "usage",
+          "context-used": null,
+          "context-window": null
         }
       }
     ],
@@ -259,6 +274,11 @@
             "web_search_requests": 0
           },
           "service_tier": "standard"
+        },
+        "meter": {
+          "type": "usage",
+          "context-used": null,
+          "context-window": null
         }
       }
     ],

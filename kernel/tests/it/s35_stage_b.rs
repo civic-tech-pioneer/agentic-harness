@@ -30,7 +30,8 @@ impl State for Spy {
 
 type K = Kernel<Spy, FakeHost>;
 
-const P: &str = r#"{"backend":"claude","model":"sonnet","tools":["Read"],"allow":["Read(**)"],"partial":true,"max-tokens":5}"#;
+const P: &str =
+    r#"{"backend":"claude","model":"sonnet","tools":["Read"],"allow":["Read(**)"],"partial":true}"#;
 const IN: &str = r#"[{"type":"text","text":"hello"}]"#;
 const WS: &str = "scratch:0123456789abcdef0123456789abcdef";
 const UUID: &str = "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11";
@@ -319,6 +320,7 @@ fn ac4_the_fake_default_turn_as_a_batch_and_as_single_lines() {
             [
                 "agent_message_chunk",
                 "agent_message_chunk",
+                "usage",
                 "entry",
                 "turn"
             ],
@@ -338,7 +340,7 @@ fn ac4_the_fake_default_turn_as_a_batch_and_as_single_lines() {
         // the update that finishes the entry carries its index
         assert_eq!(live[1]["_meta"]["watane"]["i"], messages[0]["i"]);
         assert_eq!(
-            live[3]["_meta"]["watane"]["state"],
+            live[4]["_meta"]["watane"]["state"],
             json!({"state":"idle","stop":{"kind":"completed"},"seconds":0})
         );
         let turns: Vec<&Value> = read.iter().filter(|e| e["kind"] == "turn").collect();
@@ -908,6 +910,7 @@ fn ac2_an_entry_without_an_acp_form_is_an_entry_item_and_the_turn_item_follows_i
             "entry:\"unknown\"",
             "agent_message_chunk",
             "agent_message_chunk",
+            "usage",
             "entry:\"turn\"",
             "turn"
         ]

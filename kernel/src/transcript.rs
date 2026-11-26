@@ -14,7 +14,7 @@ pub const PAGE_ENTRIES: u32 = 256;
 pub const REPLAY_ENTRIES: u64 = 128;
 pub const MAX_CHUNKS: usize = 16_384;
 
-const KINDS: [&str; 9] = [
+const KINDS: [&str; 10] = [
     "message",
     "tool",
     "ask",
@@ -22,12 +22,13 @@ const KINDS: [&str; 9] = [
     "verdict",
     "turn",
     "compaction",
+    "child",
     "unknown",
     "part",
 ];
 
 /// The kinds `append` takes: whole entries (9.4); `part` is made by `append` itself.
-const APPEND_KINDS: [&str; 8] = [
+const APPEND_KINDS: [&str; 9] = [
     "message",
     "tool",
     "ask",
@@ -35,6 +36,7 @@ const APPEND_KINDS: [&str; 8] = [
     "verdict",
     "turn",
     "compaction",
+    "child",
     "unknown",
 ];
 
@@ -129,7 +131,7 @@ impl<'a, S: State> Transcript<'a, S> {
         if !APPEND_KINDS.contains(&entry.kind.as_str()) {
             return Err(refused(
                 "kind",
-                "kind must be one of message, tool, ask, allow, verdict, turn, compaction, unknown",
+                "kind must be one of message, tool, ask, allow, verdict, turn, compaction, child, unknown",
             ));
         }
         let first = self.meta.last + 1;

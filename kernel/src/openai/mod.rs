@@ -2,5 +2,6 @@
 
 pub mod answer;
 pub mod run;
+pub mod task;
 pub mod tools;
 pub mod wire;

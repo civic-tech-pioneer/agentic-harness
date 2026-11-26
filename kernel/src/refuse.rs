@@ -54,6 +54,21 @@ pub fn refuse(
                     "tools with Bash, WebFetch or WebSearch need a sandbox (4.2)",
                 );
             }
+            if !p.delegates.is_empty() {
+                add("delegates", "refused on claude: delegation is OpenAI only");
+            }
+            if p.subagent_limits.is_some() {
+                add(
+                    "subagent-limits",
+                    "refused on claude: it limits OpenAI child sessions",
+                );
+            }
+            if p.max_tool_errors.is_some() {
+                add("max-tool-errors", "refused on claude");
+            }
+            if p.max_tokens.is_some() {
+                add("max-tokens", "refused on claude");
+            }
         }
         Backend::Openai => {
             if !p.fallback_models.is_empty() {
@@ -98,6 +113,19 @@ pub fn refuse(
             }
             if p.max_budget_usd.is_some() {
                 add("max-budget-usd", "refused on openai");
+            }
+            if let Some(v) = &p.subagent_limits {
+                for (k, x) in v.as_object().into_iter().flatten() {
+                    let f = format!("subagent-limits.{k}");
+                    match k.as_str() {
+                        "live" if !x.as_u64().is_some_and(|n| (1..=20).contains(&n)) => {
+                            add(&f, "a whole number from 1 to 20");
+                        }
+                        "depth" if x.as_u64() != Some(1) => add(&f, "only 1"),
+                        "live" | "depth" => {}
+                        _ => add(&f, "not a subagent-limits key (live, depth)"),
+                    }
+                }
             }
             if let (Some(c), true) = (catalog, model_valid) {
                 match c.models.iter().find(|m| m.slug == model) {

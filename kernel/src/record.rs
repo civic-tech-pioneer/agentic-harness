@@ -212,6 +212,10 @@ pub struct Record {
     pub overlay: Option<Overlay>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    /// On a child: the root's `task` call id while its delegated first turn is outstanding;
+    /// cleared when that call is resolved (9.7, `openai/task.rs`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_call: Option<String>,
     pub children: Vec<String>,
     pub turn: Turn,
     pub boot: u64,
@@ -236,6 +240,10 @@ pub struct Record {
     /// such line ends nothing more. Zeroed when the provider stream is released or opened.
     #[serde(skip_serializing_if = "is_zero")]
     pub owed_idles: u32,
+    /// The Claude context sample the last `result` gave, as pushed (9.7 "Usage"); `attach`
+    /// replays it. Absent after a clear.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<serde_json::Value>,
     pub next_index: u64,
     pub created: u64,
     pub updated: u64,
@@ -258,6 +266,7 @@ impl Default for Record {
             claude_uuid: None,
             overlay: None,
             parent: None,
+            task_call: None,
             children: Vec::new(),
             turn: Turn::default(),
             boot: 0,
@@ -273,6 +282,7 @@ impl Default for Record {
             open: Vec::new(),
             pending_answers: BTreeMap::new(),
             owed_idles: 0,
+            usage: None,
             next_index: 1,
             created: 0,
             updated: 0,

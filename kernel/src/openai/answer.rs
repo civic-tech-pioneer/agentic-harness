@@ -97,6 +97,16 @@ pub fn sse(item: &[u8], now: u64) -> Sse {
     }
 }
 
+/// Whether a `response.completed` item carries valid token counts (`usage` with both
+/// `input_tokens` and `output_tokens` as numbers): a missing count is not zero (9.7 "Limits").
+pub fn usage_reported(item: &[u8]) -> bool {
+    let v: Option<Value> = serde_json::from_slice(item).ok();
+    let u = v.as_ref().and_then(|v| v.pointer("/response/usage"));
+    ["input_tokens", "output_tokens"]
+        .iter()
+        .all(|k| u.and_then(|u| u.get(k)).is_some_and(Value::is_u64))
+}
+
 fn event_failure(e: Option<&Value>, dflt: &str, now: u64) -> Failure {
     if let Some(e) = e {
         if is_usage_limit(e) {

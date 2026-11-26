@@ -11,6 +11,7 @@ use crate::active::Slots;
 use crate::adapters::responses;
 use crate::error::KernelError;
 use crate::openai::answer::{self, backoff_ms, Failure, Sse};
+use crate::openai::task;
 use crate::openai::tools::{Call, Policy, SetupError, ToolSet, JOB};
 use crate::openai::wire::{user_message, BodyArgs, Wire, WireItem, COMPACT_THRESHOLD};
 use crate::overlay::apply_overlay;
@@ -98,6 +99,20 @@ pub struct LoopState {
     pub turn_tokens: u64,
     #[serde(skip_serializing_if = "is_zero")]
     pub turn_calls: u64,
+    /// Completed model steps of the turn, for `max-turns` (9.7 "Limits").
+    #[serde(skip_serializing_if = "is_zero32")]
+    pub turn_steps: u32,
+    /// Failed or denied calls in a row, for `max-tool-errors`; a success resets it.
+    #[serde(skip_serializing_if = "is_zero32")]
+    pub tool_errors_in_a_row: u32,
+    /// The request under way (or next) is the one tool-free summary step of `max-turns`: a retry
+    /// or a pause keeps it tool-free, and its response ends the turn.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub summary: bool,
+    /// The policy holds the stage F limits (S134). A loop saved before them has none: its limits
+    /// are compiled from the profile and overlay when it is next loaded (S134 r1 F1.8).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub limits_compiled: bool,
     /// What the loop reads of the profile, compiled once at `start` (9.6).
     #[serde(skip_serializing_if = "Policy::is_empty")]
     pub policy: Policy,
@@ -122,6 +137,17 @@ pub struct LoopState {
     pub consent: Option<String>,
     #[serde(flatten)]
     pub wire: Wire,
+}
+
+impl LoopState {
+    /// The counters of a turn (9.7 "Limits"), zero at each input that begins a turn.
+    pub(crate) fn reset_turn(&mut self) {
+        self.turn_tokens = 0;
+        self.turn_calls = 0;
+        self.turn_steps = 0;
+        self.tool_errors_in_a_row = 0;
+        self.summary = false;
+    }
 }
 
 fn is_zero32(n: &u32) -> bool {
@@ -196,6 +222,23 @@ enum Ev {
     },
 }
 
+/// The `tools` of a request (9.5): the toolsets' definitions as described, then `task` for a root
+/// that names delegates (9.7). A tool-free summary step sends none.
+fn request_tools(rec: &Record, ls: &LoopState) -> Vec<Value> {
+    if ls.summary {
+        return Vec::new();
+    }
+    let mut tools = ls
+        .tools
+        .as_ref()
+        .map(|t| t.defs.clone())
+        .unwrap_or_default();
+    if rec.parent.is_none() && !ls.policy.delegates.is_empty() {
+        tools.push(task::definition(&ls.policy.delegates));
+    }
+    tools
+}
+
 fn request_json(body: &str) -> String {
     let body = serde_json::to_string(body).expect("a string serializes");
     format!(
@@ -226,6 +269,30 @@ fn running_push(rec: &Record, activity: Option<Activity>) -> Option<Push> {
     }
 }
 
+/// The text of the final answer: the output text of the response's assistant messages, joined by
+/// a blank line; none when it has no text.
+fn final_text(output: &[Value]) -> Option<String> {
+    let texts: Vec<String> = output
+        .iter()
+        .filter(|i| i["type"] == "message")
+        .map(|m| {
+            m["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|c| c["type"] == "output_text")
+                .filter_map(|c| c["text"].as_str())
+                .collect::<String>()
+        })
+        .filter(|t| !t.is_empty())
+        .collect();
+    (!texts.is_empty()).then(|| texts.join("\n\n"))
+}
+
+fn limit(name: &str) -> Stop {
+    Stop::Stopped { limit: name.into() }
+}
+
 fn failed(error: impl Into<String>) -> Stop {
     Stop::Failed {
         error: error.into(),
@@ -237,9 +304,31 @@ impl<S: State, H: Host> Kernel<S, H> {
     // ---- the loop state
 
     pub(crate) fn loop_load(&mut self, id: &str) -> Option<LoopState> {
-        self.state
+        let mut ls: LoopState = self
+            .state
             .get(&format!("loop/{id}"))
-            .and_then(|b| serde_json::from_slice(&b).ok())
+            .and_then(|b| serde_json::from_slice(&b).ok())?;
+        if !ls.limits_compiled {
+            // A loop saved before stage F has no limits (S134 r1 F1.8): they are compiled from
+            // the profile and overlay as they are now, once (fail closed: a cap the profile sets
+            // applies, also to a turn in flight); the rest stays as compiled at `start`, and such
+            // a root names no delegates. Saved with the loop's next change.
+            if let Some(rec) = Record::load(&mut self.state, id) {
+                let c = self.compiled_of(&rec);
+                ls.policy.max_turns = c.max_turns;
+                ls.policy.max_tool_errors = c.max_tool_errors;
+                ls.policy.max_tokens = c.max_tokens;
+            }
+            ls.limits_compiled = true;
+        }
+        Some(ls)
+    }
+
+    /// The session's profile with its overlay applied (9.2).
+    fn compiled_of(&mut self, rec: &Record) -> crate::profile::Profile {
+        let json = self.profile_json(&rec.profile).unwrap_or_default();
+        let base = parse_profile(&json).0;
+        apply_overlay(&base, &rec.overlay.clone().unwrap_or_default()).0
     }
 
     pub(crate) fn loop_save(&mut self, id: &str, ls: &LoopState) -> Result<(), KernelError> {
@@ -259,6 +348,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let base = parse_profile(&json).0;
         let compiled = apply_overlay(&base, &rec.overlay.clone().unwrap_or_default()).0;
         LoopState {
+            limits_compiled: true,
             model: base.model.unwrap_or_default(),
             effort: base.effort,
             policy: Policy {
@@ -267,6 +357,14 @@ impl<S: State, H: Host> Kernel<S, H> {
                 deny: compiled.deny.clone(),
                 mode: compiled.mode.clone(),
                 ask_expiry: compiled.ask_expiry,
+                max_turns: compiled.max_turns,
+                max_tool_errors: compiled.max_tool_errors,
+                max_tokens: compiled.max_tokens,
+                delegates: compiled.delegates.clone(),
+                subagent_limits: compiled.subagent_limits.clone(),
+                ask: compiled.ask,
+                pre_tool_check: compiled.pre_tool_check.clone(),
+                persist: compiled.persist,
             },
             instructions: match compiled.system_prompt {
                 Some(SystemPrompt::Replace(s) | SystemPrompt::Append(s)) => s,
@@ -278,7 +376,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     // ---- the request
 
-    fn pending_for(&mut self, rec: &Record, ls: &LoopState, input: &str) -> Pending {
+    pub(crate) fn pending_for(&mut self, rec: &Record, ls: &LoopState, input: &str) -> Pending {
         Pending {
             summary: ls.too_large.then(|| self.summary_text(rec)),
             inputs: vec![user_message(&input_text(input))],
@@ -386,7 +484,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if !room {
             return Launch::Busy;
         }
-        match self.tools_setup(ls) {
+        let task_active = crate::openai::tools::delegating(rec, ls);
+        match self.tools_setup(ls, task_active) {
             Ok(()) => {}
             Err(SetupError::Opening) => return Launch::OpeningToolset,
             Err(SetupError::Consent(what)) => return Launch::Consent(what),
@@ -397,11 +496,12 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let items = self.preview(rec, ls, pending);
         let reasoning = ls.effort.as_ref().map(|e| json!({ "effort": e }));
+        let tools = request_tools(rec, ls);
         let args = BodyArgs {
             session: &rec.id,
             model: &ls.model,
             instructions: &ls.instructions,
-            tools: ls.tools.as_ref().map_or(&[], |t| &t.defs),
+            tools: &tools,
             reasoning: reasoning.as_ref(),
             compact_threshold: COMPACT_THRESHOLD,
         };
@@ -466,8 +566,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<(), KernelError> {
         let Prelaunch { mut ls, go } = p;
         if let Some((pending, launch)) = go {
-            ls.turn_tokens = 0;
-            ls.turn_calls = 0;
+            ls.reset_turn();
             self.go(rec, &mut ls, cx, pending, Some(launch), 0)?;
         }
         self.loop_save(&rec.id, &ls)
@@ -609,18 +708,30 @@ impl<S: State, H: Host> Kernel<S, H> {
     // ---- the end of a turn, errors, pauses
 
     /// The turn ends `idle {stop}`; the oldest queued input then starts the next turn.
-    fn end_turn(
+    pub(crate) fn end_turn(
         &mut self,
         rec: &mut Record,
         ls: &mut LoopState,
         cx: &mut Cx,
         stop: Stop,
     ) -> Result<(), KernelError> {
+        self.end_turn_with(rec, ls, cx, stop, None)
+    }
+
+    /// `end_turn`; `text` is the final answer of a turn that completed, for the `task` call a
+    /// child's first turn resolves (9.7).
+    pub(crate) fn end_turn_with(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        stop: Stop,
+        text: Option<String>,
+    ) -> Result<(), KernelError> {
         let tokens = (ls.turn_tokens > 0).then_some(ls.turn_tokens);
         let tools = (ls.turn_calls > 0).then_some(ls.turn_calls);
         ls.phase = Phase::Idle;
-        ls.turn_tokens = 0;
-        ls.turn_calls = 0;
+        ls.reset_turn();
         ls.consent = None;
         rec.deadlines
             .retain(|d| d.what != RETRY && d.what != RESUME);
@@ -631,7 +742,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             tokens,
         };
         self.turn_to(rec, cx.past, idle, cx.now, cx.work)?;
-        if cx.past.is_past() || Self::room(rec).is_err() || !self.may_use(&rec.owner, &rec.profile)
+        // The first turn of a child resolves its root's call, before any queued input starts.
+        self.end_task(rec, cx, text.as_deref())?;
+        if cx.past.is_past() || Self::room(rec).is_err() || !self.may_work(&rec.owner.clone(), rec)
         {
             return Ok(());
         }
@@ -679,7 +792,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             tools,
             tokens,
         };
-        self.turn_to(rec, cx.past, idle, cx.now, cx.work)
+        self.turn_to(rec, cx.past, idle, cx.now, cx.work)?;
+        self.end_task(rec, cx, None)
     }
 
     /// Whether a session holding no timer yet finds none free (9.3).
@@ -772,6 +886,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         ls: &mut LoopState,
         cx: &mut Cx,
         usage: answer::Usage,
+        reported: bool,
         output: Vec<Value>,
     ) -> Result<(), KernelError> {
         // dev 18.3: a stream may carry the items only as `output_item.done` events.
@@ -786,6 +901,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let model = ls.model.clone();
         ls.wire
             .append(&mut self.state, &rec.id, step, Some(&model), output.clone())?;
+        ls.turn_steps += 1;
         ls.turn_tokens += usage.input_tokens + usage.output_tokens;
         ls.last_error = None;
         cx.work.pushes.push(Push::of(
@@ -814,12 +930,31 @@ impl<S: State, H: Host> Kernel<S, H> {
             // loop stops and the completion does not end the turn again.
             return self.openai_stop(rec, ls, cx);
         }
+        let final_items = output.clone();
         let calls: Vec<Value> = output
             .into_iter()
             .filter(|i| i["type"] == "function_call")
             .collect();
+        // 9.7 "Limits", in this order: a token cap that cannot be checked, the token cap, the
+        // one summary step, then the step cap with calls.
+        let policy = &ls.policy;
+        let stop = match policy.max_tokens {
+            Some(_) if !reported => Some(failed("usage-unavailable")),
+            Some(max) if ls.turn_tokens >= max => Some(limit("max-tokens")),
+            _ if ls.summary => Some(limit("max-turns")),
+            _ => None,
+        };
+        let summarize = stop.is_none()
+            && !calls.is_empty()
+            && policy.max_turns.is_some_and(|m| ls.turn_steps >= m);
         if calls.is_empty() {
-            return self.end_turn(rec, ls, cx, Stop::Completed);
+            return self.end_turn_with(
+                rec,
+                ls,
+                cx,
+                stop.unwrap_or(Stop::Completed),
+                final_text(&final_items),
+            );
         }
         ls.turn_calls += calls.len() as u64;
         if streamed.is_empty() {
@@ -833,6 +968,24 @@ impl<S: State, H: Host> Kernel<S, H> {
                     }
                 }
             }
+        }
+        if stop.is_some() || summarize {
+            // No job starts: the calls are closed as the interrupt cleanup does (9.5).
+            for c in &calls {
+                self.put_aborted(rec, ls, cx, c)?;
+            }
+            if !rec.turn.is_active() {
+                return self.openai_stop(rec, ls, cx);
+            }
+            if let Some(stop) = stop {
+                return self.end_turn(rec, ls, cx, stop);
+            }
+            ls.summary = true;
+            ls.phase = Phase::Ready {
+                wait: None,
+                attempt: 0,
+            };
+            return self.enqueue(rec, ls, cx, 0);
         }
         self.openai_calls(rec, ls, calls, cx)?;
         if !rec.turn.is_active() && matches!(ls.phase, Phase::Waiting | Phase::Tools { .. }) {
@@ -1041,14 +1194,14 @@ impl<S: State, H: Host> Kernel<S, H> {
                             .map(|u| Push::of(&session, wire_update(u, now, None)))
                             .collect();
                         let live = self.live_stream(&session);
-                        return Ok(self.tail(&session, pushes, live));
+                        return Ok(self.tail(&session, pushes, live, None, Vec::new()));
                     }
                 }
             }
         }
         let work = self.openai_item(stream, &session, ev)?;
         let live = work.live.clone();
-        Ok(self.tail(&session, work.pushes, live))
+        Ok(self.tail(&session, work.pushes, live, work.peer, work.stopped))
     }
 
     /// One item of a job stream: the call's output, then the same end as a request's item.
@@ -1060,21 +1213,54 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Step, KernelError> {
         let work = self.job_item(stream, &key.session, body)?;
         let live = work.live.clone();
-        Ok(self.tail(&key.session, work.pushes, live))
+        Ok(self.tail(&key.session, work.pushes, live, work.peer, work.stopped))
     }
 
     /// The end of an item's step, as `item_step` ends one: the pushes go to the live owner
     /// stream, and a full one defers the call.
-    fn tail(&mut self, session: &str, pushes: Vec<Push>, live: Option<String>) -> Step {
+    fn tail(
+        &mut self,
+        session: &str,
+        mut pushes: Vec<Push>,
+        live: Option<String>,
+        peer: Option<(Option<String>, Vec<Push>)>,
+        stopped: Vec<(Option<String>, Vec<Push>)>,
+    ) -> Step {
+        // The children a limit stop of this session interrupted get their pushes on their own
+        // streams first, as `flush` sends them: the Stop of the root comes after its children's
+        // (9.7; S134 r2 F2.2).
+        let mut gone: Vec<(String, String)> = Vec::new();
+        let mut theirs: Vec<Push> = Vec::new();
+        for (clive, cpushes) in stopped {
+            let cfailed = self.send_live(&cpushes, clive.as_deref());
+            if cfailed == Some(StreamError::Full) {
+                return Step::Defer;
+            }
+            if let (Some(o), Some(_), Some(first)) = (clive, cfailed, cpushes.first()) {
+                gone.push((first.session.clone(), o));
+            }
+            theirs.extend(cpushes);
+        }
         let failed = self.send_live(&pushes, live.as_deref());
         if failed == Some(StreamError::Full) {
             return Step::Defer;
         }
-        let gone = live
-            .filter(|_| failed.is_some())
-            .map(|o| (session.to_string(), o))
-            .into_iter()
-            .collect();
+        gone.extend(
+            live.filter(|_| failed.is_some())
+                .map(|o| (session.to_string(), o)),
+        );
+        pushes.splice(0..0, theirs);
+        // The root of a `task` call this item resolved gets its pushes on its own stream (9.7).
+        if let Some((plive, ppushes)) = peer {
+            let pfailed = self.send_live(&ppushes, plive.as_deref());
+            if pfailed == Some(StreamError::Full) {
+                return Step::Defer;
+            }
+            if let (Some(o), Some(_), Some(first)) = (plive, pfailed, ppushes.first()) {
+                gone.push((first.session.clone(), o));
+            }
+            pushes.extend(ppushes);
+        }
         Step::Done {
             pushes,
             requests: Vec::new(),
@@ -1205,7 +1391,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             Ev::Data { bytes, .. } => {
                 match answer::sse(&bytes, cx.now) {
                     Sse::Completed { usage, output } => {
-                        self.on_completed(rec, ls, cx, usage, output)?;
+                        let reported = answer::usage_reported(&bytes);
+                        self.on_completed(rec, ls, cx, usage, reported, output)?;
                     }
                     Sse::Failed(f) => {
                         self.release_request(rec, stream, cx, true);
@@ -1342,12 +1529,15 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.abort_calls(rec, ls, cx)?;
         }
         ls.phase = Phase::Idle;
-        ls.turn_tokens = 0;
-        ls.turn_calls = 0;
+        ls.reset_turn();
         ls.consent = None;
         ls.items.clear();
         rec.deadlines
             .retain(|d| d.what != RETRY && d.what != RESUME);
+        // A turn a quota stop ended already (9.3) resolves a child's root call as any end does.
+        if matches!(rec.turn, Turn::Idle { .. }) {
+            self.end_task(rec, cx, None)?;
+        }
         Ok(())
     }
 
@@ -1384,7 +1574,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             (Phase::Paused, (_, true)) if matches!(rec.turn, Turn::Paused { .. }) => {
                 // 9.7 "Revoking": a profile the owner may no longer use sends nothing; the turn
                 // stays paused with no time.
-                if !self.may_use(&rec.owner, &rec.profile) {
+                if !self.may_work(&rec.owner.clone(), rec) {
                     let paused = Turn::Paused { until: None };
                     self.turn_to(rec, past, paused, now, cx.work)?;
                     return Ok(());
@@ -1483,6 +1673,33 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.loop_save(&rec.id, &ls)?;
         dirty |= self.sync_timer(rec, slots, a, &before, now, false);
         if dirty {
+            slots.save(&mut self.state)?;
+        }
+        Ok(())
+    }
+
+    /// R4 on a paused child: its `resume` deadline and timer go, its loop is idle and its turn
+    /// `unknown`, with its queue and transcript kept for the owner's next message (9.3).
+    pub(crate) fn openai_restart_paused(
+        &mut self,
+        rec: &mut Record,
+        a: &mut Acct,
+        slots: &mut Slots,
+        work: &mut Work,
+        now: u64,
+    ) -> Result<(), KernelError> {
+        let Some(mut ls) = self.loop_load(&rec.id) else {
+            return Ok(());
+        };
+        let before = rec.deadlines.clone();
+        rec.deadlines
+            .retain(|d| d.what != RETRY && d.what != RESUME);
+        ls.phase = Phase::Idle;
+        ls.reset_turn();
+        ls.consent = None;
+        self.turn_to(rec, a.past, Turn::Unknown, now, work)?;
+        self.loop_save(&rec.id, &ls)?;
+        if self.sync_timer(rec, slots, a, &before, now, false) {
             slots.save(&mut self.state)?;
         }
         Ok(())
@@ -1647,7 +1864,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             rec.updated = now;
         }
         let _ = self.finish_as(Some(&mut rec), &mut acct, true);
-        self.deliver(&work.pushes, rec.live.as_deref());
+        let own = std::mem::take(&mut work.pushes);
+        self.deliver_stopped(&mut work);
+        self.deliver(&own, rec.live.as_deref());
+        work.pushes.extend(own);
+        self.deliver_peer(&mut work);
         if kept {
             Drain::Kept
         } else {

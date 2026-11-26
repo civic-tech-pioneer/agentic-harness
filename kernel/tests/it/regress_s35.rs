@@ -7,7 +7,8 @@ use serde_json::Value;
 
 type K = Kernel<MemState, FakeHost>;
 
-const P: &str = r#"{"backend":"claude","model":"sonnet","tools":["Read"],"allow":["Read(**)"],"partial":true,"max-tokens":5}"#;
+const P: &str =
+    r#"{"backend":"claude","model":"sonnet","tools":["Read"],"allow":["Read(**)"],"partial":true}"#;
 const IN: &str = r#"[{"type":"text","text":"hello"}]"#;
 const WS: &str = "scratch:0123456789abcdef0123456789abcdef";
 const UUID: &str = "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11";

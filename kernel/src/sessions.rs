@@ -561,6 +561,21 @@ pub(crate) struct Work {
     pub(crate) stored: Option<u64>,
     /// The live owner stream of the session an item call acted on, as its record ends the call.
     pub(crate) live: Option<String>,
+    /// A call that resolves a child's `task` call for its root (9.7) also works on the root: the
+    /// root's pushes and its live owner stream, which are not this call's session's.
+    pub(crate) peer: Option<(Option<String>, Vec<Push>)>,
+    /// The pushes of the children a root's interrupt, cancel or delete stopped, each with its live
+    /// owner stream: they leave before the root's own (9.7: cleanup is done before Stop).
+    pub(crate) stopped: Vec<(Option<String>, Vec<Push>)>,
+}
+
+impl Work {
+    /// The one rule for `stopped` (S134 r3 F3.1): a `Work` made inside a call for another record
+    /// hands the children's updates it collected on to the call's own, so the caller's delivery
+    /// (`flush`, `tail`, `deliver_stopped`) sends them; no path drops them.
+    pub(crate) fn hand_on_stopped(&mut self, inner: &mut Work) {
+        self.stopped.append(&mut inner.stopped);
+    }
 }
 
 /// The owner's account and the kernel's, as read for a call and kept for its one write (9.3 Quota).
@@ -574,7 +589,19 @@ pub(crate) struct Acct {
     account0: Usage,
 }
 
-fn add_signed(v: u64, d: i64) -> u64 {
+impl Acct {
+    /// One more session of the owner, on owner page `n` (9.1, 9.3).
+    pub(crate) fn add_session(&mut self, n: usize) {
+        if self.owner.pages.len() <= n {
+            self.owner.pages.resize(n + 1, 0);
+        }
+        self.owner.pages[n] += 1;
+        self.owner.sessions += 1;
+        self.account.sessions += 1;
+    }
+}
+
+pub(crate) fn add_signed(v: u64, d: i64) -> u64 {
     if d >= 0 {
         v.saturating_add(d as u64)
     } else {
@@ -701,6 +728,7 @@ pub(crate) fn delta_only(out: &adapters::Out) -> Option<Value> {
         && out.resolved.is_none()
         && out.watane.is_none()
         && out.usage.is_none()
+        && out.meter.is_none()
         && !out.idle;
     out.update.clone().filter(|_| bare)
 }
@@ -766,7 +794,7 @@ fn slash_space(c: char) -> bool {
 }
 
 /// 9.3: an input whose first text block starts with `/` after white space is refused.
-fn check_slash(input: &str) -> Result<(), KernelError> {
+pub(crate) fn check_slash(input: &str) -> Result<(), KernelError> {
     let blocks = user_content(input);
     let text = blocks
         .as_array()
@@ -1410,8 +1438,21 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.drop_adapter(&s);
         }
         self.state.delete(&format!("live/{}", rec.id));
-        // 9.5 "After a restart": a running or waiting OpenAI turn stops `unknown` and sends nothing.
-        if rec.backend == "openai" && rec.turn.is_active() {
+        // R4: a child's delegated call belongs to the boot that opened it (9.7).
+        rec.task_call = None;
+        // R4 clears the root's live child map (9.3 `children`: live delegation only); the links
+        // stay in each child's `parent` and the root's `child` entries. Cleared before the turn
+        // stops, so the stop's cleanup touches no child (no recursive restart).
+        rec.children.clear();
+        // 9.5 "After a restart": a running or waiting OpenAI turn stops `unknown` and sends nothing;
+        // a paused child loses its automatic resume (R4).
+        if rec.backend == "openai"
+            && rec.parent.is_some()
+            && matches!(rec.turn, Turn::Paused { .. })
+        {
+            self.openai_restart_paused(rec, a, slots, work, now)?;
+            self.sync_active(rec, slots, true)?;
+        } else if rec.backend == "openai" && rec.turn.is_active() {
             self.openai_restart(rec, a, slots, work, now)?;
             if !rec.turn.is_active() {
                 self.sync_active(rec, slots, true)?;
@@ -1659,7 +1700,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         };
         // 9.7, "Revoking": a revoked profile starts nothing; the queue is kept.
-        if !self.may_use(&rec.owner, &rec.profile) {
+        if !self.may_work(&rec.owner.clone(), rec) {
             return Ok(());
         }
         let send = self.target(rec);
@@ -1877,12 +1918,40 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// The end of a call that did not defer: its pushes go to the session's live owner stream, then
     /// its requests leave (after the last write, 7).
-    pub(crate) fn flush(&mut self, work: Work, live: Option<&str>) -> Vec<Push> {
+    pub(crate) fn flush(&mut self, mut work: Work, live: Option<&str>) -> Vec<Push> {
+        let mut all = Vec::new();
+        for (l, pushes) in std::mem::take(&mut work.stopped) {
+            self.deliver(&pushes, l.as_deref());
+            all.extend(pushes);
+        }
         self.deliver(&work.pushes, live);
+        self.deliver_peer(&mut work);
         for r in work.requests {
             self.host.request(r);
         }
-        work.pushes
+        all.extend(work.pushes);
+        all
+    }
+
+    /// The pushes of children a stop of this call's session stopped go to each child's own live
+    /// owner stream, before the session's own (its Stop comes last, 9.7; S134 r2 F2.2), then
+    /// join the call's own.
+    pub(crate) fn deliver_stopped(&mut self, work: &mut Work) {
+        let mut theirs = Vec::new();
+        for (l, pushes) in std::mem::take(&mut work.stopped) {
+            self.deliver(&pushes, l.as_deref());
+            theirs.extend(pushes);
+        }
+        work.pushes.splice(0..0, theirs);
+    }
+
+    /// The pushes a call made for its peer session (the root of a resolved `task` call) go to that
+    /// session's live owner stream, then join the call's own.
+    pub(crate) fn deliver_peer(&mut self, work: &mut Work) {
+        if let Some((live, pushes)) = work.peer.take() {
+            self.deliver(&pushes, live.as_deref());
+            work.pushes.extend(pushes);
+        }
     }
 
     /// The live owner stream of a session: `live/<session>` (9.1).
@@ -1958,6 +2027,19 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
     }
 
+    /// 9.7 "Revoking": whether a call that gives the session more work may go on. A root is
+    /// checked against its owner's access; a child is checked as its root is, against the root's
+    /// owner (it has no entry of its own), and a missing root is refused: fail closed.
+    pub(crate) fn may_work(&mut self, owner: &str, rec: &Record) -> bool {
+        match &rec.parent {
+            None => self.may_use(owner, &rec.profile),
+            Some(root) => match Record::load(&mut self.state, root) {
+                Some(r) => self.may_use(&r.owner, &r.profile),
+                None => false,
+            },
+        }
+    }
+
     fn revoked() -> KernelError {
         refused("profile", "this client may not use this profile")
     }
@@ -1973,7 +2055,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// 9.1: the first page of the owner's session ids with room, or the next one: its number,
     /// its key and its ids.
-    fn owner_page(&mut self, caller: &str, acct: &Acct) -> (usize, String, Vec<String>) {
+    pub(crate) fn owner_page(&mut self, caller: &str, acct: &Acct) -> (usize, String, Vec<String>) {
         let n = acct
             .owner
             .pages
@@ -2214,7 +2296,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         check_input(input)?;
         check_slash(input)?;
         let mut rec = self.load_owned(caller, session)?;
-        if !self.may_use(caller, &rec.profile) {
+        if !self.may_work(caller, &rec) {
             return Err(Self::revoked());
         }
         let mut acct = self.accounts(caller);
@@ -2375,7 +2457,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let mut rec = self.load_owned(caller, session)?;
         let d = parse_decision(decision)?;
-        if d.allow && !self.may_use(caller, &rec.profile) {
+        if d.allow && !self.may_work(caller, &rec) {
             return Err(Self::revoked());
         }
         let mut acct = self.accounts(caller);
@@ -2606,7 +2688,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(input) = replacement {
             check_input(input)?;
             check_slash(input)?;
-            if !self.may_use(caller, &rec.profile) {
+            if !self.may_work(caller, &rec) {
                 return Err(Self::revoked());
             }
             self.refuse_past(&acct)?;
@@ -2659,10 +2741,25 @@ impl<S: State, H: Host> Kernel<S, H> {
                     now,
                     dirty: false,
                 };
+                // 9.7: each live child ends `interrupted` before the root's calls are aborted.
+                self.stop_children(&mut rec, &p.ls, &mut cx, false)?;
                 self.openai_stop(&mut rec, &mut p.ls, &mut cx)?;
                 sent = cx.dirty;
             }
             self.end_interrupted(&mut rec, past, now, &mut work)?;
+            // 9.7: the owner interrupting a child's first turn resolves the root's call.
+            if rec.task_call.is_some() {
+                let mut cx = Cx {
+                    slots: &mut slots,
+                    a: &mut acct,
+                    work: &mut work,
+                    past,
+                    now,
+                    dirty: false,
+                };
+                self.end_task(&mut rec, &mut cx, None)?;
+                sent |= cx.dirty;
+            }
             if let Some((stream, direct)) = live.clone() {
                 // `claude` ends the interrupted turn with an `idle` of its own, later (S36).
                 rec.owed_idles = rec.owed_idles.saturating_add(1);
@@ -2716,7 +2813,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(Called { value: (), pushes })
     }
 
-    fn end_interrupted(
+    pub(crate) fn end_interrupted(
         &mut self,
         rec: &mut Record,
         past: Past,
@@ -2733,8 +2830,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     /// 2.3 `cancel`: every open or pending ask gets its one decision, an active turn ends
-    /// `idle {interrupted}`, the queue is kept, the host ends the stream.
-    // Children (9.3) are not built: nothing to cancel there yet.
+    /// `idle {interrupted}`, the queue is kept, the host ends the stream. An OpenAI root also
+    /// cancels each live child (9.7).
     pub fn cancel(&mut self, caller: &str, session: &str) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
@@ -2742,59 +2839,71 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut work = Work::default();
         let mut rec = self.session(&mut acct, caller, session, &mut slots, &mut work)?;
         let now = self.host.now();
-        let was = rec.turn.is_active();
-        let closed = self.close_all_with(&mut rec, past, "cancel", now, &mut work, false)?;
-        // An OpenAI session's request streams and jobs end the same way, its calls get `aborted`
-        // and its handle closes (9.5).
-        let mut openai_freed = false;
-        if rec.backend == "openai" {
-            if let Some(mut ls) = self.loop_load(&rec.id) {
-                let mut cx = Cx {
-                    slots: &mut slots,
-                    a: &mut acct,
-                    work: &mut work,
-                    past,
-                    now,
-                    dirty: false,
-                };
-                // The deadlines go below, with the timer they hold.
-                let kept = rec.deadlines.clone();
-                self.openai_stop(&mut rec, &mut ls, &mut cx)?;
-                rec.deadlines = kept;
-                openai_freed = cx.dirty;
-                self.loop_save(&rec.id, &ls)?;
-                self.close_tools(&ls);
-            }
-        }
-        if was {
-            self.end_interrupted(&mut rec, past, now, &mut work)?;
-        }
-        // The host's `Cancel` ends the provider stream: its slot is free at once, and its later
-        // `ended` finds no key (9.4).
-        let provider = self.live_provider(&rec);
-        let mut freed = openai_freed
-            || match &provider {
-                Some(t) => self.release_provider(&mut rec, t, &mut slots, &mut acct),
-                None => false,
+        {
+            let mut cx = Cx {
+                slots: &mut slots,
+                a: &mut acct,
+                work: &mut work,
+                past,
+                now,
+                dirty: false,
             };
-        // 9.3: no deadline outlives a cancel; its timer goes with them.
-        let before = std::mem::take(&mut rec.deadlines);
-        freed |= self.sync_timer(&rec, &mut slots, &mut acct, &before, now, false);
-        if !self.sync_active(&mut rec, &mut slots, was)? && freed {
-            slots.save(&mut self.state)?;
-        }
-        work.requests.push(Request::Cancel {
-            session: rec.id.clone(),
-            stream: provider.unwrap_or_default(),
-        });
-        if was || closed {
-            rec.updated = now;
+            self.cancel_rec(&mut rec, &mut cx)?;
         }
         // 9.3 "Past": a cancel closes the session's work, so it cannot fail on quota.
         self.finish_as(Some(&mut rec), &mut acct, true)?;
         let pushes = self.flush(work, rec.live.as_deref());
         self.after_call();
         Ok(Called { value: (), pushes })
+    }
+
+    /// The writes of a cancel on one session, the caller saving the record. A child's cancel also
+    /// resolves its root's call `aborted` (9.7).
+    pub(crate) fn cancel_rec(&mut self, rec: &mut Record, cx: &mut Cx) -> Result<(), KernelError> {
+        let (past, now) = (cx.past, cx.now);
+        let was = rec.turn.is_active();
+        let closed = self.close_all_with(rec, past, "cancel", now, cx.work, false)?;
+        // An OpenAI session's request streams and jobs end the same way, its calls get `aborted`
+        // and its handle closes (9.5).
+        if rec.backend == "openai" {
+            if let Some(mut ls) = self.loop_load(&rec.id) {
+                // The deadlines go below, with the timer they hold.
+                let kept = rec.deadlines.clone();
+                self.stop_children(rec, &ls, cx, true)?;
+                self.openai_stop(rec, &mut ls, cx)?;
+                rec.deadlines = kept;
+                self.loop_save(&rec.id, &ls)?;
+                self.close_tools(&ls);
+            }
+        }
+        if was {
+            self.end_interrupted(rec, past, now, cx.work)?;
+        }
+        if rec.task_call.is_some() {
+            self.abort_task(rec, cx)?;
+        }
+        // The host's `Cancel` ends the provider stream: its slot is free at once, and its later
+        // `ended` finds no key (9.4).
+        let provider = self.live_provider(rec);
+        let mut freed = cx.dirty
+            || match &provider {
+                Some(t) => self.release_provider(rec, t, cx.slots, cx.a),
+                None => false,
+            };
+        // 9.3: no deadline outlives a cancel; its timer goes with them.
+        let before = std::mem::take(&mut rec.deadlines);
+        freed |= self.sync_timer(rec, cx.slots, cx.a, &before, now, false);
+        if !self.sync_active(rec, cx.slots, was)? && freed {
+            cx.slots.save(&mut self.state)?;
+        }
+        cx.work.requests.push(Request::Cancel {
+            session: rec.id.clone(),
+            stream: provider.unwrap_or_default(),
+        });
+        if was || closed {
+            rec.updated = now;
+        }
+        Ok(())
     }
 
     /// `session` for a call that writes only when the restart step runs (R6): the step is charged.
@@ -2871,7 +2980,33 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
         // No restart step (9.3): a session can always be deleted.
-        let rec = self.load_owned(caller, session)?;
+        let mut rec = self.load_owned(caller, session)?;
+        // 9.7: a live child's deletion resolves its root's call `aborted`; a root's deletion
+        // cancels each live child (their records stay). Both are of this boot only.
+        let mut work = Work::default();
+        let mut stopped = false;
+        if rec.boot == slots.boot {
+            let now = self.host.now();
+            let past = acct.past;
+            let mut cx = Cx {
+                slots: &mut slots,
+                a: &mut acct,
+                work: &mut work,
+                past,
+                now,
+                dirty: false,
+            };
+            if rec.task_call.is_some() {
+                self.abort_task(&mut rec, &mut cx)?;
+            }
+            if rec.backend == "openai" {
+                if let Some(ls) = self.loop_load(&rec.id) {
+                    let mut root = rec.clone();
+                    self.stop_children(&mut root, &ls, &mut cx, true)?;
+                }
+            }
+            stopped = cx.dirty;
+        }
         // The record's bytes.
         let freed = rec.bytes as i64;
         let page_key = owner_page_key(caller, rec.owner_page);
@@ -2881,7 +3016,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         // The slots of this boot's provider streams; a stale record's streams were counted zero.
-        let mut slot_freed = false;
+        let mut slot_freed = stopped;
         let mut owners = Vec::new();
         let mut requests = Vec::new();
         let mut jobs = Vec::new();
@@ -2976,6 +3111,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             session: rec.id.clone(),
             stream: provider,
         });
+        // What the stopped children and the resolved root left: their pushes and requests.
+        self.flush(work, None);
         self.after_call();
         Ok(())
     }
@@ -3023,7 +3160,8 @@ impl<S: State, H: Host> Kernel<S, H> {
                 // R6: the turn the restart step will give, without writing it.
                 // A Claude or an OpenAI turn, `running` or `waiting`, becomes `unknown` (R4).
                 let stale = r.boot < slots.boot
-                    && matches!(r.turn, Turn::Running { .. } | Turn::Waiting { .. });
+                    && (matches!(r.turn, Turn::Running { .. } | Turn::Waiting { .. })
+                        || (r.parent.is_some() && matches!(r.turn, Turn::Paused { .. })));
                 let turn = if stale { Turn::Unknown } else { r.turn };
                 out.push(SessionInfo {
                     id: r.id,
@@ -3494,6 +3632,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         items.push(json!({"_meta": {"watane": turn_push(&turn)}}));
         items.push(json!({"_meta": {"watane": queue}}));
+        if let Some(u) = &rec.usage {
+            items.push(json!({"_meta": {"watane": u}}));
+        }
         for v in items {
             if let Err(e) = self.host.push(&o, v) {
                 self.drop_failed(&rec.id, &o, e);
@@ -3733,11 +3874,20 @@ impl<S: State, H: Host> Kernel<S, H> {
                 if let Some(r) = out.resolved {
                     self.resolve(&mut rec, past, r, now, &mut work)?;
                 }
+                // A late `result` of an interrupted turn (its idle is still owed) says nothing
+                // about the replacement turn's context (9.3, 9.7).
+                if let (Some(m), 0) = (out.meter, rec.owed_idles) {
+                    rec.usage = m["context-used"].is_u64().then(|| m.clone());
+                    work.pushes.push(Push::of(&rec.id, m));
+                }
                 if out.idle && rec.owed_idles > 0 {
                     rec.owed_idles -= 1;
                 } else if out.idle {
                     let idle = Turn::Idle {
-                        stop: Stop::Completed,
+                        stop: match out.limit {
+                            Some(limit) => Stop::Stopped { limit },
+                            None => Stop::Completed,
+                        },
                         seconds: None,
                         tools: None,
                         tokens: None,
@@ -4031,7 +4181,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Option<((&'static str, &'static str, Option<&'static str>), Value)> {
         let held = Self::ask_scope(rec, body)
             .is_some_and(|(t, k)| rec.allows.iter().any(|a| a.tool == t && a.key == k));
-        if held && self.may_use(&rec.owner, &rec.profile) {
+        if held && self.may_work(&rec.owner.clone(), rec) {
             return Some((("allow", "session-allow", None), json!({"allow": true})));
         }
         if rec.owner.starts_with("agent:") || rec.live.is_none() {
@@ -4132,7 +4282,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         // A firing cannot fail (9.3 "Past"): what it wrote is charged, past the reserve too.
         self.finish_as(Some(&mut rec), &mut acct, true)?;
         // After the last write (7): the live owner stream gets the entry, or is dropped `lagging`.
-        self.deliver(&work.pushes, rec.live.as_deref());
+        let own = std::mem::take(&mut work.pushes);
+        self.deliver_stopped(work);
+        self.deliver(&own, rec.live.as_deref());
+        work.pushes.extend(own);
+        self.deliver_peer(work);
         Ok(())
     }
 
@@ -4184,6 +4338,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 let stepped = self.step(&mut rec, &mut acct, slots, &mut done).is_ok();
                 if stepped {
                     work.pushes.append(&mut done.pushes);
+                    work.hand_on_stopped(&mut done);
                 }
                 // The firing commits what the step wrote, failed or not: the stored record's
                 // `bytes` and both accounts take it, past the reserve too (a firing cannot fail).

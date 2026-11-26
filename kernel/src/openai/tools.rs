@@ -8,7 +8,9 @@
 use crate::adapters::responses;
 use crate::error::KernelError;
 use crate::openai::run::{Cx, LoopState, Pending, Phase};
-use crate::record::{Deadline, OpenAsk, Record, Turn, DEADLINES, OPEN_ASKS};
+use crate::openai::task::TASK;
+use crate::profile::PreToolCheck;
+use crate::record::{Deadline, OpenAsk, Record, Stop, Turn, DEADLINES, OPEN_ASKS};
 use crate::rules::{glob, Rules, Verdict};
 use crate::sessions::{wire_update, Host, Kernel, Push, StreamKey, Tool};
 use crate::state::State;
@@ -35,6 +37,26 @@ pub struct Policy {
     pub mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ask_expiry: Option<u64>,
+    /// The turn's limits, compiled from the profile and overlay (9.7 "Limits").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tool_errors: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
+    /// What admission of a child compares (9.7): the compiled profile's delegation and the
+    /// fields a child must match or narrow, kept so a later edit of the stored profile cannot
+    /// widen what this session's children may be.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub delegates: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subagent_limits: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ask: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pre_tool_check: Option<PreToolCheck>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub persist: Option<bool>,
 }
 
 impl Policy {
@@ -82,6 +104,9 @@ pub enum CallState {
     Pending,
     /// Running as a job on this stream.
     Job { stream: String },
+    /// A `task` call whose delegated first turn runs in this child session (9.7): the call holds
+    /// no stream and no slot.
+    Child { session: String },
 }
 
 /// A `function_call` item of the step with no output yet.
@@ -93,7 +118,7 @@ pub struct Call {
 }
 
 impl Call {
-    fn id(&self) -> &str {
+    pub(crate) fn id(&self) -> &str {
         self.item["call_id"].as_str().unwrap_or_default()
     }
 }
@@ -145,6 +170,12 @@ fn expand(rules: &[String], names: &[&str]) -> Vec<String> {
     out
 }
 
+fn errors_reached(ls: &LoopState) -> bool {
+    ls.policy
+        .max_tool_errors
+        .is_some_and(|m| ls.tool_errors_in_a_row >= m)
+}
+
 fn error_text(why: &str) -> String {
     json!({ "error": why }).to_string()
 }
@@ -173,7 +204,14 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// The session's `agent-tools` handle and the tools it describes (AC1): opened and described
     /// at the first request, kept in the loop state, never again. A profile with no toolsets
     /// opens nothing.
-    pub(crate) fn tools_setup(&mut self, ls: &mut LoopState) -> Result<(), SetupError> {
+    /// `task_active`: the session advertises `task` (a root that names delegates, 9.7), so a
+    /// toolset function named `task` collides. `skill` is not built yet, so it is no active
+    /// built-in and its name is free (S134 r1 F1.7).
+    pub(crate) fn tools_setup(
+        &mut self,
+        ls: &mut LoopState,
+        task_active: bool,
+    ) -> Result<(), SetupError> {
         if ls.policy.toolsets.is_empty() {
             return Ok(());
         }
@@ -190,7 +228,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             });
         }
         let Some(set) = ls.tools.as_mut().filter(|t| !t.described) else {
-            return Ok(());
+            // A description kept from an earlier request is checked too: the collision depends
+            // on what the session advertises, not on when the toolset was described.
+            return self.collision(ls, task_active, None);
         };
         let tools = self.host.tools_describe(&set.handle).map_err(|e| {
             // Watane publishes the open only after this call commits.
@@ -200,6 +240,11 @@ impl<S: State, H: Host> Kernel<S, H> {
                 fail(e)
             }
         })?;
+        // 9.7: a toolset function named like an active built-in is refused before any request.
+        if task_active && tools.iter().any(|t| t.name == TASK) {
+            let handle = set.handle.clone();
+            return self.collision(ls, task_active, Some(handle));
+        }
         set.described = true;
         set.defs = tools.iter().map(definition).collect();
         set.info = tools
@@ -211,6 +256,32 @@ impl<S: State, H: Host> Kernel<S, H> {
             })
             .collect();
         Ok(())
+    }
+
+    /// 9.7: a described toolset function named `task` while `task` is active fails the turn
+    /// before any request, naming `toolsets`; the handle is closed and dropped. `fresh`: the
+    /// handle of a description just read (not yet kept).
+    fn collision(
+        &mut self,
+        ls: &mut LoopState,
+        task_active: bool,
+        fresh: Option<String>,
+    ) -> Result<(), SetupError> {
+        let kept = ls
+            .tools
+            .as_ref()
+            .is_some_and(|t| t.info.iter().any(|i| i.name == TASK));
+        if !task_active || (fresh.is_none() && !kept) {
+            return Ok(());
+        }
+        let handle = fresh.or_else(|| ls.tools.as_ref().map(|t| t.handle.clone()));
+        ls.tools = None;
+        if let Some(h) = handle {
+            self.host.tools_close(&h);
+        }
+        Err(SetupError::Failed(format!(
+            "toolsets: the function {TASK} collides with a built-in of the kernel"
+        )))
     }
 
     /// Ends the session's handle (`cancel`, `delete`).
@@ -237,6 +308,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .tools
             .iter()
             .flat_map(|t| t.info.iter().map(|i| i.name.clone()))
+            .chain(delegating(rec, ls).then(|| TASK.to_string()))
             .collect();
         let names: Vec<&str> = names.iter().map(String::as_str).collect();
         let (rules, _) = Rules::compile(
@@ -245,8 +317,23 @@ impl<S: State, H: Host> Kernel<S, H> {
             &expand(&ls.policy.deny, &names),
         );
         for item in calls {
+            if errors_reached(ls) {
+                // The cap was reached by an earlier call of this step: the rest is cleanup.
+                self.put_aborted(rec, ls, cx, &item)?;
+                continue;
+            }
             let name = item["name"].as_str().unwrap_or_default().to_string();
-            if ls.tools.as_ref().and_then(|t| t.info(&name)).is_none() {
+            // A child's `task` call is refused at dispatch without asking anyone (9.7).
+            if name == TASK && rec.parent.is_some() {
+                ls.calls.push(Call {
+                    item,
+                    st: CallState::Pending,
+                });
+                continue;
+            }
+            if !builtin_task(rec, ls, &name)
+                && ls.tools.as_ref().and_then(|t| t.info(&name)).is_none()
+            {
                 // A session with no toolsets has nothing to run: its call is `aborted` (S40-3).
                 let out = match ls.tools {
                     Some(_) => error_text("unknown tool"),
@@ -277,10 +364,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                 },
             }
         }
+        if rec.turn.is_active() && self.stop_on_errors(rec, ls, cx)? {
+            return Ok(());
+        }
         let info = ls.tools.clone().unwrap_or_default();
         ls.serial = !ls.calls.iter().all(|c| {
-            info.info(c.item["name"].as_str().unwrap_or_default())
-                .is_some_and(|i| i.parallel)
+            let name = c.item["name"].as_str().unwrap_or_default();
+            builtin_task(rec, ls, name) || info.info(name).is_some_and(|i| i.parallel)
         });
         ls.phase = if ls.calls.iter().any(|c| c.st == CallState::Ask) {
             Phase::Waiting
@@ -296,6 +386,43 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// Stores a call's one output: in the wire, and shown to the owner as the Responses adapter
     /// maps a job output (the tool call entry completes or fails).
     pub(crate) fn put_output(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        call: &Value,
+        output: String,
+        ok: bool,
+    ) -> Result<(), KernelError> {
+        self.count_output(ls, ok);
+        self.store_output(rec, ls, cx, call, output, ok)
+    }
+
+    /// Counts one output of a call for `max-tool-errors` (9.7 "Limits"): a success resets the
+    /// streak, any other output adds to it. True when the streak has reached the cap. Cleanup
+    /// aborts (`put_aborted`) never come here.
+    pub(crate) fn count_output(&mut self, ls: &mut LoopState, ok: bool) -> bool {
+        if ok {
+            ls.tool_errors_in_a_row = 0;
+        } else {
+            ls.tool_errors_in_a_row = ls.tool_errors_in_a_row.saturating_add(1);
+        }
+        errors_reached(ls)
+    }
+
+    /// The `aborted` output of an interrupt cleanup or a limit stop (9.5, 9.7): stored like any
+    /// output but not counted toward `max-tool-errors`.
+    pub(crate) fn put_aborted(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        call: &Value,
+    ) -> Result<(), KernelError> {
+        self.store_output(rec, ls, cx, call, "aborted".into(), false)
+    }
+
+    fn store_output(
         &mut self,
         rec: &mut Record,
         ls: &mut LoopState,
@@ -453,7 +580,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         ls: &mut LoopState,
         cx: &mut Cx,
     ) -> Result<(), KernelError> {
-        if !rec.turn.is_active() {
+        if !rec.turn.is_active() || self.stop_on_errors(rec, ls, cx)? {
             return Ok(());
         }
         if ls.phase == Phase::Waiting && !ls.calls.iter().any(|c| c.st == CallState::Ask) {
@@ -494,6 +621,14 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         };
         let blocked = self.start_jobs(rec, ls, cx)?;
+        if !rec.turn.is_active() {
+            // A call or a child entry not stored past the quota ended the turn (9.3): the loop
+            // stops with the calls aborted.
+            return self.openai_stop(rec, ls, cx);
+        }
+        if self.stop_on_errors(rec, ls, cx)? {
+            return Ok(());
+        }
         if ls.calls.is_empty() {
             ls.phase = Phase::Ready {
                 wait: None,
@@ -534,6 +669,19 @@ impl<S: State, H: Host> Kernel<S, H> {
             {
                 return Ok(Blocked::No);
             }
+            let name = ls.calls[i].item["name"].as_str().unwrap_or_default();
+            if builtin_task(rec, ls, name) {
+                // A `task` call holds no job slot or stream: the child is the work (9.7).
+                let open = ls.calls.len();
+                self.start_task(rec, ls, cx, i)?;
+                if !rec.turn.is_active() || errors_reached(ls) {
+                    return Ok(Blocked::No);
+                }
+                if ls.calls.len() == open {
+                    i += 1;
+                }
+                continue;
+            }
             if ls.jobs >= self.limits.session_job || rec.stream_room().is_err() {
                 return Ok(Blocked::Session);
             }
@@ -567,6 +715,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 Err(e) => {
                     let call = ls.calls.remove(i);
                     self.put_output(rec, ls, cx, &call.item, error_text(&e), false)?;
+                    if errors_reached(ls) {
+                        return Ok(Blocked::No);
+                    }
                 }
             }
         }
@@ -659,7 +810,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.release_job(rec, &mut none, stream, cx, false);
     }
 
-    fn after_output(
+    pub(crate) fn after_output(
         &mut self,
         rec: &mut Record,
         ls: &mut LoopState,
@@ -670,6 +821,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             if matches!(ls.phase, Phase::Tools { .. } | Phase::Waiting) {
                 self.openai_stop(rec, ls, cx)?;
             }
+            return Ok(());
+        }
+        if self.stop_on_errors(rec, ls, cx)? {
             return Ok(());
         }
         self.settle_calls(rec, ls, cx, false)
@@ -688,6 +842,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         ls: &mut LoopState,
         cx: &mut Cx,
     ) -> Result<(), KernelError> {
+        // A live child's call is closed with the others, so the child stops too: interrupt
+        // semantics, as the cleanup of 9.5 (S134 r1 F1.1: a limit or quota stop of the root
+        // leaves no child running). A child its root's interrupt, cancel or delete already
+        // stopped has left `children` and is skipped.
+        self.stop_children(rec, ls, cx, false)?;
         self.close_all_with(rec, cx.past, "interrupted", cx.now, cx.work, false)?;
         for s in rec.streams.clone() {
             let kind = self
@@ -701,9 +860,33 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         ls.jobs = 0;
         for call in std::mem::take(&mut ls.calls) {
-            self.put_output(rec, ls, cx, &call.item, "aborted".into(), false)?;
+            self.put_aborted(rec, ls, cx, &call.item)?;
         }
         Ok(())
+    }
+
+    /// 9.7 "Limits": when the failure streak reached `max-tool-errors`, the turn stops
+    /// `stopped {limit: max-tool-errors}` with the other open and pending calls aborted by the
+    /// interrupt cleanup (those aborts do not count). True when it stopped.
+    fn stop_on_errors(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+    ) -> Result<bool, KernelError> {
+        if !errors_reached(ls) {
+            return Ok(false);
+        }
+        self.abort_calls(rec, ls, cx)?;
+        if rec.turn.is_active() {
+            let stop = Stop::Stopped {
+                limit: "max-tool-errors".into(),
+            };
+            self.end_turn(rec, ls, cx, stop)?;
+        } else {
+            self.openai_stop(rec, ls, cx)?;
+        }
+        Ok(true)
     }
 }
 
@@ -711,6 +894,18 @@ impl Call {
     fn on(&self, stream: &str) -> bool {
         matches!(&self.st, CallState::Job { stream: s } if s == stream)
     }
+}
+
+/// The session advertises the built-in `task`: a root that names delegates (9.7).
+pub(crate) fn delegating(rec: &Record, ls: &LoopState) -> bool {
+    rec.parent.is_none() && !ls.policy.delegates.is_empty()
+}
+
+/// A call named `task` is the kernel's built-in in a delegating root, and refused as one in a
+/// child (9.7); anywhere else the name is free, and a toolset function of that name runs as any
+/// described tool (S134 r2 F2.1).
+pub(crate) fn builtin_task(rec: &Record, ls: &LoopState, name: &str) -> bool {
+    name == TASK && (rec.parent.is_some() || delegating(rec, ls))
 }
 
 /// One tool as the request lists it (AC1).
