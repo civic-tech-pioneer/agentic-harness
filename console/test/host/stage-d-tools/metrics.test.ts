@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 // @ts-expect-error: a plain ES module of the host runner
-import { openaiCadence, p95, writerBusy } from "./metrics.mjs";
+import { openaiCadence, openaiPageCoverage, p95, writerBusy } from "./metrics.mjs";
 
 it("charges only commit time in the common window", () => {
   expect(writerBusy([[13, 15], [5, 12], [11, 14], [19, 22]], 10, 20)).toBe(60);
@@ -47,4 +47,57 @@ it("the stamp wrapper's rewrite keeps the JSON valid when the padding holds esca
   const grown = Buffer.byteLength(rewritten) - Buffer.byteLength(line);
   expect(grown).toBeGreaterThan(14);
   expect(grown).toBeLessThanOrEqual(20);
+});
+
+const step = (n: number, at: number) => {
+  const marker = `oa-s1-${n}`;
+  return [
+    { marker, step: marker, at },
+    ...Array.from({ length: 4 }, (_, j) => ({ marker: `call_${n}_${j}`, step: marker, at: at + 1 })),
+    { marker: `${marker}/completed`, step: marker, at: at + 2 },
+  ];
+};
+const storedTools = (n: number, after: number) => Array.from({ length: 4 }, (_, j) => ({
+  kind: "tool", i: after + j + 1, at: 1000 * n + 3,
+  body: { toolCallId: `call_${n}_${j}`, status: "completed" },
+}));
+const interrupted = { kind: "turn", i: 20, at: 3065, body: { state: "idle", stop: { kind: "interrupted" } } };
+
+it("ac1_excludes_the_batch_that_Stop_cut_before_the_sink_even_if_it_was_written_64ms_before_click", () => {
+  const admitted = step(2, 2000);
+  const tail = step(3, 3000);
+  const wire = [...admitted, ...tail];
+  const seen = new Set(admitted.map(({ marker }) => marker));
+  const stored = [...storedTools(2, 10), interrupted];
+  const coverage = openaiPageCoverage(wire, seen, stored, 1000, 3064);
+  expect(coverage.faults).toEqual([]);
+  expect(coverage.cut).toEqual(tail);
+  expect(coverage.interrupted).toEqual(interrupted);
+});
+
+it("ac1_reports_missing_page_markers_for_a_step_recorded_before_the_interrupted_turn", () => {
+  const earlier = step(2, 2000);
+  const last = step(3, 3000);
+  const seen = new Set(earlier.map(({ marker }) => marker));
+  const stored = [...storedTools(2, 10), ...storedTools(3, 14), interrupted];
+  const coverage = openaiPageCoverage([...earlier, ...last], seen, stored, 1000, 3064);
+  expect(coverage.cut).toEqual([]);
+  expect(coverage.faults.join(" ")).toContain("oa-s1-3");
+  for (let i = 0; i < 4; i++) expect(coverage.faults.join(" ")).toContain(`call_3_${i}`);
+});
+
+it("ac1_does_not_excuse_an_earlier_hole_or_an_unconfirmed_interruption", () => {
+  const earlier = step(2, 2000);
+  const tail = step(3, 3000);
+  const wire = [...earlier, ...tail];
+  const coverage = openaiPageCoverage(wire, new Set(), [interrupted], 1000, 3064);
+  expect(coverage.faults.join(" ")).toContain("oa-s1-2");
+  expect(coverage.cut).toEqual(tail);
+  const noStop = openaiPageCoverage(wire, new Set(), [], 1000, 3064);
+  expect(noStop.cut).toEqual([]);
+  expect(noStop.faults.join(" ")).toMatch(/stored interrupted turn/);
+  const later = { ...interrupted, at: 5000 };
+  const lateStop = openaiPageCoverage(wire, new Set(), [later], 1000, 3064);
+  expect(lateStop.cut).toEqual([]);
+  expect(lateStop.faults.join(" ")).toContain("oa-s1-3");
 });
