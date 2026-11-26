@@ -74,6 +74,7 @@ pub(crate) fn read<'a>(skills: &'a [Skill], call: &Value) -> Result<&'a str, &'s
     }
     let args: Args = call["arguments"]
         .as_str()
+        .filter(|args| args.trim_start().starts_with('{'))
         .and_then(|args| serde_json::from_str(args).ok())
         .ok_or("skill requires one string argument named name")?;
     skills

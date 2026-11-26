@@ -1347,11 +1347,13 @@ fn s148_ac2_refuses_invalid_calls_and_extra_or_missing_files() {
         &[
             skill_call("unknown", json!({"name":"two"})),
             skill_call("extra", json!({"name":"one","extra":true})),
+            skill_call("array", json!(["one"])),
         ],
     );
     let req = &bodies(&k)[1];
     assert!(output_of(req, "unknown").to_string().contains("not in"));
     assert!(output_of(req, "extra").to_string().contains("name"));
+    assert!(output_of(req, "array").to_string().contains("name"));
 }
 
 #[test]
