@@ -91,3 +91,20 @@ it.each([
   fireEvent.click(screen.getByRole("button", { name: "Start session" }));
   expect(await screen.findByTitle("Workspace")).toHaveTextContent(expected);
 });
+
+it.each(["button", "Escape"])("ac1_stops_a_folder_consent_by_cancelling_the_provider_via_%s", async (control) => {
+  const host = fakeWatane({
+    "sessions.list": () => ({ ok: [{ id: "n1", title: "Notes", profile: "scratch", backend: "claude", workspace: folder }] }),
+    "sessions.attach": () => ({ ok: "st1" }),
+    "sessions.cancel": () => null,
+    "sessions.interrupt": () => ({ ok: null }),
+  });
+  render(<Console served={await served(host.w)} />);
+  await waitFor(() => expect(host.calls.some((call) => call.fn === "sessions.attach")).toBe(true));
+  host.push({ ...items([1, synced(0)], [2, turn({ state: "running", since: 1, activity: { kind: "consent", what: current } })]), stream: "st1" });
+  await screen.findByText(`Waiting for your answer in watane for ${folder}`);
+  if (control === "button") fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+  else fireEvent.keyDown(screen.getByRole("textbox", { name: "Message" }), { key: "Escape" });
+  expect(host.calls.filter(({ fn }) => fn === "sessions.cancel" || fn === "sessions.interrupt"))
+    .toEqual([{ fn: "sessions.cancel", args: { session: "n1" } }]);
+});
