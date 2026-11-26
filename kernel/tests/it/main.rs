@@ -47,6 +47,7 @@ mod rules;
 mod runners;
 mod s127_judge;
 mod s134_admission;
+mod s134_budget;
 mod s134_lifecycle;
 mod s134_limits;
 mod s134_task;

@@ -2798,6 +2798,21 @@ machine. A stage is done only within its budgets.
   250 ms, which the real run failed by timer jitter alone (review r6: worst 28.5 ms); S36 r6 set it at twice the nominal
   spacing and remeasured (the figures above). A host that exits as a zombie no one reaps (a container's init) counts as
   stopped (`/proc/<pid>/stat`).
+- **Stage F** (S134-7, 2026-11-26; `Linux 6.18.44-fc-v880`, 4 cpus, a cloud VM). State bytes
+  only, on the fake host: `cargo test s134_stage_f_state_bytes_per_step -- --ignored --nocapture`
+  in `kernel/` (`kernel/tests/it/s134_budget.rs`). The fixture of 17: 2 owners, 1 root each, 2
+  simultaneous `task` children per root, each child one step with 2 open tool jobs, the root
+  compacting every tenth step; the mean over 128 steps of each root after 10 and after 1 000 steps
+  of history (a window that spans whole 64 KiB chunk cycles, as D's 128 steps do; over 32 steps
+  the 1 000-step figure read 42% over the 10-step one by chunk phase alone). Bytes read and written:
+  per root step (its dispatch call) 145 206 at 10 and 158 240 at 1 000 (+9.0%); per child step
+  (its two jobs and its answer, which resolves the root's call) 160 577 and 176 107 (+9.7%); the
+  whole cycle (root step and both children) 466 362 and 510 454 (+9.5%); budget 4 MiB per step,
+  within 10%. The thin margin is the chunk phase of a finite window. A Stop of each root with two
+  live children (`interrupt`: all four children and both roots `interrupted`, the roots' lists
+  empty) costs 300 261 bytes for the two roots at 10 and 485 525 at 1 000. Page-level budgets
+  (item delay, Stop through the last child at the page, writer busy share) not run: no
+  `watane-dev` here.
 
 - **Stage D** (S128 r1, 2026-11-25, Linux 6.18.57 x86-64, 5 visible CPUs
   with a 4-CPU quota, load average 4.20/2.81/2.24, Watane `548b4e1b` with the
