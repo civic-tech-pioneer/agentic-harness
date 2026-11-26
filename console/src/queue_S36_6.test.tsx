@@ -35,13 +35,13 @@ describe("S36-6", () => {
     expect(box()).toHaveValue(original);
   });
 
-  it("ac3_not_running_disables_stop_and_send_but_allows_edit", async () => {
+  it("ac3_not_running_hides_stop_and_send_but_allows_edit", async () => {
     const stopped = JSON.stringify({ _meta: { watane: { type: "turn", state: { state: "unknown" } } } });
     const kernel = fakeKernel([...story, queue("take me back"), [stopped]]);
     for (let n = 0; n <= story.length + 1; n++) kernel.play(n);
     render(<App kernel={kernel} info={INFO} />);
     expect(await screen.findByText("Not running: watane restarted")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stop and send queued message 1" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Stop and send queued message 1" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit queued message 1" })).toBeEnabled();
   });
 
