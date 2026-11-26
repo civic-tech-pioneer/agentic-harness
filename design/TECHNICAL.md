@@ -70,7 +70,8 @@ in the same commit):
 - built (S40): `kernel/src/openai/` (9.5: `wire.rs` the wire history,
   repair, the body and its budget; `answer.rs` the host's https items
   classified; `run.rs` the loop's states, requests, retries, pauses, slots
-  and restart; `tools.rs` toolsets, the broker's OpenAI asks and the jobs)
+  and restart; `tools.rs` toolsets, the broker's OpenAI asks and the jobs;
+  `skill.rs` the listing and read of compiled skill files, 11)
   and `kernel/src/named.rs` (2.3 `profiles` and `check` by name, 9.1
   `access/`); `kernel/src/adapters/` (9.8); the WASM mod's exports and owner checks by
   `caller.identity()` (9.3) are in `kernel/wasm/src/lib.rs` (S32, 14)
@@ -1751,7 +1752,7 @@ expansion over described tools, so admission opens nothing.
 | Field | Child rule |
 |---|---|
 | `backend`, `model` | Both are OpenAI on the same model. |
-| `toolsets`, `skills` | `toolsets`: a subset of the root's effective toolset names; a toolset has no adopted revision in the kernel (it is a host grant by name, 6), so the child's own handle is acquired under the root's owner through the normal host checks (origin consent, the grant), which decide what it reaches. `skills`: a subset of the root's adopted skill identities with the same adopted revisions (refused on OpenAI until `skill` is built, 11). |
+| `toolsets`, `skills` | `toolsets`: a subset of the root's effective toolset names; a toolset has no adopted revision in the kernel (it is a host grant by name, 6), so the child's own handle is acquired under the root's owner through the normal host checks (origin consent, the grant), which decide what it reaches. `skills`: a subset of the root's adopted skill identities with the same adopted revisions (11). |
 | `tools`, `workspace`, `extra-workspaces` | OpenAI's existing absence rules apply. The child has no workspace handle, folder or requested folder. It inherits no folder consent or session allows. |
 | `mode`, `ask`, `pre-tool-check` | Same effective values. |
 | `allow`, `deny` | Exact-rule subset of allows and superset of denies, after compilation, compared as written (above). |
@@ -1794,8 +1795,8 @@ Apply the broker's profile rules for the function name `task` before
 starting a child. Refuse a toolset function whose name collides with an
 active built-in on `toolsets` before sending a request, on every request
 (a description kept from an earlier request is checked too). `task` is
-active in a root that names delegates; `skill` becomes active when the
-`skill` function is built (11), and until then its name is free.
+active in a root that names delegates. `skill` is active in a session with
+one or more effective skills (11). Otherwise the name is free.
 The function permits parallel calls, and is never retried as an
 idempotent job.
 
@@ -2262,7 +2263,7 @@ section, and its code).
 | `allow`, `deny` | flags | the broker; a path rule refused |
 | `mode` | flag | `manual`, `dont-ask`; others refused |
 | `ask`, `pre-tool-check` | stdio, hook | the broker |
-| `skills` | plugin folder | a `skill` function, which stage F adds; until then any `skills` is refused (`skills`, "skills wait for the skill tool on openai"), and a skill with other files too |
+| `skills` | plugin folder | the `skill` function below. Each skill must contain exactly `SKILL.md`; missing or extra files are refused on `skills[i].files` |
 | `subagents`, `subagent-depth` | flags, env | refused |
 | `delegates`, `subagent-limits` | refused | stage F, `task` and root limits (9.7) |
 | `sandbox`, `workspace` | settings, cwd | refused unless absent |
@@ -2272,6 +2273,17 @@ section, and its code).
 | `max-budget-usd` | flag | refused |
 | `ask-expiry` | refused unless 600 (seconds) or absent | an `ask` deadline of the session timer (9.3) |
 | `persist` | flag | `false` keeps the transcript in memory only; not built for OpenAI yet (S134 r1): an OpenAI session stores its transcript and wire whatever `persist` says, a root and its children alike, a known limit until a slice builds it (PLAN, Upkeep) |
+
+On ordinary requests, a session with skills advertises `skill(name: string)`
+with exactly one required field. Its description lists the effective profile
+skill names and their frontmatter descriptions (4.1). The listing treats names
+and descriptions as text, escaping `&`, `<` and `>`. The broker applies
+profile rules to the function name (9.6). A permitted call returns the exact
+`SKILL.md` from the session's compiled skill snapshot and completes a
+regular tool row. An invalid argument or a name outside that snapshot gives
+a failed tool output with its reason. Children compile from the delegate
+profile checked at admission (9.7), including only the skill names and file
+contents that match the root's snapshot.
 
 ## 12. Errors
 
@@ -2340,7 +2352,7 @@ stage E).
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5); the same binding means the session's excerpt (the tool call, its input and the 4 KiB transcript excerpt of 10) leaves the machine only to the participant's own judge | watane `host/src/agent/https_stream.rs`, `app/` judge account; `provider-checked/mod.toml`, `provider-checked/logic/src/judge.rs`, `provider-checked/logic/src/lib.rs` |
 | A mod in the middle gains no authority | host consent (8); the providers' `sessions` compare one pinned kernel identity (2.2, 10) | watane `host/` consent, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`); the checked one: `provider-checked/mod.toml`, `provider-checked/wit/world.wit`, `provider-checked/logic/src/lib.rs`, `provider-checked/BOUNDARIES.md`; `factory/publish-test-mods.sh` pins the release identity |
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/wasm/wit/deps/watane-host/host.wit` (resolved firing origin, 2.1), `kernel/src/openai/run.rs` and `kernel/src/openai/tools.rs` (the `request` and `job` streams, routed by `stream/<id>`, S40), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
-| A child cannot widen its owner's authority | root access and named profile before load, effective-profile narrowing and depth/live checks at dispatch (9.7); owner, origin and consent checks still apply | `kernel/src/delegation.rs`, `kernel/src/openai/task.rs` (dispatch, the child's start and its one resolution), `kernel/src/openai/run.rs`, `kernel/src/openai/tools.rs`, `kernel/src/named.rs`, `kernel/src/sessions.rs` (`may_work`: a child's calls checked against its root's access) |
+| A child cannot widen its owner's authority | root access and named profile before load, effective-profile narrowing and depth/live checks at dispatch (9.7); owner, origin and consent checks still apply | `kernel/src/delegation.rs`, `kernel/src/openai/task.rs` (dispatch, the child's start and its one resolution), `kernel/src/openai/skill.rs` (reads from the checked skill snapshot), `kernel/src/openai/run.rs`, `kernel/src/openai/tools.rs`, `kernel/src/named.rs`, `kernel/src/sessions.rs` (`may_work`: a child's calls checked against its root's access) |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7); the OpenAI loop's slots, retries and pauses (9.5) | `kernel/src/delegation.rs`, `kernel/src/openai/` (`run.rs`, `tools.rs`, `task.rs`), `kernel/src/quota.rs` (the slot limits) |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/src/call.rs` (a failed call commits no write, id or timer, 2.1), `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
@@ -2497,7 +2509,7 @@ of `spec/VISION.md`.
     and a `cancel` or `delete` of a live child resolves it `aborted`. A
     toolset that describes a function named `task` in a root that names
     delegates is refused on `toolsets` before any request; in a session
-    without delegates the name is free (and so is `skill` until it is built).
+    without delegates the name is free (and `skill` is free without effective skills).
     A root that stops at a limit with a live child interrupts that child.
 25. A judge that is down, slow, unreadable or without an entered key
     denies, and so does a score in the unsure band (between the page's

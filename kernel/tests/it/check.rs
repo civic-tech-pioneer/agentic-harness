@@ -49,10 +49,7 @@ fn ac5_compiled_profile_meets_grammar_and_table() {
         ["deny"]
     );
     let o = json!({"skills+": [{"name": "s", "files": {"SKILL.md": "t", "x.md": "u"}}]});
-    assert_eq!(
-        fields(r#"{}"#, o, Backend::Openai),
-        ["skills", "skills[0].files"]
-    );
+    assert_eq!(fields(r#"{}"#, o, Backend::Openai), ["skills[0].files"]);
 }
 
 #[test]

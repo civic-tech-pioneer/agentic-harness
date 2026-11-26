@@ -97,14 +97,16 @@ pub fn refuse(
                     );
                 }
             }
-            if !p.skills.is_empty() {
-                add("skills", "skills wait for the skill tool on openai");
-            }
             for (i, s) in p.skills.iter().enumerate() {
                 if s.files.keys().any(|k| k != "SKILL.md") {
                     add(
                         &format!("skills[{i}].files"),
                         "a skill with files besides SKILL.md is refused on openai",
+                    );
+                } else if !s.files.contains_key("SKILL.md") {
+                    add(
+                        &format!("skills[{i}].files"),
+                        "an OpenAI skill needs SKILL.md",
                     );
                 }
             }

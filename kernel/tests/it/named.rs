@@ -65,9 +65,7 @@ fn ac3_openai_profiles_are_checked_for_their_backend_and_model() {
         (t[0].backend.as_str(), t[0].model.as_str()),
         ("openai", "gpt-x")
     );
-    let s = k.check_named("alice", "skills", "{}");
-    assert_eq!(fields(&s), ["skills"]);
-    assert_eq!(s[0].reason, "skills wait for the skill tool on openai");
+    assert!(k.check_named("alice", "skills", "{}").is_empty());
     assert!(k.check_named("alice", "ok", "{}").is_empty());
     // the overlay is checked too
     let o = k.check_named("alice", "ok", r#"{"tools+":["Edit"]}"#);

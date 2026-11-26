@@ -32,7 +32,6 @@ fn ac7_openai_refuses_every_field_at_once() {
         "fallback-models",
         "mode",
         "subagents[0].tools",
-        "skills",
         "skills[0].files",
     ];
     want.sort();
@@ -106,11 +105,8 @@ fn ac9_model_argument_grammar_on_both_backends() {
 }
 
 #[test]
-fn s40_5_openai_skills_wait_for_the_skill_tool() {
+fn s148_ac2_single_file_skills_are_accepted_by_both_backends() {
     let doc = json!({"skills": [{"name": "s", "files": {"SKILL.md": "x"}}]});
-    assert_eq!(
-        names(doc.clone(), Backend::Openai, "gpt-x", None),
-        ["skills"]
-    );
+    assert!(names(doc.clone(), Backend::Openai, "gpt-x", None).is_empty());
     assert!(names(doc, Backend::Claude, "m", None).is_empty());
 }

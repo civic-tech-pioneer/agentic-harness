@@ -76,6 +76,9 @@ pub fn admit(
     if !c.toolsets.iter().all(|t| root.toolsets.contains(t)) {
         bad.push(("toolsets", "a toolset the calling profile lacks"));
     }
+    if !c.skills.iter().all(|s| root.skills.contains(s)) {
+        bad.push(("skills", "a skill or revision the calling profile lacks"));
+    }
     if c.mode != root.mode {
         bad.push(("mode", "not the mode of the calling profile"));
     }

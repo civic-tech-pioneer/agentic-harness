@@ -11,11 +11,11 @@ use crate::active::Slots;
 use crate::adapters::responses;
 use crate::error::KernelError;
 use crate::openai::answer::{self, backoff_ms, Failure, Sse};
-use crate::openai::task;
 use crate::openai::tools::{Call, Policy, SetupError, ToolSet, JOB};
 use crate::openai::wire::{user_message, BodyArgs, Wire, WireItem, COMPACT_THRESHOLD};
+use crate::openai::{skill, task};
 use crate::overlay::apply_overlay;
-use crate::profile::{parse_profile, SystemPrompt};
+use crate::profile::{parse_profile, Profile, SystemPrompt};
 use crate::queue::Queue;
 use crate::quota::Past;
 use crate::record::{Activity, Deadline, Record, Stop, Turn};
@@ -223,7 +223,7 @@ enum Ev {
 }
 
 /// The `tools` of a request (9.5): the toolsets' definitions as described, then `task` for a root
-/// that names delegates (9.7). A tool-free summary step sends none.
+/// that names delegates (9.7) and `skill` for a session with skills (11). A summary sends none.
 fn request_tools(rec: &Record, ls: &LoopState) -> Vec<Value> {
     if ls.summary {
         return Vec::new();
@@ -235,6 +235,9 @@ fn request_tools(rec: &Record, ls: &LoopState) -> Vec<Value> {
         .unwrap_or_default();
     if rec.parent.is_none() && !ls.policy.delegates.is_empty() {
         tools.push(task::definition(&ls.policy.delegates));
+    }
+    if !ls.policy.skills.is_empty() {
+        tools.push(skill::definition(&ls.policy.skills));
     }
     tools
 }
@@ -347,23 +350,28 @@ impl<S: State, H: Host> Kernel<S, H> {
         let json = self.profile_json(&rec.profile).unwrap_or_default();
         let base = parse_profile(&json).0;
         let compiled = apply_overlay(&base, &rec.overlay.clone().unwrap_or_default()).0;
+        Self::loop_from_profile(compiled)
+    }
+
+    pub(crate) fn loop_from_profile(compiled: Profile) -> LoopState {
         LoopState {
             limits_compiled: true,
-            model: base.model.unwrap_or_default(),
-            effort: base.effort,
+            model: compiled.model.unwrap_or_default(),
+            effort: compiled.effort,
             policy: Policy {
-                toolsets: compiled.toolsets.clone(),
-                allow: compiled.allow.clone(),
-                deny: compiled.deny.clone(),
-                mode: compiled.mode.clone(),
+                toolsets: compiled.toolsets,
+                skills: compiled.skills,
+                allow: compiled.allow,
+                deny: compiled.deny,
+                mode: compiled.mode,
                 ask_expiry: compiled.ask_expiry,
                 max_turns: compiled.max_turns,
                 max_tool_errors: compiled.max_tool_errors,
                 max_tokens: compiled.max_tokens,
-                delegates: compiled.delegates.clone(),
-                subagent_limits: compiled.subagent_limits.clone(),
+                delegates: compiled.delegates,
+                subagent_limits: compiled.subagent_limits,
                 ask: compiled.ask,
-                pre_tool_check: compiled.pre_tool_check.clone(),
+                pre_tool_check: compiled.pre_tool_check,
                 persist: compiled.persist,
             },
             instructions: match compiled.system_prompt {
