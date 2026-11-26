@@ -121,6 +121,7 @@ export function fakeKernel(script: string[][], opts?: { preload?: string[]; refu
       if (opts?.refuseAnswer === "busy") throw Object.assign(new Error("busy: the session's provider stream is not free"), { kind: "busy" });
       if (opts?.refuseAnswer === "ask") throw Object.assign(new Error("refused"), { kind: "refused", refusals: [{ field: "ask", reason: "the ask is already decided" }] });
     },
+    async cancel(session) { calls.push({ name: "cancel", args: [session] }); },
     async interrupt(session, replacement) { calls.push({ name: "interrupt", args: [session, replacement] }); },
     async unqueue(session, n) {
       calls.push({ name: "unqueue", args: [session, n] });

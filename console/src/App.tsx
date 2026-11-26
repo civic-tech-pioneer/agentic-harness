@@ -101,7 +101,15 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
       // fail closed: an answer for an ask that is not the open one of its id sends and records nothing
       return mine === drawn ? send(drawn.id, d, mine) : Promise.reject(new Error("the ask is no longer the one the card drew"));
     },
-    stop: () => { setStopping(true); void kernel.interrupt(info.id); },
+    stop: () => {
+      const turn = viewRef.current.turn;
+      setStopping(true);
+      // During launch consent, cancelling the provider stream also dismisses Watane's question.
+      const stop = turn?.state === "running" && turn.activity?.kind === "consent"
+        ? kernel.cancel(info.id)
+        : kernel.interrupt(info.id);
+      void stop.catch(() => setStopping(false));
+    },
     unqueue: (n) => kernel.unqueue(info.id, n),
     interrupt: (replacement) => {
       setStopping(true);
