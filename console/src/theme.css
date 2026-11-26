@@ -165,6 +165,7 @@ button.wa-plan-head { min-height: 32px; border: 0; background: transparent; padd
 .wa-composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .wa-composer textarea { min-width: 0; min-height: 48px; max-height: 160px; resize: none; border: 0; background: transparent; padding: 0; outline: 0; line-height: 1.5; }
 .wa-irow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wa-irow > .wa-control-reason { flex: 1 1 5rem; line-height: 1.25; }
 .wa-tag { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .wa-send { margin-left: auto; width: 36px; min-height: 36px; height: 36px; padding: 0; border: 0; border-radius: 10px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
 @media (prefers-color-scheme: dark) { .wa-send { color: #151517; } }
