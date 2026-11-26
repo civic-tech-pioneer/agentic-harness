@@ -129,7 +129,7 @@ describe("S36-3", () => {
 
     expect(f.calls.some(({ name }) => name === "interrupt")).toBe(false);
     expect(notice()).toHaveTextContent(NOTICE);
-    expect(screen.getByText("saved draft", { selector: ".wa-taken-text bdi" })).toBeVisible();
+    expect(await screen.findByText("saved draft", { selector: ".wa-taken-text bdi" })).toBeVisible();
   });
 
   it("ac4_a_new_attach_for_another_session_has_no_notice", async () => {
