@@ -1,5 +1,6 @@
 // TECHNICAL 18.3 (the table), 18.6: one component per row kind.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { errorWords } from "../errors";
 import { askArg, cardName, isAskRefusal, type Actions, type Ask, type Row, type ToolCall } from "../model";
 import { AskBar } from "./askbar";
 import { DiffView } from "./diff";
@@ -132,6 +133,7 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
         // a blur of an element that stays in the page took focus out of the card; a removed one (the pressed control) did not
         if (left.current === false && !(to && e.currentTarget.contains(to))) queueMicrotask(() => { if (t.isConnected && left.current === false) left.current = true; }); }}>
       <ToolCard stateKey={row.key} head={head} open={call.status === "failed" || pending} initial={!!ask}>{body}</ToolCard>
+      {row.child !== undefined ? <div className="wa-child"><ChildLink session={row.child} actions={actions} /></div> : null}
     </section>
   );
 }
@@ -173,12 +175,30 @@ function ToolCard({ stateKey, head, open, initial, children }: { stateKey: strin
   );
 }
 
+/** 18.3 `child`: the link that opens the child's transcript; a refusal shows the ordinary error beside it and leaves this session open. */
+function ChildLink({ session, actions }: { session: string; actions: Actions }) {
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <>
+      <button type="button" className="wa-child-link" aria-disabled={actions.openChild ? undefined : "true"}
+        onClick={() => { setErr(null); if (!actions.openChild) return; Promise.resolve().then(() => actions.openChild!(session)).catch((e) => setErr(errorWords(e))); }}>
+        Open child session <code>{session}</code>
+      </button>
+      {err ? <span className="wa-child-err" role="alert">{err}</span> : null}
+    </>
+  );
+}
+
+export function ChildRow({ row, actions }: { row: Of<"child">; actions: Actions }) {
+  return <p className="wa-child" data-call={row.toolCallId}><ChildLink session={row.session} actions={actions} /></p>;
+}
+
 export function DecisionRow({ row }: { row: Of<"decision"> }) {
   return <p className="wa-decision">{row.who} · {row.what}{row.reason ? ` — ${row.reason}` : ""}</p>;
 }
 
 export function FooterRow({ row }: { row: Of<"footer"> }) {
-  const parts = [`Completed in ${row.seconds} s`, plural(row.tools, "tool", "tools")];
+  const parts = [row.stopped !== undefined ? `Stopped at the ${row.stopped} after ${row.seconds} s` : `Completed in ${row.seconds} s`, plural(row.tools, "tool", "tools")];
   if (row.tokens !== undefined) parts.push(`${row.tokens >= 1000 ? `${Math.round(row.tokens / 1000)}k` : row.tokens} tokens`);
   return <p className="wa-footer">{parts.join(" · ")}</p>;
 }
@@ -202,6 +222,7 @@ export function RowView({ row, actions }: { row: Row; actions: Actions }) {
     case "explored": return <ExploredRow row={row} />;
     case "tool": return <ToolRow row={row} actions={actions} />;
     case "decision": return <DecisionRow row={row} />;
+    case "child": return <ChildRow row={row} actions={actions} />;
     case "footer": return <FooterRow row={row} />;
     case "unknown": return <UnknownRow row={row} />;
   }

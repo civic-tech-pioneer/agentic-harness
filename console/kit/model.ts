@@ -35,9 +35,11 @@ export type Row =
   | { kind: "agent"; key: string; i?: number; text: string; writing: boolean }
   | { kind: "thought"; key: string; i?: number; text: string; streaming: boolean; seconds?: number }
   | { kind: "explored"; key: string; reads: number; searches: number; calls: ToolCall[] }
-  | { kind: "tool"; key: string; i?: number; call: ToolCall; ask?: Ask; checking?: true; ended?: true }
+  | { kind: "tool"; key: string; i?: number; call: ToolCall; ask?: Ask; checking?: true; ended?: true; child?: string }
+  /** 9.4 `child` entry whose call has no tool row (or whose row already links another child): shown on its own, never dropped. */
+  | { kind: "child"; key: string; i?: number; session: string; toolCallId: string }
   | { kind: "decision"; key: string; i?: number; who: string; what: string; reason?: string }
-  | { kind: "footer"; key: string; seconds: number; tools: number; tokens?: number }
+  | { kind: "footer"; key: string; seconds: number; tools: number; tokens?: number; stopped?: string }
   | { kind: "unknown"; key: string; i?: number; raw: unknown };
 export interface PlanItem { content: string; status: "pending"|"in_progress"|"completed" }
 /** The reducer's own bookkeeping; a reader of the view ignores it. */
@@ -74,6 +76,8 @@ export interface Actions {
   /** 2.3 `interrupt` with the replacement input that starts the next turn (18.6 "Queue": Stop and send). */
   interrupt?(replacement: string): Promise<void>;
   takeBack(allowId: string): void;
+  /** 18.3 `child`: opens the child's session as picking it in the sidebar does; a refusal (`unknown-session`) rejects and the open session stays. */
+  openChild?(session: string): Promise<void>;
 }
 /** 2.3: did the kernel refuse an `answer` because the ask is already decided (a refusal whose field is `ask`, case 9)? */
 export function isAskRefusal(e: unknown): boolean {

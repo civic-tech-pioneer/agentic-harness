@@ -8,7 +8,7 @@ import { Dock } from "./Dock";
 let sent = 0;
 const LOADING: SessionView = { ...emptyView, loading: true };
 
-export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[]; onNew?: () => void }) {
+export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel; info: SessionInfo; sessions?: SidebarSession[]; onNew?: () => void; onOpen?: (id: string) => Promise<void> }) {
   // the view is tagged with its subscription (a token per run of the openSession effect), and with the session and kernel it was opened on
   const [held, setHeld] = useState<{ tok: object | null; id: string; kernel: Kernel; view: SessionView }>({ tok: null, id: info.id, kernel, view: LOADING });
   const [sub, setSub] = useState<object | null>(null); // the current subscription's token
@@ -108,7 +108,8 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
       return kernel.interrupt(info.id, replacement).catch((e) => { setStopping(false); throw e; });
     },
     takeBack: (id) => void kernel.takeBack(info.id, id),
-  }), [kernel, info.id, answeredAsks, off]);
+    ...(onOpen ? { openChild: onOpen } : {}),
+  }), [kernel, info.id, answeredAsks, off, onOpen]);
 
   const shown = useMemo(() => live.size && view.openAsks.some((id) => live.has(id)) ? { ...view, openAsks: view.openAsks.filter((id) => !live.has(id)) } : view, [view, live]);
 
@@ -159,7 +160,7 @@ export function App({ kernel, info, sessions, onNew }: { kernel: Kernel; info: S
 
   return (
     <div className="wa-app">
-      <Sidebar info={named} turn={view.turn?.state} needs={shown.openAsks.length > 0} sessions={sessions} onNew={onNew} />
+      <Sidebar info={named} turn={view.turn?.state} needs={shown.openAsks.length > 0} sessions={sessions} onNew={onNew} onOpen={onOpen} />
       <main className="wa-main">
         <Header info={named} view={view} actions={actions} />
         <ThreadProvider view={view} actions={actions}>

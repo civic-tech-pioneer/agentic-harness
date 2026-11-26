@@ -209,7 +209,7 @@ function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra
   if (state.state !== "idle" || !prev || prev.state === "idle") return;
   const key = `f:${v.rows[v.rows.length - 1]?.key ?? ""}`;
   if (hasKey(key)) return;
-  push(v, { kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}) });
+  push(v, { kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}), ...(state.stop.kind === "stopped" ? { stopped: state.stop.limit } : {}) });
 }
 
 /** Folds the thought that is streaming, if any: its seconds run from its first to its last chunk's `at` (9.4 `message` row), as its entry's do. */
@@ -333,7 +333,7 @@ export function reduce(view: SessionView, message: string): SessionView {
 
   if (m.t === "chunk" || m.t === "call" || m.t === "plan") {
     if (!(m.t === "chunk" && m.part === "thought")) fold(v, x);
-  } else if (m.t !== "synced" && m.t !== "queue" && m.t !== "usage" && m.t !== "turn") fold(v, x);
+  } else if (m.t !== "synced" && m.t !== "queue" && m.t !== "usage" && m.t !== "usage-clear" && m.t !== "turn") fold(v, x);
 
   switch (m.t) {
     case "synced":
@@ -348,6 +348,15 @@ export function reduce(view: SessionView, message: string): SessionView {
       break;
     case "queue": v.queue = m.inputs; break;
     case "usage": v.usage = { used: m.used, window: m.window, ...(m.compactAt !== undefined ? { compactAt: m.compactAt } : {}) }; break;
+    case "usage-clear": v.usage = null; break;
+    case "child": {
+      const f = find(v, m.toolCallId);
+      const at = f ? toToolRow(v, m.toolCallId) : -1;
+      const r = at >= 0 ? v.rows[at] : undefined;
+      if (r?.kind === "tool" && r.child === undefined) put(v, at, { ...r, child: m.session });
+      else push(v, { kind: "child", key: `e${m.i}`, i: m.i, session: m.session, toolCallId: m.toolCallId });
+      break;
+    }
     case "turn": setTurn(v, x, m.state, m.extra); break;
     case "compaction": break;
     case "unreadable":

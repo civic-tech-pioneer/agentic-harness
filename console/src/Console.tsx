@@ -116,7 +116,14 @@ export function Console({ served }: { served: Served }) {
     } catch { /* the session is started: the sidebar catches up at the next list */ }
     setInfo({ id, title, profile: profile.name, provider: claude ? "Claude Code (unchecked)" : backendName(profile.backend), workspace });
   };
+  /** 18.3 `child`, the sidebar: the session is read once first (2.3 `read`), so a refusal (`unknown-session`) rejects with the open session left as it is. */
+  const open = async (id: string) => {
+    await kernel.read(id, 0, 1);
+    let next: SessionInfo | undefined;
+    try { const l = await served.list(); setSessions(l.sessions); next = l.info(id); } catch { /* the session is read: it opens under its id */ }
+    setInfo(next ?? { id, title: "", profile: "", provider: "", workspace: "" });
+  };
   return info
-    ? <App kernel={kernel} info={info} sessions={sessions} onNew={() => setInfo(null)} />
+    ? <App kernel={kernel} info={info} sessions={sessions} onNew={() => setInfo(null)} onOpen={open} />
     : <NewSession kernel={kernel} sessions={sessions} onNew={() => setInfo(null)} start={start} />;
 }
