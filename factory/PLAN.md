@@ -35,7 +35,7 @@ S131 (upkeep, answer r2); watane S133 (design, Codex build); S134 (stage F build
 Deputy Paper, the main line; spec-check 35b3abe: 0 severe, 2 medium (term clashes: `subagent-limits` names OpenAI
 children while FUNCTIONAL keeps 'subagent' for Claude; `max-turns` counts OpenAI model steps, not turns), 3 unsure
 (the tool-error streak counts denials; `usage-unavailable` absent from AGT-F-36 and case 23; Claude's weaker limits are
-S132's Door C, already out for veto): the build team settles the first four with spec-change. Size: a whole stage, likely over 1,500 lines.)
+S132's Door C, already out for veto): the build team settles the first four with spec-change; routine `trig_01Pey52A9vKhTvnKCAC6SgG5`, fires 08:36 UTC. Size: a whole stage, likely over 1,500 lines.)
 Why: stage F of TECHNICAL 17, on S132's design (9.7, merged at 95ec3bc7). The factory as mods needs an agent that hands
 named work to other agents and a turn that cannot run away.
 Outcomes (user-sim on the real programs, scripted Responses and dev's fake `claude`, no real provider):
