@@ -121,7 +121,8 @@ function preview(text: string): string {
 export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; needsHidden?: boolean; behind?: boolean; onBehind?: () => void; status: ReactNode;
   session?: { model?: string; mode?: string }; stopping?: boolean; sessionId?: string; replaced?: boolean; onUseHere?: () => void }) {
   const { view } = props;
-  const cannotInterrupt = view.turn?.state === "unknown" || view.turn?.state === "resume-lost";
+  const notRunning = view.turn?.state === "unknown";
+  const cannotInterrupt = notRunning || view.turn?.state === "resume-lost";
   const [opened, setOpened] = useState<boolean | null>(null);
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
   const { actions } = props;
@@ -215,7 +216,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
               <span className="wa-queue-ctl">
                 <button type="button" className="wa-chip" aria-label={`Edit queued message ${k + 1}`} disabled={off} onClick={() => edit(q)}>Edit</button>
                 <button type="button" className="wa-chip" aria-label={`Remove queued message ${k + 1}`} disabled={off} onClick={() => remove(q)}>Remove</button>
-                <button type="button" className="wa-chip" aria-label={`Stop and send queued message ${k + 1}`} disabled={off || cannotInterrupt} onClick={() => stopAndSend(q)}>Stop and send</button>
+                {!notRunning && <button type="button" className="wa-chip" aria-label={`Stop and send queued message ${k + 1}`} disabled={off || cannotInterrupt} onClick={() => stopAndSend(q)}>Stop and send</button>}
               </span>
             </li>
           ))}</ul>
