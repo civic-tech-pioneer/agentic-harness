@@ -33,6 +33,7 @@ describe("S36-6", () => {
     expect(items()[0]?.length).toBeLessThan(300);
     await userEvent.setup().click(screen.getByRole("button", { name: "Edit queued message 1" }));
     expect(box()).toHaveValue(original);
+    expect(lines()[0]?.querySelector("bdi")).toHaveTextContent(`${"x".repeat(240)}…`);
   });
 
   it("ac3_not_running_hides_stop_and_send_but_allows_edit", async () => {
@@ -75,10 +76,13 @@ describe("S36-6", () => {
   it("ac3_remove_shows_undo_for_6_s_and_undo_says_the_input_again", async () => {
     const { calls } = await open();
     const u = userEvent.setup();
-    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[1]!);
+    const remove = screen.getByRole("button", { name: "Remove from queue", description: "second one" });
+    expect(screen.getByRole("button", { name: "Remove from queue", description: "first one" })).toBeEnabled();
+    await u.click(remove);
     await settle();
     expect(calls("unqueue").map((c) => c.args)).toEqual([["s1", 8]]);
     expect(lines()[0]).toHaveTextContent("Removed “second one” from the queue");
+    expect(lines()[0]?.querySelector("bdi")).toHaveTextContent("second one");
     await u.click(screen.getByRole("button", { name: "Undo" }));
     expect(calls("say").map((c) => c.args[2])).toEqual(["second one"]);
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();

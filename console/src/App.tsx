@@ -1,5 +1,5 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, isFolderConsent, MEASURE, openAsk, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, titleOf, type SessionInfo } from "./Header";
@@ -89,8 +89,10 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     });
   };
   const off = replaced;
+  const offReasonId = useId();
   const actions: Actions = useMemo(() => ({
     off,
+    offReasonId,
     answeredAsks,
     say: (text) => kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: () => Promise.reject(new Error("an answer goes out only with the ask its card drew")), // fail closed: no drawn ask, no identity check
@@ -118,7 +120,7 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     },
     takeBack: (id) => void kernel.takeBack(info.id, id),
     ...(onOpen ? { openChild: onOpen } : {}),
-  }), [kernel, info.id, answeredAsks, off, onOpen]);
+  }), [kernel, info.id, answeredAsks, off, offReasonId, onOpen]);
 
   const shown = useMemo(() => live.size && view.openAsks.some((id) => live.has(id)) ? { ...view, openAsks: view.openAsks.filter((id) => !live.has(id)) } : view, [view, live]);
 

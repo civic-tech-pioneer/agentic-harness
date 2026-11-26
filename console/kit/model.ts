@@ -68,6 +68,8 @@ export const SESSION_IN_ANOTHER_TAB = "This session is open in another tab.";
 export interface Actions {
   /** The view's stream went to another tab: asks, Send and Stop are off (18.6 "Another tab"). */
   off?: boolean;
+  /** The visible reason shared by disabled controls in the app. */
+  offReasonId?: string;
   /** The asks this console answered that have no decision entry yet (9.4 rule 4), each with the open ask object it was answered for:
    * a card is answered only when its own row's ask is that object (the dock's count reads the same set). */
   answeredAsks?: ReadonlyMap<string, Ask>;

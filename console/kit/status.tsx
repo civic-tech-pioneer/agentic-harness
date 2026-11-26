@@ -99,17 +99,18 @@ export function StatusLine(props: { view: SessionView; now: number; stopping: bo
     : spec(view, now, props.answered ?? 0, props.actions);
   const disabledReason = !s.act ? undefined : !s.act.run ? "This console cannot do this yet."
     : s.act.off ? SESSION_IN_ANOTHER_TAB : undefined;
+  const sharedReasonId = s.act?.run && s.act.off ? props.actions.offReasonId : undefined;
   return (
     <div className="wa-status" data-state={view.turn?.state ?? "none"}>
       <span className="wa-shape" data-shape={s.shape} role="img" aria-label={NAMES[s.shape]} />
       <span role="status" className="wa-status-word">{s.word}</span>
       {s.clock ? <span className="wa-status-clock" aria-hidden="true">· {s.clock}</span> : null}
       {s.act ? (
-        <button type="button" onClick={s.act.run} disabled={!!disabledReason} aria-describedby={disabledReason ? reasonId : undefined}>
+        <button type="button" onClick={s.act.run} disabled={!!disabledReason} aria-describedby={disabledReason ? sharedReasonId ?? reasonId : undefined}>
           {s.act.label}{s.act.key ? <> <kbd>{s.act.key}</kbd></> : null}
         </button>
       ) : null}
-      {disabledReason ? <span id={reasonId}>{disabledReason}</span> : null}
+      {disabledReason && !sharedReasonId ? <span id={reasonId}>{disabledReason}</span> : null}
       {s.esc && !props.actions.off ? <span className="wa-status-esc"><kbd>Esc</kbd> to stop</span> : null}
     </div>
   );
