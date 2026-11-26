@@ -4,6 +4,19 @@ A record (`AGENTS.md`, "Contracts and records"): why the contracts changed, newe
 project has not run `spec-adopt` yet, so its config has only the older `spec = [...]` list and no
 `spec-lint`; entries cite sections, not ids.
 
+## 2026-11-26: S134 r1, answers to the Codex review (build team, Claude)
+
+Who: the S134 build team, answering review r1 (PR #60). No `must`, vision statement or security
+check weakened; each change narrows or states a gap.
+- TECHNICAL 9.7, the collision rule: only an *active* built-in collides, on every request
+  (`task` in a root that names delegates; `skill` once built). Was "`task` or `skill`" (F1.7).
+- TECHNICAL 9.7, the `toolsets` row: names only; a toolset has no adopted revision in the
+  kernel, the host's checks decide what the child's own handle reaches (F1.4, a clarification).
+- TECHNICAL 11 `persist`, and the 9.7 `persist` row: OpenAI `persist: false` is not built for
+  any OpenAI session, a known limit (F1.5, found by the review; Upkeep).
+- TECHNICAL 16 case 24 and the Budget record: a root's limit stop interrupts its live child;
+  p95 per step; stage F not done until the page-level budgets are measured (F1.1, F1.9).
+
 ## 2026-11-26: S134, stage F terms and S132's polish (build team, Claude)
 
 Who: the S134 build team, settling the deputy's spec-check findings on the sketch (PLAN, S134:
