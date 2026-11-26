@@ -85,8 +85,6 @@ export function refused(session: string, id: string, error?: string) {
   out.delete(id);
   write(session, kept(session).map((t) => (t.id === id ? { ...t, error } : t)));
 }
-/** Its call ended with nothing to record (a refused send of the composer): the item is free again. */
-export function release(id: string) { if (out.delete(id)) listeners.forEach((f) => f()); }
 /** Leaves the list: its `say` or `interrupt` was accepted, or she discarded it. The composer's link to it goes with it. */
 export function drop(session: string, id: string) {
   out.delete(id);

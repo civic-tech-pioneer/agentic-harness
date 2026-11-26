@@ -115,6 +115,23 @@ describe("S36-3", () => {
     expect(answers).toHaveLength(1);
     expect(answers[0]!.args).toEqual([INFO.id, expect.any(String), "a8", JSON.stringify({ allow: true })]);
   });
+  it("s145_keeps_a_taken_input_if_the_tab_is_replaced_during_unqueue", async () => {
+    const { f, ends, extra } = await open();
+    extra.push([JSON.stringify({ _meta: { watane: { type: "queue", inputs: [{ n: 1, input: "saved draft" }] } } })]);
+    act(() => f.play(extra.length - 1));
+    let finishTake!: () => void;
+    f.unqueue = () => new Promise<void>((resolve) => { finishTake = resolve; });
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Stop and send queued message 1" }));
+    await act(async () => {
+      ends[0]!("replaced");
+      finishTake();
+    });
+
+    expect(f.calls.some(({ name }) => name === "interrupt")).toBe(false);
+    expect(notice()).toHaveTextContent(NOTICE);
+    expect(screen.getByText("saved draft", { selector: ".wa-taken-text bdi" })).toBeVisible();
+  });
+
   it("ac4_a_new_attach_for_another_session_has_no_notice", async () => {
     const { ends, f, attaches, rerender } = await open();
     act(() => ends[0]!("replaced"));
