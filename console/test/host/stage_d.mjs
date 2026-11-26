@@ -291,6 +291,7 @@ async function mixedLoad(browser) {
             interruptedAt: idle?.at,
             lastStoredTurn: coverage.interrupted,
             cutWrites: coverage.cut,
+            faults: coverage.faults,
             streams: [...new Set(captured.items.map(({ stream }) => stream))],
             measuredStream: captured.stream,
             lastPageTools: items.filter(({ marker }) => marker?.startsWith("call_")).slice(-8),
