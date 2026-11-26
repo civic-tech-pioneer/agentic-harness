@@ -39,9 +39,11 @@ function askSubject(view: SessionView): string {
   return "";
 }
 
-/** Host 19.7 includes the provider identity. Older records carry just the absolute folder. */
+/** Host 19.7 includes the provider identity. Older records carry just the absolute folder. A control character in it shows
+ * as its picture (U+2400 to U+2421), so a newline or a tab reads as one and is never collapsed to a space (S140). */
 function workspaceFolder(what: string): string | undefined {
-  return what.match(/^workspace:(?:[^:/][^:]*:)?(\/.*)$/s)?.[1];
+  return what.match(/^workspace:(?:[^:/][^:]*:)?(\/.*)$/s)?.[1]
+    ?.replace(/[\u0000-\u001f\u007f]/g, (c) => String.fromCharCode(c === "\u007f" ? 0x2421 : 0x2400 + c.charCodeAt(0)));
 }
 
 /** 18.5: the cause of a failed turn in words: `no-binary` is Claude Code missing; another cause is its own text; none, the error's name. */

@@ -188,6 +188,24 @@ describe("other rows", () => {
     expect(screen.getAllByText("An event this console does not know")).toHaveLength(1);
   });
 
+  it("s140_p1_2_stop_acknowledgement_does_not_close_a_streaming_thought", () => {
+    const ack = { type: "control_response", response: { subtype: "success", request_id: "interrupt-id" } };
+    const view = feed(
+      upd({ sessionUpdate: "agent_thought_chunk", content: text("pondering") }, undefined, 1000),
+      entry(2, "unknown", { raw: ack }),
+      upd({ sessionUpdate: "agent_thought_chunk", content: text(" more") }, undefined, 2000),
+    );
+    expect(view.rows).toEqual([expect.objectContaining({ kind: "thought", text: "pondering more", streaming: true })]);
+    expect(view.lastIndex).toBe(2);
+    // an event the console does not know is a row of its own: the thought before it closes
+    const unknown = feed(
+      upd({ sessionUpdate: "agent_thought_chunk", content: text("pondering") }, undefined, 1000),
+      entry(2, "unknown", { raw: { ...ack, response: { ...ack.response, subtype: "error" } } }),
+    );
+    expect(unknown.rows.map((r) => r.kind)).toEqual(["thought", "unknown"]);
+    expect(unknown.rows[0]).toMatchObject({ streaming: false });
+  });
+
   it("ac7_footer_line", () => {
     show(feed(w({ type: "turn", state: { state: "running", since: 1 } }),
       w({ type: "turn", state: { state: "idle", stop: { kind: "completed" }, seconds: 9, tools: 2, tokens: 18000 } })));
@@ -293,6 +311,14 @@ describe("StatusLine", () => {
     status({ state: "running", since: T, activity: { kind: "compacting" } });
     expect(word()).toBe("Making room");
     expect(shape()).toBe("dot");
+  });
+
+  it("s140_p1_7_a_control_character_in_the_folder_is_shown_not_collapsed", () => {
+    status({ state: "running", since: T, activity: { kind: "consent", what: "workspace:local/claude-code:/home/alice/a\nb\tc" } });
+    expect(word()).toBe("Waiting for your answer in watane for /home/alice/a\u240ab\u2409c");
+    cleanup();
+    status({ state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "consent-refused(workspace:/home/alice/a\nb)" } });
+    expect(word()).toContain("Workspace access was refused for /home/alice/a\u240ab");
   });
 
   it("ac9_consent_diamond_opens_the_question", async () => {

@@ -11,11 +11,13 @@ const what = `workspace:${folder}`;
 const tick = () => act(async () => { await new Promise((r) => setTimeout(r, 60)); }); // the view lists the kernel's profiles first (S40 r1)
 const turn = (state: object) => JSON.stringify({ _meta: { watane: { type: "turn", state } } });
 
+// the consent wait in host 19.7's form (with the provider identity) and in the older one (the folder alone, S140 P1.3)
+const current = `workspace:local/claude-code:${folder}`;
 it.each([
-  ["gone", "Connection to Claude Code ended"],
-  [`consent-refused(workspace:local/claude-code:${folder})`, `Workspace access was refused for ${folder}`],
-  [`consent-refused(${what})`, `Workspace access was refused for ${folder}`],
-])("ac1_ac2_shows_the_folder_wait_and_outcome_%s", async (cause, words) => {
+  ["gone", "Connection to Claude Code ended", current],
+  [`consent-refused(${current})`, `Workspace access was refused for ${folder}`, current],
+  [`consent-refused(${what})`, `Workspace access was refused for ${folder}`, what],
+])("ac1_ac2_shows_the_folder_wait_and_outcome_%s", async (cause, words, waiting) => {
   let started = false;
   const row = { id: "n1", title: "Notes session", profile: "scratch", backend: "claude", workspace: folder, updated: 1 };
   const host = fakeWatane({
@@ -36,7 +38,7 @@ it.each([
   });
   expect(screen.getByTitle("Workspace")).toHaveTextContent(folder);
   const push = (...messages: [number, string][]) => act(() => host.push({ ...items(...messages), stream: "st1" }));
-  push([1, synced(0)], [2, turn({ state: "running", since: 1, activity: { kind: "consent", what: `workspace:local/claude-code:${folder}` } })]);
+  push([1, synced(0)], [2, turn({ state: "running", since: 1, activity: { kind: "consent", what: waiting } })]);
   expect(await screen.findByText(`Waiting for your answer in watane for ${folder}`)).toBeInTheDocument();
   push([3, turn({ state: "running", since: 1 })]);
   await waitFor(() => expect(screen.queryByText(`Waiting for your answer in watane for ${folder}`)).toBeNull());
