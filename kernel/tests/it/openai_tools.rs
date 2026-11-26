@@ -361,6 +361,26 @@ fn s138_ac3_a_foreign_ask_expiry_never_reaches_the_tool_or_model() {
 }
 
 #[test]
+fn s138_a_page_owned_toolset_retries_its_first_describe() {
+    let mut k = kernel();
+    k.state.put("access/page", br#"["o"]"#.to_vec()).unwrap();
+    k.host.tools_describe_error = Some("unknown-handle".into());
+    let id = k.start("page", "page", "o", "{}", IN).unwrap().value;
+    assert!(starts(&k).is_empty());
+    k.arm_page_origin();
+    k.host.firing_origin = Some("published/kernel".into());
+    k.timer("page-origin");
+
+    k.host.tools_describe_error = None;
+    k.host.now += 1_000;
+    k.timer(&format!("s/{id}"));
+
+    assert_eq!(starts(&k).len(), 1);
+    assert_eq!(body_of(&starts(&k)[0])["tools"][0]["name"], "notes_a");
+    assert_eq!(k.host.next_handle, 1);
+}
+
+#[test]
 fn ac1_waits_for_a_just_opened_toolset_to_commit_before_describing_it() {
     let mut k = kernel();
     k.host.tools_describe_error = Some("unknown-handle".into());

@@ -39,6 +39,7 @@ fn next_due(deadlines: &[Deadline], now: u64) -> Option<u64> {
 
 /// The kernel's own timer for the restart pass (R2).
 const RESTART: &str = "restart";
+const PAGE_ORIGIN: &str = "page-origin";
 /// The deadline of the 10-minute provider release (9.3, 9.5), and its delay.
 const IDLE: &str = "idle";
 const IDLE_MS: u64 = 600_000;
@@ -4204,14 +4205,38 @@ impl<S: State, H: Host> Kernel<S, H> {
         None
     }
 
-    pub(crate) fn timer_carries_owner(&self, owner: &str) -> bool {
-        self.timer_origin
-            .as_ref()
-            .is_none_or(|origin| origin.as_deref() == Some(owner))
+    /// Called after an authenticated page call succeeds. Only that call can arm this timer.
+    pub fn arm_page_origin(&mut self) {
+        if self.state.get(PAGE_ORIGIN).is_none() {
+            self.host.timer_after(PAGE_ORIGIN, 0);
+        }
+    }
+
+    pub(crate) fn timer_carries_owner(&mut self, owner: &str) -> bool {
+        let Some(origin) = &self.timer_origin else {
+            return true;
+        };
+        if owner == "page" {
+            return origin.as_ref().is_some_and(|origin| {
+                self.state.get(PAGE_ORIGIN).as_deref() == Some(origin.as_bytes())
+            });
+        }
+        origin.as_deref() == Some(owner)
     }
 
     /// `timer-sink.fired`: `restart` is R2, `s/<id>` a session's deadlines (9.3).
     pub fn timer(&mut self, id: &str) -> Called<()> {
+        if id == PAGE_ORIGIN {
+            // A page chain resolves to this installation. Even the host's fallback resolves
+            // to this same installation, the owner of the reserved timer.
+            if let Some(identity) = self.host.timer_firing_origin() {
+                let _ = self.state.put(PAGE_ORIGIN, identity.into_bytes());
+            }
+            return Called {
+                value: (),
+                pushes: Vec::new(),
+            };
+        }
         let mut work = Work::default();
         if let Ok(mut slots) = self.begin() {
             if id == RESTART {

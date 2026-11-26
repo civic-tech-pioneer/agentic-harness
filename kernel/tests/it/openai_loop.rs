@@ -439,6 +439,8 @@ fn s138_ac2_a_firing_without_origin_stops_the_pause_locally() {
 fn s138_ac2_a_disabled_owners_firing_falls_back_to_the_kernel_and_stops() {
     let mut k = kernel();
     k.host.firing_origin = Some("local/agent".into());
+    k.arm_page_origin();
+    k.timer("page-origin");
     assert_foreign_pause(&mut k);
 }
 
@@ -1191,6 +1193,7 @@ fn regress_s138_a_page_owned_pause_resumes_at_the_reset() {
     let mut k = kernel();
     k.state.put("access/page", br#"["o"]"#.to_vec()).unwrap();
     let id = started(&mut k, "page", "page");
+    k.arm_page_origin();
     k.host.firing_origin = Some("published/kernel".into());
     k.timer("page-origin");
     let stream = stream_of(&mut k, &id);

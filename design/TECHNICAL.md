@@ -174,7 +174,7 @@ identity: func() -> string;   // <publisher>/<slug>, local/<slug>, page, or agen
 >
 > In the Harness (host TECHNICAL 2.6), `timers.firing-origin` returns `none`. A `Fakes` entry under `watane:host/timers` overrides it. Previews use the real host and need no fake.
 >
-> The kernel binds a timer id to the expected session owner in its own state when it arms the timer. Before a timed resume or restart retry starts owner-scoped work, the kernel compares `timers.firing-origin()` with that expected owner. If the value is `none` or differs, it performs only local cleanup or waits for an ordinary call carrying the owner's authority. It makes no model request, toolset operation or consent request on that path. A durable timer armed in the intended owner's chain can drive owner-scoped restart recovery through `fired`. An idempotent job eligible for recovery uses its original key and the usual owner, consent and tool checks. Other jobs keep their existing abort rule. The host supplies no startup callback. A restart pass under another owner can do local housekeeping and cannot use a stored identity to schedule or perform work under the session owner's authority. Work without an armed timer waits for an ordinary call carrying the owner's authority.
+> The kernel binds a timer id to the expected session owner in its own state when it arms the timer. Before a timed resume or restart retry starts owner-scoped work, the kernel compares `timers.firing-origin()` with that owner's expected origin client (8, 9.5). For owner `page` it compares the kernel's installed identity as reported by the host. If the value is `none` or differs, it performs only local cleanup or waits for an ordinary call carrying the owner's authority. It makes no model request, toolset operation or consent request on that path. A durable timer armed in the intended owner's chain can drive owner-scoped restart recovery through `fired`. An idempotent job eligible for recovery uses its original key and the usual owner, consent and tool checks. Other jobs keep their existing abort rule. The host supplies no startup callback. A restart pass under another owner can do local housekeeping and cannot use a stored identity to schedule or perform work under the session owner's authority. Work without an armed timer waits for an ordinary call carrying the owner's authority.
 
 **G1.** `host-info.generation()` is the host's generation, its start number:
 raised once each time the host starts, kept in host state, the same for every
@@ -1414,12 +1414,18 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   `session/<id>.owner` binds `s/<id>` when the kernel arms it. The expected
   owner is the authenticated immediate `caller.identity()` that owns the
   session (2.3), or the root owner's identity for a delegated child. The
-  kernel uses this identity for comparison only. A front mod can make the
-  host's resolved origin differ from that identity. The kernel's own identity
-  is never substituted for the session's owner, including for a page-owned
-  session, whose expected identity is `page`.
+  expected origin is this identity for a non-page owner. The kernel's
+  identity is never substituted for a non-page owner. A front mod can make
+  the host's resolved origin differ from that identity. For owner `page`,
+  the expected origin is the kernel's installed identity, the page's origin
+  client (8). A successful authenticated page call arms the reserved
+  zero-delay `page-origin` timer until the identity has been learned.
+  Only a page chain may arm that ID. Its firing records the host's resolved
+  identity in the mod's private state, which is scoped to that installation's
+  identity. Page-chain resolution and fallback both identify the timer's
+  owning mod. Until the host supplies that value, page firings fail closed.
   Before handling OpenAI deadlines or rearming an early OpenAI firing, the
-  resolved origin must equal the bound owner. Otherwise the kernel stops the
+  resolved origin must equal the expected origin client. Otherwise the kernel stops the
   loop, clears the deadlines, denies open asks with reason `timer-origin`,
   and records an `idle {failed}` turn explaining that the firing lacked the
   owner's authority. The queue and transcript remain available to the owner.
