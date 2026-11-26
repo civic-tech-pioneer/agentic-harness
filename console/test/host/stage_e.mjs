@@ -87,7 +87,7 @@ try {
     betweenChecks, check("unsafe"),
     betweenChecks, check("unsure"),
     betweenChecks, check("breaker"),
-    { do: "expect-interrupt" },
+    { do: "expect-interrupt" }, { do: "result", subtype: "error_during_execution" }, { do: "idle" },
   ] }));
 
   const page = await browser.newPage({ viewport: { width: 1100, height: 1000 } });
@@ -109,6 +109,8 @@ try {
     await page.locator(".wa-transcript").getByText(words).first().waitFor({ timeout: 15_000 });
   }
   await page.locator(".wa-decision").filter({ hasText: "Stopped by your judge's breaker" }).waitFor({ timeout: 15_000 });
+  // The fake emits idle only after receiving the provider's interrupt.
+  await page.locator('.wa-status[data-state="idle"]').waitFor({ timeout: 15_000 });
   const result = await page.evaluate(async () => {
     const { ok: sessions } = await window.watane.call("sessions.list", { after: null, max: 10 });
     const { ok: transcript } = await window.watane.call("sessions.read", { session: sessions[0].id, after: 0, before: null, max: 100 });
