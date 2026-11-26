@@ -32,7 +32,7 @@ S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane
 ## Sketched
 ### S142 (upkeep) the console's Stop and question fixes, stage E on a real host, and stage D's lost item, console/ only
 (sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder codex by rule 3 (last two S141 codex, S140 claude: Claude
-built one of them, so Codex); reviewer claude; spec-check not run: no spec text changes (below). Upkeep is exempt from the size rule.)
+built one of them, so Codex); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b08428a-6b20-83eb-aadb-b832d92ba039, 14:33 UTC; spec-check not run: no spec text changes (below). Upkeep is exempt from the size rule.)
 Why: Upkeep's console items, while S138 (approved, held on a watane release) keeps kernel/ and design/.
 Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
 (1) *guard* Stop before `initialized`, while a folder consent waits, cancels the stream instead of sending `interrupt`,
