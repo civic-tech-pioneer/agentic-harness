@@ -24,9 +24,13 @@
 //! - `interrupt` and the breaker drop every queued input and the one being judged, but keep the
 //!   `launch` entry (as `say: false`) while its verdict is out: no input passes before it (case 50).
 //! - After the breaker fires its run and window start again from zero.
-//! - A verdict item that cannot be pushed because the own stream is full defers the item call
-//!   (10.7); in a timer call it is retried 1 s later; in `ended` and `say` calls, which cannot
-//!   defer, it is dropped (the denial itself still goes out).
+//! - An item (a verdict, the breaker's reason, a `checking`) that meets a full own stream defers
+//!   an item call (10.7); in a call that cannot defer (a timer, `ended`, `say`) the action goes
+//!   out at once (a deadline is final when it fires) and the item waits in the session's outbox,
+//!   sent first at the next `ready`; nothing is forwarded past it (S127 r1 F1.1, F1.2).
+//! - A `say` the host refuses ends the session (`claude` cancelled, the own stream closed
+//!   `failed("say: <case>")`), so the kernel's turn ends with the cause; the excerpt takes an
+//!   input only once the host accepted it (S127 r1 F1.4).
 wit_bindgen::generate!({ path: "../wit", world: "claude-code-checked", generate_all });
 
 mod judge;
@@ -185,6 +189,18 @@ fn input_text(input: &str) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
+fn session_error_case(e: &SessionError) -> &'static str {
+    match e {
+        SessionError::NotYours => "not-yours",
+        SessionError::UnknownStream => "unknown-stream",
+        SessionError::SlashCommand => "slash-command",
+        SessionError::UnknownAsk => "unknown-ask",
+        SessionError::NotAllowedHere => "not-allowed-here",
+        SessionError::NotOwner => "not-owner",
+        SessionError::NotDirect => "not-direct",
+    }
+}
+
 fn stream_error_case(e: &StreamError) -> &'static str {
     match e {
         StreamError::NotYours => "not-yours",
@@ -297,6 +313,9 @@ struct Session {
     /// (its end): the judge's excerpt of the session (10 "Judge call", D1.2).
     said: String,
     agent: String,
+    /// Items for the own stream that met it full in a call that cannot defer, in order: sent
+    /// first at the next `ready`, and nothing is pushed past them (S127 r1 F1.1, F1.2).
+    outbox: Vec<String>,
     // Not stored: what the current call may do when its own stream is full.
     /// A full own stream is an `Err(Full)`: the caller defers or retries and discards the session.
     strict: bool,
@@ -354,6 +373,7 @@ impl Session {
             window: Vec::new(),
             said: String::new(),
             agent: String::new(),
+            outbox: Vec::new(),
             strict: false,
             rollback: false,
             dead: false,
@@ -414,6 +434,15 @@ impl Session {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string(),
+            outbox: v
+                .get("outbox")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|i| i.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
             strict: false,
             rollback: false,
             dead: false,
@@ -444,7 +473,7 @@ impl Session {
             "queue": self.queue.iter()
                 .map(|i| json!({"on": i.on, "text": i.text, "say": i.say}))
                 .collect::<Vec<_>>(),
-            "calls": calls, "said": self.said, "agent": self.agent,
+            "calls": calls, "said": self.said, "agent": self.agent, "outbox": self.outbox,
         });
         h.put(&format!("s/{}", self.own), v.to_string().as_bytes());
     }
@@ -454,13 +483,37 @@ fn timer_id(own: &str, on: &str) -> String {
     format!("judge/{own}/{on}")
 }
 
-/// Pushes an item on the own stream. A full stream is `Err(Full)` only while the call is strict;
-/// any other failure (the kernel's stream is gone) drops the item.
-fn push<H: Host>(h: &mut H, s: &Session, v: &Value) -> Result<(), Full> {
-    match h.push(&s.own, v.to_string().as_bytes()) {
+/// Pushes an item on the own stream, behind any item already waiting in the outbox. A full stream
+/// is `Err(Full)` while the call is strict (it defers and comes again); otherwise the item waits in
+/// the outbox for `ready`. Any other failure (the kernel's stream is gone) drops the item.
+fn push<H: Host>(h: &mut H, s: &mut Session, v: &Value) -> Result<(), Full> {
+    let item = v.to_string();
+    if !s.outbox.is_empty() {
+        if s.strict {
+            return Err(Full);
+        }
+        s.outbox.push(item);
+        return Ok(());
+    }
+    match h.push(&s.own, item.as_bytes()) {
         Err(StreamError::Full) if s.strict => Err(Full),
+        Err(StreamError::Full) => {
+            s.outbox.push(item);
+            Ok(())
+        }
         _ => Ok(()),
     }
+}
+
+/// Sends the outbox in order while the own stream takes it; whether it is empty after.
+fn flush<H: Host>(h: &mut H, s: &mut Session) -> bool {
+    while let Some(item) = s.outbox.first() {
+        if let Err(StreamError::Full) = h.push(&s.own, item.as_bytes()) {
+            return false;
+        }
+        s.outbox.remove(0);
+    }
+    true
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -582,9 +635,20 @@ fn finish<H: Host>(h: &mut H, s: &mut Session, on: &str, v: judge::Verdict) -> R
             let input = s.queue.remove(0);
             if safe {
                 if input.say {
-                    let _ = h.say(&s.claude, &input.text);
-                    s.said = head(&input.text);
-                    s.agent.clear();
+                    match h.say(&s.claude, &input.text) {
+                        // The excerpt takes an input only once the host took it (F1.4).
+                        Ok(()) => {
+                            s.said = head(&input.text);
+                            s.agent.clear();
+                        }
+                        // The host refused it (the `claude` stream is gone, or the text): the
+                        // session ends with the cause, so the kernel's turn ends too (F1.4).
+                        Err(e) => {
+                            let cause = format!("say: {}", session_error_case(&e));
+                            end_session(h, s, true, Some(StreamOutcome::Failed(cause)));
+                            return Ok(());
+                        }
+                    }
                 }
             } else if input.on == "launch" {
                 end_session(h, s, true, Some(StreamOutcome::Closed));
@@ -592,7 +656,7 @@ fn finish<H: Host>(h: &mut H, s: &mut Session, on: &str, v: judge::Verdict) -> R
             }
         }
     }
-    breaker(h, s);
+    breaker(h, s)?;
     if kind == Kind::Input {
         pump(h, s)?;
     }
@@ -600,10 +664,10 @@ fn finish<H: Host>(h: &mut H, s: &mut Session, on: &str, v: judge::Verdict) -> R
 }
 
 /// 3 denials in a row or 10 of the last 50: interrupt the session and say why (10 "Breaker").
-fn breaker<H: Host>(h: &mut H, s: &mut Session) {
+fn breaker<H: Host>(h: &mut H, s: &mut Session) -> Result<(), Full> {
     let by_run = s.run >= BREAKER_RUN;
     if !by_run && s.window.iter().filter(|d| **d).count() < BREAKER_COUNT {
-        return;
+        return Ok(());
     }
     let rule = if by_run {
         format!("{BREAKER_RUN} denials in a row")
@@ -612,11 +676,13 @@ fn breaker<H: Host>(h: &mut H, s: &mut Session) {
     };
     let item = json!({"type": "verdict", "on": "breaker", "outcome": "unsafe",
         "reasons": [format!("{rule}: the session was stopped")], "denials-in-a-row": s.run});
-    let _ = h.push(&s.own, item.to_string().as_bytes());
+    // The reason goes first, or waits in the outbox: it is never lost (F1.2).
+    push(h, s, &item)?;
     let _ = h.interrupt(&s.claude);
     drop_inputs(h, s);
     s.run = 0;
     s.window.clear();
+    Ok(())
 }
 
 /// Starts the judge call of the input at the head of the queue, once `claude` is initialized and
@@ -854,6 +920,10 @@ fn claude_items<H: Host>(h: &mut H, own: &str, items: &[Vec<u8>]) -> Result<(), 
     };
     s.strict = true;
     s.rollback = true;
+    // A waiting verdict goes first: nothing is forwarded past it (F1.2).
+    if !s.outbox.is_empty() {
+        return Err(Full);
+    }
     for body in items {
         if let Err(StreamError::Full) = h.push(own, body) {
             return Err(Full);
@@ -992,22 +1062,27 @@ fn fired_with<H: Host>(h: &mut H, id: &str) {
     let Some(mut s) = Session::load(h, own) else {
         return;
     };
-    s.strict = true;
+    // The deadline is final now, also when the own stream is full: the verdict item waits in
+    // the outbox, while the denial goes out at once (F1.1).
     let v = judge::Verdict::unsafe_because("judge: no verdict before the deadline");
-    match finish(h, &mut s, on, v) {
-        Ok(()) => s.save(h),
-        // The own stream is full: the call stays and the deadline is tried again soon.
-        Err(Full) => {
-            let _ = h.after(id, 1000);
-        }
-    }
+    let _ = finish(h, &mut s, on, v);
+    s.save(h);
 }
 
 /// `stream-producer.ready`: the own stream has room again; resume what deferred.
 fn ready_with<H: Host>(h: &mut H, own: &str) {
-    let Some(s) = Session::load(h, own) else {
+    let Some(mut s) = Session::load(h, own) else {
         return;
     };
+    let had = !s.outbox.is_empty();
+    let empty = flush(h, &mut s);
+    if had {
+        s.save(h);
+    }
+    // Still full: the next `ready` sends the rest first.
+    if !empty {
+        return;
+    }
     h.resume(&s.claude);
     for call in s.calls.values() {
         if let Some(j) = &call.jstream {
