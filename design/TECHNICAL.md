@@ -2815,12 +2815,13 @@ machine. A stage is done only within its budgets.
   whole cycle (root step and both children) 466 362 and 510 454 (+9.5%); budget 4 MiB per step,
   within 10%. The thin margin is the chunk phase of a finite window. p95 per step (S134 r1,
   same run shape, 2026-11-26): root 232 992 at 10 and 247 311 at 1 000, child 266 047 and
-  276 991, each within 4 MiB; the means of that rerun were within 0.4% of those above. A Stop of each root with two
+  276 991, each within 4 MiB; the means of that rerun were within 0.4% of those above; the 10% history tolerance holds for
+  the p95 series too (+6.2% root, +4.1% child; S134 r2). A Stop of each root with two
   live children (`interrupt`: all four children and both roots `interrupted`, the roots' lists
   empty) costs 300 261 bytes for the two roots at 10 and 485 525 at 1 000. Page-level budgets
-  (item delay, Stop through the last child at the page, writer busy share) not run: no
-  `watane-dev` here, and no stage F page runner exists yet; stage F is not done until they are
-  measured (17), which waits on a machine with the stage D preview tools (PLAN, Upkeep).
+  (item delay, Stop through the last child at the page, writer busy share): not measured (needs
+  watane-dev), a known limit (the deputy's ruling on S134 r1 F1.9); no stage F page runner exists
+  yet.
 
 - **Stage D** (S128 r1, 2026-11-25, Linux 6.18.57 x86-64, 5 visible CPUs
   with a 4-CPU quota, load average 4.20/2.81/2.24, Watane `548b4e1b` with the

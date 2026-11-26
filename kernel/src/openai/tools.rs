@@ -308,7 +308,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .tools
             .iter()
             .flat_map(|t| t.info.iter().map(|i| i.name.clone()))
-            .chain([TASK.to_string()])
+            .chain(delegating(rec, ls).then(|| TASK.to_string()))
             .collect();
         let names: Vec<&str> = names.iter().map(String::as_str).collect();
         let (rules, _) = Rules::compile(
@@ -331,7 +331,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 });
                 continue;
             }
-            if name != TASK && ls.tools.as_ref().and_then(|t| t.info(&name)).is_none() {
+            if !builtin_task(rec, ls, &name)
+                && ls.tools.as_ref().and_then(|t| t.info(&name)).is_none()
+            {
                 // A session with no toolsets has nothing to run: its call is `aborted` (S40-3).
                 let out = match ls.tools {
                     Some(_) => error_text("unknown tool"),
@@ -368,7 +370,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let info = ls.tools.clone().unwrap_or_default();
         ls.serial = !ls.calls.iter().all(|c| {
             let name = c.item["name"].as_str().unwrap_or_default();
-            name == TASK || info.info(name).is_some_and(|i| i.parallel)
+            builtin_task(rec, ls, name) || info.info(name).is_some_and(|i| i.parallel)
         });
         ls.phase = if ls.calls.iter().any(|c| c.st == CallState::Ask) {
             Phase::Waiting
@@ -667,7 +669,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             {
                 return Ok(Blocked::No);
             }
-            if ls.calls[i].item["name"] == TASK {
+            let name = ls.calls[i].item["name"].as_str().unwrap_or_default();
+            if builtin_task(rec, ls, name) {
                 // A `task` call holds no job slot or stream: the child is the work (9.7).
                 let open = ls.calls.len();
                 self.start_task(rec, ls, cx, i)?;
@@ -894,6 +897,18 @@ impl Call {
 }
 
 /// One tool as the request lists it (AC1).
+/// The session advertises the built-in `task`: a root that names delegates (9.7).
+pub(crate) fn delegating(rec: &Record, ls: &LoopState) -> bool {
+    rec.parent.is_none() && !ls.policy.delegates.is_empty()
+}
+
+/// A call named `task` is the kernel's built-in in a delegating root, and refused as one in a
+/// child (9.7); anywhere else the name is free, and a toolset function of that name runs as any
+/// described tool (S134 r2 F2.1).
+pub(crate) fn builtin_task(rec: &Record, ls: &LoopState, name: &str) -> bool {
+    name == TASK && (rec.parent.is_some() || delegating(rec, ls))
+}
+
 fn definition(t: &Tool) -> Value {
     let schema: Value = serde_json::from_str(&t.input_schema)
         .ok()

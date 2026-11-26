@@ -1117,6 +1117,10 @@ fn r1_f1_1_a_root_stopped_at_max_tool_errors_interrupts_its_live_child() {
     reply(&mut k, &root, &[task("c1", "foreman", "x"), job_call]);
     let kid = children(&mut k, &root)[0].clone();
     assert!(rec(&mut k, &kid).turn.is_active(), "the child is live");
+    // S134 r2 F2.2: both sessions are attached; the child's Stop reaches its own stream.
+    let AttachedLive(kid_stream) = attach_live(&mut k, &kid);
+    let AttachedLive(root_stream) = attach_live(&mut k, &root);
+    k.host.calls.clear();
     // The root's job fails while the child runs: the streak reaches the cap.
     let job = lp(&mut k, &root)["calls"]
         .as_array()
@@ -1149,10 +1153,69 @@ fn r1_f1_1_a_root_stopped_at_max_tool_errors_interrupts_its_live_child() {
         c.turn
     );
     assert!(c.task_call.is_none());
+    let turn_at = |stream: &str, state: &str| {
+        k.host.calls.iter().position(|h| {
+            matches!(h, HostCall::Push { stream: s, value } if s == stream
+                && value.to_string().contains("\"turn\"")
+                && value.to_string().contains(state))
+        })
+    };
+    let kid_stop = turn_at(&kid_stream, "interrupted").expect("the child's Stop is pushed live");
+    let root_stop = turn_at(&root_stream, "max-tool-errors").expect("the root's Stop is pushed");
+    assert!(kid_stop < root_stop, "the child's Stop comes first");
     // The root's call got the cleanup's `aborted`, once.
     let outs: Vec<Value> = entries(&mut k, &root)
         .into_iter()
         .filter(|e| e["kind"] == "tool" && e["body"]["toolCallId"] == "c1")
         .collect();
     assert_eq!(outs.len(), 1, "{outs:?}");
+}
+
+/// S134 r2 F2.1: in a session that names no delegates, a toolset function named `task` is an
+/// ordinary described tool: its call runs as a job and the model gets the job's result, not a
+/// delegation refusal.
+#[test]
+fn r2_f2_1_a_toolset_task_in_a_session_without_delegates_runs_as_its_tool() {
+    let mut k = kernel("");
+    k.host.tools = vec![tool("notes_a", true), tool("task", true)];
+    k.state
+        .put(
+            "profile/o",
+            openai(r#","toolsets":["notes"],"allow":["notes_*","task"]"#).into_bytes(),
+        )
+        .unwrap();
+    let id = k.start("bob", "b", "o", "{}", IN).unwrap().value;
+    let call = json!({"type":"function_call","id":"f","call_id":"t1","name":"task",
+        "arguments": json!({"profile": "foreman", "input": "x"}).to_string()});
+    let s = stream_of(&mut k, &id);
+    let n = last_seq(&mut k, &s);
+    k.provider_lines(
+        &s,
+        vec![(n + 1, sse_head()), (n + 2, done(&[call], Some((1, 1))))],
+    )
+    .unwrap();
+    assert!(
+        k.host
+            .calls
+            .iter()
+            .any(|c| matches!(c, HostCall::ToolsCall { tool, .. } if tool == "task")),
+        "the toolset's task runs as a job"
+    );
+    assert!(rec(&mut k, &id).children.is_empty(), "no child");
+    let job = lp(&mut k, &id)["calls"][0]["stream"]
+        .as_str()
+        .expect("a job stream")
+        .to_string();
+    k.provider_lines(&job, vec![(1, br#"{"ok":"done by the toolset"}"#.to_vec())])
+        .unwrap();
+    k.provider_ended_with(&job, None).unwrap();
+    let last = bodies(&k).pop().expect("the follow-up request");
+    let out = last["input"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["type"] == "function_call_output" && i["call_id"] == "t1")
+        .expect("the output")["output"]
+        .clone();
+    assert_eq!(out, json!("\"done by the toolset\""));
 }

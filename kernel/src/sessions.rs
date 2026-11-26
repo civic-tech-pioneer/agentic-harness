@@ -1926,6 +1926,18 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// The pushes a call made for its peer session (the root of a resolved `task` call) go to that
     /// session's live owner stream, then join the call's own.
+    /// The pushes of children a stop of this call's session stopped go to each child's own live
+    /// owner stream, before the session's own (its Stop comes last, 9.7; S134 r2 F2.2), then
+    /// join the call's own.
+    pub(crate) fn deliver_stopped(&mut self, work: &mut Work) {
+        let mut theirs = Vec::new();
+        for (l, pushes) in std::mem::take(&mut work.stopped) {
+            self.deliver(&pushes, l.as_deref());
+            theirs.extend(pushes);
+        }
+        work.pushes.splice(0..0, theirs);
+    }
+
     pub(crate) fn deliver_peer(&mut self, work: &mut Work) {
         if let Some((live, pushes)) = work.peer.take() {
             self.deliver(&pushes, live.as_deref());
@@ -4261,7 +4273,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         // A firing cannot fail (9.3 "Past"): what it wrote is charged, past the reserve too.
         self.finish_as(Some(&mut rec), &mut acct, true)?;
         // After the last write (7): the live owner stream gets the entry, or is dropped `lagging`.
-        self.deliver(&work.pushes, rec.live.as_deref());
+        let own = std::mem::take(&mut work.pushes);
+        self.deliver_stopped(work);
+        self.deliver(&own, rec.live.as_deref());
+        work.pushes.extend(own);
         self.deliver_peer(work);
         Ok(())
     }

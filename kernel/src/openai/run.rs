@@ -344,8 +344,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(ls) = self.loop_load(&rec.id) {
             return ls;
         }
-        let compiled = self.compiled_of(rec);
-        let base = parse_profile(&self.profile_json(&rec.profile).unwrap_or_default()).0;
+        let json = self.profile_json(&rec.profile).unwrap_or_default();
+        let base = parse_profile(&json).0;
+        let compiled = apply_overlay(&base, &rec.overlay.clone().unwrap_or_default()).0;
         LoopState {
             limits_compiled: true,
             model: base.model.unwrap_or_default(),
@@ -483,7 +484,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if !room {
             return Launch::Busy;
         }
-        let task_active = rec.parent.is_none() && !ls.policy.delegates.is_empty();
+        let task_active = crate::openai::tools::delegating(rec, ls);
         match self.tools_setup(ls, task_active) {
             Ok(()) => {}
             Err(SetupError::Opening) => return Launch::OpeningToolset,
@@ -1193,14 +1194,14 @@ impl<S: State, H: Host> Kernel<S, H> {
                             .map(|u| Push::of(&session, wire_update(u, now, None)))
                             .collect();
                         let live = self.live_stream(&session);
-                        return Ok(self.tail(&session, pushes, live, None));
+                        return Ok(self.tail(&session, pushes, live, None, Vec::new()));
                     }
                 }
             }
         }
         let work = self.openai_item(stream, &session, ev)?;
         let live = work.live.clone();
-        Ok(self.tail(&session, work.pushes, live, work.peer))
+        Ok(self.tail(&session, work.pushes, live, work.peer, work.stopped))
     }
 
     /// One item of a job stream: the call's output, then the same end as a request's item.
@@ -1212,7 +1213,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<Step, KernelError> {
         let work = self.job_item(stream, &key.session, body)?;
         let live = work.live.clone();
-        Ok(self.tail(&key.session, work.pushes, live, work.peer))
+        Ok(self.tail(&key.session, work.pushes, live, work.peer, work.stopped))
     }
 
     /// The end of an item's step, as `item_step` ends one: the pushes go to the live owner
@@ -1223,16 +1224,32 @@ impl<S: State, H: Host> Kernel<S, H> {
         mut pushes: Vec<Push>,
         live: Option<String>,
         peer: Option<(Option<String>, Vec<Push>)>,
+        stopped: Vec<(Option<String>, Vec<Push>)>,
     ) -> Step {
+        // The children a limit stop of this session interrupted get their pushes on their own
+        // streams first, as `flush` sends them: the Stop of the root comes after its children's
+        // (9.7; S134 r2 F2.2).
+        let mut gone: Vec<(String, String)> = Vec::new();
+        let mut theirs: Vec<Push> = Vec::new();
+        for (clive, cpushes) in stopped {
+            let cfailed = self.send_live(&cpushes, clive.as_deref());
+            if cfailed == Some(StreamError::Full) {
+                return Step::Defer;
+            }
+            if let (Some(o), Some(_), Some(first)) = (clive, cfailed, cpushes.first()) {
+                gone.push((first.session.clone(), o));
+            }
+            theirs.extend(cpushes);
+        }
         let failed = self.send_live(&pushes, live.as_deref());
         if failed == Some(StreamError::Full) {
             return Step::Defer;
         }
-        let mut gone: Vec<(String, String)> = live
-            .filter(|_| failed.is_some())
-            .map(|o| (session.to_string(), o))
-            .into_iter()
-            .collect();
+        gone.extend(
+            live.filter(|_| failed.is_some())
+                .map(|o| (session.to_string(), o)),
+        );
+        pushes.splice(0..0, theirs);
         // The root of a `task` call this item resolved gets its pushes on its own stream (9.7).
         if let Some((plive, ppushes)) = peer {
             let pfailed = self.send_live(&ppushes, plive.as_deref());
@@ -1847,7 +1864,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             rec.updated = now;
         }
         let _ = self.finish_as(Some(&mut rec), &mut acct, true);
-        self.deliver(&work.pushes, rec.live.as_deref());
+        let own = std::mem::take(&mut work.pushes);
+        self.deliver_stopped(&mut work);
+        self.deliver(&own, rec.live.as_deref());
+        work.pushes.extend(own);
         self.deliver_peer(&mut work);
         if kept {
             Drain::Kept

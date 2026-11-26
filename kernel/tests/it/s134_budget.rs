@@ -302,10 +302,13 @@ fn s134_stage_f_state_bytes_per_step() {
     for v in [early_root, early_child, early, late_root, late_child, late] {
         assert!(v <= 4 << 20, "a step exceeds 4 MiB: {v}");
     }
+    // The history tolerance holds for the means and for the p95 series (S134 r2 F2.3).
     for (a, b, what) in [
         (early_root, late_root, "root step"),
         (early_child, late_child, "child step"),
         (early, late, "cycle"),
+        (early_root95, late_root95, "root step p95"),
+        (early_child95, late_child95, "child step p95"),
     ] {
         assert!(
             a.abs_diff(b) * 10 <= a,
