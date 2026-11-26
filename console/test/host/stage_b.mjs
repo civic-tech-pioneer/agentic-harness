@@ -751,12 +751,16 @@ async function main() {
         const answers = () => card.getByRole("button", { name: /^(Allow|Deny)/ }).count();
         ensure(await answers() > 0, "the open card offers no answer");
         // the host's deadline, in real time: the ask's own `expires-at` plus a margin for the deny to reach the page
-        const due = Number(a.body["expires-at"] ?? a.body.expiresAt ?? (Date.now() + 600_000));
+        const due = a.body["expires-at"];
+        ensure(Number.isInteger(due), `the ask carries no expires-at: ${JSON.stringify(a.body).slice(0, 200)}`);
         say(`  waiting ${Math.round((due - Date.now()) / 1000)} s for the host's ask deadline`);
         await page.clock.fastForward(Math.max(0, due - Date.now()));
         const es = await until(async () => { const es = await transcript(s); return decisionsOf(es, a.body.id).length && lastTurn(es)?.state === "idle" ? es : null; }, Math.max(0, due - Date.now()) + 60_000, "the host to close the ask at its deadline and the turn to end");
         const d = decisionsOf(es, a.body.id);
-        ensure(d.length === 1 && d[0].body.decision.outcome === "deny", `the expired ask's decisions: ${JSON.stringify(d.map((x) => x.body.decision))}`);
+        // S131 r2 F2.1: the host's expiry, not any denial: a cancel or an interrupt also denies the ask and ends the turn
+        ensure(d.length === 1 && d[0].body.decision.outcome === "deny" && d[0].body.decision.by === "host" && d[0].body.decision.reason === "expired",
+          `the expired ask's decisions: ${JSON.stringify(d.map((x) => x.body.decision))}, not a deny by the host for expired`);
+        ensure(Number.isFinite(d[0].at) && d[0].at >= due, `the ask was decided at ${d[0].at}, ${due - d[0].at} ms before its deadline ${due}`);
         await until(async () => (await answers()) === 0, 10_000, "the expired card to offer no answer").catch(async (e) => { throw new Error(`${e.message}: the card reads ${JSON.stringify((await card.textContent())?.slice(0, 200))}`); });
         say(`  the host closed the ask: ${JSON.stringify(d[0].body.decision)}; the card reads ${JSON.stringify((await card.textContent())?.replace(/\s+/g, " ").slice(0, 120))}`);
       } finally { await page.close(); }
