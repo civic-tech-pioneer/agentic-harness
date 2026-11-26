@@ -321,12 +321,12 @@ describe("StatusLine", () => {
     expect(word()).toContain("Workspace access was refused for /home/alice/a\u240ab");
   });
 
-  it("ac9_consent_diamond_opens_the_question", async () => {
+  it("ac9_consent_diamond_disables_opening_the_native_question", () => {
     const s = status({ state: "running", since: T, activity: { kind: "consent", what: "x" } });
     expect(word()).toBe("Waiting for your answer in watane");
     expect(shape()).toBe("diamond");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Open the question" }));
-    expect(s.onNeedsYou).toHaveBeenCalled();
+    noKernel(s, "Open the question");
+    expect(s.onNeedsYou).not.toHaveBeenCalled();
   });
 
   it("ac9_waiting_diamond_time_left_needs_you", async () => {

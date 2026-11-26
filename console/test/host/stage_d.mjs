@@ -282,7 +282,7 @@ async function mixedLoad(browser) {
         const delivered = [...seen].filter((marker) => marker.startsWith("call_")).length;
         if (delivered < 4 * fullSteps) faults.push(`${id}: only ${delivered} tool calls reached the page across ${fullSteps} steps`);
         if (missing.length || delivered < 4 * fullSteps) {
-          const offsets = ([marker, at]) => ({ marker, beforeStopMs: end === null ? null : Math.round(end - at) });
+          const offsets = ([marker, at]) => ({ marker, beforeStopMs: end == null ? null : Math.round(end - at) });
           const measuredSteps = new Set(expected.filter(([, at]) => at >= from && at < to - 50).map(([marker]) => marker));
           const missingSteps = new Set(missing.map(([marker]) => marker));
           for (const { at, marker, step } of wire) {
