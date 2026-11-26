@@ -1326,7 +1326,7 @@ fn s148_ac1_lists_escaped_skills_and_returns_the_pinned_file_in_a_tool_row() {
 
 #[test]
 fn s148_ac2_refuses_invalid_calls_and_extra_or_missing_files() {
-    let mut k = kernel(r#","allow":["task","skill"]"#);
+    let mut k = kernel("");
     for files in [json!({"SKILL.md":"one","extra.md":"extra"}), json!({})] {
         set_skills(&mut k, "root", &[json!({"name":"one","files":files})]);
         let refusals = k.check_named("alice", "root", "{}");
@@ -1341,6 +1341,7 @@ fn s148_ac2_refuses_invalid_calls_and_extra_or_missing_files() {
     }
     set_skills(&mut k, "root", &[skill_profile("one", "Body")]);
     let root = start_root(&mut k);
+    k.attach("alice", &root, 0).unwrap();
     reply(
         &mut k,
         &root,
@@ -1350,7 +1351,11 @@ fn s148_ac2_refuses_invalid_calls_and_extra_or_missing_files() {
             skill_call("array", json!(["one"])),
         ],
     );
-    let req = &bodies(&k)[1];
+    assert!(kind_entries(&mut k, &root, "ask").is_empty());
+    let reqs = bodies(&k);
+    let req = reqs
+        .get(1)
+        .expect("invalid calls close without a broker ask");
     assert!(output_of(req, "unknown").to_string().contains("not in"));
     assert!(output_of(req, "extra").to_string().contains("name"));
     assert!(output_of(req, "array").to_string().contains("name"));

@@ -322,8 +322,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                 });
                 continue;
             }
+            let is_skill = builtin_skill(ls, &name);
+            if let Some(Err(reason)) = is_skill.then(|| skill::read(&ls.policy.skills, &item)) {
+                self.put_output(rec, ls, cx, &item, error_text(reason), false)?;
+                continue;
+            }
             if !builtin_task(rec, ls, &name)
-                && !builtin_skill(ls, &name)
+                && !is_skill
                 && ls.tools.as_ref().and_then(|t| t.info(&name)).is_none()
             {
                 // A session with no toolsets has nothing to run: its call is `aborted` (S40-3).

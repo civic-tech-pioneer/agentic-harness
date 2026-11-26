@@ -2879,6 +2879,16 @@ machine. A stage is done only within its budgets.
   watane-dev), a known limit (the deputy's ruling on S134 r1 F1.9); no stage F page runner exists
   yet.
 
+- **Stage F skill lookup** (S148, fake host). The same Stage F fixture adds
+  one `skill` call beside the two tool jobs in each child's step.
+  `cargo test s148_stage_f_skill_state_bytes_per_step -- --ignored --nocapture`
+  in `kernel/` measures the means at 10 and 1,000 history steps. Root 147,352
+  and 160,386 bytes, child 169,476 and 185,005 bytes, and whole cycle 486,306
+  and 530,397 bytes. The p95 values were 234,621 and 248,940 bytes per root
+  step, and 274,575 and 285,519 bytes per child step. Both series stayed
+  within the 4 MiB and 10% budgets. Page-level Stage F budgets have the same
+  limit as the S134 measurement.
+
 - **Stage D** (S128 r1, 2026-11-25, Linux 6.18.57 x86-64, 5 visible CPUs
   with a 4-CPU quota, load average 4.20/2.81/2.24, Watane `548b4e1b` with the
   test-only pacing and commit trace patch in `console/test/host/stage-d-tools/`).
