@@ -736,6 +736,9 @@ fn end_session<H: Host>(
         h.cancel(&s.claude);
     }
     if let Some(o) = close_own {
+        // What waits in the outbox goes first while the stream takes it (r2 F2.1); a stream
+        // still full loses it (TECHNICAL 10 step 7: not guaranteed).
+        flush(h, s);
         h.close(&s.own, o);
     }
     s.dead = true;
