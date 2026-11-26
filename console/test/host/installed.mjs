@@ -48,13 +48,13 @@ function startApp(home) {
     replies.get(message.id)?.(message);
   });
   const done = once(child, "exit");
-  function request(op, fields = {}) {
+  function request(op, fields = {}, timeout = 35_000) {
     const id = ++sequence;
     return new Promise((complete, reject) => {
       const timer = setTimeout(() => {
         replies.delete(id);
         reject(new Error(`App driver did not answer ${op}`));
-      }, 35_000);
+      }, timeout);
       replies.set(id, ({ ok, err }) => {
         clearTimeout(timer);
         replies.delete(id);
@@ -67,8 +67,8 @@ function startApp(home) {
   return {
     ready,
     request,
-    async eval(label, js) {
-      const result = await request("eval", { label, js });
+    async eval(label, js, timeout) {
+      const result = await request("eval", { label, js }, timeout);
       return result === "" ? null : JSON.parse(result);
     },
     wait: (label) => request("wait", { label, timeoutMs: 0 }),
@@ -102,6 +102,39 @@ async function approve(app) {
   // own foreground tests exercise the focus gate.
   await app.eval(consent, "document.querySelector('#approve').disabled = false; document.querySelector('#approve').click(); null");
   await until("consent to close", async () => !await app.wait(consent));
+}
+
+async function openClaudeSettings(app) {
+  const started = performance.now();
+  const timeout = 30_000;
+  const remaining = () => Math.max(0, Math.ceil(timeout - (performance.now() - started)));
+  const elapsed = () => Math.round(performance.now() - started);
+  let lastState = null;
+  const diagnostic = () => `Claude Code Settings after ${elapsed()} ms, last manager state ${JSON.stringify(lastState)}`;
+  try {
+    await app.request("menu", { item: "settings" }, remaining());
+    while (remaining() > 0) {
+      lastState = await app.eval(main, `(() => {
+        const settings = document.querySelector('#settings');
+        const chooser = document.querySelector('#claude-choose');
+        return {
+          route: location.hash,
+          settingsHidden: settings?.hidden ?? null,
+          chooserHidden: chooser?.hidden ?? null,
+          chooserDisabled: chooser?.disabled ?? null,
+        };
+      })()`, remaining());
+      if (lastState?.route === "#settings" && lastState.settingsHidden === false &&
+          lastState.chooserHidden === false && lastState.chooserDisabled === false) {
+        console.log(`AC1 ${diagnostic()}`);
+        return;
+      }
+      await delay(Math.min(100, remaining()));
+    }
+    throw new Error(`Timed out waiting for usable Settings (${timeout} ms budget)`);
+  } catch (error) {
+    throw new Error(`FAIL AC1 ${diagnostic()} (${error.message})`, { cause: error });
+  }
 }
 
 async function publish(app, channel) {
@@ -200,7 +233,6 @@ try {
   // Its completion routes the manager to #mods and then shows this notice.
   await until("the install action to finish routing to Mods", () => alice.eval(main,
     "location.hash === '#mods' && !document.querySelector('#installed-note').hidden"));
-  console.log("PASS AC1 one consent installs the agent and provider");
 
   const fake = join(work, "fake-claude");
   await copyFile(resolve(bin, "fake-claude"), fake);
@@ -216,11 +248,11 @@ try {
     { do: "expect-user", contains: "start the long turn" },
     { do: "long-turn", entries: 200, "every-ms": 100 },
   ] }));
-  await alice.request("menu", { item: "settings" });
-  await until("Claude Code settings", () => alice.eval(main, "!document.querySelector('#settings').hidden && !document.querySelector('#claude-choose').disabled"));
+  await openClaudeSettings(alice);
   await alice.request("pick", { paths: [fake] });
   await alice.eval(main, "document.querySelector('#claude-choose').click(); null");
   await until("Claude Code setting to show the selected binary", () => alice.eval(main, "document.querySelector('#claude-status').textContent === 'Claude Code 2.1.295'"));
+  console.log("PASS AC1 one consent installs the agent and provider and Settings shows the selected Claude Code binary");
   await alice.request("menu", { item: "mods" });
   await openConsole(alice);
   await until("scratch session composer", () => includes(alice, "A new scratch folder"));
