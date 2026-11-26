@@ -91,6 +91,7 @@ fn root_profile(ls: &LoopState) -> Profile {
         backend: Some("openai".into()),
         model: Some(ls.model.clone()),
         toolsets: p.toolsets.clone(),
+        skills: p.skills.clone(),
         delegates: p.delegates.clone(),
         allow: p.allow.clone(),
         deny: p.deny.clone(),
@@ -178,9 +179,10 @@ impl<S: State, H: Host> Kernel<S, H> {
         let admitted = admit(&root, &model, rec.parent.is_some(), live, &name, |n| {
             self.profile_json(n)
         });
-        if let Err(rs) = admitted {
-            return self.end_call(rec, ls, cx, at, refused_out(&rs));
-        }
+        let admitted = match admitted {
+            Ok(profile) => profile,
+            Err(rs) => return self.end_call(rec, ls, cx, at, refused_out(&rs)),
+        };
         let Some(input) = args["input"].as_str() else {
             let out = refused_out(&refusal("input", "input must be a string"));
             return self.end_call(rec, ls, cx, at, out);
@@ -225,7 +227,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         {
             return Ok(());
         }
-        self.create_child(rec, cx, &id, &name, &call_id, input)?;
+        let child_loop = Self::loop_from_profile(admitted);
+        self.create_child(rec, cx, &id, &name, &call_id, input, child_loop)?;
         rec.children.push(id.clone());
         ls.calls[at].st = CallState::Child { session: id };
         Ok(())
@@ -233,6 +236,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// The child's record, first turn and FIFO place, with the owner's page, the active index
     /// and the accounts that follow (as `start` does them, 9.3), in one write of this call.
+    #[allow(clippy::too_many_arguments)]
     fn create_child(
         &mut self,
         root: &Record,
@@ -241,6 +245,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         profile: &str,
         call_id: &str,
         input: &str,
+        mut cls: LoopState,
     ) -> Result<(), KernelError> {
         let (n, page_key, mut page) = self.owner_page(&root.owner, cx.a);
         let blocks = json!([{"type": "text", "text": input}]).to_string();
@@ -268,7 +273,6 @@ impl<S: State, H: Host> Kernel<S, H> {
             cx.now,
             &mut work,
         )?;
-        let mut cls = self.loop_for(&child);
         let pending = self.pending_for(&child, &cls, &blocks);
         cls.reset_turn();
         {

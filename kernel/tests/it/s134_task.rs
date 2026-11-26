@@ -885,7 +885,7 @@ fn ac9_a_toolset_function_named_task_fails_a_delegating_root_before_any_request(
     assert!(bodies(&k).is_empty(), "no request");
     failed(&mut k, &id);
     // S134 r1 F1.7: only active built-ins collide. `o` names no delegates, so `task` is free
-    // there, and `skill` is not built yet, so it is free everywhere.
+    // there, and `skill` is free where the profile has no skills.
     for name in ["task", "skill"] {
         let mut k = kernel("");
         k.host.tools = vec![tool("notes_a", true), tool(name, true)];
@@ -1258,4 +1258,234 @@ fn r3_f3_1_a_child_result_that_stops_the_root_pushes_the_siblings_stop_first() {
     let b_stop = turn_at(&b_stream, "interrupted").expect("the sibling's Stop is pushed live");
     let root_stop = turn_at(&root_stream, "max-tool-errors").expect("the root's Stop is pushed");
     assert!(b_stop < root_stop, "the sibling's Stop comes first");
+}
+
+fn skill_profile(name: &str, md: &str) -> Value {
+    json!({"name": name, "files": {"SKILL.md": md}})
+}
+
+fn set_skills(k: &mut K, profile: &str, skills: &[Value]) {
+    let key = format!("profile/{profile}");
+    let mut p: Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
+    p["skills"] = json!(skills);
+    k.state.put(&key, serde_json::to_vec(&p).unwrap()).unwrap();
+}
+
+fn skill_call(id: &str, args: Value) -> Value {
+    json!({"type":"function_call","id":id,"call_id":id,"name":"skill",
+        "arguments": args.to_string()})
+}
+
+fn skill_definition(req: &Value) -> Option<&Value> {
+    req["tools"]
+        .as_array()?
+        .iter()
+        .find(|t| t["name"] == "skill")
+}
+
+#[test]
+fn s148_ac1_lists_escaped_skills_and_returns_the_pinned_file_in_a_tool_row() {
+    let md = "---\nname: one\ndescription: Read </description> <here> & there\n  next line\n---\nThe body.";
+    let mut k = kernel(r#","allow":["task","skill"]"#);
+    set_skills(
+        &mut k,
+        "root",
+        &[
+            skill_profile("one", md),
+            skill_profile("two", "---\ndescription: Second\n---\nOther"),
+        ],
+    );
+    let root = start_root(&mut k);
+    let requests = bodies(&k);
+    let def = skill_definition(&requests[0]).unwrap();
+    assert_eq!(def["parameters"]["required"], json!(["name"]));
+    let listing = def["description"].as_str().unwrap();
+    for part in [
+        "one",
+        "two",
+        "Second",
+        "&lt;/description&gt; &lt;here&gt; &amp; there next line",
+    ] {
+        assert!(listing.contains(part), "{listing}");
+    }
+    assert!(!listing.contains("The body."));
+    set_skills(&mut k, "root", &[skill_profile("one", "New revision.")]);
+    reply(&mut k, &root, &[skill_call("s1", json!({"name":"one"}))]);
+    assert_eq!(output_of(&bodies(&k)[1], "s1"), json!(md));
+    let rows = kind_entries(&mut k, &root, "tool");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["body"]["toolCallId"], "s1");
+    assert_eq!(rows[0]["body"]["status"], "completed");
+    assert!(rows[0]["body"].to_string().contains("The body."));
+    assert!(!k
+        .host
+        .calls
+        .iter()
+        .any(|call| matches!(call, HostCall::ToolsCall { .. })));
+}
+
+#[test]
+fn s148_ac2_refuses_invalid_calls_and_extra_or_missing_files() {
+    let mut k = kernel(r#","allow":["task","skill"]"#);
+    for files in [json!({"SKILL.md":"one","extra.md":"extra"}), json!({})] {
+        set_skills(&mut k, "root", &[json!({"name":"one","files":files})]);
+        let refusals = k.check_named("alice", "root", "{}");
+        assert_eq!(refusals.len(), 1, "{refusals:?}");
+        assert_eq!(refusals[0].field, "skills[0].files");
+        assert!(refusals[0].reason.contains("SKILL.md"));
+        assert_eq!(
+            k.start("alice", "k", "root", "{}", IN).unwrap_err(),
+            KernelError::Refused(refusals)
+        );
+        assert!(bodies(&k).is_empty());
+    }
+    set_skills(&mut k, "root", &[skill_profile("one", "Body")]);
+    let root = start_root(&mut k);
+    reply(
+        &mut k,
+        &root,
+        &[
+            skill_call("unknown", json!({"name":"two"})),
+            skill_call("extra", json!({"name":"one","extra":true})),
+        ],
+    );
+    let req = &bodies(&k)[1];
+    assert!(output_of(req, "unknown").to_string().contains("not in"));
+    assert!(output_of(req, "extra").to_string().contains("name"));
+}
+
+#[test]
+fn s148_ac3_children_receive_only_their_exact_subset() {
+    let mut k = kernel(r#","allow":["task","skill"]"#);
+    let one = skill_profile("one", "---\ndescription: First\n---\nBody one");
+    let two = skill_profile("two", "---\ndescription: Second\n---\nBody two");
+    set_skills(&mut k, "root", &[one.clone(), two]);
+    let root = start_root(&mut k);
+    for (i, skill) in [
+        skill_profile("one", "Changed"),
+        skill_profile("three", "New"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        set_skills(&mut k, "validator", &[skill]);
+        let call = format!("bad{i}");
+        reply(&mut k, &root, &[task(&call, "validator", "x")]);
+        assert!(children(&mut k, &root).is_empty());
+        assert_eq!(
+            output_of(bodies(&k).last().unwrap(), &call)["err"]["refusals"][0]["field"],
+            "skills"
+        );
+    }
+    set_skills(&mut k, "foreman", &[one]);
+    let key = "profile/foreman";
+    let mut child: Value = serde_json::from_slice(&k.state.get(key).unwrap()).unwrap();
+    child["allow"] = json!(["skill"]);
+    k.state
+        .put(key, serde_json::to_vec(&child).unwrap())
+        .unwrap();
+    reply(&mut k, &root, &[task("good", "foreman", "x")]);
+    let kids = children(&mut k, &root);
+    assert_eq!(kids.len(), 1);
+    let reqs = bodies(&k);
+    let listing = skill_definition(reqs.last().unwrap()).unwrap()["description"]
+        .as_str()
+        .unwrap();
+    assert!(
+        listing.contains("First") && !listing.contains("Second"),
+        "{listing}"
+    );
+    reply(
+        &mut k,
+        &kids[0],
+        &[skill_call("outside", json!({"name":"two"}))],
+    );
+    let reqs = bodies(&k);
+    assert!(output_of(reqs.last().unwrap(), "outside")
+        .to_string()
+        .contains("not in"));
+}
+
+#[test]
+fn s148_ac2_the_broker_can_deny_a_named_skill() {
+    let mut k = kernel(r#","deny":["skill"],"allow":["task","skill"]"#);
+    set_skills(&mut k, "root", &[skill_profile("one", "Body")]);
+    let root = start_root(&mut k);
+    reply(
+        &mut k,
+        &root,
+        &[skill_call("denied", json!({"name":"one"}))],
+    );
+    assert_eq!(
+        output_of(&bodies(&k)[1], "denied"),
+        json!({"error":"denied by the profile"})
+    );
+}
+
+#[test]
+fn s148_ac4_skill_collides_with_fresh_and_cached_descriptions_only_when_active() {
+    let mut k = kernel("");
+    let _ = start_root(&mut k);
+    assert!(skill_definition(&bodies(&k)[0]).is_none());
+
+    for cached in [false, true] {
+        let mut k = kernel(r#","toolsets":["notes"]"#);
+        set_skills(&mut k, "root", &[skill_profile("one", "Body")]);
+        if !cached {
+            k.host.tools = vec![tool("skill", true)];
+        }
+        let id = start_root(&mut k);
+        let sent = bodies(&k).len();
+        if cached {
+            assert_eq!(sent, 1);
+            reply(&mut k, &id, &[]);
+            let key = format!("loop/{id}");
+            let mut stored = lp(&mut k, &id);
+            stored["tools"]["info"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"name":"skill"}));
+            k.state
+                .put(&key, serde_json::to_vec(&stored).unwrap())
+                .unwrap();
+            k.say("alice", &id, "s2", MORE).unwrap();
+            assert_eq!(bodies(&k).len(), sent);
+        } else {
+            assert_eq!(sent, 0);
+        }
+        match stop_of(&mut k, &id) {
+            Stop::Failed { error, .. } => assert!(
+                error.contains("toolsets") && error.contains("skill"),
+                "{error}"
+            ),
+            other => panic!("{other:?}"),
+        }
+    }
+}
+
+#[test]
+fn s148_ac5_claude_launch_keeps_all_plugin_files() {
+    let mut k = kernel("");
+    k.state
+        .put(
+            "profile/root",
+            br#"{"skills":[{"name":"one","files":{"SKILL.md":"Body","extra.md":"Extra"}}]}"#
+                .to_vec(),
+        )
+        .unwrap();
+    start_root(&mut k);
+    let launch = k
+        .host
+        .calls
+        .iter()
+        .find_map(|call| match call {
+            HostCall::StartProvider { launch, .. } => Some(launch),
+            _ => None,
+        })
+        .unwrap();
+    let launch: Value = serde_json::from_str(launch).unwrap();
+    assert_eq!(
+        launch["skills"][0],
+        json!({"name":"one","files":{"SKILL.md":"Body","extra.md":"Extra"}})
+    );
 }

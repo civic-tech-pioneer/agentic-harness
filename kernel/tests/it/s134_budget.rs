@@ -28,17 +28,26 @@ fn openai(extra: &str) -> String {
 
 /// Two owners on the root profile `root` (the `notes` tools, which a child may not exceed, and `task`; two live children) whose children run the
 /// profile `worker` with the `notes` tools.
-fn kernel() -> K {
+fn kernel(with_skills: bool) -> K {
+    let skill = if with_skills {
+        r#","skills":[{"name":"notes","files":{"SKILL.md":"---\ndescription: Summarize notes\n---\nGroup the notes by topic."}}]"#
+    } else {
+        ""
+    };
+    let allow_skill = if with_skills { r#","skill""# } else { "" };
     let mut st = MemState::new();
     st.put(
         "profile/root",
-        openai(r#","toolsets":["notes"],"delegates":["worker"],"allow":["task","notes_*"],"subagent-limits":{"live":2}"#)
+        openai(&format!(r#","toolsets":["notes"],"delegates":["worker"],"allow":["task","notes_*"{allow_skill}],"subagent-limits":{{"live":2}}{skill}"#))
             .into_bytes(),
     )
     .unwrap();
     st.put(
         "profile/worker",
-        openai(r#","toolsets":["notes"],"allow":["notes_*"]"#).into_bytes(),
+        openai(&format!(
+            r#","toolsets":["notes"],"allow":["notes_*"{allow_skill}]{skill}"#
+        ))
+        .into_bytes(),
     )
     .unwrap();
     for who in OWNERS {
@@ -168,16 +177,16 @@ fn root_step(k: &mut K, root: &str, n: u64) -> (Vec<String>, u64) {
 
 /// One child's step: two tool jobs, then the answer that resolves the root's call. Bytes of the
 /// whole child step.
-fn child_step(k: &mut K, child: &str) -> u64 {
+fn child_step(k: &mut K, child: &str, with_skills: bool) -> u64 {
     let before = k.state.counts();
-    reply(
-        k,
-        child,
-        &[
-            call_of("j1", "notes_a", "{}"),
-            call_of("j2", "notes_a", "{}"),
-        ],
-    );
+    let mut calls = vec![
+        call_of("j1", "notes_a", "{}"),
+        call_of("j2", "notes_a", "{}"),
+    ];
+    if with_skills {
+        calls.push(call_of("s1", "skill", r#"{"name":"notes"}"#));
+    }
+    reply(k, child, &calls);
     let running = jobs(k, child);
     assert_eq!(running.len(), 2, "two open tool jobs");
     for stream in running {
@@ -204,11 +213,11 @@ fn child_step(k: &mut K, child: &str) -> u64 {
 
 /// Mean bytes per root step, per child step and per whole cycle over `SAMPLE` cycles of each owner
 /// after `history` cycles of each, then each root stopped with two live children.
-fn measure(history: u64) -> (u64, u64, u64, u64, u64) {
+fn measure(history: u64, with_skills: bool) -> (u64, u64, u64, u64, u64) {
     // Long enough to span whole chunk cycles (64 KiB of wire or transcript), as D's 128 steps do:
     // the bytes read depend on where in its chunk the active history sits.
     const SAMPLE: u64 = 128;
-    let mut k = kernel();
+    let mut k = kernel(with_skills);
     let roots: Vec<String> = OWNERS
         .iter()
         .map(|o| k.start(o, "load", "root", "{}", IN).unwrap().value)
@@ -229,7 +238,7 @@ fn measure(history: u64) -> (u64, u64, u64, u64, u64) {
             let mut cb = 0;
             let mut each = Vec::new();
             for kid in &kids {
-                let b = child_step(&mut k, kid);
+                let b = child_step(&mut k, kid, with_skills);
                 each.push(b);
                 cb += b;
             }
@@ -285,8 +294,18 @@ fn p95(mut v: Vec<u64>) -> u64 {
 #[test]
 #[ignore = "slow: feeds 1,000 root steps with two children of two tool jobs each, for two owners"]
 fn s134_stage_f_state_bytes_per_step() {
-    let (early_root, early_child, early, early_root95, early_child95) = measure(10);
-    let (late_root, late_child, late, late_root95, late_child95) = measure(1_000);
+    check_budget(false);
+}
+
+#[test]
+#[ignore = "slow: measures skill output over 1,000 delegation cycles with two owners"]
+fn s148_stage_f_skill_state_bytes_per_step() {
+    check_budget(true);
+}
+
+fn check_budget(with_skills: bool) {
+    let (early_root, early_child, early, early_root95, early_child95) = measure(10, with_skills);
+    let (late_root, late_child, late, late_root95, late_child95) = measure(1_000, with_skills);
     println!(
         "stage F bytes p95 per root step at 10: {early_root95}, at 1000: {late_root95}; \
          per child step at 10: {early_child95}, at 1000: {late_child95}"

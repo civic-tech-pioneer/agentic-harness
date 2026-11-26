@@ -8,8 +8,9 @@
 use crate::adapters::responses;
 use crate::error::KernelError;
 use crate::openai::run::{Cx, LoopState, Pending, Phase};
+use crate::openai::skill::{self, SKILL};
 use crate::openai::task::TASK;
-use crate::profile::PreToolCheck;
+use crate::profile::{PreToolCheck, Skill};
 use crate::record::{Deadline, OpenAsk, Record, Stop, Turn, DEADLINES, OPEN_ASKS};
 use crate::rules::{glob, Rules, Verdict};
 use crate::sessions::{wire_update, Host, Kernel, Push, StreamKey, Tool};
@@ -29,6 +30,9 @@ pub const ASK_EXPIRY_S: u64 = 600;
 pub struct Policy {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub toolsets: Vec<String>,
+    /// Effective skill files pinned at admission. Older OpenAI loops had no skills.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<Skill>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub allow: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -204,9 +208,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// The session's `agent-tools` handle and the tools it describes (AC1): opened and described
     /// at the first request, kept in the loop state, never again. A profile with no toolsets
     /// opens nothing.
-    /// `task_active`: the session advertises `task` (a root that names delegates, 9.7), so a
-    /// toolset function named `task` collides. `skill` is not built yet, so it is no active
-    /// built-in and its name is free (S134 r1 F1.7).
+    /// The described names must be distinct from active built-ins (9.7).
     pub(crate) fn tools_setup(
         &mut self,
         ls: &mut LoopState,
@@ -228,9 +230,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             });
         }
         let Some(set) = ls.tools.as_mut().filter(|t| !t.described) else {
-            // A description kept from an earlier request is checked too: the collision depends
-            // on what the session advertises, not on when the toolset was described.
-            return self.collision(ls, task_active, None);
+            return self.check_collision(ls, task_active);
         };
         let tools = self.host.tools_describe(&set.handle).map_err(|e| {
             // Watane publishes the open only after this call commits.
@@ -240,11 +240,6 @@ impl<S: State, H: Host> Kernel<S, H> {
                 fail(e)
             }
         })?;
-        // 9.7: a toolset function named like an active built-in is refused before any request.
-        if task_active && tools.iter().any(|t| t.name == TASK) {
-            let handle = set.handle.clone();
-            return self.collision(ls, task_active, Some(handle));
-        }
         set.described = true;
         set.defs = tools.iter().map(definition).collect();
         set.info = tools
@@ -255,32 +250,27 @@ impl<S: State, H: Host> Kernel<S, H> {
                 idempotent: t.idempotent,
             })
             .collect();
-        Ok(())
+        self.check_collision(ls, task_active)
     }
 
-    /// 9.7: a described toolset function named `task` while `task` is active fails the turn
-    /// before any request, naming `toolsets`; the handle is closed and dropped. `fresh`: the
-    /// handle of a description just read (not yet kept).
-    fn collision(
-        &mut self,
-        ls: &mut LoopState,
-        task_active: bool,
-        fresh: Option<String>,
-    ) -> Result<(), SetupError> {
-        let kept = ls
-            .tools
-            .as_ref()
-            .is_some_and(|t| t.info.iter().any(|i| i.name == TASK));
-        if !task_active || (fresh.is_none() && !kept) {
+    /// Check both fresh and cached descriptions before sending a request (9.7).
+    fn check_collision(&mut self, ls: &mut LoopState, task_active: bool) -> Result<(), SetupError> {
+        let Some(set) = &ls.tools else {
             return Ok(());
-        }
-        let handle = fresh.or_else(|| ls.tools.as_ref().map(|t| t.handle.clone()));
+        };
+        let Some(name) = [
+            task_active.then_some(TASK),
+            (!ls.policy.skills.is_empty()).then_some(SKILL),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|name| set.info(name).is_some()) else {
+            return Ok(());
+        };
+        self.host.tools_close(&set.handle);
         ls.tools = None;
-        if let Some(h) = handle {
-            self.host.tools_close(&h);
-        }
         Err(SetupError::Failed(format!(
-            "toolsets: the function {TASK} collides with a built-in of the kernel"
+            "toolsets: the function {name} collides with a built-in of the kernel"
         )))
     }
 
@@ -309,6 +299,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .iter()
             .flat_map(|t| t.info.iter().map(|i| i.name.clone()))
             .chain(delegating(rec, ls).then(|| TASK.to_string()))
+            .chain((!ls.policy.skills.is_empty()).then(|| SKILL.to_string()))
             .collect();
         let names: Vec<&str> = names.iter().map(String::as_str).collect();
         let (rules, _) = Rules::compile(
@@ -332,12 +323,16 @@ impl<S: State, H: Host> Kernel<S, H> {
                 continue;
             }
             if !builtin_task(rec, ls, &name)
+                && !builtin_skill(ls, &name)
                 && ls.tools.as_ref().and_then(|t| t.info(&name)).is_none()
             {
                 // A session with no toolsets has nothing to run: its call is `aborted` (S40-3).
-                let out = match ls.tools {
-                    Some(_) => error_text("unknown tool"),
-                    None => "aborted".to_string(),
+                let out = if name == SKILL {
+                    error_text("the session's profile has no skills")
+                } else if ls.tools.is_some() {
+                    error_text("unknown tool")
+                } else {
+                    "aborted".to_string()
                 };
                 self.put_output(rec, ls, cx, &item, out, false)?;
                 continue;
@@ -370,7 +365,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         let info = ls.tools.clone().unwrap_or_default();
         ls.serial = !ls.calls.iter().all(|c| {
             let name = c.item["name"].as_str().unwrap_or_default();
-            builtin_task(rec, ls, name) || info.info(name).is_some_and(|i| i.parallel)
+            builtin_task(rec, ls, name)
+                || builtin_skill(ls, name)
+                || info.info(name).is_some_and(|i| i.parallel)
         });
         ls.phase = if ls.calls.iter().any(|c| c.st == CallState::Ask) {
             Phase::Waiting
@@ -682,6 +679,18 @@ impl<S: State, H: Host> Kernel<S, H> {
                 }
                 continue;
             }
+            if builtin_skill(ls, name) {
+                let call = ls.calls.remove(i);
+                let (output, ok) = match skill::read(&ls.policy.skills, &call.item) {
+                    Ok(md) => (md.to_string(), true),
+                    Err(reason) => (error_text(reason), false),
+                };
+                self.put_output(rec, ls, cx, &call.item, output, ok)?;
+                if !rec.turn.is_active() || errors_reached(ls) {
+                    return Ok(Blocked::No);
+                }
+                continue;
+            }
             if ls.jobs >= self.limits.session_job || rec.stream_room().is_err() {
                 return Ok(Blocked::Session);
             }
@@ -909,6 +918,10 @@ pub(crate) fn delegating(rec: &Record, ls: &LoopState) -> bool {
 /// described tool (S134 r2 F2.1).
 pub(crate) fn builtin_task(rec: &Record, ls: &LoopState, name: &str) -> bool {
     name == TASK && (rec.parent.is_some() || delegating(rec, ls))
+}
+
+fn builtin_skill(ls: &LoopState, name: &str) -> bool {
+    name == SKILL && !ls.policy.skills.is_empty()
 }
 
 /// One tool as the request lists it (AC1).
