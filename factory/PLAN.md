@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-watane S133 (design, Codex build); S134 (stage F, Codex review r2). The consumer half of S133 waits for a first version of the interface on watane's `slice/s133`.
+watane S133 (design, Codex build); S134 (stage F, answer r2, builder claude). The consumer half of S133 waits for a first version of the interface on watane's `slice/s133`.
 
 ## Sketched
 ### S134 stage F: an OpenAI agent delegates to two children, and every turn stops at its limits
@@ -35,7 +35,7 @@ watane S133 (design, Codex build); S134 (stage F, Codex review r2). The consumer
 Deputy Paper, the main line; spec-check 35b3abe: 0 severe, 2 medium (term clashes: `subagent-limits` names OpenAI
 children while FUNCTIONAL keeps 'subagent' for Claude; `max-turns` counts OpenAI model steps, not turns), 3 unsure
 (the tool-error streak counts denials; `usage-unavailable` absent from AGT-F-36 and case 23; Claude's weaker limits are
-S132's Door C, already out for veto): the build team settles the first four with spec-change; routine `trig_01Pey52A9vKhTvnKCAC6SgG5`, fires 08:36 UTC; DELIVERED as PR #60 at 06e67e6 (+4934/-194); r1: Codex review https://chatgpt.com/local/6b07fd23-9fbc-83eb-ac12-256d44550040 r1: 9/1 findings (changes), posted 10:02 UTC; answer brief as PR comment (the build session is subscribed); Deputy Scissors ruled F1.9 narrow: p95 state bytes on the fake host, page-level budgets "not measured (needs watane-dev)" as a known limit; r1 answers e0c1c1d (7 fixed, F1.4 and F1.5 disagree, F1.9 in part); r2: Codex follow-up in the same task, 10:14 UTC, ~09:50 UTC. Size: a whole stage, likely over 1,500 lines.)
+S132's Door C, already out for veto): the build team settles the first four with spec-change; routine `trig_01Pey52A9vKhTvnKCAC6SgG5`, fires 08:36 UTC; DELIVERED as PR #60 at 06e67e6 (+4934/-194); r1: Codex review https://chatgpt.com/local/6b07fd23-9fbc-83eb-ac12-256d44550040 r1: 9/1 findings (changes), posted 10:02 UTC; answer brief as PR comment (the build session is subscribed); Deputy Scissors ruled F1.9 narrow: p95 state bytes on the fake host, page-level budgets "not measured (needs watane-dev)" as a known limit; r1 answers e0c1c1d (7 fixed, F1.4 and F1.5 disagree, F1.9 in part); r2: Codex follow-up in the same task, 10:14 UTC; r2: 3/1 (changes), answer brief as PR comment 10:27 UTC, ~09:50 UTC. Size: a whole stage, likely over 1,500 lines.)
 Why: stage F of TECHNICAL 17, on S132's design (9.7, merged at 95ec3bc7). The factory as mods needs an agent that hands
 named work to other agents and a turn that cannot run away.
 Outcomes (user-sim on the real programs, scripted Responses and dev's fake `claude`, no real provider):
@@ -432,6 +432,8 @@ reviewer claude. Cloud.
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
+
+- 2026-11-26 (Deputy Scissors) S134 F1.5 accepted as a known limit: OpenAI `persist: false` is not built for any session (root and child alike); no VISION or FUNCTIONAL clause promises it; recorded in TECHNICAL 11. Undo: an upkeep slice that builds it. S134 F1.4 settled on the builder's reading (toolsets carry no adopted revision; host consent decides).
 
 - 2026-11-26 (deputy-7) S127 cut at r2: F2.1 accepted (the denial and cancellation stay immediate and every §14 row HELD; only the reason text can be lost when the kernel-facing stream is full at a launch deadline or Claude ends before ready; two unusual events together). Clause: the stall rule (findings in code the last answer added). undo: an upkeep item, drain the outbox before close.
 
