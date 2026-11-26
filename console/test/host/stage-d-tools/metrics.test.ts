@@ -101,3 +101,28 @@ it("ac1_does_not_excuse_an_earlier_hole_or_an_unconfirmed_interruption", () => {
   expect(lateStop.cut).toEqual([]);
   expect(lateStop.faults.join(" ")).toContain("oa-s1-3");
 });
+
+it("ac1_rejects_a_completed_batch_with_duplicate_or_missing_source_calls", () => {
+  const tail = step(3, 3000);
+  const malformed = tail.filter(({ marker }) => marker !== "call_3_2");
+  malformed.splice(-1, 0, { ...tail[2] });
+  expect(openaiPageCoverage(malformed, new Set(), [interrupted], 1000, 3064).faults.join(" "))
+    .toContain("instead of four distinct calls");
+});
+
+it("ac1_requires_a_partial_source_batch_to_overlap_the_stored_Stop", () => {
+  const tail = step(3, 3000).slice(0, 3);
+  expect(openaiPageCoverage(tail, new Set(), [interrupted], 1000, 3064).faults.join(" "))
+    .toContain("missing page marker oa-s1-3");
+  tail[2].at = 3066;
+  const coverage = openaiPageCoverage(tail, new Set(), [interrupted], 1000, 3064);
+  expect(coverage.cut).toEqual(tail);
+  expect(coverage.faults).toEqual([]);
+});
+
+it("ac1_reports_no_Stop_cut_when_all_page_markers_arrived", () => {
+  const tail = step(3, 3000);
+  const coverage = openaiPageCoverage(tail, new Set(tail.map(({ marker }) => marker)), [interrupted], 1000, 3064);
+  expect(coverage.cut).toEqual([]);
+  expect(coverage.faults).toEqual([]);
+});
