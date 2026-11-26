@@ -136,10 +136,15 @@ fn ac2_a_due_idle_firing_at_the_ceiling_releases_the_stream_and_commits() {
     assert!(r.streams.is_empty());
     assert!(r.deadlines.iter().all(|d| d.what != "idle"));
     // the fixture really is at the account's cap: the firing charged its own writes, so pin the cap to
-    // exactly the bytes held now (equal is past, `>=`, 9.3); the next public call is refused `quota`
-    k.limits.account_bytes = bytes(&mut k, "quota");
-    let refused = k.say("alice", &id, "again", IN);
+    // exactly the bytes held now (equal is past, `>=`, 9.3). A rename to an empty title writes no more
+    // bytes than it frees, so only the cap decision can refuse it (S131 r1 F1.6: a `say` is refused at
+    // equality for want of room too, whatever the comparison); one byte under the cap it goes through.
+    let held = bytes(&mut k, "quota");
+    k.limits.account_bytes = held;
+    let refused = k.rename("alice", &id, "");
     assert!(matches!(refused, Err(KernelError::Quota(_))), "{refused:?}");
+    k.limits.account_bytes = held + 1;
+    k.rename("alice", &id, "").unwrap();
 }
 
 #[test]
