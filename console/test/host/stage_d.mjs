@@ -155,11 +155,12 @@ sys.exit(child.wait())
 
 function readStamps(path) {
   ensure(existsSync(path), `missing telemetry: ${path}; see AGENTS.md for the instrumented Watane build`);
-  return new Map(readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((line) => {
-    const [at, marker] = line.split(" ");
-    return [marker, Number(at) / 1e6];
-  }));
+  return readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((line) => {
+    const [at, marker, step] = line.split(" ");
+    return { at: Number(at) / 1e6, marker, step };
+  });
 }
+const stampTimes = (stamps) => new Map(stamps.map(({ at, marker }) => [marker, at]));
 
 async function mixedLoad(browser) {
   const folder = join(dirname(preview.home), "claude");
@@ -227,8 +228,9 @@ async function mixedLoad(browser) {
     })));
     const to = Math.min(...stopAt.map((at) => at ?? Infinity), Date.now());
     await sleep(1250);
-    const scripted = readStamps(join(tmp, "load-clock.sse"));
-    const claudeStamps = readStamps(join(tmp, "claude.stamps"));
+    const wire = readStamps(join(tmp, "load-clock.sse"));
+    const scripted = stampTimes(wire.filter(({ marker }) => !marker.endsWith("/completed")));
+    const claudeStamps = stampTimes(readStamps(join(tmp, "claude.stamps")));
     const claudeByProcess = new Map();
     for (const [marker, at] of claudeStamps) {
       const [, id, kind] = marker.split("-");
@@ -280,7 +282,14 @@ async function mixedLoad(browser) {
         const delivered = [...seen].filter((marker) => marker.startsWith("call_")).length;
         if (delivered < 4 * fullSteps) faults.push(`${id}: only ${delivered} tool calls reached the page across ${fullSteps} steps`);
         if (missing.length || delivered < 4 * fullSteps) {
-          const offsets = ([marker, at]) => ({ marker, beforeStopMs: Math.round(end - at) });
+          const offsets = ([marker, at]) => ({ marker, beforeStopMs: end === null ? null : Math.round(end - at) });
+          const measuredSteps = new Set(expected.filter(([, at]) => at >= from && at < to - 50).map(([marker]) => marker));
+          const missingSteps = new Set(missing.map(([marker]) => marker));
+          for (const { at, marker, step } of wire) {
+            if (at >= from && at < to && measuredSteps.has(step) && marker.startsWith("call_") && !seen.has(marker)) {
+              missingSteps.add(step);
+            }
+          }
           const stored = await entriesOf(session);
           const lastToolCalls = stored.filter(({ kind }) => kind === "tool").slice(-8);
           say(`LOSS ${id} ${JSON.stringify({
@@ -290,10 +299,10 @@ async function mixedLoad(browser) {
             // A different attachment may already have received items that the measured stream lacks.
             streams: [...new Set(captured.items.map(({ stream }) => stream))],
             measuredStream: captured.stream,
-            writesNearMissing: [...scripted].filter(([marker, at]) =>
-              marker.startsWith("call_") && missing.some(([, time]) => Math.abs(at - time) <= 100)).map(offsets),
+            missingStepWrites: wire.filter(({ step }) => missingSteps.has(step))
+              .map(({ marker, at, step }) => ({ step, ...offsets([marker, at]) })),
             lastPageTools: items.filter(({ marker }) => marker?.startsWith("call_")).slice(-8),
-            lastStoredTools: lastToolCalls.map(({ i, at, body }) => ({ i, at, id: body.id, status: body.status })),
+            lastStoredTools: lastToolCalls.map(({ i, at, body }) => ({ i, at, id: body.toolCallId, status: body.status })),
             lastStoredTurn: stored.filter(({ kind }) => kind === "turn").at(-1)?.body,
           })}`);
         }

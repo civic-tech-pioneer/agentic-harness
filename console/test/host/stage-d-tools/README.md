@@ -18,6 +18,8 @@ binary. Run `npm run test:load:d` in the harness's `console/` directory.
 The runner sets `S128_LOAD_CLOCK` to a file in its disposable preview directory.
 The patched scripted server alternates the two owners and phases their eight sessions 125 ms apart on a fixed
 one-second grid. It timestamps each sample immediately before the TLS write.
+The source trace tags each tool call and completion with its step so a missing
+page item can be compared with Stop and the durable transcript.
 The host logs the start and end of both host and mod commits. The runner clips
 the union of those commit intervals to its measured workload window. The
 instrumentation is disabled outside the budget run.
