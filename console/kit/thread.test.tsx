@@ -174,6 +174,20 @@ describe("other rows", () => {
     expect(el.textContent).toContain("too broad");
   });
 
+  it("ac2_stop_acknowledgement_has_no_row_and_interruption_is_stopped", () => {
+    const ack = { type: "control_response", response: { subtype: "success", request_id: "interrupt-id", response: {} } };
+    const view = feed(
+      w({ type: "turn", state: { state: "running", since: 1 } }),
+      entry(2, "unknown", { raw: ack }),
+      entry(3, "turn", { state: "idle", stop: { kind: "interrupted" }, seconds: 2 }),
+      entry(4, "unknown", { raw: { ...ack, response: { ...ack.response, subtype: "error" } } }),
+    );
+    expect(feed(entry(2, "unknown", { raw: ack })).lastIndex).toBe(2);
+    show(view);
+    expect(screen.getByText("Stopped after 2 s · 0 tools")).toBeInTheDocument();
+    expect(screen.getAllByText("An event this console does not know")).toHaveLength(1);
+  });
+
   it("ac7_footer_line", () => {
     show(feed(w({ type: "turn", state: { state: "running", since: 1 } }),
       w({ type: "turn", state: { state: "idle", stop: { kind: "completed" }, seconds: 9, tools: 2, tokens: 18000 } })));

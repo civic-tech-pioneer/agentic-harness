@@ -113,6 +113,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
 export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; needsHidden?: boolean; behind?: boolean; onBehind?: () => void; status: ReactNode;
   session?: { model?: string; mode?: string }; stopping?: boolean; sessionId?: string; replaced?: boolean; onUseHere?: () => void }) {
   const { view } = props;
+  const cannotInterrupt = view.turn?.state === "unknown" || view.turn?.state === "resume-lost";
   const [opened, setOpened] = useState<boolean | null>(null);
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
   const { actions } = props;
@@ -202,11 +203,11 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
         <section className="wa-queue" aria-label="Queue">
           <ul>{view.queue.slice(0, SHOWN).map((q, k) => (
             <li key={q.n}>
-              <span className="wa-queue-text">{q.input}</span>
+              <span className="wa-queue-text">{q.input.replace(/^(.{240}).+/su, "$1…")}</span>
               <span className="wa-queue-ctl">
                 <button type="button" className="wa-chip" aria-label={`Edit queued message ${k + 1}`} disabled={off} onClick={() => edit(q)}>Edit</button>
                 <button type="button" className="wa-chip" aria-label={`Remove queued message ${k + 1}`} disabled={off} onClick={() => remove(q)}>Remove</button>
-                <button type="button" className="wa-chip" aria-label={`Stop and send queued message ${k + 1}`} disabled={off} onClick={() => stopAndSend(q)}>Stop and send</button>
+                <button type="button" className="wa-chip" aria-label={`Stop and send queued message ${k + 1}`} disabled={off || cannotInterrupt} onClick={() => stopAndSend(q)}>Stop and send</button>
               </span>
             </li>
           ))}</ul>
@@ -220,7 +221,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
             {x.error ?? (x.tried === "undo" ? "Removed." : x.tried === "edit" ? "Taken out to edit." : "Taken out to send.")}
             {" "}<q className="wa-taken-text">{x.text}</q>
             {!x.held && undoShown(x) ? <> <button type="button" className="wa-chip" disabled={off || !!x.out} onClick={() => void again(x, "say")}>Undo</button></> : null}
-            {!x.held && x.tried === "stop" ? <> <button type="button" className="wa-chip" disabled={off || !!x.out} onClick={() => void again(x, "interrupt")}>Stop and send</button></> : null}
+            {!x.held && x.tried === "stop" ? <> <button type="button" className="wa-chip" disabled={off || cannotInterrupt || !!x.out} onClick={() => void again(x, "interrupt")}>Stop and send</button></> : null}
             {" "}<button type="button" className="wa-chip" disabled={!!x.out} onClick={() => drop(sid, x.id)}>Discard</button>
           </li>
         ))}</ul>

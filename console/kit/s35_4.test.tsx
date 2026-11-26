@@ -96,7 +96,7 @@ describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
   it("ac3_failed_no_binary_says_it_in_words_with_the_triangle", () => {
     const v = { ...emptyView, turn: { state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "no-binary" } } } as SessionView;
     status(v);
-    expect(word()).toBe("Failed: Claude Code is not available here");
+    expect(word()).toBe("Failed: Choose a Claude Code binary in Settings → Claude Code");
     expect(shape()).toBe("triangle");
   });
   it("ac3_failed_with_another_cause_shows_its_text_and_the_wire_keeps_it", () => {
