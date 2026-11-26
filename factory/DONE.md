@@ -145,3 +145,38 @@ adversary runs). Protects: *core*.
   no watane tools in the Claude cloud, the builder ran 9/9 and 1/1); answer r1 to Codex in the same task, ~19:45 UTC;
   P1.2 accepted (deputy): ~1 s first-request delay, F6.1 window widens to every first request (one line in 9.5).
   The items:
+
+### S127: stage E: Alice's Claude session runs through the checked provider, with Jev as its judge
+(in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S126 codex, S125 codex; the main
+line, sketched 2026-11-25 by deputy-6; routine `trig_01E1Ngk3t7NCGXJnEjBgEjHR`, fires 18:39 UTC; spec-check 382f793 (deputy-6, stage E scope: 14 points, folded in below).)
+DELIVERED 18:58 UTC as PR #56 (+3705/-38). Deputy D1.1 (blocking): the answer field is `noul`, not `probability`
+(PR comment 7171667656); BLOCKED question (outcome verification) ruled (b): merged on its native proof, `--scripted-judge`
+as watane S129, then `test:host:e` in Upkeep. r1: Codex review https://chatgpt.com/local/6b073026-11b0-83ed-b550-0ef125943064,
+dispatched 19:00 UTC; withheld by Codex's cyber filter; retried once with the adversary worded as a boundary check: https://chatgpt.com/local/6b07347c-1450-83ed-b77a-1aabbc8df068 (a second refusal: r1 runs on Claude). D1.1 and D1.2 answered at 4fe51c4 (CI green). r1 (Codex, 2026-11-25 20:33): 4/2, `changes (4)` (validator RETURN, adversary gap F1.1, user-sim REJECTED), posted 2026-11-26 06:28 with the deputy's ruling (all four blocking; the preview-scores risk accepted); answered at db21a42 (all 4 fixed); r2: Codex review https://chatgpt.com/local/6b07d354-fff0-83ed-a526-8085a130307b, 2026-11-26 ~06:40 UTC; r2: 2/1 `changes (2)` (all §14 HELD), posted 06:58 with a **cut** (deputy-7): F2.1 (a verdict's reason lost under backpressure at teardown) accepted as a known limit in TECHNICAL 10, F2.2 (a queued input dropped on a terminal launch denial) fixed small; r3 checks only these two. Answered at 3df5713; r3: Codex review https://chatgpt.com/local/6b07d9e3-a408-83eb-9c6e-d1831c52e073; r3: 1/1 `changes (1)` (§14 HELD): F3.1 a say between a terminal launch verdict and `ended` sends the queued follow-up to the ended stream (same queue code as F2.2). Posted ~07:38 with Deputy Rock's last-round ruling: a few-line fix on existing state, else a one-line known limit in TECHNICAL 10; r4 scoped to F3.1 only; P3.1 polish. Answered at 764d5ed (F3.1 fixed on existing state, P3.1 done); r4: Codex review https://chatgpt.com/local/6b07e18d-25f4-83ed-bf16-01dbaf891068, ~07:38 UTC.
+Story (AGT-J3; TECHNICAL 17 stage E, "this repository" column): Alice installs the checked provider, enters her judge's key
+and origin in the app (watane S122), and runs a Claude session through it: before each tool call the console shows
+`checking`, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and after repeated denials
+the breaker stops the session and says why.
+Outcomes (user-sim on `watane-dev serve`, dev's fake `claude` and dev's scripted judge, plays through `Raw`):
+1. A tool call the judge scores safe runs; the console shows `checking` while the judge answers (case 31 for `checking`).
+2. A call scored unsafe, or in the unsure band, is denied before it runs, and the transcript shows the verdict and a
+   reason naming each question and its score (AGT-F-32, AGT-F-34).
+3. A judge that times out, answers garbage, refuses the key or has no key denies (cases 19 `judge`, 25, 44).
+4. Three denials in a row, or 10 of the last 50, interrupt the session with a verdict item that says why (the breaker).
+5. Cases 32, 33, 36, 37, 38, 42, 43, 46, 47, 50, 51 (provider parts) pass, and the stage E budgets of 17 hold.
+Decisions (deputy-6, Door C, listed for the human's veto): see Deputy decisions 2026-11-25 "judge wire shape". In short:
+the judge call is TypeSafe System One (`POST <origin>/v1/systemone`, Bearer, `noul` questions in one request); the
+provider maps the probabilities to `safe | unsafe | unsure` with thresholds kept on its own page (default: unsafe at
+>= 0.7, safe at <= 0.3, unsure between, for the harm question); `reasons` are provider-written text naming each
+question and its score. The origin stays the one Alice enters in the app (TECHNICAL 5; 10's "judge URL" setting goes);
+the provider's `[http]` lists `api.typesafe.ai` (and the fake's `judge.test` in tests); another judge API is a derived
+provider. V7 (Jev, the Mac, 2026-11-25): p50 173 ms, p95 267 ms, max 846 ms per call, new TLS each, 2 questions.
+Spec work in the slice (spec-change): TECHNICAL 10 (request shape, threshold rule, retries within one deadline, the
+`verdict`/`outcome` field names of 9.8 and 10 made one), 9.8's entry, 16 cases 25 and 44 (unsure is the band),
+FUNCTIONAL AGT-F-32/34 and line 36 wording ("scores" not "says"), and V7 into ARCHITECTURE-PROPOSAL 18.
+Constraints: **no cloud test calls an external provider** (the human, 2026-11-25): no Jev call in CI or a cloud
+session; tests use dev's scripted judge with `Raw` replies in System One's shape. No change to watane: dev's `Play`
+shape stays (Leftovers there); a gap is a question to the deputy. A real Jev run is the deputy's, on the Mac.
+Touches: `provider-checked/` (new, R-B1), `kernel/` (`checking` activity and verdict items only where 9.3/9.8 need it),
+`console/` (the activity and verdict display), `design/` (above). Boundary: TECHNICAL 14 (the key never reaches the
+provider or kernel; only the owner may spend the judge: adversary runs). Protects: *core*.

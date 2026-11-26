@@ -3621,7 +3621,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let past = acct.past;
         let before = rec.clone();
         let was = rec.turn.is_active();
-        let ended = matches!(event, ProviderEvent::Ended)
+        let mut ended = matches!(event, ProviderEvent::Ended)
             .then_some(stream)
             .flatten();
         let mut slots = None;
@@ -3678,8 +3678,53 @@ impl<S: State, H: Host> Kernel<S, H> {
                 }
             }
             ProviderEvent::Out(out) => {
-                if let Some(e) = out.entry {
+                if let Some(on) = out.checking {
+                    if let Turn::Running { since, .. } = rec.turn {
+                        let activity =
+                            Some(crate::record::Activity::Checking { on: judged_on(&on) });
+                        work.pushes.push(Push::of(
+                            &rec.id,
+                            turn_push(&Turn::Running { since, activity }),
+                        ));
+                    }
+                }
+                if let Some(mut e) = out.entry {
+                    let mut judged = None;
+                    if e.kind == Kind::Verdict {
+                        judged = self.verdict_entry(&rec, &mut e.body);
+                    }
+                    let verdict = e.kind == Kind::Verdict;
                     self.out_entry(&mut rec, past, e, now, &mut work)?;
+                    if let (Some(terminal), true) = (judged, rec.turn.is_active()) {
+                        let failed = Turn::Idle {
+                            stop: Stop::Failed {
+                                error: "judge".into(),
+                                cause: None,
+                            },
+                            seconds: None,
+                            tools: None,
+                            tokens: None,
+                        };
+                        if terminal {
+                            // The launch's denial closes the provider's session: a queued input
+                            // stays queued for the next launch, never sent to it (S127 r2 F2.2).
+                            self.turn_to(&mut rec, past, failed, now, &mut work)?;
+                            // The stream is over now, as at its `ended` (which then finds no
+                            // key): a `say` in between opens a new one (S127 r3 F3.1).
+                            self.close_all_with(&mut rec, past, "ended", now, &mut work, false)?;
+                            ended = stream;
+                        } else {
+                            // As any turn end: a queued input starts the next turn (r1 F1.3).
+                            self.change_turn(&mut rec, past, failed, now, &mut work)?;
+                        }
+                    } else if let (true, Turn::Running { since, .. }) = (verdict, &rec.turn) {
+                        // The `checking` activity ends with the verdict (9.3).
+                        let t = Turn::Running {
+                            since: *since,
+                            activity: None,
+                        };
+                        work.pushes.push(Push::of(&rec.id, turn_push(&t)));
+                    }
                 }
                 if let Some(u) = out.update {
                     let push = Push::of(&rec.id, wire_update(u, now, work.stored));
@@ -3702,6 +3747,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
         }
         // 9.4: the stream's `ended` frees its slot and keys.
+        if ended.is_some() && slots.is_none() {
+            slots = Some(Slots::load(&mut self.state));
+        }
         let mut freed = false;
         if let (Some(t), Some(s)) = (ended, slots.as_mut()) {
             freed = self.release_provider(&mut rec, t, s, &mut acct);
@@ -3743,6 +3791,31 @@ impl<S: State, H: Host> Kernel<S, H> {
         )?;
         work.live = rec.live.clone();
         Ok(work)
+    }
+
+    /// Maps a checked provider's verdict body for the entry (9.4): `on` of an input, `toolCallId`
+    /// of the open ask or check it names. True when the verdict is an unsafe or unsure one on an
+    /// input, which ends the turn (10).
+    /// Fills a verdict entry's `on` and `toolCallId`; for a denied input, `Some(terminal)`:
+    /// `true` for the launch, whose denial ends the provider's session (10 step 4).
+    fn verdict_entry(&self, rec: &Record, body: &mut Value) -> Option<bool> {
+        let on = body["on"].as_str().unwrap_or_default().to_string();
+        let on_input = on == "launch" || on.starts_with("input/");
+        let bad = body["outcome"] != "safe";
+        if on_input {
+            body["on"] = json!("input");
+        } else if let Some(call) = rec
+            .open
+            .iter()
+            .map(|o| (&o.id, &o.call))
+            .chain(rec.pending_answers.iter().map(|(id, p)| (id, &p.call)))
+            .find(|(id, _)| **id == on)
+            .map(|(_, c)| c)
+            .filter(|c| !c.is_empty())
+        {
+            body["toolCallId"] = json!(call);
+        }
+        (on_input && bad).then_some(on == "launch")
     }
 
     /// Whether an ask item reuses the id of an open or pending ask, or shows another tool or input
@@ -4179,4 +4252,13 @@ fn short_decision(d: Option<&Value>) -> Option<Value> {
         Some(_) => return None,
     }
     Some(out)
+}
+
+/// The activity's `on` of a provider's `checking` item: `input` for the launch and an input (10).
+fn judged_on(on: &str) -> String {
+    if on == "launch" || on.starts_with("input/") {
+        "input".into()
+    } else {
+        on.into()
+    }
 }

@@ -45,6 +45,7 @@ mod review_s36_r1;
 mod revoke;
 mod rules;
 mod runners;
+mod s127_judge;
 mod s26;
 mod s28;
 mod s29_ceiling;

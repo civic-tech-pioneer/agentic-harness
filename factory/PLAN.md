@@ -27,12 +27,24 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S127 (main line, claude, PR #56); S131 (upkeep, claude); watane S130. (watane S129 merged 2026-11-26.)
+S132 (design, codex); S131 (upkeep, claude); watane S130. (S127 merged 2026-11-26.)
 
 ## Sketched
+### S132 (design) stage F: delegation and counters, made one consistent contract
+(in flight, cloud, builder codex, reviewer claude; Codex task https://chatgpt.com/local/6b07e7d8-0604-83eb-98fc-12f978a90070, 08:03 UTC; rule 3: last two handed out S131 claude, watane S130 codex, but Deputy Rock's reason: a design slice of spec text suits either side, and Codex builds two in three; the main line, sketched 2026-11-26 by Deputy Rock after S127 merged; spec-check 10abec0, report `factory/spec-check-S132.md` (Sonnet, no second-vendor confirmation). Size: a design slice, below 1,500 lines by nature; it unblocks stage F's build.)
+Why: stage F's clauses do not fit together. AGT-J5, stage F's own done-when, cannot run on any backend: a foreman (a child) must start a validator, but an OpenAI child has no `task` tool and Claude has no child sessions, only launch-time subagents. A build slice on this would come back as a question in every round.
+Outcomes (the review checks them in the documents):
+1. AGT-J5 runs, as written or as narrowed: the design says which backend's sessions can be children and parents, at what depth, and FUNCTIONAL 3.9, AGT-J5 and TECHNICAL 9.7 agree with it (spec-check findings 1, 2, 4).
+2. A child's narrowing is a rule: which profile fields compare, where the check runs, the refusal field, and the child's workspace, folder and owner (findings 3, 10).
+3. The counters and `usage` per backend: scope (session or turn), what happens at `max-turns` on Claude, how `max-tokens` stops a turn, and the stage `usage` lands in (findings 5, 7).
+4. `task`'s result, the transcript entry that carries a child, restart with live children, and the console's clause for children (findings 6, 9, 10); the OpenAI `skill` tool's stage (finding 11).
+5. The stage F budget row holds against the slot caps, or is restated (finding 8). The low findings are fixed where one line does it.
+Touches: `design/FUNCTIONAL.md` (3.9, 3.11, AGT-J5), `design/TECHNICAL.md` (2.3, 9.1 to 9.5 where 9.7 cites them, 9.7, 14, 16 cases 23, 24, 52, 17, 18.3), `factory/spec-check-S132.md`. No code.
+Constraints: design only, through the `spec-change` skill; no code, no VISION change (a needed one goes to the deputy as BLOCKED). Prefer narrowing to building: a mechanism only where FUNCTIONAL promises the behaviour. Each Door C choice (an interface, a public tool, a format) is listed in the PR body with its options and why, so the deputy can report it for the human's veto. Out of scope: the factory profiles and N5 (waiting on the human).
+
 ### S131 (upkeep) the host tests check what they skip: stage C on a participant home, stage B and D test polish
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S130 codex, S129 codex; the upkeep
-lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC. Size: an upkeep slice.)
+lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC; PR #58 opened ~07:20 at 495975c (+6524/-60, 5.3k of it the test home's Cargo.lock; shares only AGENTS.md with S127); r1: Codex review https://chatgpt.com/local/6b07deda-2b30-83ed-ae72-c1ec08020061, 07:27 UTC; r1: 8/2 `changes (8)` (boundary HELD; outcome check could not run, no watane-dev in Codex), posted ~07:40 with Deputy Rock's ruling (F1.1/P1.1 sketch amended, F1.2 a named known gap with the console fix to Upkeep, F1.7/F1.8 narrowed); answer by the build session itself (idle at 07:24; a new answer routine only if no push by ~08:05). Size: an upkeep slice.)
 Outcomes, each item's check (re-check each against main first; drop the ones already true and say so):
 1. S38 after watane S103: S38 outcomes 1 to 3 run on a participant home with a fake `Confirm` (host 19.7), outcomes 2 and 4
    on `watane-dev serve`, and the stage C budgets of TECHNICAL 17 are measured and recorded in the Suite time table.
@@ -41,45 +53,9 @@ Outcomes, each item's check (re-check each against main first; drop the ones alr
 3. S36 r1 polish P1.1 (`kernel/tests/it/s36_firing.rs`), P1.3 (`console/test/host/stage_b.mjs` browser assertions);
    S38 P1.2 (`kernel/tests/it/s38.rs`).
 Touches: `console/test/host/`, `kernel/tests/it/s36_firing.rs`, `kernel/tests/it/s38.rs`, `console/kit/metrics.test.ts`,
-`AGENTS.md`, this plan's Suite time rows. Not: `kernel/src/`, `console/kit/` sources, `console/src/`, `ui/`, `provider-checked/`,
+`AGENTS.md`, this plan's Suite time rows; also `console/package.json` test aliases and `factory/tasks/S131-*.md` (amended r1, Deputy Rock). Not: `kernel/src/`, `console/kit/` sources, `console/src/`, `ui/`, `provider-checked/`,
 `design/` (S127's files). A product bug found on the way is reported in the PR, not fixed here. No test calls an external
 provider. Protects: *guard* (tests that skip hide regressions).
-
-### S127: stage E: Alice's Claude session runs through the checked provider, with Jev as its judge
-(in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S126 codex, S125 codex; the main
-line, sketched 2026-11-25 by deputy-6; routine `trig_01E1Ngk3t7NCGXJnEjBgEjHR`, fires 18:39 UTC; spec-check 382f793 (deputy-6, stage E scope: 14 points, folded in below).)
-DELIVERED 18:58 UTC as PR #56 (+3705/-38). Deputy D1.1 (blocking): the answer field is `noul`, not `probability`
-(PR comment 7171667656); BLOCKED question (outcome verification) ruled (b): merged on its native proof, `--scripted-judge`
-as watane S129, then `test:host:e` in Upkeep. r1: Codex review https://chatgpt.com/local/6b073026-11b0-83ed-b550-0ef125943064,
-dispatched 19:00 UTC; withheld by Codex's cyber filter; retried once with the adversary worded as a boundary check: https://chatgpt.com/local/6b07347c-1450-83ed-b77a-1aabbc8df068 (a second refusal: r1 runs on Claude). D1.1 and D1.2 answered at 4fe51c4 (CI green). r1 (Codex, 2026-11-25 20:33): 4/2, `changes (4)` (validator RETURN, adversary gap F1.1, user-sim REJECTED), posted 2026-11-26 06:28 with the deputy's ruling (all four blocking; the preview-scores risk accepted); answered at db21a42 (all 4 fixed); r2: Codex review https://chatgpt.com/local/6b07d354-fff0-83ed-a526-8085a130307b, 2026-11-26 ~06:40 UTC; r2: 2/1 `changes (2)` (all §14 HELD), posted 06:58 with a **cut** (deputy-7): F2.1 (a verdict's reason lost under backpressure at teardown) accepted as a known limit in TECHNICAL 10, F2.2 (a queued input dropped on a terminal launch denial) fixed small; r3 checks only these two. Answered at 3df5713; r3: Codex review https://chatgpt.com/local/6b07d9e3-a408-83eb-9c6e-d1831c52e073.
-Story (AGT-J3; TECHNICAL 17 stage E, "this repository" column): Alice installs the checked provider, enters her judge's key
-and origin in the app (watane S122), and runs a Claude session through it: before each tool call the console shows
-`checking`, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and after repeated denials
-the breaker stops the session and says why.
-Outcomes (user-sim on `watane-dev serve`, dev's fake `claude` and dev's scripted judge, plays through `Raw`):
-1. A tool call the judge scores safe runs; the console shows `checking` while the judge answers (case 31 for `checking`).
-2. A call scored unsafe, or in the unsure band, is denied before it runs, and the transcript shows the verdict and a
-   reason naming each question and its score (AGT-F-32, AGT-F-34).
-3. A judge that times out, answers garbage, refuses the key or has no key denies (cases 19 `judge`, 25, 44).
-4. Three denials in a row, or 10 of the last 50, interrupt the session with a verdict item that says why (the breaker).
-5. Cases 32, 33, 36, 37, 38, 42, 43, 46, 47, 50, 51 (provider parts) pass, and the stage E budgets of 17 hold.
-Decisions (deputy-6, Door C, listed for the human's veto): see Deputy decisions 2026-11-25 "judge wire shape". In short:
-the judge call is TypeSafe System One (`POST <origin>/v1/systemone`, Bearer, `noul` questions in one request); the
-provider maps the probabilities to `safe | unsafe | unsure` with thresholds kept on its own page (default: unsafe at
->= 0.7, safe at <= 0.3, unsure between, for the harm question); `reasons` are provider-written text naming each
-question and its score. The origin stays the one Alice enters in the app (TECHNICAL 5; 10's "judge URL" setting goes);
-the provider's `[http]` lists `api.typesafe.ai` (and the fake's `judge.test` in tests); another judge API is a derived
-provider. V7 (Jev, the Mac, 2026-11-25): p50 173 ms, p95 267 ms, max 846 ms per call, new TLS each, 2 questions.
-Spec work in the slice (spec-change): TECHNICAL 10 (request shape, threshold rule, retries within one deadline, the
-`verdict`/`outcome` field names of 9.8 and 10 made one), 9.8's entry, 16 cases 25 and 44 (unsure is the band),
-FUNCTIONAL AGT-F-32/34 and line 36 wording ("scores" not "says"), and V7 into ARCHITECTURE-PROPOSAL 18.
-Constraints: **no cloud test calls an external provider** (the human, 2026-11-25): no Jev call in CI or a cloud
-session; tests use dev's scripted judge with `Raw` replies in System One's shape. No change to watane: dev's `Play`
-shape stays (Leftovers there); a gap is a question to the deputy. A real Jev run is the deputy's, on the Mac.
-Touches: `provider-checked/` (new, R-B1), `kernel/` (`checking` activity and verdict items only where 9.3/9.8 need it),
-`console/` (the activity and verdict display), `design/` (above). Boundary: TECHNICAL 14 (the key never reaches the
-provider or kernel; only the owner may spend the judge: adversary runs). Protects: *core*.
-
 
 ### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DONE 2026-11-23: PR #43 merged with --admin at 042b0dd on the human's word after the extra round, r6 changes 2 answered (F6.1 done on main, F6.2 fixed); was in flight, builder claude, reviewer codex; continuation DELIVERED 21:31 UTC at 8fc6db6 on watane c2a7d4d (routine `trig_01NpPnJxwNjH279WAFwnziDk`), screenshots in `factory/runs/S35/screens/`; r1: Codex review dispatched 21:40 UTC, https://chatgpt.com/local/6b035f75-9cbc-83eb-953f-4ea568e56065; r1: 8 Codex findings (validator RETURN, adversary BREACHED, user-sim REJECTED) plus deputy design findings D1.1, D1.2, answer dispatched 22:04 UTC (session `cse_01LxwP923RKBfVNTWsTUagAQ`); r1 answered at 4522428 (all 10 fixed); r2 (22:37): Codex `changes (6)`, validator RETURN, adversary HELD, user-sim ACCEPTED; answer r2 dispatched 23:10 UTC (session `cse_01LxwP8yPPmPVipCPszcmKqW`; a 23:00 fire carried the stale r1 brief and pushed nothing); r2 answered at ea98cb9 (all 6 fixed); r3: Codex review dispatched 23:29 UTC; r3 (23:58): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim ACCEPTED); answer r3 dispatched 00:01 UTC (session `cse_01LxwP8zfZtC4o6shbfqRvp7`); r3 answered at d0dfddd (all 3 fixed); r4: Codex review dispatched 00:20 UTC; r4 (00:26): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim REJECTED), all on the composer's kept draft; deputy ruling (same finding 4 rounds running) and answer r4 dispatched 00:51 UTC (session `cse_01LxwP92VSjjigxaiXQaSyiJ`); r4 answered at 8177ca5 (by the ruling); r5 (last): Codex review dispatched 01:12 UTC; r5 (01:18): `changes (1)` (validator RETURN, adversary HELD, user-sim ACCEPTED): **round cap reached, held for the human** (Waiting: S35-CAP); then the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
 
@@ -144,6 +120,9 @@ reviewer claude. Cloud.
 
 ### Upkeep
 
+- **(after S127)** `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (watane S129 has merged).
+- **(S127 polish)** P4.1 `kernel/tests/it/s127_judge.rs:333`: assert that the replacement launch carries the original follow-up.
+- **(from S131 F1.2)** the console's consent activity does not name the folder the app asks for (`console/src`); S131's `stage_c.mjs` keeps it as a named known gap.
 - **(in S131)** **S128 polish left (r1, r2):** P1.4 the preview's pause length is not asserted against `resets_in_s`; P1.5 the redirect target is plain http (an https one makes the zero count mean something); P1.9 reads counted only through `kind`/`key`; P2.1 `stage_d.mjs:~300` cadence can fault a healthy run at the first delayed request (start the window at each session's second step); P2.2 `stage_d.mjs:149-151` unescaped-quote search; P2.3 `metrics.test.ts` nested intervals; P2.4 `AGENTS.md:61` exit codes of `test:load:d`; P2.5 the stage D Budget row lacks the opt-level, cadence result and three passes; P2.6 `watane.patch` moves `env_clear()` first and `chunks.insert(1, ..)` can panic.
 - **(guard, the human's (b) on S40 F6.1)** a timer firing of an OpenAI session whose owner mod was disabled during a timed pause may send one more model request under the kernel's origin. Fix: read the host-resolved origin of a timer firing through the production adapter (watane reports the caller of a timer callback as `host` and keeps the resolved origin apart), stop only foreign firings, and test it through the real adapter: an enabled owner's pause resumes by itself, a disabled owner's stops with no work.
 
@@ -176,6 +155,7 @@ reviewer claude. Cloud.
 
 ## Done
 
+- **S127** (stage E) Alice's Claude session runs through the checked provider with Jev as its judge: the console shows `checking` before each tool call, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and repeated denials trip the breaker, which says why (PR #56, rebase-merged 2026-11-26 07:57 UTC at 8e92d1b4 by Deputy Rock, no bypass; builder claude, reviewer codex, 4 rounds 4/2, 2/1, 1/1, 0/1; ~13 h in flight). Cut at r2 (deputy-7): F2.1 a known limit in TECHNICAL 10 (a verdict's reason can be lost under backpressure at teardown); r3's F3.1 fixed on existing state (TECHNICAL 9.4). Boundary HELD, outcomes ACCEPTED on fakes. Codex's cyber filter refused the adversary twice in r1 (worded as a boundary check since). Sketch in factory/DONE.md.
 - **S128** (upkeep) the `installed-agent` flake is a fixed race (the test now waits for the install to finish routing), `kit/s7_fix1` counts row reads instead of timing them, S40 runs on `watane-dev serve`, and `test:load:d` measures the stage D budgets at the page with a Budget record row (PR #57, rebase-merged 2026-11-25 at a19a90f3 by deputy-6, no bypass; builder codex, reviewer claude, 2 rounds (1/9, 0/6); ~1.3 h in flight). Cut: F6.1 and case 22 stay known limits (watane timer-origin contract held, watane PLAN Unsettled). P1.2 accepted (~1 s first-request delay). Polish in Upkeep. Sketch in factory/DONE.md.
 - **S40** Alice runs a profile on her ChatGPT plan in the console: the kernel refuses what OpenAI cannot honour and names each field, an OpenAI session streams the same events as Claude, and a usage limit pauses it until the reset and resumes by itself (PR #54, squash-merged 2026-11-25 ~18:45 UTC at b494cc34 by deputy-6, no bypass; builder claude, reviewer codex, 7 rounds; r7 reverted to the reviewed 553c95f plus one 9.5 line, checked mechanically; ~24 h in flight). F6.1 a known limit (the human's (b); Upkeep guard). CI: `installed-agent` red twice on the doc-only head with the known 'Timed out waiting for Claude Code settings' flake (not required; green on 553c95f). Sketch in factory/DONE.md.
 - **S39** the agent mod installs and runs in the watane app (PR #53, merged 2026-11-24 ~20:00 UTC without the admin bypass at 893f14a3, the first merge under the changed ruleset; builder codex, reviewer claude, 2 rounds 0/5, 0/0; ~7.5 h in flight, of which ~3 h waiting for watane S103 under the new 'dependent slices do not wait' rule). One command builds and publishes the agent mod and the Claude Code provider; one consent installs both from a link in the app; the launcher opens the console, which streams, asks, stops and keeps its transcript across a restart (CI `installed-agent` on watane main). Outcome 4, the human's real Claude login on a Mac: commands in the PR body. Risks A1.1, A1.2 accepted; polish under Upkeep.
@@ -687,6 +667,8 @@ S2 writes each into the document that owns it.
   few features perfect".
 
 ## Waiting on the human
+
+- **N5 (2026-11-26, Deputy Rock): stage E has merged, so N5 is due** (your 2026-11-23 words: revisit once stage E starts). The factory's implementer needs a shell. (a) the Claude grant with shell and web: nothing new, recommended by TECHNICAL 17; (b) a `codex app-server` backend in the host, a third native process kind, which keeps a second vendor for cross-checking (your leaning). Holds only stage F's factory profiles; S132 (delegation and counters) goes on without it.
 
 - **S40-CUT (2026-11-24): restart recovery of OpenAI sessions has stalled three rounds** (each fix opened a new path where the global restart pass acts under the wrong origin). Proposed cut, by J11's own words for Claude ("Notes shows the session as not running, with everything up to the last finished message; she sends 'continue'"): after a host restart, an OpenAI session that was mid-turn shows not running with its transcript up to the last finished message; its open and pending calls are aborted; the restart pass sends nothing, opens nothing and asks nothing for it; the owner's next message continues it under her own origin. Keeps: everything else in S40 (profiles, refusals, streaming, tools, pause until reset, the meter). Becomes a known limit: an OpenAI turn does not continue by itself after a restart (TECHNICAL 9.5's restart row and case 22's reissue, Upkeep). Undo: an owner-scoped recovery in a later slice. Recommended: take the cut. DECIDED 2026-11-25 by the deputy under the new cut-early rule (mboogerd/claude-plugin#3, asked by the human): cut taken; answer r3 with the cut to Claude, routine `trig_014rQUrVhYxDfSZTELMCedUR`, fires 06:37 UTC. The human may veto; the undo is an owner-scoped recovery slice.
 
