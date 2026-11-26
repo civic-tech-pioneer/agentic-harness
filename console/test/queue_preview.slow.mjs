@@ -18,6 +18,7 @@ function fixture() {
         for (const listener of listeners) listener({ type: "stream", stream: "st1", items });
         return { ok: "st1" };
       }
+      if (fn === "sessions.interrupt") return { err: { backend: "boom" } };
       return { ok: null };
     },
   };
@@ -27,7 +28,7 @@ buildOnce();
 const { url, close } = await serveUi(`(${fixture.toString()})()`);
 const browser = await launch();
 try {
-  const page = await browser.newPage({ viewport: { width: 700, height: 800 } });
+  const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
   await page.goto(url);
   const preview = page.locator(".wa-queue-text");
   await preview.waitFor();
@@ -41,6 +42,16 @@ try {
   assert.equal(bounds.length, 241);
   assert.ok(bounds.height <= 3 * bounds.lineHeight + 1 && bounds.scrollHeight > bounds.height,
     `the preview is longer than three lines but displays at most three: ${JSON.stringify(bounds)}`);
+  await page.getByRole("button", { name: "Stop and send queued message 1" }).click();
+  const error = page.getByText("The kernel could not do that: boom", { exact: true });
+  await error.waitFor();
+  assert.equal(await error.count(), 1, "the refusal appears only once");
+  const errorBounds = await error.evaluate((node) => ({
+    width: node.getBoundingClientRect().width,
+    rowWidth: node.closest("li")?.getBoundingClientRect().width,
+  }));
+  assert.ok(errorBounds.width >= errorBounds.rowWidth - 1,
+    `the error has its own full-width line: ${JSON.stringify(errorBounds)}`);
 } finally {
   await browser.close();
   await close();

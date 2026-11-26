@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, isFolderConsent, MEASURE, openAsk, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
+import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, isActiveTurn, isFolderConsent, MEASURE, openAsk, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, titleOf, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
@@ -105,6 +105,7 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     },
     stop: () => {
       const turn = viewRef.current.turn;
+      if (off || !isActiveTurn(turn)) return;
       setStopping(true);
       // During launch consent, cancelling the provider stream also dismisses watane's question.
       const stop = isFolderConsent(turn)
@@ -114,7 +115,9 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     },
     unqueue: (n) => kernel.unqueue(info.id, n),
     interrupt: (replacement) => {
-      if (isFolderConsent(viewRef.current.turn)) return Promise.reject(new Error("Stop and send is unavailable while watane waits for folder consent."));
+      const turn = viewRef.current.turn;
+      if (isFolderConsent(turn)) return Promise.reject(new Error("Stop and send is unavailable while watane waits for folder consent."));
+      if (off || !isActiveTurn(turn)) return Promise.reject(new Error("There is no active turn to stop."));
       setStopping(true);
       return kernel.interrupt(info.id, replacement).catch((e) => { setStopping(false); throw e; });
     },
