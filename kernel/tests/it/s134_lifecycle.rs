@@ -515,6 +515,7 @@ fn r1_f1_2_a_paused_childs_resume_checks_the_roots_access() {
     let (_root, a, b) = root_with_two(&mut k);
     pause(&mut k, &a, 60);
     k.host.now += 61_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{a}"));
     assert!(
         matches!(rec(&mut k, &a).turn, Turn::Running { .. }),
@@ -526,6 +527,30 @@ fn r1_f1_2_a_paused_childs_resume_checks_the_roots_access() {
         .put("access/alice", br#"["foreman","validator"]"#.to_vec())
         .unwrap();
     k.host.now += 61_000;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{b}"));
     assert_eq!(rec(&mut k, &b).turn, Turn::Paused { until: None });
+}
+
+#[test]
+fn s138_ac3_a_foreign_child_timer_cannot_continue_its_parent() {
+    let mut k = kernel("");
+    let (root, a, b) = root_with_two(&mut k);
+    pause(&mut k, &a, 1);
+    k.host.now += 1_000;
+    k.host.firing_origin = Some("bob".into());
+    let n = bodies(&k).len();
+
+    k.timer(&format!("s/{a}"));
+
+    assert_eq!(bodies(&k).len(), n);
+    for id in [&a, &root] {
+        assert!(matches!(
+            rec(&mut k, id).turn,
+            Turn::Idle { stop: Stop::Failed { error, .. }, .. } if error.contains("authority")
+        ));
+    }
+    assert!(matches!(rec(&mut k, &b).turn, Turn::Idle { .. }));
+    assert_eq!(calls_of(&mut k, &root), 0);
+    assert_eq!(Slots::load(&mut k.state).timers, 0);
 }

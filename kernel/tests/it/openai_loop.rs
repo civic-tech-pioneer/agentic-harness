@@ -429,6 +429,74 @@ fn ac4_a_stream_that_closes_before_completing_fails_the_turn_and_stores_nothing(
     assert_eq!(slots(&mut k).request, 0);
 }
 
+#[test]
+fn s138_ac2_a_firing_without_origin_stops_the_pause_locally() {
+    let mut k = kernel();
+    assert_foreign_pause(&mut k);
+}
+
+#[test]
+fn s138_ac2_a_disabled_owners_firing_falls_back_to_the_kernel_and_stops() {
+    let mut k = kernel();
+    k.host.firing_origin = Some("local/agent".into());
+    assert_foreign_pause(&mut k);
+}
+
+#[test]
+fn s138_ac2_another_owners_firing_stops_the_pause_locally() {
+    let mut k = kernel();
+    k.host.firing_origin = Some("bob".into());
+    assert_foreign_pause(&mut k);
+}
+
+#[test]
+fn s138_ac1_a_durable_pause_resumes_as_its_owner_after_restart() {
+    let mut k = kernel();
+    let id = started(&mut k, "alice", "k");
+    let stream = stream_of(&mut k, &id);
+    feed(
+        &mut k,
+        &stream,
+        vec![head(429, "application/json"), usage_limit_body(1)],
+    );
+    k.host.generation += 1;
+    k.host.now += 1_000;
+    k.host.firing_origin = Some("alice".into());
+    k.timer(&format!("s/{id}"));
+    assert_eq!(starts(&k).len(), 2);
+    assert!(matches!(turn(&mut k, &id), Turn::Running { .. }));
+    assert!(rec(&mut k, &id).deadlines.is_empty());
+}
+
+fn assert_foreign_pause(k: &mut K) {
+    let id = started(k, "alice", "s138");
+    let stream = stream_of(k, &id);
+    feed(
+        k,
+        &stream,
+        vec![head(429, "application/json"), usage_limit_body(1)],
+    );
+    k.say("alice", &id, "queued", IN).unwrap();
+    k.host.now += 1_000;
+    let from = k.host.calls.len();
+    k.timer(&format!("s/{id}"));
+    assert!(matches!(
+        turn(k, &id),
+        Turn::Idle { stop: Stop::Failed { error, .. }, .. }
+            if error == "Timer did not carry the session owner's authority"
+    ));
+    assert_eq!(starts(k).len(), 1);
+    assert!(!k.host.calls[from..].iter().any(|c| matches!(
+        c,
+        HostCall::ToolsOpen { .. } | HostCall::ToolsDescribe { .. } | HostCall::ToolsCall { .. }
+    )));
+    assert!(rec(k, &id).deadlines.is_empty());
+    assert_eq!(slots(k).timers, 0);
+    assert_eq!(k.queued("alice", &id).unwrap().len(), 1);
+    k.say("alice", &id, "continue", IN).unwrap();
+    assert_eq!(starts(k).len(), 2);
+}
+
 fn usage_limit_body(secs: u64) -> Vec<u8> {
     json!({"error":{"type":"usage_limit_reached","code":"usage_limit_reached","message":"limit","plan_type":"plus","resets_in_seconds":secs}})
         .to_string()
@@ -471,6 +539,7 @@ fn ac5_a_usage_limit_pauses_until_the_reset_and_resumes_by_itself() {
     assert_eq!(k.queued("alice", &id).unwrap().len(), 1);
     // The timer fires: the request goes again, the same body.
     k.host.now = until;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{id}"));
     let calls = starts(&k);
     assert_eq!(calls.len(), 2);
@@ -542,6 +611,7 @@ fn ac6_retries_back_off_then_pause_with_the_error_kept() {
         );
         assert_eq!(*timer_after(&k, &timer).last().unwrap(), ms);
         k.host.now = at + ms;
+        k.host.firing_origin = Some("alice".into());
         k.timer(&timer);
         assert_eq!(starts(&k).len() as u32, attempt + 1);
         assert_eq!(lp(&mut k, &id)["state"], "requesting");
@@ -955,6 +1025,7 @@ fn r1_f1_4_a_timed_pause_whose_profile_was_revoked_stays_paused_with_no_time() {
     assert_eq!(turn(&mut k, &id), Turn::Paused { until: Some(until) });
     k.state.put("access/alice", b"[]".to_vec()).unwrap();
     k.host.now = until;
+    k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{id}"));
     assert_eq!(turn(&mut k, &id), Turn::Paused { until: None });
     assert_eq!(starts(&k).len(), 1, "no request is sent");

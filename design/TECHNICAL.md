@@ -157,6 +157,7 @@ interface timers {                                   // no grant
   enum timer-error { too-many, bad-id, bad-delay }
   after: func(id: string, delay-ms: u64) -> result<_, timer-error>;
   cancel: func(id: string);
+  firing-origin: func() -> option<string>;
 }
 enum timer-error { too-many, bad-id, bad-delay }     // bad-delay: over 30 days (7)
 interface timer-sink { fired: func(id: string); }    // host-only export
@@ -168,6 +169,12 @@ interface host-info {                                // no grant (the human, 202
 // in the existing interface caller:
 identity: func() -> string;   // <publisher>/<slug>, local/<slug>, page, or agent:<handle-name>
 ```
+
+> `timers.firing-origin()` is a pure read through an import with no grant. In the timer owner's top-level `timer-sink.fired(id)`, it returns `some(identity)` with the mod identity defined in watane’s `spec/TECHNICAL.md` 3 that the host resolved for the firing's chain. The host resolves it after taking the mod's call lock and rechecking the row and origin client. If the stored origin is missing or disabled, or removal rewrote the row to the timer owner, the read returns the timer owner's identity. The read gives no previous origin, local name, generation or reason for fallback. It returns `none` outside that invocation, including in every nested call. The value is stable for that invocation and does not report live status. A firing ignored because the timer was cancelled or replaced never enters `fired`. The immediate caller remains `host`. The value cannot select an origin or confer authority. The host still checks grants, consents and the origin client at apply.
+>
+> In the Harness (host TECHNICAL 2.6), `timers.firing-origin` returns `none`. A `Fakes` entry under `watane:host/timers` overrides it. Previews use the real host and need no fake.
+>
+> The kernel binds a timer id to the expected session owner in its own state when it arms the timer. Before a timed resume or restart retry starts owner-scoped work, the kernel compares `timers.firing-origin()` with that expected owner. If the value is `none` or differs, it performs only local cleanup or waits for an ordinary call carrying the owner's authority. It makes no model request, toolset operation or consent request on that path. A durable timer armed in the intended owner's chain can drive owner-scoped restart recovery through `fired`. An idempotent job eligible for recovery uses its original key and the usual owner, consent and tool checks. Other jobs keep their existing abort rule. The host supplies no startup callback. A restart pass under another owner can do local housekeeping and cannot use a stored identity to schedule or perform work under the session owner's authority. Work without an armed timer waits for an ordinary call carrying the owner's authority.
 
 **G1.** `host-info.generation()` is the host's generation, its start number:
 raised once each time the host starts, kept in host state, the same for every
@@ -875,7 +882,8 @@ wire") are this JSON; the entry has no `activity`.
   (one per open ask plus the three others: a 62nd open ask with a deadline is
   denied `timers`). When the timer fires, the kernel handles every due
   deadline and sets the timer for the next one, or cancels it; a session
-  whose deadlines are all gone frees its timer. Live session timers are at
+  whose deadlines are all gone frees its timer. OpenAI firings are subject
+  to the owner check in 9.5. Live session timers are at
   most 240 kernel-wide (the host allows 256 per mod, 7; 16 are kept for the
   kernel's own use); the count is in `slots` (9.1) beside the stream counts
   and, unlike the stream counts, is not reset at a restart: timers are kept across restarts (7), so the count stays true without a scan. One owner holds at most 120 of the 240 (half, as the slots of 9.5); a child session counts against its root's owner (as 9.5). At the owner's cap the same four outcomes follow as at the kernel's cap.
@@ -1402,7 +1410,29 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   built); and the kernel opens no toolset again, so a handle kept from an
   earlier boot (the host keeps handles in memory) fails each later job, whose
   output is then the host's error.
-  Known limit (F6.1, the human, 2026-11-25): when the owner mod of an OpenAI session is disabled during a timed pause, the firing may send one more model request under the kernel's origin; a fix needs the host-resolved origin of a timer firing through the production adapter (Upkeep).
+- **AGT-T-138 Timer authority** (F-AGENT-7, AGT-F-26, AGT-F-28). The immutable
+  `session/<id>.owner` binds `s/<id>` when the kernel arms it. The expected
+  owner is the authenticated immediate `caller.identity()` that owns the
+  session (2.3), or the root owner's identity for a delegated child. The
+  kernel uses this identity for comparison only. A front mod can make the
+  host's resolved origin differ from that identity. The kernel's own identity
+  is never substituted for the session's owner, including for a page-owned
+  session, whose expected identity is `page`.
+  Before handling OpenAI deadlines or rearming an early OpenAI firing, the
+  resolved origin must equal the bound owner. Otherwise the kernel stops the
+  loop, clears the deadlines, denies open asks with reason `timer-origin`,
+  and records an `idle {failed}` turn explaining that the firing lacked the
+  owner's authority. The queue and transcript remain available to the owner.
+  Cleanup may cancel streams and record aborted jobs or resolve a delegated
+  call locally. It makes no new model request, toolset operation or consent
+  request. Timer callbacks dispatch only work queued by that callback, so a
+  slot freed by cleanup cannot run another owner's queued job. The global
+  restart pass and Claude idle release perform housekeeping.
+  A durable timed pause of an enabled owner mod can resume after restart.
+  Case 22 still applies to jobs and running turns.
+  Known limit (S133 P1.12): the read carries no install generation. The
+  kernel compares identities and relies on Watane's checks at resolution and
+  apply. It cannot distinguish installations that share the same identity.
 - **Settled by S40-3 (the loop).**
   - *The request.* `https-stream.start` gets exactly `{"url":"https://api.openai.com/v1/responses",
     "method":"POST","headers":{"content-type":"application/json","accept":"text/event-stream"},
@@ -1464,7 +1494,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
     `idempotent`. A profile with no toolsets opens nothing and sends no `tools`. A describe
     that returns `unknown-handle` immediately after opening waits for the opening call to commit.
     The next retry describes that same handle before sending a request.
-    On Watane this delays every toolset session’s first request by about 1 s and extends F6.1’s window to every such first request.
+    On Watane this delays a toolset session’s first request by about 1 s when the timer carries its owner’s authority. The timer authority rule above applies to this retry.
     `consent-pending(<what>)`
     from either call sets the live activity `consent {what}` and the `retry` deadline of the
     backoff above (the loop is `retrying`; the firing opens or describes again); `consent-refused`,
@@ -2299,7 +2329,7 @@ stage E).
 | A plan token goes only to OpenAI's agent endpoints | account binding, forbidden headers, no redirects (5) | watane `host/src/agent/https_stream.rs` |
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5); the same binding means the session's excerpt (the tool call, its input and the 4 KiB transcript excerpt of 10) leaves the machine only to the participant's own judge | watane `host/src/agent/https_stream.rs`, `app/` judge account; `provider-checked/mod.toml`, `provider-checked/logic/src/judge.rs`, `provider-checked/logic/src/lib.rs` |
 | A mod in the middle gains no authority | host consent (8); the providers' `sessions` compare one pinned kernel identity (2.2, 10) | watane `host/` consent, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`); the checked one: `provider-checked/mod.toml`, `provider-checked/wit/world.wit`, `provider-checked/logic/src/lib.rs`, `provider-checked/BOUNDARIES.md`; `factory/publish-test-mods.sh` pins the release identity |
-| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/src/openai/run.rs` and `kernel/src/openai/tools.rs` (the `request` and `job` streams, routed by `stream/<id>`, S40), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
+| A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/wasm/wit/deps/watane-host/host.wit` (resolved firing origin, 2.1), `kernel/src/openai/run.rs` and `kernel/src/openai/tools.rs` (the `request` and `job` streams, routed by `stream/<id>`, S40), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
 | A child cannot widen its owner's authority | root access and named profile before load, effective-profile narrowing and depth/live checks at dispatch (9.7); owner, origin and consent checks still apply | `kernel/src/delegation.rs`, `kernel/src/openai/task.rs` (dispatch, the child's start and its one resolution), `kernel/src/openai/run.rs`, `kernel/src/openai/tools.rs`, `kernel/src/named.rs`, `kernel/src/sessions.rs` (`may_work`: a child's calls checked against its root's access) |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7); the OpenAI loop's slots, retries and pauses (9.5) | `kernel/src/delegation.rs`, `kernel/src/openai/` (`run.rs`, `tools.rs`, `task.rs`), `kernel/src/quota.rs` (the slot limits) |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/src/call.rs` (a failed call commits no write, id or timer, 2.1), `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
@@ -2338,6 +2368,7 @@ the change, and the section here it comes from.
 - [ ] `host/TECHNICAL.md` 9.3: page connection ids and their own queues (3).
 - [ ] `host/TECHNICAL.md` 8.5: the step 11 `watane.js` passes the `connection` message (`{type, id}`) to the page's handlers too, so a page learns that its `/events` connection was replaced and reattaches its streams (18.2; S32). Without it, a `changed` cannot be told from a reconnect.
 - [ ] `host/TECHNICAL.md` host state: timers per mod, kept across restarts (7).
+- [ ] `host/TECHNICAL.md` 19.1 and 19.6: add `timers.firing-origin: func() -> option<string>` to the existing timer import. Return the resolved origin client only to the timer owner's top-level `timer-sink.fired(id)`, including the timer-owner fallback after removal or disable. Keep the existing durable timer path for restart work. Keep the host caller and all authority checks (agentic-harness 2.1, 7).
 - [ ] `host/TECHNICAL.md` `caller.identity()` (9.3, 14).
 - [ ] `host/TECHNICAL.md` new interface `host-info` with `generation()`: the start number, raised once per host start, kept in host state, a pure read, no grant (2.1, 9.3; G1; accepted, the human, 2026-11-21).
 - [ ] `host/TECHNICAL.md` `claude-types`: `start-error` and `session-error` also carry the providers' `not-owner` and `not-direct` (2.2, 10, 12).
@@ -2430,7 +2461,10 @@ of `spec/VISION.md`.
 22. After a restart, an idempotent job runs again under its key; a
     non-idempotent one gets `aborted`. (OpenAI: the idempotent half is not
     yet built; every open job gets `aborted` and the turn becomes `unknown`,
-    9.5 "After a restart".)
+    9.5 "After a restart".) A durable pause can resume when the host
+    resolves the firing to its bound owner. A missing, kernel fallback or
+    foreign origin stops locally, including for a timer armed through a
+    front mod. No model request, toolset operation or consent follows.
 23. On OpenAI a step at `max-turns` that calls tools gets one tool-free
     summary, a step at `max-tokens` dispatches no calls, and the tool-error
     cap aborts remaining work. Verify streak reset on success and all

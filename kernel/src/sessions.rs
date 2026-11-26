@@ -60,6 +60,10 @@ pub trait Host {
     /// The kernel never passes more than `MAX_TIMER_MS` (2.1, "The kernel's side of the seam").
     fn timer_after(&mut self, id: &str, delay_ms: u64);
     fn timer_cancel(&mut self, id: &str);
+    /// The host-resolved identity of this top-level timer firing (2.1).
+    fn timer_firing_origin(&mut self) -> Option<String> {
+        None
+    }
     /// What goes to the provider: recorded, never run.
     fn request(&mut self, r: Request);
     /// `streams.open()`: a new owner stream (9.4).
@@ -280,6 +284,7 @@ pub enum HostCall {
 pub struct FakeHost {
     pub generation: u64,
     pub now: u64,
+    pub firing_origin: Option<String>,
     pub next_id: u64,
     pub next_stream: u64,
     pub calls: Vec<HostCall>,
@@ -334,6 +339,9 @@ impl Host for FakeHost {
     fn timer_cancel(&mut self, id: &str) {
         self.calls
             .push(HostCall::TimerCancel { id: id.to_string() });
+    }
+    fn timer_firing_origin(&mut self) -> Option<String> {
+        self.firing_origin.clone()
     }
     fn request(&mut self, r: Request) {
         self.calls.push(HostCall::Request(r));
@@ -532,6 +540,8 @@ pub struct Kernel<S: State, H: Host> {
     /// The call may run under an origin other than the session owner's: the FIFO's drain, or an
     /// item or end of a job the drain started. It sends no model request (9.5 Slots).
     pub(crate) foreign: bool,
+    /// Present only during a session timer call, including when the host gave no origin.
+    timer_origin: Option<Option<String>>,
 }
 
 /// What one item of an items call came to (`item_step`).
@@ -896,6 +906,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             drain_due: false,
             queued: Vec::new(),
             foreign: false,
+            timer_origin: None,
         }
     }
 
@@ -4193,6 +4204,12 @@ impl<S: State, H: Host> Kernel<S, H> {
         None
     }
 
+    pub(crate) fn timer_carries_owner(&self, owner: &str) -> bool {
+        self.timer_origin
+            .as_ref()
+            .is_none_or(|origin| origin.as_deref() == Some(owner))
+    }
+
     /// `timer-sink.fired`: `restart` is R2, `s/<id>` a session's deadlines (9.3).
     pub fn timer(&mut self, id: &str) -> Called<()> {
         let mut work = Work::default();
@@ -4202,11 +4219,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                 let _ = self.restart_firing(&mut slots, &mut work);
             } else if let Some(session) = id.strip_prefix("s/") {
                 // A firing is never an error: one that fails changes nothing more.
+                self.timer_origin = Some(self.host.timer_firing_origin());
                 let _ = self.session_firing(session, &mut slots, &mut work);
             }
         }
         let pushes = work.pushes;
-        self.after_call();
+        self.after_timer();
+        self.timer_origin = None;
         Called { value: (), pushes }
     }
 
@@ -4221,6 +4240,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         let Some(mut rec) = Record::load(&mut self.state, id) else {
             return Ok(());
         };
+        // The timer ID names the record whose immutable owner was bound by the authenticated
+        // caller at session creation. The host's immediate caller for a firing is always host.
+        let denied = rec.backend == "openai"
+            && !rec.deadlines.is_empty()
+            && !self.timer_carries_owner(&rec.owner);
         let mut acct = self.accounts(&rec.owner);
         let boot = rec.boot;
         if self.settle(&mut rec, &mut acct, slots, work).is_err() {
@@ -4228,7 +4252,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         }
         let now = self.host.now();
-        if !rec.deadlines.iter().any(|d| d.at <= now) {
+        if !denied && !rec.deadlines.iter().any(|d| d.at <= now) {
             // Nothing due (an early firing, or a deadline over 30 days ahead, 7): the timer is set
             // again; a restart step `settle` ran is saved and charged (9.3 "Past"), else no key
             // and no count changes.
@@ -4250,7 +4274,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             rec.deadlines.retain(|d| !(d.at <= now && d.what == IDLE));
         }
         // 9.5: a `retry` or a `resume` that came due sends the request again.
-        if rec.backend == "openai" {
+        if denied {
+            let was = rec.turn.is_active();
+            self.openai_deny_timer(&mut rec, slots, &mut acct, work, now)?;
+            self.sync_active(&mut rec, slots, was)?;
+        } else if rec.backend == "openai" {
             let due = |what: &str| rec.deadlines.iter().any(|d| d.at <= now && d.what == what);
             let (retry, resume) = (due("retry"), due("resume"));
             if retry || resume {
@@ -4263,7 +4291,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
         }
         // 9.6: an `ask <id>` that came due denies the ask, reason `expired`.
-        if rec.backend == "openai" {
+        if !denied && rec.backend == "openai" {
             let ids: Vec<String> = rec
                 .deadlines
                 .iter()
@@ -4298,7 +4326,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         let now = self.host.now();
         if let Some(mut held) = Record::load(&mut self.state, id) {
             let delay = next_due(&held.deadlines, now).map_or(IDLE_MS, |at| at - now);
-            if !held.deadlines.is_empty() {
+            if !held.deadlines.is_empty()
+                && (held.backend != "openai" || self.timer_carries_owner(&held.owner))
+            {
                 self.set_timer(&format!("s/{id}"), delay);
             }
             let lost = self.state.change().session - self.sealed;

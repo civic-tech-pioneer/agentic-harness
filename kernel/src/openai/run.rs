@@ -1543,6 +1543,50 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     // ---- timers
 
+    /// End a foreign timer's turn and keep its queue and transcript for an ordinary owner call.
+    pub(crate) fn openai_deny_timer(
+        &mut self,
+        rec: &mut Record,
+        slots: &mut Slots,
+        acct: &mut Acct,
+        work: &mut Work,
+        now: u64,
+    ) -> Result<(), KernelError> {
+        let past = acct.past;
+        let mut cx = Cx {
+            slots,
+            a: acct,
+            work,
+            past,
+            now,
+            dirty: false,
+        };
+        let mut ls = self.loop_for(rec);
+        self.stop_for_timer_origin(rec, &mut ls, &mut cx)?;
+        rec.deadlines.clear();
+        self.loop_save(&rec.id, &ls)
+    }
+
+    pub(crate) fn stop_for_timer_origin(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+    ) -> Result<(), KernelError> {
+        let why = "Timer did not carry the session owner's authority";
+        self.close_all_with(rec, cx.past, "timer-origin", cx.now, cx.work, false)?;
+        self.openai_stop(rec, ls, cx)?;
+        ls.last_error = Some(why.into());
+        let idle = Turn::Idle {
+            stop: failed(why),
+            seconds: None,
+            tools: None,
+            tokens: None,
+        };
+        self.turn_to(rec, cx.past, idle, cx.now, cx.work)?;
+        self.end_task(rec, cx, None)
+    }
+
     /// A `retry` or `resume` deadline came due (9.3 deadlines, 9.5).
     pub(crate) fn openai_fire(
         &mut self,
@@ -1710,14 +1754,22 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// Sends the oldest waiting requests whose session and owner are under their caps, while
     /// request slots are free (9.5 Slots). Each starts in a write of its own.
     pub(crate) fn after_call(&mut self) {
+        self.finish_dispatch(false);
+    }
+
+    pub(crate) fn after_timer(&mut self) {
+        self.finish_dispatch(true);
+    }
+
+    fn finish_dispatch(&mut self, from_timer: bool) {
         if std::mem::take(&mut self.drain_due) {
-            self.openai_drain();
+            self.openai_drain(from_timer);
         }
         self.queued.clear();
         self.foreign = false;
     }
 
-    fn openai_drain(&mut self) {
+    fn openai_drain(&mut self, from_timer: bool) {
         let mut slots = Slots::load(&mut self.state);
         // The requests this call queued go first: sent now, in the call that queued them, or
         // their turns stop `busy` (9.5 Slots); none is left for another call.
@@ -1726,6 +1778,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             if let Some(bytes) = self.state.get(&name) {
                 self.drain_one(&mut slots, &name, at, &bytes, true);
             }
+        }
+        // Existing FIFO jobs may belong to another owner. A timer may only drain work it queued.
+        if from_timer {
+            return;
         }
         let (mut n, tail) = (slots.head, slots.tail);
         let mut first_kept: Option<u64> = None;

@@ -61,6 +61,9 @@ impl Host for WitHost {
     fn timer_cancel(&mut self, id: &str) {
         timers::cancel(id);
     }
+    fn timer_firing_origin(&mut self) -> Option<String> {
+        timers::firing_origin()
+    }
     /// A direct stream takes the request on `claude-session`, a `direct: false` one on the
     /// provider; a `session-error` is ignored, the turn's end comes on the stream (2.1).
     fn request(&mut self, r: Request) {
