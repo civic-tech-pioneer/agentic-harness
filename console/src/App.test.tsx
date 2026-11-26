@@ -98,6 +98,25 @@ describe("the page", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Idle"));
   });
 
+  it("ac2_escape_at_Not_running_does_not_call_the_kernel", async () => {
+    const unknown = JSON.stringify({ _meta: { watane: { type: "turn", state: { state: "unknown" } } } });
+    const fake = fakeKernel([[unknown]]);
+    fake.play(0);
+    render(<App kernel={fake} info={INFO} />);
+    await screen.findByText("Not running: watane restarted");
+    await userEvent.setup().type(screen.getByRole("textbox", { name: "Message" }), "{Escape}");
+    expect(fake.calls.filter(({ name }) => name === "interrupt" || name === "cancel")).toEqual([]);
+  });
+
+  it("ac2_displays_a_reported_thinking_activity_without_a_thought_chunk", async () => {
+    const thinking = JSON.stringify({ _meta: { watane: { type: "turn",
+      state: { state: "running", since: 1, activity: { kind: "thinking" } } } } });
+    const fake = fakeKernel([[thinking]]);
+    fake.play(0);
+    render(<App kernel={fake} info={INFO} />);
+    expect(await screen.findByText("Thinking")).toHaveAttribute("role", "status");
+  });
+
   it("answers_reach_the_kernel_as_the_decision_json_of_technical_2_3", async () => {
     const fake = played();
     render(<App kernel={fake} info={INFO} />);
@@ -145,7 +164,7 @@ describe("dock", () => {
 
   it("ac2_enter_says_shift_enter_is_a_new_line_esc_stops", async () => {
     const actions = mk();
-    dock(viewWith({}), actions);
+    dock(viewWith({ turn: { state: "running", since: 0 } }), actions);
     const box = screen.getByRole("textbox", { name: "Message" });
     const u = userEvent.setup();
     await u.type(box, "one{Shift>}{Enter}{/Shift}two");

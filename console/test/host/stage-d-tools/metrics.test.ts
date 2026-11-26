@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 // @ts-expect-error: a plain ES module of the host runner
-import { openaiCadence, openaiPageCoverage, p95, writerBusy } from "./metrics.mjs";
+import { clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, writerBusy } from "./metrics.mjs";
 
 it("charges only commit time in the common window", () => {
   expect(writerBusy([[13, 15], [5, 12], [11, 14], [19, 22]], 10, 20)).toBe(60);
@@ -147,4 +147,37 @@ it("ac1_requires_the_click_and_rejects_an_old_missing_marker_in_a_recent_batch",
     .toContain("missing page marker oa-s1-3");
   expect(openaiPageCoverage(step(3, 3000), new Set(), [interrupted], 1000, 3064).faults)
     .toContain("missing page marker oa-s1-3");
+});
+
+it("ac3_requires_a_complete_tail_to_be_close_to_the_stored_interrupt_as_well_as_the_click", () => {
+  const tail = step(3, 3000);
+  const late = { ...interrupted, at: 5100 };
+  const coverage = openaiPageCoverage(tail, new Set(), [late], 1000, 3064, 3064);
+  expect(coverage.cut).toEqual([]);
+  expect(coverage.faults).toContain("missing page marker oa-s1-3");
+});
+
+it("ac3_does_not_count_a_durable_OpenAI_message_as_its_live_delta", () => {
+  const text = "oa-s1-3";
+  const live = { sessionUpdate: "agent_message_chunk", content: { type: "text", text } };
+  const entry = { _meta: { watane: { entry: { kind: "message", body: { role: "agent",
+    content: [{ type: "text", text }] } } } } };
+  expect(pageItem({ at: 1000, body: JSON.stringify(live) }).marker).toBe(text);
+  expect(pageItem({ at: 1001, body: JSON.stringify(entry) }).marker).toBeUndefined();
+  expect(openaiPageCoverage(step(3, 3000), new Set(), [
+    { ...entry._meta.watane.entry, i: 19, at: 3001 }, interrupted,
+  ], 1000, 3064, 3064).faults).toContain(`missing page marker ${text}`);
+});
+
+it("ac3_stamps_Stop_on_the_wall_clock_at_the_click", () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(12_345);
+  const click = vi.fn();
+  vi.stubGlobal("document", { querySelector: () => ({ click }) });
+  try {
+    expect(clickStop()).toBe(12_345);
+    expect(click).toHaveBeenCalledOnce();
+  } finally {
+    vi.unstubAllGlobals();
+    clock.mockRestore();
+  }
 });
