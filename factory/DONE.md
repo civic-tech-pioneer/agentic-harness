@@ -294,3 +294,28 @@ Outcomes, each its Upkeep item's check:
 Touches: `console/` (src, kit, test/host), `ui/` (the built console). Not kernel/ or design/ (S138), not the wit/deps folders.
 Constraints: no new interface, no spec text change: an item that needs one stays in Upkeep with a line in the PR body; a guard never weakens; `installed-agent` must not be made weaker to pass.
 deputy compares: the queue rows and the consent wait against `Main-2` and `States-2` (TECHNICAL 18).
+
+### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
+(sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
+S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).) r1 answers at 07d910f (12:20 UTC; F1.1 to F1.3 fixed; F1.ci needs a watane release with S136, the human's, asked 12:23 UTC by Deputy Rock); r2: Claude routine `trig_014PqYzP7y2xYu5EcKcccLX4`, 12:22 UTC. r2: 0/4, VERDICT: approve on 07d910f (12:30 UTC); approved; F1.ci needs no release (Deputy Rock's correction, 2026-11-26 16:54 UTC): `installed-agent.yml` builds watane from a pinned commit (a923a8dc) that predates S136. r2 answer to Codex (same task) 16:56 UTC: bump the pin to watane main 44422b22; the r3 review checks only that diff. Answers a05529a8 16:58 (pin only); r3 review routine `trig_01WMPSuJSmDdKFz14mGdTxRu` 17:00 UTC. CI on a05529a8: add and check pass; installed-agent fails on the newer host's call-grant wording (F2.ci, installed.mjs:255); answer to Codex 17:14 UTC: update that expectation only. r3: 1/0 (the same F2.ci as F3.1); answers bc1bb2cd 17:15; r4 review routine `trig_011rubwFXpcQDkn1kZBkNvNA` 17:16 UTC. Check-in r4: still worth it, the slice was approved at r2 and r3/r4 only cover the CI pin and one test string the newer host words differently; nothing else is open. r4's routine verified the diff, then scheduled a wakeup to wait for CI that never fired (friction); r4b routine `trig_01KPbuYE1nrz6V7a7tUNJzz5` 17:43 UTC with CI already green. Friction: the reviewer found no `.claude/factory/review-lead.md` in this repository and used the README's review-team row.
+Why: the guard in Upkeep (the human's (b) on S40 F6.1): a timer firing of an OpenAI session whose owner mod was disabled
+during a timed pause may send one more model request under the kernel's origin. watane now gives a mod's own top-level
+`timer-sink.fired` the read `timers.firing-origin() -> option<string>` (the resolved origin identity, the timer owner's
+own identity after the client is disabled or removed, `none` elsewhere).
+Outcomes (user-sim on the kernel's tests with the fake host, and on `watane-dev serve` where this cloud has it):
+1. A timed resume or restart retry whose firing reads the session owner's identity runs as before.
+2. A firing that reads `none`, the kernel's own identity, or any identity other than the owner bound at arm time does
+   only local cleanup: no model request, no toolset operation, no consent; the session shows why (a test per case).
+3. The owner disabled during a timed pause: the firing sends no model request (F6.1's known limit is removed from 9.5
+   and the Upkeep guard is closed).
+4. The fake host (`FakeHost`) answers `firing-origin`; the Harness default `none` and a `Fakes` override are used in the
+   tests that run on watane-dev.
+Touches: `kernel/` (timer firing paths in `openai/run.rs`, `sessions.rs`, the host adapter and `FakeHost`),
+`kernel/tests/`, `design/TECHNICAL.md` (2.1, 9.5, 15, case 22). Not `console/` (S139).
+Constraints: copy verbatim the section "Copy verbatim into agentic-harness design/TECHNICAL.md" of
+https://github.com/civic-tech-pioneer/watane/pull/48 (its body) into 2.1 and 15; do not change the WIT shape (a gap is
+BLOCKED). Settle S133 r1 P1.5 (the expected owner is the arming call's `caller.identity()`, never the kernel itself; a
+mismatch through a front mod fails safe) and P1.12 (no install generation: a known limit, or a Door C note) in 9.5 with
+spec-change (https://raw.githubusercontent.com/mboogerd/claude-plugin/main/skills/spec-change/SKILL.md). Case 22's
+idempotent half stays a known limit (S133 gives no restart callback). Adversary: a front mod or another owner whose
+firing tries to make the kernel act for a different owner (TECHNICAL 14).
