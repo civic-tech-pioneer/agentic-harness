@@ -715,6 +715,124 @@ async function main() {
       ensure(!bad, () => `after the restart: ${bad}`);
     });
 
+    // ---- S131-3 (S36 r1 P1.3): what the checks above prove at the backend, read in the page ----
+    const WORDS3 = `(() => { window.__words = []; const scan = () => { const w = document.querySelector(".wa-status-word")?.textContent; if (w && window.__words[window.__words.length - 1] !== w) window.__words.push(w); };
+      new MutationObserver(scan).observe(document, { subtree: true, childList: true, characterData: true }); })()`;
+    const word = (page) => page.locator(".wa-status-word").textContent().catch(() => "");
+    const waitWord = (page, w, what) => until(async () => (await word(page)) === w, 15_000, what ?? `the status line to read ${w}`);
+    /** A page that has the session open, with the status words recorded; the session's first turn waits (a `sleep`) until the page is attached (9.6). */
+    async function openOn(input, { clock } = {}) {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 4000 } });
+      page.on("pageerror", (e) => notes.push(`pageerror: ${e.message}`));
+      await page.addInitScript(WORDS3);
+      if (clock) await page.clock.install({ time: Date.now() });
+      await page.goto(preview.url);
+      await page.getByText(input).first().click();
+      return page;
+    }
+
+    await check("page: the ask card shows the tool's input and the time left; past the deadline the page reads zero left (the host's own expiry takes 10 minutes)", async () => {
+      await tidy();
+      writeScript([{ do: "expect-user" }, { do: "sleep", ms: 6000 }, ...askTurn("shown.txt").slice(1)]);
+      const s = await startMine("read shown");
+      const page = await openOn("read shown", { clock: true });
+      try {
+        const a = await until(() => openAsk(s), 20_000, "the ask to open");
+        const card = page.locator(`section.wa-tool[data-ask="${a.body.id}"]`);
+        await card.waitFor({ timeout: 15_000 });
+        const arg = card.locator(".wa-input dl.wa-args");
+        ensure(await arg.locator("dt", { hasText: "file_path" }).count() === 1, `the card's input has no file_path: ${await card.textContent()}`);
+        const shown = await arg.locator("dd").first().textContent();
+        ensure(shown.endsWith("shown.txt"), `the card shows the input ${JSON.stringify(shown)}, the ask's path is ${a.body.path}`);
+        const left = async () => (await page.locator(".wa-status-clock").textContent().catch(() => "")) ?? "";
+        await until(async () => /denied in (9:[0-5]\d|10:00) if unanswered/.test(await left()), 10_000, "the status line to count the ten minutes down");
+        // the page's clock past `expires-at`: the status line has nothing left to count
+        await page.clock.fastForward(11 * 60 * 1000);
+        await until(async () => /denied in 0:00 if unanswered/.test(await left()), 10_000, "the status line to read 0:00 left");
+        // the card still offers an answer here: the page waits for the host's deny to mark the ask decided (reported, not asserted)
+        const offers = await page.getByRole("button", { name: "Allow once" }).count();
+        notes.push(`page past the ask's deadline: the card ${offers ? "still offers" : "no longer offers"} Allow once (only the host's deny at 10 minutes closes it)`);
+        if (offers) await page.getByRole("button", { name: "Allow once" }).click();
+        await until(async () => lastTurn(await transcript(s))?.state === "idle", 20_000, "the turn to end");
+      } finally { await page.close(); }
+    });
+
+    await check("page: a session grant is a chip in the header, taking it back there removes it, and the next same call asks again", async () => {
+      await tidy();
+      writeScript([{ do: "expect-user" }, { do: "sleep", ms: 6000 }, ...askTurn("g1.txt").slice(1), ...askTurn("g2.txt"), ...askTurn("g3.txt")]);
+      const s = await startMine("read grant");
+      const page = await openOn("read grant");
+      try {
+        await until(() => openAsk(s), 20_000, "the first ask to open");
+        await page.getByRole("button", { name: /^Allow Read\(\/.+\/\*\*\) this session$/ }).click();
+        const chip = page.locator(".wa-header .grant");
+        await chip.waitFor({ timeout: 15_000 });
+        ensure(/^Read\(\/.+\/\*\*\) this session/.test(await chip.textContent()), `the grant chip reads ${await chip.textContent()}`);
+        await waitWord(page, "Idle", "the first turn to end");
+        // the same call again: no card asks, the kernel's allow stands
+        await ok("sessions.say", { session: s, key: `k-${Date.now()}-2`, input: "read g2" });
+        await until(async () => { const es = await transcript(s); return lastTurn(es)?.state === "idle" && asksOf(es).some((e) => e.body?.path?.endsWith("/g2.txt")) ? es : null; }, 20_000, "the second turn to end");
+        ensure(!(await page.getByRole("button", { name: "Allow once" }).count()), "the page asked for a call the grant covers");
+        // Alice removes it in the page
+        await chip.click();
+        await page.locator(".wa-header .grant").waitFor({ state: "detached", timeout: 15_000 });
+        await ok("sessions.say", { session: s, key: `k-${Date.now()}-3`, input: "read g3" });
+        const a = await until(() => openAsk(s), 15_000, "the ask after the page took the grant back");
+        await page.getByRole("button", { name: "Allow once" }).waitFor({ timeout: 15_000 });
+        ensure(a.body.path.endsWith("/g3.txt"), `the ask after the take-back is for ${a.body.path}`);
+        await page.getByRole("button", { name: "Allow once" }).click();
+        await waitWord(page, "Idle", "the third turn to end");
+      } finally { await page.close(); }
+    });
+
+    await check("page: Deny with a reason typed in the page reaches the fake and the transcript, and the page shows the reason", async () => {
+      await tidy();
+      writeScript([{ do: "expect-user" }, { do: "sleep", ms: 6000 }, ...askTurn("deny.txt").slice(1)]);
+      const mark = fakeLog().length;
+      const s = await startMine("read deny");
+      const page = await openOn("read deny");
+      try {
+        const a = await until(() => openAsk(s), 20_000, "the ask to open");
+        await page.getByRole("button", { name: "Deny…" }).click();
+        await page.getByLabel("Tell the agent why").fill("not for this task");
+        await page.locator("form.wa-deny").getByRole("button", { name: "Deny", exact: true }).click();
+        const es = await until(async () => { const es = await transcript(s); return lastTurn(es)?.state === "idle" && decisionsOf(es, a.body.id).length ? es : null; }, 20_000, "the denied turn to end");
+        const d = decisionsOf(es, a.body.id);
+        ensure(d.length === 1 && d[0].body.decision.outcome === "deny" && d[0].body.decision.reason === "not for this task", `decisions: ${JSON.stringify(d.map((x) => x.body.decision))}`);
+        const denied = stdinSince(mark).filter((l) => l.type === "control_response" && l.response?.response?.behavior === "deny");
+        ensure(denied.length === 1 && /not for this task/.test(denied[0].response.response.message ?? ""), `the fake's denies: ${JSON.stringify(denied).slice(0, 300)}`);
+        await until(async () => /not for this task/.test(await page.locator("body").textContent()), 10_000, "the page to show the reason");
+      } finally { await page.close(); }
+    });
+
+    await check("page: a message sent while a turn runs is a queued row; Stop reads Stopping… then Idle, and the queued row's fate shows", async () => {
+      await tidy();
+      writeScript([{ do: "expect-user" }, { do: "long-turn", entries: 200, "every-ms": 100 }, { do: "expect-user", contains: "queued while" }, { do: "message", text: "got queued while" }, { do: "result" }, { do: "idle" }]);
+      const s = await startMine("long page");
+      const page = await openOn("long page");
+      try {
+        await until(async () => (await transcript(s)).some((e) => /^entry 2 /.test(textOf(e) ?? "")), 15_000, "the long turn to run");
+        const box = page.getByRole("textbox", { name: "Message" });
+        await box.fill("queued while running");
+        await page.getByRole("button", { name: "Queue message" }).click();
+        const row = page.locator(".wa-queue li");
+        await row.waitFor({ timeout: 15_000 });
+        ensure(/queued while running/.test(await row.first().textContent()), `the queued row reads ${await row.first().textContent()}`);
+        ensure((await ok("sessions.queued", { session: s })).length === 1, "the kernel does not list the queued input");
+        await page.locator(".wa-stop").click();
+        await until(async () => (await page.evaluate(() => window.__words)).includes("Stopping…"), 10_000, "the status line to read Stopping…");
+        await waitWord(page, "Idle", "the status line to read Idle after Stop");
+        const words = await page.evaluate(() => window.__words);
+        ensure(words.indexOf("Stopping…") >= 0 && words.lastIndexOf("Idle") > words.indexOf("Stopping…"), `the status words were ${JSON.stringify(words)}`);
+        const es = await transcript(s);
+        ensure(es.some((e) => e.kind === "turn" && e.body?.stop?.kind === "interrupted"), "no turn ended interrupted");
+        // the queued row's fate: the page agrees with the kernel's queue (it ran, or it is still listed)
+        const backend = (await ok("sessions.queued", { session: s })).length;
+        await until(async () => (await page.locator(".wa-queue li").count()) === backend, 10_000, `the page's queue to show ${backend} rows as the kernel's`);
+        notes.push(`page Stop with one queued input: Stopping… then Idle; the queue then listed ${backend} row(s) in page and kernel`);
+      } finally { await page.close(); }
+    });
+
     await tidy();
 
     // case 20 (the part with no turn to restart): what a deleted or interrupted Claude session leaves behind across a host kill
