@@ -1961,7 +1961,12 @@ section, and its code).
      its `deny` goes out), and its item (the verdict, the breaker's reason)
      waits in the session's outbox in its state, sent first at the next
      `ready`; no item is forwarded past it, so the kernel always learns why
-     (S127 r1 F1.1, F1.2). A `say` the host refuses after a safe verdict ends
+     (S127 r1 F1.1, F1.2). Not guaranteed (S127 r2 F2.1, the deputy's ruling):
+     when the session ends while the kernel's stream is still full (a launch
+     deadline, `claude` ending before `ready`), the outbox goes out only as far
+     as the stream takes it before the close, so the kernel may miss that
+     verdict's reason; the denial and the cancellation still happen at once,
+     and the turn still ends failed. A `say` the host refuses after a safe verdict ends
      the session: `claude` cancelled, the own stream closed `failed("say:
      <case>")`, so the kernel's turn ends with that cause (S127 r1 F1.4).
   8. `interrupt` drops every input of the session still waiting for its
