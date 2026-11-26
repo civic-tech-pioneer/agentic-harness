@@ -41,7 +41,7 @@ function component(cwd, name, destination, args = []) {
   cpSync(join(target_directory, "wasm32-wasip2", "release", name), join(destination, "logic.wasm"));
 }
 
-// Dev plays a raw System One response because the checked provider reads scores, not verdict names.
+// Play raw System One responses with the scores the checked provider reads.
 function score(unsafe, ms = 0) {
   const body = JSON.stringify({ answers: { unsafe: { noul: unsafe }, off_task: { noul: 0.1 } } });
   const raw = { raw: { status: 200, headers: [["content-type", "application/json"]], body: [...Buffer.from(body)] } };
