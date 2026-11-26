@@ -66,7 +66,9 @@ describe("S36 r3", () => {
     expect(f.calls.filter((c) => c.name === "unqueue" || c.name === "interrupt").map((c) => [c.name, ...c.args]))
       .toEqual([["unqueue", "s1", 8], ["interrupt", "s1", "second one"]]);
     expect(box().value).toBe("second one");
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert.closest(".wa-taken")).not.toBeNull();
+    expect(screen.getAllByText(alert.textContent!)).toHaveLength(1);
   });
   it("regress_s36_edit_can_replace_an_item_at_the_count_limit (F3.2)", async () => {
     await open(Array.from({ length: 32 }, (_, k) => `item ${k}`));

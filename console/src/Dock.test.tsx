@@ -63,11 +63,26 @@ describe("Dock", () => {
     dock(V({}));
     const s = screen.getByRole("button", { name: "Send message" });
     expect(s).toBeDisabled();
+    expect(screen.queryByText("Enter a message first.")).not.toBeInTheDocument();
+    await userEvent.setup().type(box(), " {Enter}");
     expect(s).toHaveAccessibleDescription("Enter a message first.");
     expect(screen.getByText("Enter a message first.")).toBeVisible();
     expect(s.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     await userEvent.setup().type(box(), "hi");
     expect(s).toBeEnabled();
+    await userEvent.setup().clear(box());
+    expect(screen.queryByText("Enter a message first.")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [{ state: "paused" }, "waiting for you to resume"],
+    [{ state: "paused", until: 1000 }, "sent after the session resumes"],
+    [{ state: "idle", stop: { kind: "failed", error: "boom" } }, "sent when you send another message"],
+  ] as const)("ac2_explains_when_an_inactive_queue_advances (%j)", (turn, words) => {
+    const actions = dock(V({ turn, queue: [{ n: 1, input: "next" }] }));
+    expect(screen.getByText(`Queued · 1 of 32 · ${words}`)).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Stop and send/ })).not.toBeInTheDocument();
+    expect(actions.stop).not.toHaveBeenCalled();
   });
 
   it("ac7_footer_tags", () => {
