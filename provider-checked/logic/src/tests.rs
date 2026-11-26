@@ -1369,3 +1369,36 @@ fn d1_2_the_excerpt_is_bounded() {
     assert!(ex[0]["text"].as_str().unwrap().starts_with('é'));
     assert!(ex[1]["text"].as_str().unwrap().ends_with('x'));
 }
+
+/// Review r2 F2.1 (the deputy's ruling: a drain in `end_session`, no new state): a breaker reason
+/// that waits in the outbox goes out before the own stream closes when `claude` ends and the
+/// stream has room again; with the stream still full it is lost (TECHNICAL 10 step 7, not
+/// guaranteed), while the session still ends.
+#[test]
+fn f2_1_the_outbox_drains_before_the_own_stream_closes() {
+    let mut f = Fake::default();
+    let (own, claude) = start(&mut f, "{}", "");
+    initialized(&mut f, &claude);
+    three_deadline_denials(&mut f, &claude);
+    f.room = None;
+    ended_with(&mut f, &claude, &StreamOutcome::Closed);
+    let b: Vec<_> = f
+        .verdicts(&own)
+        .into_iter()
+        .filter(|v| v["on"] == "breaker")
+        .collect();
+    assert_eq!(b.len(), 1);
+    assert_eq!(f.calls("close"), [format!("close {own} closed")]);
+}
+
+#[test]
+fn f2_1_a_full_stream_at_the_end_loses_only_the_reason() {
+    let mut f = Fake::default();
+    let (own, claude) = start(&mut f, "{}", "");
+    initialized(&mut f, &claude);
+    three_deadline_denials(&mut f, &claude);
+    ended_with(&mut f, &claude, &StreamOutcome::Closed);
+    assert!(!f.verdicts(&own).iter().any(|v| v["on"] == "breaker"));
+    assert_eq!(f.calls("close"), [format!("close {own} closed")]);
+    assert_eq!(f.calls("answer").len(), 3, "every denial went out");
+}
