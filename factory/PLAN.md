@@ -51,7 +51,7 @@ line, sketched 2026-11-25 by deputy-6; routine `trig_01E1Ngk3t7NCGXJnEjBgEjHR`, 
 DELIVERED 18:58 UTC as PR #56 (+3705/-38). Deputy D1.1 (blocking): the answer field is `noul`, not `probability`
 (PR comment 7171667656); BLOCKED question (outcome verification) ruled (b): merged on its native proof, `--scripted-judge`
 as watane S129, then `test:host:e` in Upkeep. r1: Codex review https://chatgpt.com/local/6b073026-11b0-83ed-b550-0ef125943064,
-dispatched 19:00 UTC; withheld by Codex's cyber filter; retried once with the adversary worded as a boundary check: https://chatgpt.com/local/6b07347c-1450-83ed-b77a-1aabbc8df068 (a second refusal: r1 runs on Claude). D1.1 and D1.2 answered at 4fe51c4 (CI green). r1 (Codex, 2026-11-25 20:33): 4/2, `changes (4)` (validator RETURN, adversary gap F1.1, user-sim REJECTED), posted 2026-11-26 06:28 with the deputy's ruling (all four blocking; the preview-scores risk accepted); answered at db21a42 (all 4 fixed); r2: Codex review https://chatgpt.com/local/6b07d354-fff0-83ed-a526-8085a130307b, 2026-11-26 ~06:40 UTC.
+dispatched 19:00 UTC; withheld by Codex's cyber filter; retried once with the adversary worded as a boundary check: https://chatgpt.com/local/6b07347c-1450-83ed-b77a-1aabbc8df068 (a second refusal: r1 runs on Claude). D1.1 and D1.2 answered at 4fe51c4 (CI green). r1 (Codex, 2026-11-25 20:33): 4/2, `changes (4)` (validator RETURN, adversary gap F1.1, user-sim REJECTED), posted 2026-11-26 06:28 with the deputy's ruling (all four blocking; the preview-scores risk accepted); answered at db21a42 (all 4 fixed); r2: Codex review https://chatgpt.com/local/6b07d354-fff0-83ed-a526-8085a130307b, 2026-11-26 ~06:40 UTC; r2: 2/1 `changes (2)` (all §14 HELD), posted 06:58 with a **cut** (deputy-7): F2.1 (a verdict's reason lost under backpressure at teardown) accepted as a known limit in TECHNICAL 10, F2.2 (a queued input dropped on a terminal launch denial) fixed small; r3 checks only these two.
 Story (AGT-J3; TECHNICAL 17 stage E, "this repository" column): Alice installs the checked provider, enters her judge's key
 and origin in the app (watane S122), and runs a Claude session through it: before each tool call the console shows
 `checking`, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and after repeated denials
@@ -452,6 +452,8 @@ reviewer claude. Cloud.
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
 
 ## Deputy decisions
+
+- 2026-11-26 (deputy-7) S127 cut at r2: F2.1 accepted (the denial and cancellation stay immediate and every §14 row HELD; only the reason text can be lost when the kernel-facing stream is full at a launch deadline or Claude ends before ready; two unusual events together). Clause: the stall rule (findings in code the last answer added). undo: an upkeep item, drain the outbox before close.
 
 - 2026-11-25 (deputy-6, S127, **Door C, for the human's veto**) judge wire shape: Jev (the human's choice) speaks TypeSafe
   System One, and no operator may sit between (VISION), so the checked provider's judge call is `POST
