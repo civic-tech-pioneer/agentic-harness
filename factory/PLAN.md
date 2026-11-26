@@ -27,9 +27,46 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-watane S133 (design, Codex build); S134 merged. The consumer half of S133 waits for a first version of the interface on watane's `slice/s133`.
+S138 (consumer half of watane S133/S136, Codex build); S139 (upkeep, console, Codex build).
 
 ## Sketched
+### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
+(sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
+S136 codex); spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).)
+Why: the guard in Upkeep (the human's (b) on S40 F6.1): a timer firing of an OpenAI session whose owner mod was disabled
+during a timed pause may send one more model request under the kernel's origin. watane now gives a mod's own top-level
+`timer-sink.fired` the read `timers.firing-origin() -> option<string>` (the resolved origin identity, the timer owner's
+own identity after the client is disabled or removed, `none` elsewhere).
+Outcomes (user-sim on the kernel's tests with the fake host, and on `watane-dev serve` where this cloud has it):
+1. A timed resume or restart retry whose firing reads the session owner's identity runs as before.
+2. A firing that reads `none`, the kernel's own identity, or any identity other than the owner bound at arm time does
+   only local cleanup: no model request, no toolset operation, no consent; the session shows why (a test per case).
+3. The owner disabled during a timed pause: the firing sends no model request (F6.1's known limit is removed from 9.5
+   and the Upkeep guard is closed).
+4. The fake host (`FakeHost`) answers `firing-origin`; the Harness default `none` and a `Fakes` override are used in the
+   tests that run on watane-dev.
+Touches: `kernel/` (timer firing paths in `openai/run.rs`, `sessions.rs`, the host adapter and `FakeHost`),
+`kernel/tests/`, `design/TECHNICAL.md` (2.1, 9.5, 15, case 22). Not `console/` (S139).
+Constraints: copy verbatim the section "Copy verbatim into agentic-harness design/TECHNICAL.md" of
+https://github.com/civic-tech-pioneer/watane/pull/48 (its body) into 2.1 and 15; do not change the WIT shape (a gap is
+BLOCKED). Settle S133 r1 P1.5 (the expected owner is the arming call's `caller.identity()`, never the kernel itself; a
+mismatch through a front mod fails safe) and P1.12 (no install generation: a known limit, or a Door C note) in 9.5 with
+spec-change (https://raw.githubusercontent.com/mboogerd/claude-plugin/main/skills/spec-change/SKILL.md). Case 22's
+idempotent half stays a known limit (S133 gives no restart callback). Adversary: a front mod or another owner whose
+firing tries to make the kernel act for a different owner (TECHNICAL 14).
+
+### S139 (upkeep) the console's known gaps and the `installed-agent` flake
+(sketched 2026-11-26 by Deputy Scissors, the upkeep lane; builder codex, reviewer claude by rule 3; exempt from the size
+rule (upkeep).)
+Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
+1. *guard* the `installed-agent` CI flake (`console/test/host/installed.mjs:216`, second sighting): the race found and
+   fixed, or a wait with a bound that measures it.
+2. S131 F1.2: the console's consent activity names the folder the app asks for; `stage_c.mjs`'s KNOWN GAP becomes a check.
+3. S39 review, console: after Stop no 'An event this console does not know'; a stopped turn's footer does not read
+   'Completed'; with no Claude Code binary chosen the error points to Settings → Claude Code.
+4. S36 polish P1.2 and P1.3 (console tests), and S36's felt-wrong list where cheap.
+Touches: `console/` only. Not `kernel/` or `design/` (S138); a spec gap goes to Upkeep, not into `design/TECHNICAL.md`.
+
 ### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DONE 2026-11-23: PR #43 merged with --admin at 042b0dd on the human's word after the extra round, r6 changes 2 answered (F6.1 done on main, F6.2 fixed); was in flight, builder claude, reviewer codex; continuation DELIVERED 21:31 UTC at 8fc6db6 on watane c2a7d4d (routine `trig_01NpPnJxwNjH279WAFwnziDk`), screenshots in `factory/runs/S35/screens/`; r1: Codex review dispatched 21:40 UTC, https://chatgpt.com/local/6b035f75-9cbc-83eb-953f-4ea568e56065; r1: 8 Codex findings (validator RETURN, adversary BREACHED, user-sim REJECTED) plus deputy design findings D1.1, D1.2, answer dispatched 22:04 UTC (session `cse_01LxwP923RKBfVNTWsTUagAQ`); r1 answered at 4522428 (all 10 fixed); r2 (22:37): Codex `changes (6)`, validator RETURN, adversary HELD, user-sim ACCEPTED; answer r2 dispatched 23:10 UTC (session `cse_01LxwP8yPPmPVipCPszcmKqW`; a 23:00 fire carried the stale r1 brief and pushed nothing); r2 answered at ea98cb9 (all 6 fixed); r3: Codex review dispatched 23:29 UTC; r3 (23:58): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim ACCEPTED); answer r3 dispatched 00:01 UTC (session `cse_01LxwP8zfZtC4o6shbfqRvp7`); r3 answered at d0dfddd (all 3 fixed); r4: Codex review dispatched 00:20 UTC; r4 (00:26): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim REJECTED), all on the composer's kept draft; deputy ruling (same finding 4 rounds running) and answer r4 dispatched 00:51 UTC (session `cse_01LxwP92VSjjigxaiXQaSyiJ`); r4 answered at 8177ca5 (by the ruling); r5 (last): Codex review dispatched 01:12 UTC; r5 (01:18): `changes (1)` (validator RETURN, adversary HELD, user-sim ACCEPTED): **round cap reached, held for the human** (Waiting: S35-CAP); then the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
 
 Story: Alice runs `watane-dev serve` with the agent kernel and the unchecked provider installed,
