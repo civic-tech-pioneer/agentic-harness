@@ -25,7 +25,7 @@ describe("S36 user-sim", () => {
     render(<App kernel={f} info={INFO} />);
     await screen.findByRole("button", { name: "Needs you (1)" });
     const u = userEvent.setup();
-    await u.click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     // the queue filled up meanwhile: Undo is refused queue-full while she has a draft
     const say = f.say.bind(f);

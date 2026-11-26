@@ -10,11 +10,11 @@ export function isInterrupted(state) {
 
 /** The common window in which every source loaded: from the latest first load line to `end` (the first Stop, ms). The window must
  * last `minSeconds`, and all sources must load together all through it, with no idle stretch, expressed as a maximum spacing
- * (S36 r5 F5.5, r6 F6.3, the deputy's rule): for each source and kind, no gap between consecutive stamps inside the window, nor
+ * (S36 r5 F5.5, r6 F6.3 and r7 F7.3): for each source and kind, no gap between consecutive stamps inside the window, nor
  * from its start to the first stamp, nor from the last stamp to its end, may exceed `times` the nominal spacing 1 / `rate` s
- * (twice: 40 ms for deltas at 50/s, 400 ms for entries at 5/s). A pure function with no window sampling; else a fault each
+ * (three times: 60 ms for deltas at 50/s, 600 ms for entries at 5/s). A pure function with no window sampling; else a fault each
  * (the first long gap of each source and kind). */
-export function loadWindow(by, end, rate, minSeconds, times = 2) {
+export function loadWindow(by, end, rate, minSeconds, times = 3) {
   const faults = [];
   let from = -Infinity;
   for (const [name, xs] of by) {

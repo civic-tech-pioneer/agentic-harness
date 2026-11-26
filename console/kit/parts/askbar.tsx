@@ -1,6 +1,6 @@
 // TECHNICAL 18.6 Asks, 9.6: the question, Deny… (with a reason row, Cancel, Esc closes it), Allow <reach the kernel names> this session (only with a reach), Allow once.
-import { useLayoutEffect, useRef, useState, type MutableRefObject, type RefObject } from "react";
-import { MEASURE, type Actions, type ToolCall } from "../model";
+import { useId, useLayoutEffect, useRef, useState, type MutableRefObject, type RefObject } from "react";
+import { MEASURE, SESSION_IN_ANOTHER_TAB, type Actions, type ToolCall } from "../model";
 
 /** 18.6 Asks: opening Deny… scrolls the transcript the least that puts the whole form in view, clear of the "back to the end" pill that covers its foot; in view already, nothing moves. */
 const revealForm = (form: HTMLElement | null) => {
@@ -27,6 +27,8 @@ export function AskBar({ call, askId, reach, actions, sent = false, judge = fals
   const [denying, setDenying] = useState(false);
   const [reason, setReason] = useState("");
   const id = askId;
+  const reasonId = useId();
+  const offDescription = actions.off ? actions.offReasonId ?? reasonId : undefined;
   const denyBtn = useRef<HTMLButtonElement>(null);
   const closeDeny = () => { setDenying(false); queueMicrotask(() => denyBtn.current?.focus()); };
   const reasonIn = useRef<HTMLInputElement>(null);
@@ -53,9 +55,10 @@ export function AskBar({ call, askId, reach, actions, sent = false, judge = fals
       {refused ? <p key="refused" ref={note} className="wa-refused" role="alert" tabIndex={-1}>The answer was not taken. Try again.</p> : null}
       <div ref={mark} className="wa-askbar askbar" role="group" aria-label="Your answer">
         <span className="askq">{QUESTION[call.kind] ?? "Allow this call?"}</span>
-        <button type="button" ref={denyBtn} className="btn quiet danger" disabled={actions.off} onClick={() => { if (denying) closeDeny(); else { setDenying(true); queueMicrotask(() => { reasonIn.current?.focus({ preventScroll: true }); revealForm(reasonIn.current?.closest("form") ?? null); }); } }}>Deny…</button>
-        {reach ? <button type="button" className="btn" disabled={actions.off} onClick={() => actions.answer(id, { outcome: "allow", for: "session" })}>Allow {reach} this session</button> : null}
-        <button type="button" className="btn primary wa-primary" data-ask-first disabled={actions.off} onClick={() => actions.answer(id, { outcome: "allow" })}>Allow once</button>
+        {actions.off && !actions.offReasonId ? <span id={reasonId}>{SESSION_IN_ANOTHER_TAB}</span> : null}
+        <button type="button" ref={denyBtn} className="btn quiet danger" disabled={actions.off} aria-describedby={offDescription} onClick={() => { if (denying) closeDeny(); else { setDenying(true); queueMicrotask(() => { reasonIn.current?.focus({ preventScroll: true }); revealForm(reasonIn.current?.closest("form") ?? null); }); } }}>Deny…</button>
+        {reach ? <button type="button" className="btn" disabled={actions.off} aria-describedby={offDescription} onClick={() => actions.answer(id, { outcome: "allow", for: "session" })}>Allow {reach} this session</button> : null}
+        <button type="button" className="btn primary wa-primary" data-ask-first disabled={actions.off} aria-describedby={offDescription} onClick={() => actions.answer(id, { outcome: "allow" })}>Allow once</button>
       </div>
       {denying ? (
         <form className="wa-deny denyrow" onSubmit={(e) => { e.preventDefault(); const r = reason.trim(); actions.answer(id, r ? { outcome: "deny", reason: r } : { outcome: "deny" }); }}>
@@ -64,7 +67,7 @@ export function AskBar({ call, askId, reach, actions, sent = false, judge = fals
             onChange={(e) => setReason(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); closeDeny(); } }} />
           <button type="button" className="btn quiet" onClick={closeDeny}>Cancel</button>
-          <button type="submit" className="btn danger" disabled={actions.off}>Deny</button>
+          <button type="submit" className="btn danger" disabled={actions.off} aria-describedby={offDescription}>Deny</button>
         </form>
       ) : null}
     </>

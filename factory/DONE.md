@@ -235,3 +235,62 @@ Constraints: S132's nine Door C choices stand (PR #59 body), do not reopen them;
 (PR #59, comment 'Review r1 by Claude') in where cheap. Factory profiles wait on N5 (Waiting on the human): out of
 scope. No watane change: if one is needed, BLOCKED with the interface it needs.
 
+
+### S139 (upkeep) the console's known gaps and the `installed-agent` flake
+(sketched 2026-11-26 by Deputy Scissors, the upkeep lane; builder codex, reviewer claude by rule 3; in flight, cloud, Codex task https://chatgpt.com/local/6b081583-0fe0-83ed-9e52-86ea878b7056, 11:23 UTC; DELIVERED as PR #62 at 148004e (+259/-97; also ui/); r1: Claude routine `trig_01WWHnzB9VfNZRDLjpxzK4Q1`, 11:54 UTC; exempt from the size
+rule (upkeep).)
+Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
+1. *guard* the `installed-agent` CI flake (`console/test/host/installed.mjs:216`, second sighting): the race found and
+   fixed, or a wait with a bound that measures it.
+2. S131 F1.2: the console's consent activity names the folder the app asks for; `stage_c.mjs`'s KNOWN GAP becomes a check.
+3. S39 review, console: after Stop no 'An event this console does not know'; a stopped turn's footer does not read
+   'Completed'; with no Claude Code binary chosen the error points to Settings → Claude Code.
+4. S36 polish P1.2 and P1.3 (console tests), and S36's felt-wrong list where cheap.
+Touches: `console/` only. Not `kernel/` or `design/` (S138); a spec gap goes to Upkeep, not into `design/TECHNICAL.md`.
+
+
+### S140 (upkeep, guard first) the console's known gaps and test polish, console/ only
+(sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder claude by rule 3 (last two S138 codex, S139 codex),
+reviewer codex; in flight, cloud, routine `trig_01Hkd9KmgKVeQ1HVtLVY31hY` fires 12:18 UTC; DELIVERED as PR #63 at 5ee2aac (13:01 UTC, +243/-30; items 2, 3, 5 already fixed by S139, dropped; CI green); r1: Codex review https://chatgpt.com/local/6b0830f4-f93c-83ed-b07a-f5fbc2366044, 13:17 UTC; r1: 1/2 (changes; F1.1 the 240-char preview counts UTF-16 units, ruled narrow), posted 13:29 UTC with the answer brief as a PR comment for the subscribed build session (it woke on it); r1 answers at 27f9956 (13:33 UTC); r2: Codex follow-up in the same task, 13:35 UTC; r2: 0/0, VERDICT: approve on 27f9956 (13:41 UTC); CI `gate` timed out at 15 min once on 27f9956, green on rerun (second sighting after S134); user-sim not reported by the review lead, asked in the same task 14:00 UTC; adversary not run (deputy: `provider/BOUNDARIES.md` is a copy, `publish-test-mods.sh` an equivalent JSON read, tested both ways); the build session (`cse_01LxwP8xUGgojrr3XJGNbqD4`) subscribed to PR activity, so it may wake on the review: check it before any answer routine (one writer); spec-check not run: the slice changes no spec text (below). Upkeep is exempt from the size rule.)
+Why: Upkeep holds console work that no slice in flight touches; S138 edits only kernel/, design/ and the wit/deps folders.
+Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
+(1) *guard* the `installed-agent` flake: `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code
+settings' after AC1 passes (S40, twice): the race found and fixed, or the wait bounded and measured, with the reason in the
+test; (2) the console's consent activity names the folder the app asks for (S131 F1.2), and `stage_c.mjs` drops its
+known-gap line for it; (3) after Stop the transcript shows no 'An event this console does not know' for claude's
+`control_response` to the interrupt, and a stopped turn's footer does not read 'Completed'; with no Claude Code binary
+chosen the error points to Settings → Claude Code (S39 review); (4) S39 polish P1.2 to P1.5 and S139 r1 polish P1.1 to P1.4,
+P1.6, P1.7 (PR #62), each where its fix lands outside kernel/ and design/; (5) S36 r1 polish P1.2 and P1.3 (console tests).
+Touches: `console/`, `provider/BOUNDARIES.md` (S39 P1.4). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface, no spec text change: an item whose fix needs a rule change in design/ or a kernel change
+stays in Upkeep with a line in the PR body; a guard never weakens; `installed-agent` must not be made weaker to pass.
+deputy compares: the stopped-turn transcript and footer, and the consent activity, against the console design (TECHNICAL 18).
+
+### S142 (upkeep) the console's Stop and question fixes, stage E on a real host, and stage D's lost item, console/ only
+(sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder codex by rule 3 (last two S141 codex, S140 claude: Claude
+built one of them, so Codex); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b08428a-6b20-83eb-aadb-b832d92ba039, 14:33 UTC; spec-check not run: no spec text changes (below). Upkeep is exempt from the size rule. PR #64 opened 15:02 UTC on 6a0f917; r1 review routine `trig_01Jx5kk2Jp9kcU8432F6ELQ3`, 15:05 UTC. r1: 1/5 findings, review 15:18; answer to Codex (same task) 15:21 UTC, rulings: F1.1 hide Stop and send in a folder wait; A1 to A4 accepted (Deputy Paper: a stale-view race needing a grant and a click in one update window, closed later by a kernel rule, Upkeep). Answers ca2ae278 15:25; r2 review routine `trig_018HybQkC8vsYCgbHdxnQx5H` 15:26 UTC.)
+Why: Upkeep's console items, while S138 (approved, held on a watane release) keeps kernel/ and design/.
+Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
+(1) *guard* Stop before `initialized`, while a folder consent waits, cancels the stream instead of sending `interrupt`,
+so no later yes answers into an idle session (watane S103 r1): a test that fails today, where the fix is in the console;
+(2) S131 F1.8 diagnosed: why one stage D load run lost 1 item and 4 tool calls of an OpenAI session at the page, shown
+by a run or a test, then fixed if the cause is in console/, else written as a kernel Upkeep line with the evidence;
+(3) `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (after S127);
+(4) S38 P2.6 'Open the question' opens it and the wait shows the folder (States-2); S36 user-sim: Edit and Undo keep a
+queued row's place, and Stop and send is not offered on a queued row while the session reads Not running.
+Touches: `console/` (src, kit, test/host), `ui/` (the built console). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface and no spec text change: an item that needs a rule change in design/ or a kernel change
+stays in Upkeep with a line in the PR body; a guard never weakens; a flake is never fixed by a retry alone.
+deputy compares: the consent wait and the queue rows against the console design (TECHNICAL 18).
+
+### S144 (upkeep) the console's queue rows and disabled controls match the design, and its flakes and stage D race, console/ only
+(sketched 2026-11-26 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: watane S143 claude, S142 codex); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b085267-a7a0-83eb-ac29-92339e15f025, 15:47 UTC; DELIVERED as PR #65 at 30df2491 (16:12 UTC; validator PASS, adversary HELD, user-sim ACCEPTED); r1 review routine `trig_01TJ5VCT4SVA7q2jNmTep5wU` 16:14 UTC; r1: 2/7 findings (16:31; validator RETURN, adversary BREACHED 1 in the Stage D check, user-sim REJECTED on a pre-existing phone wrap); answer to Codex (same task) 16:35 UTC, rulings: F1.1 rebuild ui/, F1.2 narrow the Stop-cut excuse with both red tests; A1.1 to A1.3 accepted (Deputy Paper: older than S144 or already owned; A1.1 to Upkeep); answers d04a87ee 16:38; r2 review routine `trig_01M1iUYmDmjHutE5NFbeD3RE` 16:40 UTC; spec-check not run: no spec text changes. Upkeep is exempt from the size rule.)
+Why: the console's Upkeep items, while S138 (approved, held on a watane release) keeps kernel/ and design/.
+Outcomes, each its Upkeep item's check:
+(1) the queue rows look as `Main-2` draws them: the "QUEUED · n of 32 · sent when this turn ends" label, a dashed row per item, quiet buttons, the × with aria "Remove from queue", and the "Removed … from the queue [Undo]" line; a row shows a long message cut to a few lines, not all 255 KiB (S36 user-sim); Stop and send is not offered while the session reads Not running (S36 user-sim);
+(2) every disabled control says why, visibly and to a screen reader (S142 P2.1, with the r2 review's red test `regress_S142_r2_disabled_stop_and_send_says_why` committed unchanged; "Try again", "Resume now"); the consent wait shows "Esc to stop" (P2.2); one spelling of watane (P2.3);
+(3) the `parts_S15` replay flake is a fixed cause, not a longer timeout; S36 F7.3's load check spacing widened to 3x;
+(4) stage D's Stop race against the runner's window is diagnosed: the runner counts by the stored interrupted turn, or the Upkeep line names the owner with its trace; the 40 ms source-spacing gaps explained or the check corrected with a reason.
+Touches: `console/` (src, kit, test/host), `ui/` (the built console). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface, no spec text change: an item that needs one stays in Upkeep with a line in the PR body; a guard never weakens; `installed-agent` must not be made weaker to pass.
+deputy compares: the queue rows and the consent wait against `Main-2` and `States-2` (TECHNICAL 18).

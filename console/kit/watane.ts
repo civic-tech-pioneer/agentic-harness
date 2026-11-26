@@ -140,6 +140,7 @@ export function wataneKernel(w: Watane): Kernel {
       return typeof r === "number" ? r : 0;
     },
     async answer(session, key, ask, decision) { await call("sessions.answer", { session, key, ask, decision }); },
+    async cancel(session) { await w.call("sessions.cancel", { session }); },
     async interrupt(session, replacement) { await call("sessions.interrupt", { session, replacement: replacement ?? null }); },
     async unqueue(session, n) { await call("sessions.unqueue", { session, n }); },
     async takeBack(session, allow) { await call("sessions.take-back", { session, allow }); },

@@ -12,8 +12,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 const bin = process.env.WATANE_BIN_DIR;
-assert(bin, "Set WATANE_BIN_DIR to the Watane build directory with watane-app, watane-dev and fake-claude.");
-await Promise.all(["watane-app", "watane-dev", "fake-claude"].map((name) => access(resolve(bin, name))));
+// Like the other host tests, a missing prerequisite is exit 2, "not run" (S39 P1.2); CI fails on it as on any non-zero exit.
+const notRun = (why) => { console.log(`NOT RUN test:installed: ${why}`); process.exit(2); };
+if (!bin) notRun("set WATANE_BIN_DIR to the Watane build directory with watane-app, watane-dev and fake-claude");
+const missing = [];
+for (const name of ["watane-app", "watane-dev", "fake-claude"]) await access(resolve(bin, name)).catch(() => missing.push(name));
+if (missing.length) notRun(`${missing.join(", ")} not in WATANE_BIN_DIR (${bin})`);
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const work = await mkdtemp(join(tmpdir(), "s39-installed-"));
 const publisherHome = join(work, "publisher");
@@ -48,13 +52,13 @@ function startApp(home) {
     replies.get(message.id)?.(message);
   });
   const done = once(child, "exit");
-  function request(op, fields = {}) {
+  function request(op, fields = {}, timeout = 35_000) {
     const id = ++sequence;
     return new Promise((complete, reject) => {
       const timer = setTimeout(() => {
         replies.delete(id);
         reject(new Error(`App driver did not answer ${op}`));
-      }, 35_000);
+      }, timeout);
       replies.set(id, ({ ok, err }) => {
         clearTimeout(timer);
         replies.delete(id);
@@ -67,8 +71,8 @@ function startApp(home) {
   return {
     ready,
     request,
-    async eval(label, js) {
-      const result = await request("eval", { label, js });
+    async eval(label, js, timeout) {
+      const result = await request("eval", { label, js }, timeout);
       return result === "" ? null : JSON.parse(result);
     },
     wait: (label) => request("wait", { label, timeoutMs: 0 }),
@@ -102,6 +106,48 @@ async function approve(app) {
   // own foreground tests exercise the focus gate.
   await app.eval(consent, "document.querySelector('#approve').disabled = false; document.querySelector('#approve').click(); null");
   await until("consent to close", async () => !await app.wait(consent));
+}
+
+// The `installed-agent` flake, 'Timed out waiting for Claude Code settings' just after AC1 (S40 at 890caad and 10ed0a3,
+// S127 at ebeb2a3, all on 2026-11-25): a race in this test, not in the console. The launcher refresh renders both tiles
+// before the install action finishes; its completion then routes the manager to #mods, after this test had already asked
+// for Settings, so the chooser never showed. The wait for #mods and the installed notice above (S128) removes the race:
+// every red run here predates it, and no run since has failed at this step (to S139, 26 Nov; one S138 run failed
+// earlier, while publishing). What is left is a bound that measures (S139): one 30 s budget for the menu request and the
+// probe together, a probe that reads each element with `?.` so an element not yet in the page is a retry (not a throw),
+// and the elapsed time and the last route and chooser state on both pass and fail, so a new failure says where Settings
+// stopped.
+async function openClaudeSettings(app) {
+  const started = performance.now();
+  const timeout = 30_000;
+  const remaining = () => Math.max(0, Math.ceil(timeout - (performance.now() - started)));
+  const elapsed = () => Math.round(performance.now() - started);
+  let lastState = null;
+  const diagnostic = () => `Claude Code Settings after ${elapsed()} ms, last manager state ${JSON.stringify(lastState)}`;
+  try {
+    await app.request("menu", { item: "settings" }, remaining());
+    while (remaining() > 0) {
+      lastState = await app.eval(main, `(() => {
+        const settings = document.querySelector('#settings');
+        const chooser = document.querySelector('#claude-choose');
+        return {
+          route: location.hash,
+          settingsHidden: settings?.hidden ?? null,
+          chooserHidden: chooser?.hidden ?? null,
+          chooserDisabled: chooser?.disabled ?? null,
+        };
+      })()`, remaining());
+      if (lastState?.route === "#settings" && lastState.settingsHidden === false &&
+          lastState.chooserHidden === false && lastState.chooserDisabled === false) {
+        console.log(`AC1 ${diagnostic()}`);
+        return;
+      }
+      await delay(Math.min(100, remaining()));
+    }
+    throw new Error(`Timed out waiting for usable Settings (${timeout} ms budget)`);
+  } catch (error) {
+    throw new Error(`FAIL AC1 ${diagnostic()} (${error.message})`, { cause: error });
+  }
 }
 
 async function publish(app, channel) {
@@ -188,19 +234,38 @@ try {
     return alice.wait(consent);
   });
   await until("install consent to render", () => alice.eval(consent, "document.body.dataset.ready === 'true'"));
-  const sections = await alice.eval(consent, "Array.from(document.querySelectorAll('main section'), s => ({name:s.querySelector('h2').textContent, words:s.textContent}))");
+  // Each section's whole grant list, in order, and the publisher its Call is bound to (S39 P1.3): an extra grant, a
+  // missing one, or a Call bound to another provider fails here. Watane's consent window shows each grant as a label
+  // "Allow: <words>[ · new]" and the release as "<slug> <version> by <publisher> · signature verified — <release>".
+  // The publisher check compares displayed labels: watane may shorten a fingerprint to ten characters, so two labels
+  // that match do not prove the same full key. That proof is elsewhere: `publish-test-mods.sh` checks each release's
+  // full link against the channel, and the provider pins the kernel's full identity (its `ac2_` test, before the build).
+  const sections = await alice.eval(consent, `Array.from(document.querySelectorAll('main section'), s => ({
+    name: s.querySelector('h2').textContent,
+    release: Array.from(s.querySelectorAll(':scope > p'), p => p.textContent).find(t => t.includes(' · signature verified')) ?? null,
+    grants: Array.from(s.querySelectorAll('label span'), g => g.textContent.replace(/^Allow: /, '').replace(/ · new$/, '')),
+  }))`);
   assert.deepEqual(sections.map(({ name }) => name).sort(), ["Agentic harness", "Claude Code, unchecked"]);
-  const agentWords = sections.find(({ name }) => name === "Agentic harness").words;
-  assert.match(agentWords, /Keep its own data on this device/);
-  assert.match(agentWords, /Call mods:claude-code/);
-  assert.match(sections.find(({ name }) => name === "Claude Code, unchecked").words, /Can start Claude Code with your Claude account/);
+  const section = (name) => sections.find((x) => x.name === name);
+  const by = (slug) => section(slug === "agent" ? "Agentic harness" : "Claude Code, unchecked").release
+    ?.match(new RegExp(`^${slug} 0\\.1\\.0 by (.+) · signature verified — `))?.[1];
+  const providerPublisher = by("claude-code");
+  assert(providerPublisher, JSON.stringify(sections));
+  assert.equal(by("agent"), providerPublisher, JSON.stringify(sections));
+  assert.deepEqual(section("Agentic harness").grants, [
+    "Keep its own data on this device",
+    "Connect to api.openai.com",
+    `Call mods:claude-code/sessions@0.1.0 of claude-code by ${providerPublisher}`,
+  ], JSON.stringify(sections));
+  assert.deepEqual(section("Claude Code, unchecked").grants, [
+    "Can start Claude Code with your Claude account, to read and change files in folders you choose. Not checked by watane.",
+  ], JSON.stringify(sections));
   await approve(alice);
   await until("both installed launcher tiles", () => alice.eval(main, "!!document.querySelector('[data-tile=agent]') && !!document.querySelector('[data-tile=claude-code]')"));
   // The launcher refresh can render the tiles before the install action finishes.
   // Its completion routes the manager to #mods and then shows this notice.
   await until("the install action to finish routing to Mods", () => alice.eval(main,
     "location.hash === '#mods' && !document.querySelector('#installed-note').hidden"));
-  console.log("PASS AC1 one consent installs the agent and provider");
 
   const fake = join(work, "fake-claude");
   await copyFile(resolve(bin, "fake-claude"), fake);
@@ -216,11 +281,11 @@ try {
     { do: "expect-user", contains: "start the long turn" },
     { do: "long-turn", entries: 200, "every-ms": 100 },
   ] }));
-  await alice.request("menu", { item: "settings" });
-  await until("Claude Code settings", () => alice.eval(main, "!document.querySelector('#settings').hidden && !document.querySelector('#claude-choose').disabled"));
+  await openClaudeSettings(alice);
   await alice.request("pick", { paths: [fake] });
   await alice.eval(main, "document.querySelector('#claude-choose').click(); null");
   await until("Claude Code setting to show the selected binary", () => alice.eval(main, "document.querySelector('#claude-status').textContent === 'Claude Code 2.1.295'"));
+  console.log("PASS AC1 one consent installs the agent and provider and Settings shows the selected Claude Code binary");
   await alice.request("menu", { item: "mods" });
   await openConsole(alice);
   await until("scratch session composer", () => includes(alice, "A new scratch folder"));

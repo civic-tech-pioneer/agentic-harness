@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
 import { NotRun, outcomeOf } from "./outcome.mjs";
 import { isInterrupted, loadWindow } from "./load_check.mjs";
-import { openaiCadence, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
+import { ITEM_DELAY_MS, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -155,11 +155,12 @@ sys.exit(child.wait())
 
 function readStamps(path) {
   ensure(existsSync(path), `missing telemetry: ${path}; see AGENTS.md for the instrumented Watane build`);
-  return new Map(readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((line) => {
-    const [at, marker] = line.split(" ");
-    return [marker, Number(at) / 1e6];
-  }));
+  return readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((line) => {
+    const [at, marker, step] = line.split(" ");
+    return { at: Number(at) / 1e6, marker, step };
+  });
 }
+const stampTimes = (stamps) => new Map(stamps.map(({ at, marker }) => [marker, at]));
 
 async function mixedLoad(browser) {
   const folder = join(dirname(preview.home), "claude");
@@ -227,8 +228,9 @@ async function mixedLoad(browser) {
     })));
     const to = Math.min(...stopAt.map((at) => at ?? Infinity), Date.now());
     await sleep(1250);
-    const scripted = readStamps(join(tmp, "load-clock.sse"));
-    const claudeStamps = readStamps(join(tmp, "claude.stamps"));
+    const wire = readStamps(join(tmp, "load-clock.sse"));
+    const scripted = stampTimes(wire.filter(({ marker }) => !marker.endsWith("/completed")));
+    const claudeStamps = stampTimes(readStamps(join(tmp, "claude.stamps")));
     const claudeByProcess = new Map();
     for (const [marker, at] of claudeStamps) {
       const [, id, kind] = marker.split("-");
@@ -236,14 +238,18 @@ async function mixedLoad(browser) {
       claudeByProcess.get(id).push({ at, kind });
     }
     ensure(claudeByProcess.size === 8, `expected eight Claude sources, found ${claudeByProcess.size}`);
-    const window = loadWindow(claudeByProcess, to, rate, 6);
+    // The fake ticks every 20 ms, but these are Python pipe-forwarding timestamps on the
+    // busy mixed preview. Allow three ticks (60 ms, covering the observed 57.2 ms gap).
+    // The same bound is checked at both window edges and for every source and kind.
+    const window = loadWindow(claudeByProcess, to, rate, 6, 3);
     const from = Math.max(window.from, start + 1000);
     const faults = [...window.faults];
     const delays = [], stops = [];
     const claudeSeen = new Set();
     const aiDelays = [], claudeDelays = [];
 
-    for (const [index, { id, backend, page }] of pages.entries()) {
+    for (const [index, session] of pages.entries()) {
+      const { id, backend, page } = session;
       const captured = await page.evaluate(() => ({ items: window.loadItems, stream: window.loadAttach.stream }));
       const seen = new Set();
       const items = captured.items.filter((item) => item.stream === captured.stream).map(pageItem);
@@ -269,15 +275,30 @@ async function mixedLoad(browser) {
         delays.push(at - sent);
         (backend === "claude" ? claudeDelays : aiDelays).push(at - sent);
       }
-      const expected = backend === "claude"
-        ? [...claudeStamps].filter(([m]) => claudeIds.has(m.split("-")[1]))
-        : [...scripted].filter(([m]) => m.startsWith(`oa-${id}-`));
-      const missing = expected.filter(([marker, at]) => at >= from && at < to && !seen.has(marker));
-      if (missing.length) faults.push(`${id}: ${missing.length} source items missing from page`);
-      if (backend === "openai") {
-        const fullSteps = expected.filter(([, at]) => at >= from && at < to - 50).length;
-        const delivered = [...seen].filter((marker) => marker.startsWith("call_")).length;
-        if (delivered < 4 * fullSteps) faults.push(`${id}: only ${delivered} tool calls reached the page across ${fullSteps} steps`);
+      if (backend === "claude") {
+        const missing = [...claudeStamps].filter(([marker, at]) =>
+          claudeIds.has(marker.split("-")[1]) && at >= from && at < to && !seen.has(marker));
+        if (missing.length) faults.push(`${id}: ${missing.length} source items missing from page`);
+      } else {
+        const responseWire = wire.filter(({ step }) => step.startsWith(`oa-${id}-`));
+        const stored = await entriesOf(session);
+        const coverage = openaiPageCoverage(responseWire, markers, stored, from, to, end);
+        for (const fault of coverage.faults) faults.push(`${id}: ${fault}`);
+        if (coverage.cut.length || coverage.faults.length) {
+          say(`${coverage.faults.length ? "LOSS" : "STOP CUT"} ${id} ${JSON.stringify({
+            window: { from, to },
+            stopAt: end,
+            interruptedAt: idle?.at,
+            lastStoredTurn: coverage.interrupted,
+            cutWrites: coverage.cut,
+            faults: coverage.faults,
+            streams: [...new Set(captured.items.map(({ stream }) => stream))],
+            measuredStream: captured.stream,
+            lastPageTools: items.filter(({ marker }) => marker?.startsWith("call_")).slice(-8),
+            lastStoredTools: stored.filter(({ kind }) => kind === "tool").slice(-8)
+              .map(({ i, at, body }) => ({ i, at, id: body.toolCallId, status: body.status })),
+          })}`);
+        }
       }
       if (!seen.size) faults.push(`${id}: no page measurements in the common window`);
     }
@@ -300,7 +321,7 @@ async function mixedLoad(browser) {
     const delay = p95(delays), stop = p95(stops);
     say(`Budget record Stage D | ${new Date().toISOString().slice(0, 10)} | ${process.platform} ${release()} ${process.arch} ${cpus().length} CPUs, load ${loadavg().map((n) => n.toFixed(2)).join("/")} | common window ${((to - from) / 1000).toFixed(2)} s | item p95 ${delay.toFixed(1)} ms (${delays.length} samples, Claude ${p95(claudeDelays).toFixed(1)}, OpenAI ${p95(aiDelays).toFixed(1)}) | Stop p95 ${stop.toFixed(1)} ms | writer busy ${busy.toFixed(1)}% | cadence ${paced}/8 OpenAI sessions at one step a second`);
     for (const fault of faults.slice(0, 20)) say(`FAULT ${fault}`);
-    ensure(!faults.length && delay <= 100 && stop <= 1000 && busy <= 60,
+    ensure(!faults.length && delay <= ITEM_DELAY_MS && stop <= 1000 && busy <= 60,
       `over budget or invalid load (${faults.length} workload faults)`);
   } finally {
     await Promise.allSettled(sessions.map(({ id, own }) => own

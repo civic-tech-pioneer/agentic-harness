@@ -34,14 +34,6 @@ async function check(name, f) {
   try { await f(); pass++; say(`PASS ${name}`); }
   catch (e) { fail++; say(`FAIL ${name}: ${e instanceof Error ? e.message : String(e)}`); }
 }
-/** A known gap (S131 r1 F1.2, the deputy's ruling): the check runs and says so. It is not counted as a failure while the gap holds,
- * and it fails once the gap is closed (XPASS), so the line is removed rather than left to pass silently. */
-let gaps = 0;
-async function knownGap(name, why, f) {
-  if (process.env.ONLY && !new RegExp(process.env.ONLY).test(name)) return;
-  try { await f(); fail++; say(`FAIL ${name}: XPASS, the known gap is closed (${why}): turn this into a plain check`); }
-  catch (e) { gaps++; say(`KNOWN GAP ${name} (${why}): ${e instanceof Error ? e.message : String(e)}`); }
-}
 function ensure(c, msg) { if (!c) throw new Error(typeof msg === "function" ? msg() : msg); }
 async function until(f, ms, what) { const t = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t > ms) throw new Error(`timed out after ${ms} ms: ${what}`); await sleep(50); } }
 const keyOf = () => `host-c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -269,15 +261,30 @@ async function main() {
     let first, withdrawn, refusedAgain, refusedOther, otherFolder;
     const page = await openPage(browser, url);
     try {
+      await check("home, S142: Stop dismisses the native folder question before Claude starts", async () => {
+        const stoppedDir = mkdtempSync(join(tmp, "stopped-"));
+        const asked = home.asked.length;
+        await startInPage(page, stoppedDir, "stop this launch");
+        const question = await until(() => home.asked[asked], 20_000, "the folder question");
+        await page.getByText(`Waiting for your answer in watane for ${realpathSync(stoppedDir)}`, { exact: true }).waitFor({ timeout: 15_000 });
+        const session = await sessionOf(url, "stop this launch");
+        await page.getByRole("button", { name: "Stop", exact: true }).click();
+        await until(() => home.dropped.includes(question.i), 10_000, "the host to drop the folder question");
+        const lateAnswer = await home.send({ op: "answer", i: question.i, answer: "granted" }).then(() => null, (e) => e.message);
+        ensure(/dropped|not open/.test(lateAnswer ?? ""), `the old question accepted a late answer: ${lateAnswer}`);
+        const turn = await until(async () => {
+          const current = lastTurn(await transcript(url, session.id));
+          return current?.state === "idle" ? current : null;
+        }, 10_000, "the cancelled turn to end");
+        ensure(turn.stop?.kind === "interrupted", `the cancelled turn: ${JSON.stringify(turn)}`);
+        ensure(fake.starts().length === 0, "Claude started after the stopped folder launch");
+      });
       await check("home, outcome 1: while the app holds the question the page shows the consent wait; once granted the fake runs in that folder and the page shows the turn", async () => {
+        const asked = home.asked.length;
         await startInPage(page, notesDir, "read my notes");
-        const q = await until(() => home.asked[0], 20_000, "the app's question");
+        const q = await until(() => home.asked[asked], 20_000, "the app's question");
         ensure(q.what === pendingFolder && q.origin === "agent" && q.via === "claude-code", `the question: ${JSON.stringify(q)}`);
-        await page.waitForFunction(() => document.querySelector(".wa-status-word")?.textContent === "Waiting for your answer in watane", null, { timeout: 15_000 });
-        await knownGap("home, outcome 1: the consent wait names the folder it waits for", "console/src shows only 'Waiting for your answer in watane' (S38 P2.6, Upkeep)", async () => {
-          const shown = await page.evaluate(() => document.querySelector(".wa-status")?.textContent ?? document.querySelector(".wa-status-word")?.parentElement?.textContent ?? "");
-          ensure(shown.includes(folder), `the status line reads ${JSON.stringify(shown)}, not the folder ${folder}`);
-        });
+        await page.waitForFunction((f) => document.querySelector(".wa-status-word")?.textContent === `Waiting for your answer in watane for ${f}`, folder, { timeout: 15_000 });
         first = await sessionOf(url, "read my notes");
         await sleep(400);
         ensure(fake.cwds().length === 0, () => `the fake started before the answer: ${JSON.stringify(fake.starts())}`);
@@ -326,7 +333,8 @@ async function main() {
         const asked = home.asked.length;
         await startInPage(page, other, "read the other notes");
         const q = await until(() => home.asked[asked], 20_000, "the app's question");
-        await page.waitForFunction(() => document.querySelector(".wa-status-word")?.textContent === "Waiting for your answer in watane", null, { timeout: 15_000 });
+        ensure(q.what === `workspace:local/claude-code:${realpathSync(other)}` && q.origin === "agent" && q.via === "claude-code", `the question: ${JSON.stringify(q)}`);
+        await page.waitForFunction((f) => document.querySelector(".wa-status-word")?.textContent === `Waiting for your answer in watane for ${f}`, realpathSync(other), { timeout: 15_000 });
         await home.send({ op: "answer", i: q.i, answer: "refused" });
         await page.waitForFunction((f) => document.querySelector(".wa-status-word")?.textContent === `Failed: Workspace access was refused for ${f}`, realpathSync(other), { timeout: 15_000 });
         const s = await sessionOf(url, "read the other notes");
@@ -391,7 +399,7 @@ catch (e) {
 }
 if (code !== 2) {
   for (const n of notes) say(`note: ${n}`);
-  say(`stage C on the host: ${pass} pass, ${fail} fail, ${gaps} known gap${gaps === 1 ? "" : "s"}`);
+  say(`stage C on the host: ${pass} pass, ${fail} fail`);
   code = fail ? 1 : 0;
 }
 process.exit(code);

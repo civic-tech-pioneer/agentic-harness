@@ -24,9 +24,32 @@ const box = () => screen.getByRole("textbox", { name: "Message" }) as HTMLTextAr
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 
 describe("S36-6", () => {
+  it("ac3_long_queue_preview_preserves_the_original_for_edit", async () => {
+    const original = "x".repeat(255 * 1024);
+    const kernel = fakeKernel([...story, queue(original)]);
+    for (let n = 0; n <= story.length; n++) kernel.play(n);
+    render(<App kernel={kernel} info={INFO} />);
+    await screen.findByRole("button", { name: "Edit queued message 1" });
+    expect(items()[0]?.length).toBeLessThan(300);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Edit queued message 1" }));
+    expect(box()).toHaveValue(original);
+    expect(lines()[0]?.querySelector("bdi")).toHaveTextContent(`${"x".repeat(240)}…`);
+  });
+
+  it("ac3_not_running_hides_stop_and_send_but_allows_edit", async () => {
+    const stopped = JSON.stringify({ _meta: { watane: { type: "turn", state: { state: "unknown" } } } });
+    const kernel = fakeKernel([...story, queue("take me back"), [stopped]]);
+    for (let n = 0; n <= story.length + 1; n++) kernel.play(n);
+    render(<App kernel={kernel} info={INFO} />);
+    expect(await screen.findByText("Not running: watane restarted")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop and send queued message 1" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit queued message 1" })).toBeEnabled();
+  });
+
   it("ac1_edit_takes_the_item_back_first_and_puts_its_text_in_the_composer", async () => {
     const { f, calls } = await open();
     expect(items()).toEqual(["first one", "second one"]);
+    expect(screen.getByText("Queued · 2 of 32 · sent when this turn ends")).toBeVisible();
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Edit queued message 1" }));
     await settle();
@@ -53,10 +76,13 @@ describe("S36-6", () => {
   it("ac3_remove_shows_undo_for_6_s_and_undo_says_the_input_again", async () => {
     const { calls } = await open();
     const u = userEvent.setup();
-    await u.click(screen.getByRole("button", { name: "Remove queued message 2" }));
+    const remove = screen.getByRole("button", { name: "Remove from queue", description: "second one" });
+    expect(screen.getByRole("button", { name: "Remove from queue", description: "first one" })).toBeEnabled();
+    await u.click(remove);
     await settle();
     expect(calls("unqueue").map((c) => c.args)).toEqual([["s1", 8]]);
-    expect(lines()[0]!.textContent).toContain("Removed.");
+    expect(lines()[0]).toHaveTextContent("Removed “second one” from the queue");
+    expect(lines()[0]?.querySelector("bdi")).toHaveTextContent("second one");
     await u.click(screen.getByRole("button", { name: "Undo" }));
     expect(calls("say").map((c) => c.args[2])).toEqual(["second one"]);
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
@@ -64,7 +90,7 @@ describe("S36-6", () => {
   it("ac3_undo_is_gone_after_6_s", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { calls } = await open();
-    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(5900); });
@@ -96,14 +122,19 @@ describe("S36-6", () => {
   });
   it("ac6_each_control_is_a_named_button_reachable_by_keyboard", async () => {
     await open();
-    for (const n of [1, 2]) for (const w of ["Edit", "Remove", "Stop and send"]) {
+    for (const n of [1, 2]) for (const w of ["Edit", "Stop and send"]) {
       const b = screen.getByRole("button", { name: `${w} queued message ${n}` });
       expect(b.tabIndex).toBeGreaterThanOrEqual(0);
     }
+    const remove = screen.getAllByRole("button", { name: "Remove from queue" });
+    expect(remove).toHaveLength(2);
+    remove.forEach((b) => expect(b.tabIndex).toBeGreaterThanOrEqual(0));
     const u = userEvent.setup();
     screen.getByRole("button", { name: "Edit queued message 1" }).focus();
     await u.tab();
-    expect(screen.getByRole("button", { name: "Remove queued message 1" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Stop and send queued message 1" })).toHaveFocus();
+    await u.tab();
+    expect(screen.getAllByRole("button", { name: "Remove from queue" })[0]!).toHaveFocus();
     await u.keyboard("{Enter}");
     await settle();
     expect(items()).toEqual(["second one"]);

@@ -1,3 +1,5 @@
+import { isInterrupted } from "../load_check.mjs";
+
 export function p95(samples) {
   if (!samples.length) throw new Error("no measurements");
   return [...samples].sort((a, b) => a - b)[Math.ceil(samples.length * 0.95) - 1];
@@ -33,6 +35,60 @@ export function openaiCadence(stamps, from, to) {
     && gaps.every((gap) => gap >= 800 && gap <= 1200);
 }
 
+export const ITEM_DELAY_MS = 100;
+const sourceMarker = (text) => /^(oa-s\d+-\d+|cl-[a-f\d]+-(?:delta|entry)-\d+)(?: |$)/.exec(text)?.[1];
+
+// The TLS log marks writes, not batches accepted by the kernel. Stop may cancel the final
+// in-flight batch before it creates any durable tool outcome. An earlier gap still fails,
+// as does a missing page item for any batch with a tool outcome before the interrupted turn.
+export function openaiPageCoverage(wire, seen, stored, from, to, stopAt) {
+  const faults = [];
+  const interrupted = stored.findLast(({ kind }) => kind === "turn");
+  const confirmed = isInterrupted(interrupted?.body);
+  if (!confirmed) faults.push("no stored interrupted turn");
+  // OpenAI's pending calls are live events. The kernel writes a terminal tool row
+  // when a job completes or fails, and writes aborted outcomes before the interrupted
+  // turn for any jobs still open. Presence of any row therefore proves admission.
+  const acceptedTools = new Set(stored
+    .filter(({ kind, i, body }) => kind === "tool" && (!confirmed || i < interrupted.i)
+      && (body.status === "completed" || body.status === "failed"))
+    .map(({ body }) => body.toolCallId));
+  const acceptedMessages = new Set(stored
+    .filter(({ kind, i, body }) => kind === "message" && body.role === "agent" && confirmed && i < interrupted.i)
+    .map(({ body }) => sourceMarker(body.content?.[0]?.text ?? "")));
+  const steps = wire.filter(({ marker, step }) => marker === step).sort((a, b) => a.at - b.at);
+  const tail = confirmed ? steps.findLast(({ at }) => at <= interrupted.at) : undefined;
+  let cut = [];
+  for (const start of steps.filter(({ at }) => at >= from && at < to)) {
+    const writes = wire.filter(({ step }) => step === start.marker);
+    const calls = writes.filter(({ marker }) => marker.startsWith("call_"));
+    const ids = new Set(calls.map(({ marker }) => marker));
+    const prefix = /^call_\d+_/.exec(calls[0]?.marker)?.[0];
+    const validCalls = ids.size === calls.length
+      && [...ids].every((id) => prefix && id.startsWith(prefix) && /^[0-3]$/.test(id.slice(prefix.length)));
+    const completions = writes.filter(({ marker }) => marker === `${start.marker}/completed`);
+    const missing = [start, ...calls].filter(({ marker }) => !seen.has(marker));
+    const complete = completions.length === 1 && calls.length === 4;
+    // Bound the last wire write and any missing marker by the page item-delay budget
+    // around the actual click. A partial batch must also overlap the durable interrupt.
+    const overlaps = completions.length === 0 && writes.some(({ at }) => at >= interrupted?.at);
+    const lastWrite = Math.max(...writes.map(({ at }) => at));
+    const nearClick = Number.isFinite(stopAt) && Math.abs(lastWrite - stopAt) <= ITEM_DELAY_MS
+      && missing.every(({ at }) => at >= stopAt - ITEM_DELAY_MS);
+    if (start === tail && nearClick && validCalls && (complete || overlaps)
+        && !acceptedMessages.has(start.marker) && !calls.some(({ marker }) => acceptedTools.has(marker))) {
+      if (missing.length) cut = writes;
+      continue;
+    }
+    if (!validCalls || calls.length !== 4) {
+      faults.push(`${start.marker}: source wrote ${[...ids].join(", ") || "no calls"} instead of four distinct calls for this step`);
+    }
+    if (completions.length !== 1) faults.push(`${start.marker}: expected one completion write, got ${completions.length}`);
+    for (const { marker } of missing) faults.push(`missing page marker ${marker}`);
+  }
+  return { faults, interrupted, cut };
+}
+
 export function pageProbe() {
   window.loadItems = [];
   let bridge;
@@ -66,7 +122,7 @@ export function pageItem({ at, body }) {
   const o = JSON.parse(body);
   const w = o._meta?.watane;
   const text = o.content?.text ?? w?.entry?.body?.content?.[0]?.text ?? "";
-  const marker = /^(oa-s\d+-\d+|cl-[a-f\d]+-(?:delta|entry)-\d+)(?: |$)/.exec(text)?.[1];
+  const marker = sourceMarker(text);
   return {
     at,
     marker: marker ?? (o.sessionUpdate === "tool_call" && o.status === "pending" ? o.toolCallId : undefined),

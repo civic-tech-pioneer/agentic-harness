@@ -24,6 +24,10 @@ export function cardName(call: ToolCall, ask?: Ask): string {
   return path ? `${call.kind.charAt(0).toUpperCase() + call.kind.slice(1)} ${path}` : call.title;
 }
 export type Activity = { kind: "checking"; on?: string } | { kind: "compacting" } | { kind: "consent"; what: string };
+export function isFolderConsent(turn: TurnState | null | undefined): boolean {
+  return turn?.state === "running" && turn.activity?.kind === "consent" && turn.activity.what.startsWith("workspace:");
+}
+
 export type TurnState =
   | { state: "running"; activity?: Activity; since: number }
   | { state: "waiting"; asks: string[]; expiresAt: number }
@@ -39,7 +43,7 @@ export type Row =
   /** 9.4 `child` entry whose call has no tool row (or whose row already links another child): shown on its own, never dropped. */
   | { kind: "child"; key: string; i?: number; session: string; toolCallId: string }
   | { kind: "decision"; key: string; i?: number; who: string; what: string; reason?: string }
-  | { kind: "footer"; key: string; seconds: number; tools: number; tokens?: number; stopped?: string }
+  | { kind: "footer"; key: string; seconds: number; tools: number; tokens?: number; stopped?: string; interrupted?: true }
   | { kind: "unknown"; key: string; i?: number; raw: unknown };
 export interface PlanItem { content: string; status: "pending"|"in_progress"|"completed" }
 /** The reducer's own bookkeeping; a reader of the view ignores it. */
@@ -59,9 +63,13 @@ export const emptyView: SessionView = {
   rows: [], openAsks: [], turn: null, queue: [], plan: null, usage: null,
   allows: [], lastIndex: 0, synced: false, loading: false,
 };
+export const SESSION_IN_ANOTHER_TAB = "This session is open in another tab.";
+
 export interface Actions {
   /** The view's stream went to another tab: asks, Send and Stop are off (18.6 "Another tab"). */
   off?: boolean;
+  /** The visible reason shared by disabled controls in the app. */
+  offReasonId?: string;
   /** The asks this console answered that have no decision entry yet (9.4 rule 4), each with the open ask object it was answered for:
    * a card is answered only when its own row's ask is that object (the dock's count reads the same set). */
   answeredAsks?: ReadonlyMap<string, Ask>;

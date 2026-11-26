@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, MEASURE, openAsk, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, isFolderConsent, MEASURE, openAsk, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, titleOf, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
@@ -89,8 +89,10 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     });
   };
   const off = replaced;
+  const offReasonId = useId();
   const actions: Actions = useMemo(() => ({
     off,
+    offReasonId,
     answeredAsks,
     say: (text) => kernel.say(info.id, `c${Date.now()}-${sent++}`, text),
     answer: () => Promise.reject(new Error("an answer goes out only with the ask its card drew")), // fail closed: no drawn ask, no identity check
@@ -101,15 +103,24 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
       // fail closed: an answer for an ask that is not the open one of its id sends and records nothing
       return mine === drawn ? send(drawn.id, d, mine) : Promise.reject(new Error("the ask is no longer the one the card drew"));
     },
-    stop: () => { setStopping(true); void kernel.interrupt(info.id); },
+    stop: () => {
+      const turn = viewRef.current.turn;
+      setStopping(true);
+      // During launch consent, cancelling the provider stream also dismisses watane's question.
+      const stop = isFolderConsent(turn)
+        ? kernel.cancel(info.id)
+        : kernel.interrupt(info.id);
+      void stop.catch(() => setStopping(false));
+    },
     unqueue: (n) => kernel.unqueue(info.id, n),
     interrupt: (replacement) => {
+      if (isFolderConsent(viewRef.current.turn)) return Promise.reject(new Error("Stop and send is unavailable while watane waits for folder consent."));
       setStopping(true);
       return kernel.interrupt(info.id, replacement).catch((e) => { setStopping(false); throw e; });
     },
     takeBack: (id) => void kernel.takeBack(info.id, id),
     ...(onOpen ? { openChild: onOpen } : {}),
-  }), [kernel, info.id, answeredAsks, off, onOpen]);
+  }), [kernel, info.id, answeredAsks, off, offReasonId, onOpen]);
 
   const shown = useMemo(() => live.size && view.openAsks.some((id) => live.has(id)) ? { ...view, openAsks: view.openAsks.filter((id) => !live.has(id)) } : view, [view, live]);
 

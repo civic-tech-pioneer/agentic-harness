@@ -59,7 +59,7 @@ describe("S23-3", () => {
   });
 
   it("ac2_a_failed_page_in_ends_loading", async () => {
-    const k: Kernel = { say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, unqueue: async () => {}, takeBack: async () => {}, profiles: async () => [], check: async () => [],
+    const k: Kernel = { say: async () => 0, start: async () => "s", answer: async () => {}, cancel: async () => {}, interrupt: async () => {}, unqueue: async () => {}, takeBack: async () => {}, profiles: async () => [], check: async () => [],
       attach: async () => ({ behind: 10 }), read: async () => { throw new Error("x"); } };
     let last: SessionView | undefined;
     const s = openSession(k, "s", (v) => { last = v; });
@@ -71,7 +71,7 @@ describe("S23-3", () => {
   it("ac2_loading_ends_when_the_reattach_after_a_page_in_gives_up", async () => {
     vi.useFakeTimers();
     let attaches = 0;
-    const k: Kernel = { say: async () => 0, start: async () => "s", answer: async () => {}, interrupt: async () => {}, unqueue: async () => {}, takeBack: async () => {}, profiles: async () => [], check: async () => [],
+    const k: Kernel = { say: async () => 0, start: async () => "s", answer: async () => {}, cancel: async () => {}, interrupt: async () => {}, unqueue: async () => {}, takeBack: async () => {}, profiles: async () => [], check: async () => [],
       attach: async () => { if (attaches++ === 0) return { behind: 1 }; throw new Error("down"); },
       read: async () => [JSON.stringify({ v: 1, i: 1, kind: "message", at: 0, body: { role: "user", content: [{ type: "text", text: "hi" }] } })] };
     let last: SessionView | undefined;

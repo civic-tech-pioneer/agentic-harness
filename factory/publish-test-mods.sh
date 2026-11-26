@@ -33,7 +33,7 @@ build_component() {
     --release --target wasm32-wasip2 "$@" >&2
   local target
   target=$(cargo metadata --manifest-path "$root/$crate/Cargo.toml" --no-deps --format-version 1 |
-    python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
+    node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).target_directory)')
   cp "$target/wasm32-wasip2/release/$artifact.wasm" "$stage/$destination/logic.wasm"
 }
 
@@ -56,7 +56,7 @@ publish() {
     printf '%s\n' "$result" >&2
     return 1
   fi
-  if ! python3 -c 'import json,sys; sys.exit(json.load(sys.stdin)["result"]["link"] != sys.argv[1])' "$expected_link" <<<"$result"; then
+  if ! node -e 'process.exit(JSON.parse(require("fs").readFileSync(0, "utf8")).result.link === process.argv[1] ? 0 : 1)' "$expected_link" <<<"$result"; then
     echo "The published link did not match the configured test channel." >&2
     printf '%s\n' "$result" >&2
     return 1

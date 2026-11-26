@@ -77,7 +77,7 @@ describe("S36 r5", () => {
   it("regress_s36_undo_deadline_never_drops_the_item (F5.3)", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     await open([[queueOf(["first one", "second one"])]]);
-    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     act(() => { vi.advanceTimersByTime(6001); });
     expect(takenOf("s1").map((x) => x.text)).toEqual(["first one"]);
@@ -87,7 +87,7 @@ describe("S36 r5", () => {
   it("regress_s36_undo_deadline_holds_after_a_reload (F5.3)", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     await open([[queueOf(["first one", "second one"])]]);
-    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1);
     cleanup(); forgetTaken(); // the reload: the page's memory goes, `sessionStorage` stays

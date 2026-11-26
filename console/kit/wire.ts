@@ -13,6 +13,7 @@ export type Msg =
   | { t: "verdict"; i: number; toolCallId?: string; breaker?: true; outcome: string; reasons: string[]; by: string }
   | { t: "turn"; i?: number; state: TurnState; extra: TurnExtra }
   | { t: "compaction"; i: number }
+  | { t: "control-ack"; i: number }
   | { t: "unreadable"; i?: number; raw: unknown }
   | { t: "chunk"; part: "agent" | "thought" | "user"; text: string; i?: number; at?: number }
   | { t: "call"; call: CallPatch; i?: number; at?: number }
@@ -153,7 +154,18 @@ function parseEntry(e: Rec): Msg {
       const session = str(b.session), toolCallId = str(b.toolCallId);
       return session === undefined || toolCallId === undefined ? bad : { t: "child", i, session, toolCallId };
     }
-    case "unknown": return { t: "unreadable", i, raw: b.raw };
+    case "unknown": {
+      // Claude acknowledges interrupt with an empty success. Keep its index for replay.
+      const raw = b.raw;
+      if (isRec(raw) && raw.type === "control_response" && isRec(raw.response)) {
+        const { subtype, request_id, response } = raw.response;
+        if (subtype === "success" && typeof request_id === "string" && request_id
+          && (response === undefined || (isRec(response) && Object.keys(response).length === 0))) {
+          return { t: "control-ack", i };
+        }
+      }
+      return { t: "unreadable", i, raw };
+    }
   }
   return bad;
 }

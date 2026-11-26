@@ -174,6 +174,38 @@ describe("other rows", () => {
     expect(el.textContent).toContain("too broad");
   });
 
+  it("ac2_stop_acknowledgement_has_no_row_and_interruption_is_stopped", () => {
+    const ack = { type: "control_response", response: { subtype: "success", request_id: "interrupt-id", response: {} } };
+    const view = feed(
+      w({ type: "turn", state: { state: "running", since: 1 } }),
+      entry(2, "unknown", { raw: ack }),
+      entry(3, "turn", { state: "idle", stop: { kind: "interrupted" }, seconds: 2 }),
+      entry(4, "unknown", { raw: { ...ack, response: { ...ack.response, subtype: "error" } } }),
+    );
+    expect(feed(entry(2, "unknown", { raw: ack })).lastIndex).toBe(2);
+    show(view);
+    expect(screen.getByText("Stopped after 2 s · 0 tools")).toBeInTheDocument();
+    expect(screen.getAllByText("An event this console does not know")).toHaveLength(1);
+  });
+
+  it("s140_p1_2_stop_acknowledgement_does_not_close_a_streaming_thought", () => {
+    const ack = { type: "control_response", response: { subtype: "success", request_id: "interrupt-id" } };
+    const view = feed(
+      upd({ sessionUpdate: "agent_thought_chunk", content: text("pondering") }, undefined, 1000),
+      entry(2, "unknown", { raw: ack }),
+      upd({ sessionUpdate: "agent_thought_chunk", content: text(" more") }, undefined, 2000),
+    );
+    expect(view.rows).toEqual([expect.objectContaining({ kind: "thought", text: "pondering more", streaming: true })]);
+    expect(view.lastIndex).toBe(2);
+    // an event the console does not know is a row of its own: the thought before it closes
+    const unknown = feed(
+      upd({ sessionUpdate: "agent_thought_chunk", content: text("pondering") }, undefined, 1000),
+      entry(2, "unknown", { raw: { ...ack, response: { ...ack.response, subtype: "error" } } }),
+    );
+    expect(unknown.rows.map((r) => r.kind)).toEqual(["thought", "unknown"]);
+    expect(unknown.rows[0]).toMatchObject({ streaming: false });
+  });
+
   it("ac7_footer_line", () => {
     show(feed(w({ type: "turn", state: { state: "running", since: 1 } }),
       w({ type: "turn", state: { state: "idle", stop: { kind: "completed" }, seconds: 9, tools: 2, tokens: 18000 } })));
@@ -236,6 +268,7 @@ describe("StatusLine", () => {
     const b = screen.getByRole("button", { name: label });
     expect(b).toBeDisabled();
     expect(b).toHaveAccessibleDescription("This console cannot do this yet.");
+    expect(screen.getByText("This console cannot do this yet.")).not.toHaveClass("wa-sr");
     b.click();
     expect(s.actions.say).not.toHaveBeenCalled();
     expect(s.actions.stop).not.toHaveBeenCalled();
@@ -281,12 +314,21 @@ describe("StatusLine", () => {
     expect(shape()).toBe("dot");
   });
 
-  it("ac9_consent_diamond_opens_the_question", async () => {
+  it("s140_p1_7_a_control_character_in_the_folder_is_shown_not_collapsed", () => {
+    status({ state: "running", since: T, activity: { kind: "consent", what: "workspace:local/claude-code:/home/alice/a\nb\tc" } });
+    expect(word()).toBe("Waiting for your answer in watane for /home/alice/a\u240ab\u2409c");
+    cleanup();
+    status({ state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "consent-refused(workspace:/home/alice/a\nb)" } });
+    expect(word()).toContain("Workspace access was refused for /home/alice/a\u240ab");
+  });
+
+  it("ac9_consent_diamond_disables_opening_the_native_question", () => {
     const s = status({ state: "running", since: T, activity: { kind: "consent", what: "x" } });
     expect(word()).toBe("Waiting for your answer in watane");
     expect(shape()).toBe("diamond");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Open the question" }));
-    expect(s.onNeedsYou).toHaveBeenCalled();
+    noKernel(s, "Open the question");
+    expect(document.querySelector(".wa-status-esc")).toHaveTextContent("Esc to stop");
+    expect(s.onNeedsYou).not.toHaveBeenCalled();
   });
 
   it("ac9_waiting_diamond_time_left_needs_you", async () => {

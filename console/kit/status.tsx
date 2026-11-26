@@ -1,6 +1,6 @@
 // TECHNICAL 18.5: the status line, one shape per state; only the word and its subject are live.
 import { useId } from "react";
-import { cardName, type Actions, Row, SessionView } from "./model";
+import { cardName, SESSION_IN_ANOTHER_TAB, type Actions, Row, SessionView } from "./model";
 import { openAsk } from "./reduce";
 import { answeredWords } from "./parts/askbar";
 
@@ -39,17 +39,25 @@ function askSubject(view: SessionView): string {
   return "";
 }
 
+/** Host 19.7 includes the provider identity. Older records carry just the absolute folder. A control character in it shows
+ * as its picture (U+2400 to U+2421), so a newline or a tab reads as one and is never collapsed to a space (S140). */
+function workspaceFolder(what: string): string | undefined {
+  return what.match(/^workspace:(?:[^:/][^:]*:)?(\/.*)$/s)?.[1]
+    ?.replace(/[\u0000-\u001f\u007f]/g, (c) => String.fromCharCode(c === "\u007f" ? 0x2421 : 0x2400 + c.charCodeAt(0)));
+}
+
 /** 18.5: the cause of a failed turn in words: `no-binary` is Claude Code missing; another cause is its own text; none, the error's name. */
 function failedWords(stop: { error: string; cause?: string }): string {
-  if (stop.cause === "no-binary") return "Claude Code is not available here";
+  if (stop.cause === "no-binary") return "Choose a Claude Code binary in Settings → Claude Code";
   if (stop.error === "provider-ended" && stop.cause === "gone") return "Connection to Claude Code ended";
   if (stop.error === "judge" && stop.cause === undefined) return "your judge denied it";
-  const refused = stop.cause?.match(/^consent-refused\(workspace:(?:[^:\/][^:]*:)?(\/.*)\)$/s);
-  if (refused) return `Workspace access was refused for ${refused[1]}`;
+  const refused = stop.cause?.match(/^consent-refused\((.*)\)$/s);
+  const folder = refused ? workspaceFolder(refused[1]!) : undefined;
+  if (folder) return `Workspace access was refused for ${folder}`;
   return stop.cause ?? stop.error;
 }
 
-function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: number, actions: Actions): Spec {
+function spec(view: SessionView, now: number, answered: number, actions: Actions): Spec {
   const t = view.turn;
   if (!t) return view.loading ? { word: "Loading", shape: "loading" } : { word: "Idle", shape: "ring" };
   switch (t.state) {
@@ -58,7 +66,11 @@ function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: 
       const a = t.activity;
       if (a?.kind === "checking") return { word: "Checking with your judge", shape: "square", clock: clk, esc: true };
       if (a?.kind === "compacting") return { word: "Making room", shape: "dot", clock: clk, esc: true };
-      if (a?.kind === "consent") return { word: "Waiting for your answer in watane", shape: "diamond", act: { label: "Open the question", run: onNeedsYou } };
+      if (a?.kind === "consent") {
+        const folder = workspaceFolder(a.what);
+        const word = folder ? `Waiting for your answer in watane for ${folder}` : "Waiting for your answer in watane";
+        return { word, shape: "diamond", esc: true, act: { label: "Open the question" } };
+      }
       return { word: runningWord(view.rows), shape: "dot", clock: clk, esc: true };
     }
     case "waiting": {
@@ -81,22 +93,25 @@ function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: 
 export function StatusLine(props: { view: SessionView; now: number; stopping: boolean; actions: Actions; onNeedsYou: () => void;
   /** How many open asks this console answered that `view` already leaves out of `openAsks` (App's `shown`). */ answered?: number }) {
   const { view, now, stopping } = props;
-  const noKernel = useId();
+  const reasonId = useId();
   const s: Spec = stopping && view.turn?.state !== "idle"
     ? { word: "Stopping…", shape: "dot" }
-    : spec(view, now, props.onNeedsYou, props.answered ?? 0, props.actions);
+    : spec(view, now, props.answered ?? 0, props.actions);
+  const disabledReason = !s.act ? undefined : !s.act.run ? "This console cannot do this yet."
+    : s.act.off ? SESSION_IN_ANOTHER_TAB : undefined;
+  const sharedReasonId = s.act?.run && s.act.off ? props.actions.offReasonId : undefined;
   return (
     <div className="wa-status" data-state={view.turn?.state ?? "none"}>
       <span className="wa-shape" data-shape={s.shape} role="img" aria-label={NAMES[s.shape]} />
       <span role="status" className="wa-status-word">{s.word}</span>
       {s.clock ? <span className="wa-status-clock" aria-hidden="true">· {s.clock}</span> : null}
       {s.act ? (
-        <button type="button" onClick={s.act.run} disabled={!s.act.run || s.act.off} aria-describedby={s.act.run ? undefined : noKernel}>
+        <button type="button" onClick={s.act.run} disabled={!!disabledReason} aria-describedby={disabledReason ? sharedReasonId ?? reasonId : undefined}>
           {s.act.label}{s.act.key ? <> <kbd>{s.act.key}</kbd></> : null}
         </button>
       ) : null}
-      {s.esc ? <span className="wa-status-esc"><kbd>Esc</kbd> to stop</span> : null}
-      {s.act && !s.act.run ? <span id={noKernel} className="wa-sr">This console cannot do this yet.</span> : null}
+      {disabledReason && !sharedReasonId ? <span id={reasonId}>{disabledReason}</span> : null}
+      {s.esc && !props.actions.off ? <span className="wa-status-esc"><kbd>Esc</kbd> to stop</span> : null}
     </div>
   );
 }

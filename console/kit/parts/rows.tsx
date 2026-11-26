@@ -1,5 +1,5 @@
 // TECHNICAL 18.3 (the table), 18.6: one component per row kind.
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { errorWords } from "../errors";
 import { askArg, cardName, isAskRefusal, type Actions, type Ask, type Row, type ToolCall } from "../model";
 import { AskBar } from "./askbar";
@@ -178,12 +178,14 @@ function ToolCard({ stateKey, head, open, initial, children }: { stateKey: strin
 /** 18.3 `child`: the link that opens the child's transcript; a refusal shows the ordinary error beside it and leaves this session open. */
 function ChildLink({ session, actions }: { session: string; actions: Actions }) {
   const [err, setErr] = useState<string | null>(null);
+  const reasonId = useId();
   return (
     <>
-      <button type="button" className="wa-child-link" aria-disabled={actions.openChild ? undefined : "true"}
+      <button type="button" className="wa-child-link" aria-describedby={actions.openChild ? undefined : reasonId} aria-disabled={actions.openChild ? undefined : "true"}
         onClick={() => { setErr(null); if (!actions.openChild) return; Promise.resolve().then(() => actions.openChild!(session)).catch((e) => setErr(errorWords(e))); }}>
         Open child session <code>{session}</code>
       </button>
+      {actions.openChild ? null : <> <span id={reasonId}>Child sessions cannot be opened from this view.</span></>}
       {err ? <span className="wa-child-err" role="alert">{err}</span> : null}
     </>
   );
@@ -198,7 +200,9 @@ export function DecisionRow({ row }: { row: Of<"decision"> }) {
 }
 
 export function FooterRow({ row }: { row: Of<"footer"> }) {
-  const parts = [row.stopped !== undefined ? `Stopped at the ${row.stopped} after ${row.seconds} s` : `Completed in ${row.seconds} s`, plural(row.tools, "tool", "tools")];
+  const duration = row.stopped !== undefined ? `Stopped at the ${row.stopped} after ${row.seconds} s`
+    : row.interrupted ? `Stopped after ${row.seconds} s` : `Completed in ${row.seconds} s`;
+  const parts = [duration, plural(row.tools, "tool", "tools")];
   if (row.tokens !== undefined) parts.push(`${row.tokens >= 1000 ? `${Math.round(row.tokens / 1000)}k` : row.tokens} tokens`);
   return <p className="wa-footer">{parts.join(" · ")}</p>;
 }

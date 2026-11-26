@@ -35,7 +35,7 @@ const recoverable = (t: string) => items().includes(t) || box().value === t || !
 describe("S36 r1", () => {
   it("regress_s36_undo_stays_in_its_session (F1.4)", async () => {
     const { f, rerender } = await open();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await userEvent.setup().click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     const undo = await screen.findByRole("button", { name: "Undo" });
     rerender(<App kernel={f} info={{ ...INFO, id: "other-session" }} />);
@@ -65,7 +65,7 @@ describe("S36 r1", () => {
   it("regress_s36_undo_refusal_keeps_recovery (F1.5)", async () => {
     const { f } = await open();
     const u = userEvent.setup();
-    await u.click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     refuse(f, "say", "queue-full");
     await u.click(screen.getByRole("button", { name: "Undo" }));
