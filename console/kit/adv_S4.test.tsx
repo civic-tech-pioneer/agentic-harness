@@ -21,7 +21,7 @@ function writingKernel(stored: string) {
       return { ok: true };
     },
     read: () => { reads++; return new Promise((r) => setTimeout(() => r([stored]), 0)); },
-    async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+    async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
   };
   return { k, reads: () => reads };
 }
@@ -112,7 +112,7 @@ describe("adversary S4 fix: reads, rows and paging", () => {
           return { ok: true };
         },
         read: () => { reads++; return Promise.reject(new Error("down")); },
-        async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+        async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
       };
       const s = openSession(k, "s1", (v) => { last = v; });
       await vi.advanceTimersByTimeAsync(999);
@@ -161,7 +161,7 @@ describe("adversary S4 fix: reads, rows and paging", () => {
     let last: SessionView = emptyView;
     const k: Kernel = {
       async attach(_s, _a, on) { on(bad as unknown as string); return { ok: true }; },
-      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
     };
     const s = openSession(k, "s1", (v) => { last = v; });
     await new Promise((r) => setTimeout(r, 100));
@@ -188,7 +188,7 @@ describe("adversary S4 fix: reads, rows and paging", () => {
     let reads = 0, attaches = 0, last: SessionView = emptyView;
     const k: Kernel = {
       async attach() { attaches++; return { behind: 2 ** 60 }; },
-      read: async () => { reads++; return []; }, async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+      read: async () => { reads++; return []; }, async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
     };
     const s = openSession(k, "s1", (v) => { last = v; });
     await new Promise((r) => setTimeout(r, 50));
@@ -202,7 +202,7 @@ describe("adversary S4 fix: reads, rows and paging", () => {
     let attaches = 0, last: SessionView = emptyView;
     const k: Kernel = {
       async attach() { attaches++; return { behind: 10 }; },
-      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
     };
     const s = openSession(k, "s1", (v) => { last = v; });
     await new Promise((r) => setTimeout(r, 50));
@@ -225,7 +225,7 @@ describe("adversary S4 rerun: refetch and paging", () => {
         return { ok: true };
       },
       read: () => new Promise((r) => setTimeout(() => r([user]), 0)),
-      async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+      async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
     };
     let last: SessionView = emptyView;
     const s = openSession(k, "s1", (v) => { last = v; });
@@ -240,7 +240,7 @@ describe("adversary S4 rerun: refetch and paging", () => {
     let attaches = 0;
     const k: Kernel = {
       async attach() { attaches++; return attaches > 10_000 ? { ok: true } : { behind: 0 }; },
-      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
     };
     const s = openSession(k, "s1", () => {});
     await new Promise((r) => setTimeout(r, 50));
@@ -261,7 +261,7 @@ describe("adversary S4 rerun 2: re-attach pacing", () => {
         if (attaches < 10_000) queueMicrotask(() => end("consumer-failed"));
         return { ok: true };
       },
-      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
     };
     const s = openSession(k, "s1", () => {});
     await new Promise((r) => setTimeout(r, 50));
@@ -280,7 +280,7 @@ describe("adversary S4 rerun 3: paging pace", () => {
     const k: Kernel = {
       async attach() { return { behind: 1_000_000_000 }; },
       read: () => (++reads > 200 ? new Promise<string[]>(() => {}) : Promise.resolve([same])),
-      async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+      async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
     };
     const s = openSession(k, "s1", () => {});
     await new Promise((r) => setTimeout(r, 50));
@@ -299,7 +299,7 @@ describe("adversary S4 rerun 4: paging and re-attach pace", () => {
       async attach() { return { behind: 1_000_000_000 }; },
       read: (_s, after) => (++reads > 200 ? new Promise<string[]>(() => {})
         : Promise.resolve([j({ v: 1, i: after + 1, kind: "message", at: 1, body: { role: "user", content: [text("m")] } })])),
-      async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+      async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
     };
     const s = openSession(k, "s1", () => {});
     await new Promise((r) => setTimeout(r, 50));
@@ -322,7 +322,7 @@ describe("adversary S4 rerun 4: paging and re-attach pace", () => {
         });
         return { ok: true };
       },
-      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
+      read: async () => [], async say() { return 0; }, start: async () => "s", async answer() {}, async cancel() {}, async interrupt() {}, async unqueue() {}, async takeBack() {}, profiles: async () => [], check: async () => [],
     };
     const s = openSession(k, "s1", () => {});
     await new Promise((r) => setTimeout(r, 50));
