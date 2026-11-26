@@ -751,7 +751,7 @@ is the kernel's, its own name), plus
 `backend` (`claude` or `openai`), `toolsets`, `delegates` (profile names),
 `max-tool-errors`, `max-tokens`, `ask-expiry` and `subagent-limits`.
 Stage F accepts `delegates` and `subagent-limits` only on OpenAI profiles.
-`subagent-limits` is an object with optional `live` (1..20, default 4)
+`subagent-limits` (it limits OpenAI child sessions, not Claude subagents, 9.7) is an object with optional `live` (1..20, default 4)
 and `depth` (only 1, the default). Depth counts edges from the root. Other
 values and unknown keys are refused by field. Neither field can be set
 by an overlay.
@@ -1014,7 +1014,7 @@ wire") are this JSON; the entry has no `activity`.
     | Backend, state | Becomes |
     |---|---|
     | Claude, `running` or `waiting` | each open ask or check is decided `deny`, `by: kernel`, reason `restart` (a Claude ask has no kernel deadline, 9.6; it expires only at the host, 4.5), and each ask with a pending answer is decided with that answer (9.8 rule 4); the turn becomes `unknown` (written as a `turn` entry and pushed) and the session leaves `active/`; the queue is kept. A tool call that was streamed but has no `tool` entry gets none: it ran inside `claude`, whose process is gone, and the kernel stores no open calls; the `unknown` turn entry after it ends the turn |
-    | OpenAI child, `paused` | drop and cancel its `resume` deadline, set the loop idle and the turn `unknown`, and leave the queue and transcript for explicit owner continuation (R5) |
+    | OpenAI child, `paused` | drop and cancel its `resume` deadline, set the loop idle and the turn `unknown`, and leave the queue and transcript for explicit owner continuation (R5). This holds for every child, also one whose delegated call resolved long before (intended: a child resumes only on its owner's word after a restart, S134, P1.8 of S132) |
     | Other `paused` sessions | unchanged; its `resume` deadline and timer are kept (7). Only the OpenAI loop writes `paused` (9.5); 9.8 gives nothing for a Claude rate limit, so a slice that adds one adds its row here |
     | OpenAI, `running` (loop `requesting`, `ready` in the FIFO or not, `retrying` or `tools`) or `waiting` (a tool approval open) | the turn stops: each open ask is decided `deny`, `by: kernel`, reason `restart`, and its `ask` deadline goes; every open job gets `aborted`, `idempotent` ones included, and every `pending` call too; the `retry` deadline goes; the loop goes to `idle` and the turn becomes `unknown` (written as a `turn` entry and pushed), with the transcript up to the last finished message, and the session leaves `active/`; the queue is kept. A `stopped {quota}` that recording the aborts gives stays. The step makes no model request, no toolset operation (open, describe or call) and no consent for it, whatever origin runs it (the pass runs under another owner's call); cancelling a stale timer is housekeeping it may do. An OpenAI turn does not continue by itself after a restart, and an idempotent job is not run again under its key: known limits (the deputy's cut, 2026-11-25; case 22). A message finished in the window between its transcript entry and `response.completed` when the host restarts is shown but is not in the model's history; the owner can repeat it: a known limit (the deputy, r4 F4.3) |
     | `idle`, `unknown`, `resume-lost` (not listed; reached only by R6) | each Claude ask or check still open or pending (left by an `unknown` `ask-resolved`, or an `interrupt` that `claude` did not follow with `control_cancel_request`) is closed as in the Claude row above, in every state (as built), `restart` for an open one and its answer for a pending one, the turn kept; then only the stale keys go; a Claude session's provider stream of an older boot counts as released, so its next `say` opens a new provider stream and resumes with `session {resume}` (`persist: false`: a fresh session), as after the idle release; no slot count is decremented for it (R1 zeroed the kernel's, the owner's reads zero by its boot tag) |
@@ -1676,20 +1676,37 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 
 **Who delegates.** OpenAI roots can call the kernel's `task` function for
 named OpenAI profiles. The root is depth 0 and its children are depth 1.
-The root's effective `subagent-limits.live` counts only its outstanding
-child calls across steps. Claude uses its own launch `subagents` and
+The profile field keeps its 4.1 name, `subagent-limits`, but it limits
+OpenAI child sessions only, never Claude subagents (FUNCTIONAL 1, "live
+child"). The root's effective `subagent-limits.live` counts its live
+children: its outstanding `task` calls across steps, one per child whose
+delegated first turn has not yet resolved the call. A child whose call
+has resolved (it ended, or the owner interrupted it, which resolves the
+call) is no longer live, even if the owner then gives it more work with
+`say` or a replacement: that work is the owner's, bounded by the owner's
+own session and slot caps (9.5), not by the root's live cap. This is
+intended (S134, P1.2 of S132). Claude uses its own launch `subagents` and
 `subagent-depth` (4.1, including depth 0 to disable `Task`). The kernel
 records their activity within that Claude session and allocates no child
 session or kernel child slots for them.
 
 **Admission.** Check at dispatch, before opening anything or reserving an
-id. Authorize the root again as below, reject a child caller with
-`refused` on `subagent-limits.depth`, and check membership of the name in
-the root's effective `delegates` before loading the named profile. An
-unnamed, missing or unadopted profile is `refused` on `profile`. At the
-live cap the refusal field is `subagent-limits.live`. Validate the candidate
-as an OpenAI profile under 9.2 and 11, then compare it to the root's
-compiled profile including its overlay:
+id, in this order; each of the first four steps stops at its one refusal:
+1. authorize the root again as in "Revoking" below (`profile`);
+2. reject a child caller with `refused` on `subagent-limits.depth`;
+3. check membership of the name in the root's effective `delegates`
+   before loading the named profile: an unnamed, missing or unadopted
+   profile is `refused` on `profile`;
+4. at the live cap the refusal field is `subagent-limits.live`;
+5. validate the candidate as an OpenAI profile under 9.2 and 11, then
+   compare it to the root's compiled profile including its overlay, by the
+   table below. Step 5 returns every refusal it finds at once (as `check`
+   does, 9.2).
+
+Rules compare as written: the root's and the candidate's `allow` and
+`deny` lists after compilation (profile, adopted offers, overlay; 9.2) are
+compared as rule strings, a glob as the glob, with no `describe` and no
+expansion over described tools, so admission opens nothing.
 
 | Field | Child rule |
 |---|---|
@@ -1697,7 +1714,8 @@ compiled profile including its overlay:
 | `toolsets`, `skills` | Subsets of the root's effective toolset and adopted skill identities, with the same adopted revisions. Toolset grants and handles are acquired for the child under the root's owner through normal host checks. |
 | `tools`, `workspace`, `extra-workspaces` | OpenAI's existing absence rules apply. The child has no workspace handle, folder or requested folder. It inherits no folder consent or session allows. |
 | `mode`, `ask`, `pre-tool-check` | Same effective values. |
-| `allow`, `deny` | Exact-rule subset of allows and superset of denies, after compilation. |
+| `allow`, `deny` | Exact-rule subset of allows and superset of denies, after compilation, compared as written (above). |
+| `persist` | `false` when the root's is `false`: a root that keeps nothing cannot start a child that stores its `input`. |
 | `max-turns`, `max-tool-errors`, `max-tokens`, `ask-expiry` | Equal or lower effective values. For an optional cap, absent means unbounded. |
 | `delegates`, `subagent-limits` | No named delegates or child-supplied delegation limits. |
 
@@ -1727,6 +1745,7 @@ profile; a separate client grant to start that profile is unnecessary.
   the timer cap (the deadline is gone, so a session with no other deadline
   frees its timer, 9.3), so only a `say` resumes it, and that `say` is refused. A turn
   already running is not stopped by the change itself (a limit, 14).
+
 **The function and its lifetime.** `task(profile: string, input: string)`
 has exactly those two required fields. Advertise it on normal root steps
 with delegates and omit it from child requests and tool-free summaries.
@@ -1753,9 +1772,13 @@ the `child` entry immediately upon commit.
 A started call has exactly one terminal output: `{"ok":{"session":"<id>",
 "message":"<final assistant text>"}}` when the child completes with text;
 otherwise `{"err":{"code":"<cause>","session":"<id>"}}`. Use the named
-stop limit for a limit stop, `backend` for a failed turn and `no-result`
-for an empty completion. Use the existing `aborted` job output for an aborted
-or interrupted call. A refused dispatch returns `{"err":{"code":"refused","refusals":[
+stop limit for a limit stop (`max-turns`, `max-tool-errors`, `max-tokens`,
+`busy`, `quota`: a child request that stops `busy` after start gives
+`busy`), `backend` for a failed turn, `interrupted` when the owner
+interrupts the child's first turn, and `no-result` for an empty
+completion. Use the existing `aborted` job output when the parent's call
+itself is aborted (the parent is interrupted, cancelled, deleted or
+restarted, or the child is cancelled or deleted). A refused dispatch returns `{"err":{"code":"refused","refusals":[
 <2.3 refusal records>]}}`; a failure before start has no child id.
 Outputs use the normal tool-output bound (9.4), cutting oversized text
 inside the result so the envelope stays valid. On termination the parent
@@ -1765,8 +1788,12 @@ request uses the origin and slot rules of 9.5, including stopping
 `busy` if it cannot send.
 
 Interrupt, cancel or deletion of the parent aborts pending calls and
-stops live children. Cancelling or deleting a live child also resolves
-the parent's call as aborted. On restart use R4 (9.3); the aborted output
+stops live children: an `interrupt` of the parent interrupts each live
+child (its turn ends `interrupted`, its toolset handle kept, 9.5), and a
+`cancel` or `delete` of the parent cancels each live child (its handle
+closed). A child is never deleted with its parent; the owner deletes it. Cancelling or deleting a live child also resolves
+the parent's call as aborted; interrupting it resolves the call
+`interrupted` (above). On restart use R4 (9.3); the aborted output
 is recorded and never delivered to a fresh turn as completion of a live
 call. Parent cleanup only touches its bounded live map and each child's
 own turn and streams. Finish cleanup before reporting Stop for the
@@ -1783,17 +1810,28 @@ pause within that turn preserves all three. Count each completed model
 response once and add its reported input plus output tokens, including
 the tool-free summary. Compare `max-tokens` with the running total after
 each completion, before dispatching tools or issuing a follow-up. At
-or above the cap end `idle {stopped {limit: max-tokens}}`. A response
-can cross the cap before its usage arrives. A turn with a missing count has no exact
+or above the cap end `idle {stopped {limit: max-tokens}}`, also when
+that response is a final text answer (it does not end `completed`). A
+response can cross the cap before its usage arrives. A root's
+`max-tokens` counts its own steps only, not its children's: each child
+has its own cap, at most the root's (admission), so one root step that
+starts children spends at most the root's cap once per live child on
+top of its own. A turn with a missing count has no exact
 token total. If the profile sets a
 token cap and a completion lacks valid token counts, fail that turn
 `idle {failed {error: usage-unavailable}}` before dispatching further work.
 
 Count final tool failures and denials in committed output order (call
-order for a batch committed together); a success resets the streak.
+order for a batch committed together); a success resets the streak. A
+success is a job's `{"ok"}` output or a `task` call's `ok` output; every
+other output the loop writes for a call is a failure or a denial (an
+`{"error":…}` text, an unknown tool, a `task` `err`), except the
+`aborted` outputs of cleanup.
 At `max-tool-errors`, stop with that limit, aborting other open calls
 and pending work by the interrupt cleanup of 9.5. Those cleanup aborts
-do not count. When a response reaches `max-turns` and would otherwise
+do not count. `max-turns` caps the completed model steps of one turn (FUNCTIONAL 1,
+"model step"); the name is the profile field's of 4.1, where Claude's
+`--max-turns` counts the same thing. When a response reaches `max-turns` and would otherwise
 call tools, close its calls with aborted outputs and send at most one
 summary request with no tools, under the usual request and origin rules.
 Mark that request as the summary so retry or pause preserves its
@@ -1803,9 +1841,10 @@ needs no extra step and completes normally. The token cap takes
 precedence when a response reaches both limits.
 
 For Claude the kernel passes `max-turns` as the native flag. When a
-current turn's `result` reports `error_max_turns`, its ensuing idle
+current turn's `result` reports `subtype: "error_max_turns"`, its ensuing idle
 ends the turn `stopped {limit: max-turns}` without an extra step.
-Claude rejects `max-tokens` and `max-tool-errors` in stage F. Its
+A Claude profile with `max-tokens` or `max-tool-errors` is refused
+(11), as is an overlay that sets either on a Claude session. Its
 result reports turn totals, and its own process controls native tool
 execution. Late results from an interrupted turn cannot end the
 replacement (9.3).
@@ -1823,6 +1862,12 @@ omits `compact-at`. Clear the prior Claude sample when a turn ends
 without a sample so the meter does not present it as current. Use
 `{"type":"usage","context-used":null,"context-window":null}` for this
 clear on live streams; attach replays only a current sample (9.4).
+Known limit (S134, P1.6 of S132): `num_turns` and `subtype` are on
+record (the `result` fixture of 9.8 and `claude-codes` 2.1.330), but no
+probe in `proto/` has yet recorded `model_usage_since_last_result`; until
+`proto/claude-probes/probes.py` records it on the real `claude`, a
+`result` without it gives no sample and the meter is cleared, which
+fails safe (the next probe run after a `claude` update adds it, Upkeep).
 
 ### 9.8 Adapters
 
@@ -2252,7 +2297,7 @@ stage E).
 | A judge key goes only to its judge | the account binding of `judge` (identity, value, origin parse and lifetime as 5): the provider it was entered for, `POST`, the account's origin in the provider's `[http]`, no redirects (5); the same binding means the session's excerpt (the tool call, its input and the 4 KiB transcript excerpt of 10) leaves the machine only to the participant's own judge | watane `host/src/agent/https_stream.rs`, `app/` judge account; `provider-checked/mod.toml`, `provider-checked/logic/src/judge.rs`, `provider-checked/logic/src/lib.rs` |
 | A mod in the middle gains no authority | host consent (8); the providers' `sessions` compare one pinned kernel identity (2.2, 10) | watane `host/` consent, `app/` consent storage; `mod.toml`; the providers' `mod.toml` and `src/lib.rs` (the unchecked one: `provider/mod.toml`, `provider/wit/world.wit`, `provider/logic/src/lib.rs`, `provider/BOUNDARIES.md`); the checked one: `provider-checked/mod.toml`, `provider-checked/wit/world.wit`, `provider-checked/logic/src/lib.rs`, `provider-checked/BOUNDARIES.md`; `factory/publish-test-mods.sh` pins the release identity |
 | A session is private | one consumer; owner checks by identity (3, 9.3) | watane `host/src/agent/streams.rs`; `kernel/src/lib.rs`, `kernel/wasm/src/lib.rs` and `kernel/wasm/src/component.rs` (the exports and owner checks by `caller.identity()`, the provider calls of 2.1), `kernel/src/sessions.rs` (also the 9.1 stream routing, `stream/`, `adapter/` and `live/`, and the session timer of 9.3; a slice that puts either in another file names that file here), `kernel/src/call.rs` (when a call's session timers and buffered state commit, 2.1), `kernel/src/openai/run.rs` and `kernel/src/openai/tools.rs` (the `request` and `job` streams, routed by `stream/<id>`, S40), `kernel/src/transcript.rs`, `kernel/wasm/wit/world.wit` (later `wit/world.wit`) |
-| A child cannot widen its owner’s authority | root access and named profile before load, effective-profile narrowing and depth/live checks at dispatch (9.7); owner, origin and consent checks still apply | `kernel/src/delegation.rs`, `kernel/src/openai/run.rs`, `kernel/src/named.rs`, `kernel/src/sessions.rs` |
+| A child cannot widen its owner's authority | root access and named profile before load, effective-profile narrowing and depth/live checks at dispatch (9.7); owner, origin and consent checks still apply | `kernel/src/delegation.rs`, `kernel/src/openai/run.rs`, `kernel/src/named.rs`, `kernel/src/sessions.rs` |
 | A runaway agent stops | counters and delegation limits in the kernel (9.7); the OpenAI loop's slots, retries and pauses (9.5) | `kernel/src/delegation.rs`, `kernel/src/openai/` (`run.rs`, `tools.rs`), `kernel/src/quota.rs` (the slot limits) |
 | A repeated call changes nothing | client keys, job keys, numbered items (9.3, 6, 3; the kernel drops an item at or below the last `seq` it took, 2.1) | `kernel/src/sessions.rs`, `kernel/src/call.rs` (a failed call commits no write, id or timer, 2.1), `kernel/wasm/src/lib.rs`; watane `host/src/agent/tools.rs`, `streams.rs` |
 | An ask shows the tool call that will run | the ask carries the call's own id and input as the adapter read them (4.5, 9.6, 9.8); the host's items carry `tool_use_id` and `expires-at`, and no stdout line passes as a host item (4.5); the kernel reads host items strictly (9.8) | `kernel/src/adapters/`, `kernel/src/broker.rs`, watane `host/src/agent/claude/control.rs` |
@@ -2389,7 +2434,9 @@ of `spec/VISION.md`.
     counters reset on new input. On Claude a native max-turns result and
     idle report that limit without a summary; `max-tokens` and
     `max-tool-errors` are refused. Verify stage D's OpenAI usage sample
-    and stage F's Claude end-of-turn sample or meter clear.
+    and stage F's Claude end-of-turn sample or meter clear. A profile
+    with `max-tokens` whose response lacks token counts fails the turn
+    `usage-unavailable`; a denial counts in the tool-error streak.
 24. An OpenAI root starts two named children; an unnamed profile, a
     grandchild, a third live child at a cap of two and a widening profile
     get the expected refusal fields. Successful dispatch commits one
@@ -2398,7 +2445,11 @@ of `spec/VISION.md`.
     Cancel the root with two live children and see both stop. Restart
     with live children, including one paused, and see `aborted` calls,
     retained links, and no child or parent resubmission or late output. An owner input may
-    continue a session under R5 without rejoining an old call.
+    continue a session under R5 without rejoining an old call. An
+    `interrupt` of a live child resolves the parent's call `interrupted`,
+    and a `cancel` or `delete` of a live child resolves it `aborted`. A
+    toolset that describes a function named `task` or `skill` is refused
+    on `toolsets` before any request.
 25. A judge that is down, slow, unreadable or without an entered key
     denies, and so does a score in the unsure band (between the page's
     thresholds, 10); 3 denials in a row interrupt the turn.
@@ -2805,7 +2856,11 @@ a stage is done only within them. Writer busy share: the share of wall time the 
 | F | B's Claude load plus 1 OpenAI root per owner, 2 simultaneous `task` children per root; each child drives one step/s with at most 2 open tool jobs; exercise handoff and Stop with live children | as D | as D, including all live children stopped | ≤ 60% | as D |
 
 In the stage F fixture each child request ends before its next request
-starts. Each owner then uses at most four request slots even if the root's dispatch and follow-up streams overlap both child streams
+starts: the fixture's toolset answers each job only after the request
+stream that called it has delivered its `ended` (the scripted Responses
+server closes each stream at `response.completed`, and the job waits at
+least 100 ms), and a run in which any turn stops `busy` is a failed
+measurement, not a result (S134, P1.7 of S132). Each owner then uses at most four request slots even if the root's dispatch and follow-up streams overlap both child streams
 before `ended`. The root runs only `task` calls in that step and uses
 no stream job slots, leaving at most four child jobs per owner. Use
 D's short and long histories. Measure item delay from emission to

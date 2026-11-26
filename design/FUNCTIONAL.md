@@ -29,6 +29,8 @@ where it belongs.
 | offer | A skill or a profile that a mod proposes. It has no effect until the participant adopts it. |
 | skill | Instructions, and the files they need, that an agent can load when it needs them. |
 | child session | An OpenAI kernel session an OpenAI root starts for part of its task. It belongs to the root's client. |
+| live child | A child session whose delegation is still outstanding: the root has not yet received its outcome. The profile field `subagent-limits` caps live children (`TECHNICAL.md` 9.2); despite its name it does not limit Claude subagents. |
+| model step | One request to the model and its complete answer. An OpenAI turn has one or more. Claude's own "turns" (its `--max-turns`) are model steps too, so the profile field `max-turns` caps model steps within one turn on both backends. |
 | Claude subagent | A role configured at Claude launch that runs within that Claude session. |
 | client | The mod (or its page) that starts a session and reads it. It is the session's owner. |
 | origin client | The client at the start of a chain of calls. Consents name it. |
@@ -123,7 +125,7 @@ where it belongs.
 
 ### 3.9 Limits and delegation
 
-- **AGT-F-36** The kernel shall report token totals for each turn when the backend supplies them. For OpenAI it shall count completed model steps, consecutive failed tool calls and input plus output tokens within each turn. It shall stop the turn with the limit named. At the model-step limit it shall allow at most one extra tool-free step to sum up, subject to the other limits. For Claude it shall use Claude's native model-turn limit and report that stop when Claude identifies it. Traces: F-AGENT-8, F-QUAL-3.
+- **AGT-F-36** The kernel shall report token totals for each turn when the backend supplies them. For OpenAI it shall count completed model steps, consecutive failed or denied tool calls and input plus output tokens within each turn. It shall stop the turn with the limit named. If a profile caps tokens and a step's token counts are missing, then the kernel shall fail the turn and name the missing usage. At the model-step limit it shall allow at most one extra tool-free step to sum up, subject to the other limits. For Claude it shall use Claude's native model-step limit and report that stop when Claude identifies it. Traces: F-AGENT-8, F-QUAL-3.
 - **AGT-F-37** An OpenAI root shall start child sessions only with profiles it names. The kernel shall check each child against the root's effective permissions and limits at dispatch, refuse a widening by field, and cap the number of live children. Children have the root's owner and no workspace, and cannot delegate. The parent receives one outcome per delegation, with the child's final answer on success. Claude subagents run within the launching session under Claude's launch-time depth limit. Traces: F-AGENT-8, AGT-F-28.
 - **AGT-F-44** After each completed OpenAI step the kernel shall report the model's context use and the threshold for summarising. For Claude it shall report context use at turn end when Claude supplies comparable usage and a window. Traces: AGT-F-36, F-QUAL-3.
 

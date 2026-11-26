@@ -1,0 +1,48 @@
+# Spec log
+
+A record (`AGENTS.md`, "Contracts and records"): why the contracts changed, newest first. The
+project has not run `spec-adopt` yet, so its config has only the older `spec = [...]` list and no
+`spec-lint`; entries cite sections, not ids.
+
+## 2026-11-26: S134, stage F terms and S132's polish (build team, Claude)
+
+Who: the S134 build team, settling the deputy's spec-check findings on the sketch (PLAN, S134:
+"the build team settles the first four with spec-change") and S132's review polish P1.1 to P1.12
+(PR #59, "Review r1 by Claude"). No vision sentence, `must`, or security check changed; no
+statement weakened. S132's nine Door C choices stand.
+
+Statements:
+- FUNCTIONAL 1, new terms **live child** (decided, said by the spec-check: `subagent-limits`
+  names OpenAI children while FUNCTIONAL keeps "subagent" for Claude) and **model step**
+  (decided, same source: `max-turns` counts OpenAI model steps, not turns). The field names
+  stay (`subagent-limits`, `max-turns`: profile formats of 4.1); the terms say what they count.
+  TECHNICAL 9.2 and 9.7 cite them.
+- FUNCTIONAL AGT-F-36: "consecutive failed tool calls" becomes "consecutive failed or denied
+  tool calls" (inferred from TECHNICAL 9.7, which already counted denials; the spec-check's
+  unsure item 1), and a new sentence: a token cap with missing counts fails the turn and names
+  it (inferred from TECHNICAL 9.7 `usage-unavailable`; unsure item 2). "native model-turn
+  limit" becomes "native model-step limit" (the rename above).
+- TECHNICAL 9.7 Admission: the order of the five checks and that the comparison step returns
+  every refusal at once (P1.11); rules compare as written, globs as globs, no `describe`
+  (P1.4); a `persist` row: `false` when the root's is (P1.3, a narrowing, fails closed).
+- TECHNICAL 9.7: the live cap counts live children; a child the owner continues after its call
+  resolved is the owner's work, intended (P1.2).
+- TECHNICAL 9.7 terminal outputs: codes for a child request stopped `busy` (`busy`) and an owner
+  interrupt of the child's first turn (`interrupted`); `aborted` only when the parent's call
+  itself is aborted (P1.5).
+- TECHNICAL 9.7: parent `interrupt` interrupts live children; parent `cancel` or `delete`
+  cancels them; a child is never deleted with its parent (P1.1).
+- TECHNICAL 9.7 Limits: a final text answer that crosses `max-tokens` ends `stopped`; the root's
+  cap excludes its children's tokens, with the bound (P1.9); what counts as success and failure
+  in the tool-error streak.
+- TECHNICAL 9.7: Claude's `max-tokens`, `max-tool-errors` "refused" (11), not "rejects in stage
+  F" (P1.11); `subtype: "error_max_turns"` named; a known limit for the unprobed
+  `model_usage_since_last_result` (P1.6, fails safe).
+- TECHNICAL 9.3 R4: the paused-child row holds for every child, intended (P1.8).
+- TECHNICAL 17: how the stage F fixture keeps each child to one request slot (P1.7).
+- TECHNICAL 16 cases 23 and 24: `usage-unavailable`, a denial in the streak, a child interrupt,
+  cancel and delete, and a `task`/`skill` toolset collision (P1.10).
+- Wording: a blank line before "The function and its lifetime", a straight apostrophe in 14
+  (P1.11).
+
+Not changed: P1.12 (`factory/spec-check-S132.md` is the deputy's record).
