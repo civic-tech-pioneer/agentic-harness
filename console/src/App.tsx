@@ -105,7 +105,7 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
       const turn = viewRef.current.turn;
       setStopping(true);
       // During launch consent, cancelling the provider stream also dismisses Watane's question.
-      const stop = turn?.state === "running" && turn.activity?.kind === "consent"
+      const stop = turn?.state === "running" && turn.activity?.kind === "consent" && turn.activity.what.startsWith("workspace:")
         ? kernel.cancel(info.id)
         : kernel.interrupt(info.id);
       void stop.catch(() => setStopping(false));
