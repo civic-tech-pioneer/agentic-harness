@@ -51,11 +51,11 @@ fn seed_profile(home: &Path) {
     txn.commit().unwrap();
 }
 
-fn scenario(agent: &Path, owner: &Path, disabled: bool) {
+fn scenario(agent: &Path, provider: &Path, owner: &Path, disabled: bool) {
     let home = tempfile::tempdir().unwrap();
     let limits = Limits::default();
     let host = Host::open(home.path(), Mode::Preview, limits.clone()).unwrap();
-    host.install_folders(&[agent.into(), owner.into()], 0)
+    host.install_folders(&[agent.into(), provider.into(), owner.into()], 0)
         .unwrap();
     drop(host);
     seed_profile(home.path());
@@ -75,8 +75,8 @@ fn scenario(agent: &Path, owner: &Path, disabled: bool) {
     host.set_scripted_responses(address, &server.ca_pem(), FIXTURE_TOKEN.into(), None)
         .unwrap();
 
-    let agent: LocalName = "agent".parse().unwrap();
-    let owner: LocalName = "echo".parse().unwrap();
+    let agent = LocalName::parse("agent").unwrap();
+    let owner = LocalName::parse("echo").unwrap();
     let call = |function, args| {
         host.call(&Caller::Mod(owner.clone()), &agent, function, args)
             .unwrap()
@@ -126,12 +126,13 @@ fn scenario(agent: &Path, owner: &Path, disabled: bool) {
 fn main() {
     let mut args = std::env::args_os().skip(1).map(PathBuf::from);
     let agent = args.next().expect("built agent mod directory");
+    let provider = args.next().expect("built Claude provider directory");
     let owner = args.next().expect("Watane echo fixture directory");
     thread::Builder::new()
         .stack_size(16 << 20)
         .spawn(move || {
-            scenario(&agent, &owner, false);
-            scenario(&agent, &owner, true);
+            scenario(&agent, &provider, &owner, false);
+            scenario(&agent, &provider, &owner, true);
         })
         .unwrap()
         .join()
