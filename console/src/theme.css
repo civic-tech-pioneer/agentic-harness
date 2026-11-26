@@ -126,6 +126,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .wa-bar { width: 72px; height: 6px; border-radius: 3px; background: var(--off-bg); overflow: hidden; }
 .wa-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .wa-bar.hi i { background: var(--warn); }
+.wa-session-menu { display: flex; align-items: center; }
 .wa-iconbtn { width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-color: transparent; background: transparent; color: var(--muted); }
 @media (max-width: 759.98px) { .wa-meter { display: none; } }
 
