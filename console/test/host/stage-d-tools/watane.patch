@@ -11,7 +11,7 @@ index f6892bda..816c7081 100644
 +opt-level = 2
 +
 diff --git a/dev/src/scripted.rs b/dev/src/scripted.rs
-index e065d556..e52a5f99 100644
+index e065d556..1f44701a 100644
 --- a/dev/src/scripted.rs
 +++ b/dev/src/scripted.rs
 @@ -37,0 +38 @@ enum Out {
@@ -65,7 +65,7 @@ index e065d556..e52a5f99 100644
 +        }
 +        out = Out::Paced(marker, chunks);
 +    }
-@@ -380,0 +430,24 @@ fn serve_one<T: Clone>(
+@@ -380,0 +430,29 @@ fn serve_one<T: Clone>(
 +            Out::Paced(marker, chunks) => {
 +                for (i, c) in chunks.into_iter().enumerate() {
 +                    let tag = if i == 1 {
@@ -73,7 +73,12 @@ index e065d556..e52a5f99 100644
 +                    } else {
 +                        c.strip_prefix(b"data: ")
 +                            .and_then(|json| serde_json::from_slice::<serde_json::Value>(json).ok())
-+                            .and_then(|event| event["item"]["call_id"].as_str().map(str::to_owned))
++                            .and_then(|event| {
++                                if event["type"] == "response.completed" {
++                                    return Some(format!("{marker}/completed"));
++                                }
++                                event["item"]["call_id"].as_str().map(str::to_owned)
++                            })
 +                    };
 +                    let at = epoch_nanos();
 +                    tls.write_all(&c)?;
@@ -83,14 +88,14 @@ index e065d556..e52a5f99 100644
 +                            PathBuf::from(std::env::var_os("S128_LOAD_CLOCK").expect("load clock"))
 +                                .with_extension("sse"),
 +                        )?;
-+                        writeln!(log, "{at} {tag}")?;
++                        writeln!(log, "{at} {tag} {marker}")?;
 +                    }
 +                }
 +                tls.conn.send_close_notify();
 +                tls.flush()?;
 +                return Ok(());
 +            }
-@@ -393,0 +467,9 @@ fn serve_one<T: Clone>(
+@@ -393,0 +472,9 @@ fn serve_one<T: Clone>(
 +fn epoch_nanos() -> u64 {
 +    std::time::SystemTime::now()
 +        .duration_since(std::time::UNIX_EPOCH)
