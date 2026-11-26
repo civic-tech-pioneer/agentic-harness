@@ -4,6 +4,12 @@ A record (`AGENTS.md`, "Contracts and records"): why the contracts changed, newe
 project has not run `spec-adopt` yet, so its config has only the older `spec = [...]` list and no
 `spec-lint`; entries cite sections, not ids.
 
+## 2026-11-26: S134 r3, answers (build team, Claude)
+
+No contract changed. The deputy's ruling on F3.1 recorded: if round 4 finds the live-update
+mechanism of `Work.stopped` again, it becomes a known limit (the stored state is right and a
+reattach shows it), not another round.
+
 ## 2026-11-26: S134 r2, answers (build team, Claude)
 
 - TECHNICAL 16 "Budget record": the page-level stage F budgets are "not measured (needs
