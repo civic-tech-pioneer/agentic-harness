@@ -110,11 +110,12 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   );
 }
 
-/** A queued message's row: its first 240 characters and "…" when longer; a code-unit pair at the cut stays whole. */
+/** A queued message's row: its first 240 code points and "…" when longer. The scan stops at the cut, so a long message
+ * costs no more than a short one. */
 function preview(text: string): string {
-  if (text.length <= 240) return text;
-  const cut = /[\uD800-\uDBFF]/.test(text[239]!) ? 241 : 240;
-  return text.length > cut ? `${text.slice(0, cut)}…` : text;
+  let end = 0;
+  for (let n = 0; n < 240 && end < text.length; n++) end += text.codePointAt(end)! > 0xffff ? 2 : 1;
+  return end < text.length ? `${text.slice(0, end)}…` : text;
 }
 
 export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: () => void; needsHidden?: boolean; behind?: boolean; onBehind?: () => void; status: ReactNode;
