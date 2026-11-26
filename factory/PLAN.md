@@ -27,9 +27,21 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S131 (upkeep, claude); watane S130. (S127 merged 2026-11-26; stage F next on the main line.)
+S132 (design, codex); S131 (upkeep, claude); watane S130. (S127 merged 2026-11-26.)
 
 ## Sketched
+### S132 (design) stage F: delegation and counters, made one consistent contract
+(in flight, cloud, builder codex, reviewer claude; rule 3: last two handed out S131 claude, watane S130 codex, but Deputy Rock's reason: a design slice of spec text suits either side, and Codex builds two in three; the main line, sketched 2026-11-26 by Deputy Rock after S127 merged; spec-check 10abec0, report `factory/spec-check-S132.md` (Sonnet, no second-vendor confirmation). Size: a design slice, below 1,500 lines by nature; it unblocks stage F's build.)
+Why: stage F's clauses do not fit together. AGT-J5, stage F's own done-when, cannot run on any backend: a foreman (a child) must start a validator, but an OpenAI child has no `task` tool and Claude has no child sessions, only launch-time subagents. A build slice on this would come back as a question in every round.
+Outcomes (the review checks them in the documents):
+1. AGT-J5 runs, as written or as narrowed: the design says which backend's sessions can be children and parents, at what depth, and FUNCTIONAL 3.9, AGT-J5 and TECHNICAL 9.7 agree with it (spec-check findings 1, 2, 4).
+2. A child's narrowing is a rule: which profile fields compare, where the check runs, the refusal field, and the child's workspace, folder and owner (findings 3, 10).
+3. The counters and `usage` per backend: scope (session or turn), what happens at `max-turns` on Claude, how `max-tokens` stops a turn, and the stage `usage` lands in (findings 5, 7).
+4. `task`'s result, the transcript entry that carries a child, restart with live children, and the console's clause for children (findings 6, 9, 10); the OpenAI `skill` tool's stage (finding 11).
+5. The stage F budget row holds against the slot caps, or is restated (finding 8). The low findings are fixed where one line does it.
+Touches: `design/FUNCTIONAL.md` (3.9, 3.11, AGT-J5), `design/TECHNICAL.md` (2.3, 9.1 to 9.5 where 9.7 cites them, 9.7, 14, 16 cases 23, 24, 52, 17, 18.3), `factory/spec-check-S132.md`. No code.
+Constraints: design only, through the `spec-change` skill; no code, no VISION change (a needed one goes to the deputy as BLOCKED). Prefer narrowing to building: a mechanism only where FUNCTIONAL promises the behaviour. Each Door C choice (an interface, a public tool, a format) is listed in the PR body with its options and why, so the deputy can report it for the human's veto. Out of scope: the factory profiles and N5 (waiting on the human).
+
 ### S131 (upkeep) the host tests check what they skip: stage C on a participant home, stage B and D test polish
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S130 codex, S129 codex; the upkeep
 lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC; PR #58 opened ~07:20 at 495975c (+6524/-60, 5.3k of it the test home's Cargo.lock; shares only AGENTS.md with S127); r1: Codex review https://chatgpt.com/local/6b07deda-2b30-83ed-ae72-c1ec08020061, 07:27 UTC; r1: 8/2 `changes (8)` (boundary HELD; outcome check could not run, no watane-dev in Codex), posted ~07:40 with Deputy Rock's ruling (F1.1/P1.1 sketch amended, F1.2 a named known gap with the console fix to Upkeep, F1.7/F1.8 narrowed); answer by the build session itself (idle at 07:24; a new answer routine only if no push by ~08:05). Size: an upkeep slice.)
@@ -655,6 +667,8 @@ S2 writes each into the document that owns it.
   few features perfect".
 
 ## Waiting on the human
+
+- **N5 (2026-11-26, Deputy Rock): stage E has merged, so N5 is due** (your 2026-11-23 words: revisit once stage E starts). The factory's implementer needs a shell. (a) the Claude grant with shell and web: nothing new, recommended by TECHNICAL 17; (b) a `codex app-server` backend in the host, a third native process kind, which keeps a second vendor for cross-checking (your leaning). Holds only stage F's factory profiles; S132 (delegation and counters) goes on without it.
 
 - **S40-CUT (2026-11-24): restart recovery of OpenAI sessions has stalled three rounds** (each fix opened a new path where the global restart pass acts under the wrong origin). Proposed cut, by J11's own words for Claude ("Notes shows the session as not running, with everything up to the last finished message; she sends 'continue'"): after a host restart, an OpenAI session that was mid-turn shows not running with its transcript up to the last finished message; its open and pending calls are aborted; the restart pass sends nothing, opens nothing and asks nothing for it; the owner's next message continues it under her own origin. Keeps: everything else in S40 (profiles, refusals, streaming, tools, pause until reset, the meter). Becomes a known limit: an OpenAI turn does not continue by itself after a restart (TECHNICAL 9.5's restart row and case 22's reissue, Upkeep). Undo: an owner-scoped recovery in a later slice. Recommended: take the cut. DECIDED 2026-11-25 by the deputy under the new cut-early rule (mboogerd/claude-plugin#3, asked by the human): cut taken; answer r3 with the cut to Claude, routine `trig_014rQUrVhYxDfSZTELMCedUR`, fires 06:37 UTC. The human may veto; the undo is an owner-scoped recovery slice.
 
