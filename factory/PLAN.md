@@ -837,6 +837,24 @@ S2 writes each into the document that owns it.
 
 ## Suite time
 
+- S131 (2026-11-26, `Linux 6.18.44-fc-v880 x86_64`, 4 cpus, a cloud VM; load average 2.6 to 4.3 from the runs themselves): console
+  `npm test` 635 tests 38 s, `test:slow` 21 s; kernel `cargo test` 621 + 6 + 1 in 5 s (warm); gate 79 s. By hand: `test:host`
+  25 pass, 7 skip, 212 s; `test:host:c` 6 pass, 36 s (warm); `test:host:d` 9 pass.
+  - **Stage C budgets** (TECHNICAL 17 row C, the kernel and host part, on dev's fake `claude`; the real `claude` run is the
+    human's): `npm run test:load:c`, the stage B load (8 sessions, 4 `page` in Chromium and 4 `local/loadclient`, each 50 deltas
+    and 5 entries of 4 KiB a second) on a participant home of watane c52d2aa (S129) whose app is the fake `Confirm` of
+    `console/test/host/home`, each session started with `start-in-folder` in a folder new to it (8 consents asked and granted per
+    run). Three passes: item delay p95 6.8, 4.5, 5.0 ms (budget 100; max 139, 15, 132 ms); Stop to `idle {interrupted}` at the
+    page p95 11.9, 13.9, 13.8 ms (budget 2 000). Writer busy share: the host's, as stage B (watane S100, 20%; budget 50%); state
+    bytes per entry: as B (the crate's `s36_load`). Stage B on the same machine and host, same day: item p95 12.0 ms, Stop 19.5 ms.
+  - **Stage D budgets, remeasured** (S128 P2.5): `npm run test:load:d` on watane 548b4e1 with `stage-d-tools/watane.patch` (which
+    builds `watane-host` and `watane-dev` at opt-level 2 in the dev profile; each Claude delta carries a marker ~37 bytes longer
+    than the stage B load's). Five runs: item p95 17.5, 17.2, 18.3, 23.2, 24.1 ms (budget 100); Stop p95 44.9, 44.0, 38.4, 36.3,
+    46.8 ms (budget 1 000); writer busy 28.9, 27.7, 29.0, 30.5, 30.8% (budget 60); cadence 8/8 OpenAI sessions at one step a second
+    (runs 4 and 5 print it; 1 to 3 had no cadence fault). Runs 1 and 3 pass; runs 2, 4 and 5 fail only the source check: one fake
+    `claude` wrote no delta for 40.9 to 46.4 ms, over the 2x spacing of 40 ms (S36 F7.3, the second sighting: the deputy's
+    "widen to 3x if it fails again"; the rule is also TECHNICAL 16's, which this slice may not touch).
+
 - S4: console `npm test` 167 tests 6.2 s; `test:slow` 7.5 s; gate with kernel 24 s (2026-11-20).
 
 - S3: kernel `cargo test` 57 tests in 0.05 s; CI gate job 17 s (2026-11-20, macos-15).
