@@ -314,6 +314,7 @@ async function main() {
         const asked = home.asked.length;
         await startInPage(page, other, "read the other notes");
         const q = await until(() => home.asked[asked], 20_000, "the app's question");
+        ensure(q.what === `workspace:local/claude-code:${realpathSync(other)}` && q.origin === "agent" && q.via === "claude-code", `the question: ${JSON.stringify(q)}`);
         await page.waitForFunction((f) => document.querySelector(".wa-status-word")?.textContent === `Waiting for your answer in watane for ${f}`, realpathSync(other), { timeout: 15_000 });
         await home.send({ op: "answer", i: q.i, answer: "refused" });
         await page.waitForFunction((f) => document.querySelector(".wa-status-word")?.textContent === `Failed: Workspace access was refused for ${f}`, realpathSync(other), { timeout: 15_000 });
