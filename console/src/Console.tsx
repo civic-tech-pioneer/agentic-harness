@@ -1,5 +1,5 @@
 // TECHNICAL 18.2: the page's top: an open session, or the new-session view; index.html's static frame shows until the kernel has answered (S35 AC4c).
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { Kernel, ProfileInfo, Refusal } from "../kit";
 import { App } from "./App";
 import { Composer } from "./Dock";
@@ -17,6 +17,7 @@ const backendName = (b: string) => BACKEND[b] ?? b;
  * and Start stays off), the selected one's backend, the kernel's own refusals for it (`check` on each selection, field by field), and the
  * first message. A refusal is the kernel's, never a rule here. */
 export function NewSession({ kernel, sessions, onNew, start }: { kernel: Kernel; sessions: SidebarSession[]; onNew: () => void; start: (input: string, folder: string | undefined, profile: ProfileInfo) => Promise<void> }) {
+  const backendReason = useId();
   const [folder, setFolder] = useState("");
   const [profiles, setProfiles] = useState<ProfileInfo[] | null>(null);
   const [picked, setPicked] = useState(0);
@@ -72,8 +73,9 @@ export function NewSession({ kernel, sessions, onNew, start }: { kernel: Kernel;
             <div className="wa-runson" role="group" aria-label="Runs on">
               <span className="wa-runson-label">Runs on</span>
               {Object.keys(BACKEND).map((b) => (
-                <button key={b} type="button" className="wa-seg" aria-pressed={b === profile?.backend} disabled={b !== profile?.backend} title={b === profile?.backend ? undefined : "Set in the profile"}>{BACKEND[b]}</button>
+                <button key={b} type="button" className="wa-seg" aria-pressed={b === profile?.backend} disabled={b !== profile?.backend} aria-describedby={b !== profile?.backend ? backendReason : undefined} title={b === profile?.backend ? undefined : "Set in the profile"}>{BACKEND[b]}</button>
               ))}
+              <span id={backendReason} className="wa-control-reason">Set in the profile</span>
             </div>
             <div className="wa-refusals" role="status" aria-live="polite" data-on={refusals.length ? "true" : undefined}>
               {refusals.length ? (

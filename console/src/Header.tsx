@@ -51,7 +51,7 @@ export function Header({ info, view, actions }: { info: SessionInfo; view: Sessi
       <button type="button" className="wa-iconbtn" aria-label="Session menu: fork, rewind, rename, delete" aria-disabled="true" aria-describedby="wa-off-menu" onClick={(e) => e.preventDefault()}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
       </button>
-      <span id="wa-off-menu" className="wa-sr">{OFF}</span>
+      <span id="wa-off-menu" className="wa-control-reason">{OFF}</span>
     </header>
   );
 }

@@ -268,6 +268,7 @@ describe("StatusLine", () => {
     const b = screen.getByRole("button", { name: label });
     expect(b).toBeDisabled();
     expect(b).toHaveAccessibleDescription("This console cannot do this yet.");
+    expect(screen.getByText("This console cannot do this yet.")).not.toHaveClass("wa-sr");
     b.click();
     expect(s.actions.say).not.toHaveBeenCalled();
     expect(s.actions.stop).not.toHaveBeenCalled();
@@ -326,6 +327,7 @@ describe("StatusLine", () => {
     expect(word()).toBe("Waiting for your answer in watane");
     expect(shape()).toBe("diamond");
     noKernel(s, "Open the question");
+    expect(document.querySelector(".wa-status-esc")).toHaveTextContent("Esc to stop");
     expect(s.onNeedsYou).not.toHaveBeenCalled();
   });
 

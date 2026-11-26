@@ -93,7 +93,7 @@ describe("S36 r3", () => {
   it("regress_s36_undo_only_sends_once_while_pending (F3.4)", async () => {
     const f = await open(["first one", "second one"]);
     const u = userEvent.setup();
-    await u.click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     let release!: () => void;
     (f as unknown as Record<string, unknown>).say = (...args: unknown[]) => { f.calls.push({ name: "say", args }); return new Promise<number>((r) => { release = () => r(0); }); };
@@ -107,7 +107,7 @@ describe("S36 r3", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const f = await open(["first one", "second one"]);
     const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    await u.click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     (f as unknown as Record<string, unknown>).say = async (...args: unknown[]) => { f.calls.push({ name: "say", args }); throw refusal("queue-full"); };
     await u.click(screen.getByRole("button", { name: "Undo" }));

@@ -1,6 +1,6 @@
 // TECHNICAL 18.5: the status line, one shape per state; only the word and its subject are live.
 import { useId } from "react";
-import { cardName, type Actions, Row, SessionView } from "./model";
+import { cardName, SESSION_IN_ANOTHER_TAB, type Actions, Row, SessionView } from "./model";
 import { openAsk } from "./reduce";
 import { answeredWords } from "./parts/askbar";
 
@@ -69,7 +69,7 @@ function spec(view: SessionView, now: number, answered: number, actions: Actions
       if (a?.kind === "consent") {
         const folder = workspaceFolder(a.what);
         const word = folder ? `Waiting for your answer in watane for ${folder}` : "Waiting for your answer in watane";
-        return { word, shape: "diamond", act: { label: "Open the question" } };
+        return { word, shape: "diamond", esc: true, act: { label: "Open the question" } };
       }
       return { word: runningWord(view.rows), shape: "dot", clock: clk, esc: true };
     }
@@ -93,22 +93,24 @@ function spec(view: SessionView, now: number, answered: number, actions: Actions
 export function StatusLine(props: { view: SessionView; now: number; stopping: boolean; actions: Actions; onNeedsYou: () => void;
   /** How many open asks this console answered that `view` already leaves out of `openAsks` (App's `shown`). */ answered?: number }) {
   const { view, now, stopping } = props;
-  const noKernel = useId();
+  const reasonId = useId();
   const s: Spec = stopping && view.turn?.state !== "idle"
     ? { word: "Stopping…", shape: "dot" }
     : spec(view, now, props.answered ?? 0, props.actions);
+  const disabledReason = !s.act ? undefined : !s.act.run ? "This console cannot do this yet."
+    : s.act.off ? SESSION_IN_ANOTHER_TAB : undefined;
   return (
     <div className="wa-status" data-state={view.turn?.state ?? "none"}>
       <span className="wa-shape" data-shape={s.shape} role="img" aria-label={NAMES[s.shape]} />
       <span role="status" className="wa-status-word">{s.word}</span>
       {s.clock ? <span className="wa-status-clock" aria-hidden="true">· {s.clock}</span> : null}
       {s.act ? (
-        <button type="button" onClick={s.act.run} disabled={!s.act.run || s.act.off} aria-describedby={s.act.run ? undefined : noKernel}>
+        <button type="button" onClick={s.act.run} disabled={!!disabledReason} aria-describedby={disabledReason ? reasonId : undefined}>
           {s.act.label}{s.act.key ? <> <kbd>{s.act.key}</kbd></> : null}
         </button>
       ) : null}
-      {s.esc ? <span className="wa-status-esc"><kbd>Esc</kbd> to stop</span> : null}
-      {s.act && !s.act.run ? <span id={noKernel} className="wa-sr">This console cannot do this yet.</span> : null}
+      {disabledReason ? <span id={reasonId}>{disabledReason}</span> : null}
+      {s.esc && !props.actions.off ? <span className="wa-status-esc"><kbd>Esc</kbd> to stop</span> : null}
     </div>
   );
 }

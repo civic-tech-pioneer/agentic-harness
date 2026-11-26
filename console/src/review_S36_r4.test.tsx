@@ -28,7 +28,7 @@ describe("S36 r4", () => {
     render(<App kernel={f} info={INFO} />);
     await screen.findByRole("button", { name: "Needs you (1)" });
     const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    await u.click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     set(f, "say", async (...args: unknown[]) => { f.calls.push({ name: "say", args }); throw refusal("queue-full"); });
     await u.click(screen.getByRole("button", { name: "Undo" }));
