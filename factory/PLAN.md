@@ -32,7 +32,7 @@ S138 (consumer half of watane S133/S136, Codex build); S140 (upkeep, console, Cl
 ## Sketched
 ### S140 (upkeep, guard first) the console's known gaps and test polish, console/ only
 (sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder claude by rule 3 (last two S138 codex, S139 codex),
-reviewer codex; spec-check not run: the slice changes no spec text (below). Upkeep is exempt from the size rule.)
+reviewer codex; in flight, cloud, routine `trig_01Hkd9KmgKVeQ1HVtLVY31hY` fires 12:18 UTC; spec-check not run: the slice changes no spec text (below). Upkeep is exempt from the size rule.)
 Why: Upkeep holds console work that no slice in flight touches; S138 edits only kernel/, design/ and the wit/deps folders.
 Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
 (1) *guard* the `installed-agent` flake: `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code
