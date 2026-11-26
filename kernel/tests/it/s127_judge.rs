@@ -245,8 +245,13 @@ fn f1_3_a_denied_input_starts_the_queued_follow_up() {
         &t,
         r#"{"type":"verdict","on":"launch","outcome":"safe","reasons":[]}"#,
     );
-    k.say("alice", &id, "k2", r#"[{"type":"text","text":"follow up"}]"#)
-        .unwrap();
+    k.say(
+        "alice",
+        &id,
+        "k2",
+        r#"[{"type":"text","text":"follow up"}]"#,
+    )
+    .unwrap();
     let turns = |k: &K| {
         k.host
             .calls
@@ -262,7 +267,11 @@ fn f1_3_a_denied_input_starts_the_queued_follow_up() {
         &t,
         r#"{"type":"verdict","on":"launch","outcome":"unsafe","reasons":["r"]}"#,
     );
-    assert_eq!(turns(&k), 1, "the queued input goes out when the denied turn ends");
+    assert_eq!(
+        turns(&k),
+        1,
+        "the queued input goes out when the denied turn ends"
+    );
     assert!(matches!(
         Record::load(&mut k.state, &id).unwrap().turn,
         Turn::Running { .. }

@@ -1952,7 +1952,14 @@ section, and its code).
      provider never answers.
   7. When its own stream to the kernel is full, it defers the item call and
      resumes on `ready` (3). Its `resume` is made in a later call, never in the
-     call that returns `defer`.
+     call that returns `defer`. A call that cannot defer (a deadline timer,
+     `ended`, `say`) still acts at once (a deadline is final when it fires;
+     its `deny` goes out), and its item (the verdict, the breaker's reason)
+     waits in the session's outbox in its state, sent first at the next
+     `ready`; no item is forwarded past it, so the kernel always learns why
+     (S127 r1 F1.1, F1.2). A `say` the host refuses after a safe verdict ends
+     the session: `claude` cancelled, the own stream closed `failed("say:
+     <case>")`, so the kernel's turn ends with that cause (S127 r1 F1.4).
   8. `interrupt` drops every input of the session still waiting for its
      verdict or for `initialized`; a later verdict for one sends nothing.
 - **Callers:** every function of `sessions` first checks that
