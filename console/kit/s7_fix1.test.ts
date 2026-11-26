@@ -10,12 +10,16 @@ import { reduce as oldReduce } from "./fixtures/reduce_5882c51";
 describe("reducer indexing and output", () => {
   it("ac1_updates_a_tool_without_scanning_unrelated_rows", () => {
     let reads = 0;
-    // Count visits to old rows, even if the reducer shallow-copies the array.
-    const rows: SessionView["rows"] = Array.from({ length: 5_000 }, (_, i) => ({
-      get kind() { reads++; return "user" as const; },
-      get key() { reads++; return `u${i}`; },
-      text: "earlier message",
-    }));
+    // Count visits to old rows, even if the reducer shallow-copies the array: every property read, key
+    // listing or `in` test of a row counts, whatever the field (S131 P1.9: a scan that tests `call?.id` first).
+    const counted = <T extends object>(row: T): T => new Proxy(row, {
+      get(target, key, receiver) { reads++; return Reflect.get(target, key, receiver); },
+      has(target, key) { reads++; return Reflect.has(target, key); },
+      ownKeys(target) { reads++; return Reflect.ownKeys(target); },
+      getOwnPropertyDescriptor(target, key) { reads++; return Reflect.getOwnPropertyDescriptor(target, key); },
+    });
+    const rows: SessionView["rows"] = Array.from({ length: 5_000 }, (_, i) =>
+      counted({ kind: "user" as const, key: `u${i}`, text: "earlier message" }));
     rows[2_500] = {
       kind: "tool", key: "ctarget",
       call: { id: "target", title: "Check", kind: "other", status: "pending", content: [], locations: [] },

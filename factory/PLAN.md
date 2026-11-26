@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S131 (upkeep, answer r2); watane S133 (design, Codex build); S134 (stage F build, Claude). The consumer half of S133 waits for a first version of the interface on watane's `slice/s133`.
+watane S133 (design, Codex build); S134 (stage F build, Claude). The consumer half of S133 waits for a first version of the interface on watane's `slice/s133`.
 
 ## Sketched
 ### S134 stage F: an OpenAI agent delegates to two children, and every turn stops at its limits
@@ -55,21 +55,6 @@ build finds a gap (through spec-change). Not S131's files (`console/test/host/`,
 Constraints: S132's nine Door C choices stand (PR #59 body), do not reopen them; fold S132's review polish P1.1 to P1.12
 (PR #59, comment 'Review r1 by Claude') in where cheap. Factory profiles wait on N5 (Waiting on the human): out of
 scope. No watane change: if one is needed, BLOCKED with the interface it needs.
-
-### S131 (upkeep) the host tests check what they skip: stage C on a participant home, stage B and D test polish
-(in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S130 codex, S129 codex; the upkeep
-lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC; PR #58 opened ~07:20 at 495975c (+6524/-60, 5.3k of it the test home's Cargo.lock; shares only AGENTS.md with S127); r1: Codex review https://chatgpt.com/local/6b07deda-2b30-83ed-ae72-c1ec08020061, 07:27 UTC; r1: 8/2 `changes (8)` (boundary HELD; outcome check could not run, no watane-dev in Codex), posted ~07:40 with Deputy Rock's ruling (F1.1/P1.1 sketch amended, F1.2 a named known gap with the console fix to Upkeep, F1.7/F1.8 narrowed); answer by the build session itself (idle at 07:24; a new answer routine only if no push by ~08:05); answered by the build session at 461bb74 (~08:21, all 8, main merged in: squash at merge); r2: Codex review https://chatgpt.com/local/6b07ec6b-3124-83ed-8204-bae83a42b053, 08:24 UTC; r2: 1/1 `changes (1)` (F2.1 the expiry test accepts a host cancellation; P2.1 a red run for the stream assertion; boundary HELD), posted 08:33 by Deputy Paper with the answer brief as a PR comment (the build session answers PR comments). Size: an upkeep slice.)
-Outcomes, each item's check (re-check each against main first; drop the ones already true and say so):
-1. S38 after watane S103: S38 outcomes 1 to 3 run on a participant home with a fake `Confirm` (host 19.7), outcomes 2 and 4
-   on `watane-dev serve`, and the stage C budgets of TECHNICAL 17 are measured and recorded in the Suite time table.
-2. S128 polish P1.4, P1.5, P1.9, P2.1 to P2.5 (`console/test/host/`, `stage_d.mjs`, `metrics.test.ts`, `AGENTS.md` exit
-   codes, the stage D Budget row); P2.6 only if `watane.patch` still exists.
-3. S36 r1 polish P1.1 (`kernel/tests/it/s36_firing.rs`), P1.3 (`console/test/host/stage_b.mjs` browser assertions);
-   S38 P1.2 (`kernel/tests/it/s38.rs`).
-Touches: `console/test/host/`, `kernel/tests/it/s36_firing.rs`, `kernel/tests/it/s38.rs`, `console/kit/metrics.test.ts`,
-`AGENTS.md`, this plan's Suite time rows; also `console/package.json` test aliases and `factory/tasks/S131-*.md` (amended r1, Deputy Rock). Not: `kernel/src/`, `console/kit/` sources, `console/src/`, `ui/`, `provider-checked/`,
-`design/` (S127's files). A product bug found on the way is reported in the PR, not fixed here. No test calls an external
-provider. Protects: *guard* (tests that skip hide regressions).
 
 ### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DONE 2026-11-23: PR #43 merged with --admin at 042b0dd on the human's word after the extra round, r6 changes 2 answered (F6.1 done on main, F6.2 fixed); was in flight, builder claude, reviewer codex; continuation DELIVERED 21:31 UTC at 8fc6db6 on watane c2a7d4d (routine `trig_01NpPnJxwNjH279WAFwnziDk`), screenshots in `factory/runs/S35/screens/`; r1: Codex review dispatched 21:40 UTC, https://chatgpt.com/local/6b035f75-9cbc-83eb-953f-4ea568e56065; r1: 8 Codex findings (validator RETURN, adversary BREACHED, user-sim REJECTED) plus deputy design findings D1.1, D1.2, answer dispatched 22:04 UTC (session `cse_01LxwP923RKBfVNTWsTUagAQ`); r1 answered at 4522428 (all 10 fixed); r2 (22:37): Codex `changes (6)`, validator RETURN, adversary HELD, user-sim ACCEPTED; answer r2 dispatched 23:10 UTC (session `cse_01LxwP8yPPmPVipCPszcmKqW`; a 23:00 fire carried the stale r1 brief and pushed nothing); r2 answered at ea98cb9 (all 6 fixed); r3: Codex review dispatched 23:29 UTC; r3 (23:58): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim ACCEPTED); answer r3 dispatched 00:01 UTC (session `cse_01LxwP8zfZtC4o6shbfqRvp7`); r3 answered at d0dfddd (all 3 fixed); r4: Codex review dispatched 00:20 UTC; r4 (00:26): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim REJECTED), all on the composer's kept draft; deputy ruling (same finding 4 rounds running) and answer r4 dispatched 00:51 UTC (session `cse_01LxwP92VSjjigxaiXQaSyiJ`); r4 answered at 8177ca5 (by the ruling); r5 (last): Codex review dispatched 01:12 UTC; r5 (01:18): `changes (1)` (validator RETURN, adversary HELD, user-sim ACCEPTED): **round cap reached, held for the human** (Waiting: S35-CAP); then the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
 
@@ -138,7 +123,6 @@ reviewer claude. Cloud.
 - **(after S127)** `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (watane S129 has merged).
 - **(S127 polish)** P4.1 `kernel/tests/it/s127_judge.rs:333`: assert that the replacement launch carries the original follow-up.
 - **(from S131 F1.2)** the console's consent activity does not name the folder the app asks for (`console/src`); S131's `stage_c.mjs` keeps it as a named known gap.
-- **(in S131)** **S128 polish left (r1, r2):** P1.4 the preview's pause length is not asserted against `resets_in_s`; P1.5 the redirect target is plain http (an https one makes the zero count mean something); P1.9 reads counted only through `kind`/`key`; P2.1 `stage_d.mjs:~300` cadence can fault a healthy run at the first delayed request (start the window at each session's second step); P2.2 `stage_d.mjs:149-151` unescaped-quote search; P2.3 `metrics.test.ts` nested intervals; P2.4 `AGENTS.md:61` exit codes of `test:load:d`; P2.5 the stage D Budget row lacks the opt-level, cadence result and three passes; P2.6 `watane.patch` moves `env_clear()` first and `chunks.insert(1, ..)` can panic.
 - **(guard, the human's (b) on S40 F6.1)** a timer firing of an OpenAI session whose owner mod was disabled during a timed pause may send one more model request under the kernel's origin. Fix: read the host-resolved origin of a timer firing through the production adapter (watane reports the caller of a timer callback as `host` and keeps the resolved origin apart), stop only foreign firings, and test it through the real adapter: an enabled owner's pause resumes by itself, a disabled owner's stops with no work.
 
 - **(guard, second sighting) `installed-agent` CI flake:** `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code settings' after AC1 passes; on S40 at 890caad and 10ed0a3, green on rerun. Find the race or give the wait a bound that measures it.
@@ -153,7 +137,6 @@ reviewer claude. Cloud.
 
 - **Polish from S38 (merged 2026-11-24):** P1.2 (assistant line without `session_id` in `kernel/tests/it/s38.rs`), P2.2 (TECHNICAL 18.5 words 'Workspace access was refused for …', 'Connection to Claude Code ended'), P2.3 (picked folders get no file write key at all: say so in 9.6 and 14), P2.5 (`start-in-folder` shares `start`'s key kind; its own refusals in 2.3/4.6), P2.6 ('Open the question' does nothing; show the folder in the wait, per `States-2`); stale half-streamed message after `gone` until reload (stage B carry).
 
-- **(in S131)** **S38 after watane S103 merges:** run S38 outcomes 1-3 on a participant home with a fake `Confirm` (a preview refuses every consent, host 19.7), outcome 2 and 4 on `watane-dev serve`, and measure the stage C budgets (case 31 host part is S103's A3).
 
 - **S36 accepted limits (r7, the human merged it as it stood, 2026-11-24):** F7.1 and F7.2 are the S35 Send limit (TECHNICAL 18.6): an Edit send refused after leaving the session keeps only the original text, and a reload while an accepted take's reply is in flight can offer it once more. F7.3: the load check's 2x spacing failed once on timer jitter (40.585 ms delta gap); widen to 3x (60/600 ms) if it fails again. Also P7.1: exact just-over-limit fixtures in `console/test/host/load_check.test.ts`.
 
@@ -170,6 +153,7 @@ reviewer claude. Cloud.
 
 ## Done
 
+- **S131** (upkeep) the host tests check what they skip: stage C runs on a participant home with a fake Confirm and its budgets are measured; the expiry check requires deny by host for `expired` at or after the deadline; S128/S36/S38 test polish done; the console's folder name in consent is a named KNOWN GAP (Upkeep). PR #58, squash-merged 2026-11-26 ~08:58 UTC at 05cda43 by Deputy Paper, no bypass; builder claude, reviewer codex, 3 rounds (8/2, 1/1, 0/0); ruled by Deputy Rock at r1 (F1.1/P1.1 sketch amended, F1.2 a known gap, F1.7/F1.8 narrowed); boundary HELD; Codex could not run the host commands (no watane-dev), judged from the builder's red-first runs; ~2.5 h in flight. Sketch in factory/DONE.md.
 - **S132** (design) stage F, delegation and counters, made one consistent contract: AGT-J5 runs on an OpenAI root with two sibling children (depth 1); Claude keeps its launch-time subagents; `task` returns one terminal result, a child shows as an indexed `child` entry; counters per turn; §14 child admission spelled out (PR #59, rebase-merged 2026-11-26 ~08:30 UTC at 95ec3bc7 by Deputy Rock, no bypass; builder codex, reviewer claude, 1 round 0/12; ~25 min in flight). **Door C, reported to the human for veto:** 9 choices in PR #59's body; two narrow a FUNCTIONAL promise: AGT-F-36 counters per turn instead of per session, and Claude refuses `max-tokens` and `max-tool-errors` (only its native `max-turns`); both fail closed. Polish P1.1 to P1.12 ride with S134's brief. Sketch in factory/DONE.md.
 - **S127** (stage E) Alice's Claude session runs through the checked provider with Jev as its judge: the console shows `checking` before each tool call, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and repeated denials trip the breaker, which says why (PR #56, rebase-merged 2026-11-26 07:57 UTC at 8e92d1b4 by Deputy Rock, no bypass; builder claude, reviewer codex, 4 rounds 4/2, 2/1, 1/1, 0/1; ~13 h in flight). Cut at r2 (deputy-7): F2.1 a known limit in TECHNICAL 10 (a verdict's reason can be lost under backpressure at teardown); r3's F3.1 fixed on existing state (TECHNICAL 9.4). Boundary HELD, outcomes ACCEPTED on fakes. Codex's cyber filter refused the adversary twice in r1 (worded as a boundary check since). Sketch in factory/DONE.md.
 - **S128** (upkeep) the `installed-agent` flake is a fixed race (the test now waits for the install to finish routing), `kit/s7_fix1` counts row reads instead of timing them, S40 runs on `watane-dev serve`, and `test:load:d` measures the stage D budgets at the page with a Budget record row (PR #57, rebase-merged 2026-11-25 at a19a90f3 by deputy-6, no bypass; builder codex, reviewer claude, 2 rounds (1/9, 0/6); ~1.3 h in flight). Cut: F6.1 and case 22 stay known limits (watane timer-origin contract held, watane PLAN Unsettled). P1.2 accepted (~1 s first-request delay). Polish in Upkeep. Sketch in factory/DONE.md.
@@ -834,6 +818,32 @@ S2 writes each into the document that owns it.
   S32 rebases on it. A cloud foreman cannot be told mid-run.
 
 ## Suite time
+
+- S131 (2026-11-26, `Linux 6.18.44-fc-v880 x86_64`, 4 cpus, a cloud VM; load average 2.6 to 4.3 from the runs themselves): console
+  `npm test` 635 tests 38 s, `test:slow` 21 s; kernel `cargo test` 621 + 6 + 1 in 5 s (warm); gate 79 s. By hand: `test:host`
+  25 pass, 7 skip, 212 s; `test:host:c` 6 pass, 36 s (warm); `test:host:d` 9 pass.
+  - **Stage C budgets** (TECHNICAL 17 row C, the kernel and host part, on dev's fake `claude`; the real `claude` run is the
+    human's): `npm run test:load:c`, the stage B load (8 sessions, 4 `page` in Chromium and 4 `local/loadclient`, each 50 deltas
+    and 5 entries of 4 KiB a second) on a participant home of watane c52d2aa (S129) whose app is the fake `Confirm` of
+    `console/test/host/home`, each session started with `start-in-folder` in a folder new to it (8 consents asked and granted per
+    run). r1 (F1.7), the home built with `console/test/host/home/commit-clock.patch`, load average 1.4 to 2.7: item delay p95
+    5.0, 4.9, 6.0 ms (budget 100; max 122, 114, 149 ms); Stop to `idle {interrupted}` at the page p95 16.8, 12.0, 11.0 ms (budget
+    2 000); writer busy share over the common window 19.9, 20.8, 21.4% (about 3 130 commits; budget 50). State bytes per entry:
+    as B (the crate's `s36_load`). The first three passes (before r1, stock home: writer not measured): item p95 6.8, 4.5, 5.0 ms,
+    Stop p95 11.9, 13.9, 13.8 ms. Stage B on the same machine and host, same day: item p95 12.0 ms, Stop 19.5 ms.
+  - **Stage D budgets, remeasured** (S128 P2.5): `npm run test:load:d` on watane 548b4e1 with `stage-d-tools/watane.patch` (which
+    builds `watane-host` and `watane-dev` at opt-level 2 in the dev profile; each Claude delta carries a marker ~37 bytes longer
+    than the stage B load's). Five runs: item p95 17.5, 17.2, 18.3, 23.2, 24.1 ms (budget 100); Stop p95 44.9, 44.0, 38.4, 36.3,
+    46.8 ms (budget 1 000); writer busy 28.9, 27.7, 29.0, 30.5, 30.8% (budget 60); cadence 8/8 OpenAI sessions at one step a second
+    (runs 4 and 5 print it; 1 to 3 had no cadence fault). Runs 1 and 3 pass; runs 2, 4 and 5 fail only the source check: one fake
+    `claude` wrote no delta for 40.9 to 46.4 ms, over the 2x spacing of 40 ms (S36 F7.3, the second sighting: the deputy's
+    "widen to 3x if it fails again"; the rule is also TECHNICAL 16's, which this slice may not touch).
+    r1 (F1.8, the deputy's ruling: the rule kept at 2x, P2.1's second-step cadence window in force for all eight runs), three
+    more runs on a quieter start (load 1.6 to 2.1): item p95 19.6, 18.9, 20.0 ms; Stop p95 58.9, 34.6, 40.0 ms; writer busy 29.0,
+    28.7, 29.3%; cadence 8/8 each. Runs 2 and 3 pass; run 1 fails on completeness, not spacing: one OpenAI session (`s9`) had one
+    source item and 4 of its 32 tool calls missing at the page within the window (undiagnosed: possibly its last step cut by the
+    Stop at the window's end; reported in PR #58). **The stage D Budget row stays open**: 4 of 8 runs pass, every budget held in
+    all 8.
 
 - S4: console `npm test` 167 tests 6.2 s; `test:slow` 7.5 s; gate with kernel 24 s (2026-11-20).
 

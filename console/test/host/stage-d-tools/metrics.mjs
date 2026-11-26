@@ -20,10 +20,16 @@ export function writerBusy(intervals, from, to) {
   return 100 * busy / (to - from);
 }
 
+// One step a second through the window. The window starts no earlier than the session's second
+// step: its first request may wait for the toolset to commit (the ~1 s describe retry, TECHNICAL 9.5),
+// so a late first step is not a missed beat (S131 P2.1); a late later step still is.
 export function openaiCadence(stamps, from, to) {
-  const inside = stamps.filter((at) => at >= from && at < to).sort((a, b) => a - b);
+  const all = [...stamps].sort((a, b) => a - b);
+  if (all.length < 2) return false;
+  const begin = Math.max(from, all[1]);
+  const inside = all.filter((at) => at >= begin && at < to);
   const gaps = inside.slice(1).map((at, i) => at - inside[i]);
-  return inside.length >= 5 && inside[0] - from <= 1200 && to - inside.at(-1) <= 1200
+  return inside.length >= 5 && inside[0] - begin <= 1200 && to - inside.at(-1) <= 1200
     && gaps.every((gap) => gap >= 800 && gap <= 1200);
 }
 

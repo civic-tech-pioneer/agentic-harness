@@ -192,3 +192,19 @@ Outcomes (the review checks them in the documents):
 5. The stage F budget row holds against the slot caps, or is restated (finding 8). The low findings are fixed where one line does it.
 Touches: `design/FUNCTIONAL.md` (3.9, 3.11, AGT-J5), `design/TECHNICAL.md` (2.3, 9.1 to 9.5 where 9.7 cites them, 9.7, 14, 16 cases 23, 24, 52, 17, 18.3), `factory/spec-check-S132.md`. No code.
 Constraints: design only, through the `spec-change` skill; no code, no VISION change (a needed one goes to the deputy as BLOCKED). Prefer narrowing to building: a mechanism only where FUNCTIONAL promises the behaviour. Each Door C choice (an interface, a public tool, a format) is listed in the PR body with its options and why, so the deputy can report it for the human's veto. Out of scope: the factory profiles and N5 (waiting on the human).
+
+### S131 (upkeep) the host tests check what they skip: stage C on a participant home, stage B and D test polish
+(in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S130 codex, S129 codex; the upkeep
+lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC; PR #58 opened ~07:20 at 495975c (+6524/-60, 5.3k of it the test home's Cargo.lock; shares only AGENTS.md with S127); r1: Codex review https://chatgpt.com/local/6b07deda-2b30-83ed-ae72-c1ec08020061, 07:27 UTC; r1: 8/2 `changes (8)` (boundary HELD; outcome check could not run, no watane-dev in Codex), posted ~07:40 with Deputy Rock's ruling (F1.1/P1.1 sketch amended, F1.2 a named known gap with the console fix to Upkeep, F1.7/F1.8 narrowed); answer by the build session itself (idle at 07:24; a new answer routine only if no push by ~08:05); answered by the build session at 461bb74 (~08:21, all 8, main merged in: squash at merge); r2: Codex review https://chatgpt.com/local/6b07ec6b-3124-83ed-8204-bae83a42b053, 08:24 UTC; r2: 1/1 `changes (1)` (F2.1 the expiry test accepts a host cancellation; P2.1 a red run for the stream assertion; boundary HELD), posted 08:33 by Deputy Paper with the answer brief as a PR comment (the build session answers PR comments); answered at 48d54d4 (F2.1 fixed, red first; P2.1 answered without change); r3: same Codex review task, scoped to 461bb74..48d54d4, ~08:47 UTC. Size: an upkeep slice.)
+Outcomes, each item's check (re-check each against main first; drop the ones already true and say so):
+1. S38 after watane S103: S38 outcomes 1 to 3 run on a participant home with a fake `Confirm` (host 19.7), outcomes 2 and 4
+   on `watane-dev serve`, and the stage C budgets of TECHNICAL 17 are measured and recorded in the Suite time table.
+2. S128 polish P1.4, P1.5, P1.9, P2.1 to P2.5 (`console/test/host/`, `stage_d.mjs`, `metrics.test.ts`, `AGENTS.md` exit
+   codes, the stage D Budget row); P2.6 only if `watane.patch` still exists.
+3. S36 r1 polish P1.1 (`kernel/tests/it/s36_firing.rs`), P1.3 (`console/test/host/stage_b.mjs` browser assertions);
+   S38 P1.2 (`kernel/tests/it/s38.rs`).
+Touches: `console/test/host/`, `kernel/tests/it/s36_firing.rs`, `kernel/tests/it/s38.rs`, `console/kit/metrics.test.ts`,
+`AGENTS.md`, this plan's Suite time rows; also `console/package.json` test aliases and `factory/tasks/S131-*.md` (amended r1, Deputy Rock). Not: `kernel/src/`, `console/kit/` sources, `console/src/`, `ui/`, `provider-checked/`,
+`design/` (S127's files). A product bug found on the way is reported in the PR, not fixed here. No test calls an external
+provider. Protects: *guard* (tests that skip hide regressions).
+

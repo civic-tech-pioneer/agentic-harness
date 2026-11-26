@@ -6,13 +6,20 @@
 //! table `s/<first 32 hex of blake3(identity)>` of `&str -> &[u8]`, and the `sizes` table of each
 //! mod's bytes); it is a test fixture, never a way the product writes state.
 //!
-//! Use: `seed-state <home> <identity> <key> <value>`.
-use redb::{Database, ReadableTable, TableDefinition};
+//! Use: `seed-state <home> <identity> <key> <value>`; `seed-state --get <home> <identity> <key>` prints the
+//! key's value (nothing, exit 3, when absent): S131 r1 F1.3, the stage C test reads a session's stored record.
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 
 const SIZES: TableDefinition<&str, u64> = TableDefinition::new("sizes");
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if let [_, flag, home, identity, key] = args.as_slice() {
+        if flag == "--get" {
+            get(home, identity, key);
+            return;
+        }
+    }
     let [_, home, identity, key, value] = args.as_slice() else {
         eprintln!("use: seed-state <home> <identity> <key> <value>");
         std::process::exit(64);
@@ -43,6 +50,21 @@ fn main() {
             .unwrap_or_else(|e| fail(&format!("sizes: {e}")));
     }
     txn.commit().unwrap_or_else(|e| fail(&format!("commit: {e}")));
+}
+
+fn get(home: &str, identity: &str, key: &str) {
+    let id = blake3::hash(identity.as_bytes()).to_hex()[..32].to_string();
+    let db = Database::open(std::path::Path::new(home).join("state/state.redb"))
+        .unwrap_or_else(|e| fail(&format!("open: {e}")));
+    let txn = db.begin_read().unwrap_or_else(|e| fail(&format!("read: {e}")));
+    let name = format!("s/{id}");
+    let Ok(table) = txn.open_table(TableDefinition::<&str, &[u8]>::new(&name)) else {
+        std::process::exit(3)
+    };
+    match table.get(key).unwrap_or_else(|e| fail(&format!("get: {e}"))) {
+        Some(v) => print!("{}", String::from_utf8_lossy(v.value())),
+        None => std::process::exit(3),
+    }
 }
 
 fn fail(why: &str) -> ! {
