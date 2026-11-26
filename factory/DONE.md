@@ -248,3 +248,20 @@ Outcomes (each item's check, re-checked against main first; an item already fixe
 4. S36 polish P1.2 and P1.3 (console tests), and S36's felt-wrong list where cheap.
 Touches: `console/` only. Not `kernel/` or `design/` (S138); a spec gap goes to Upkeep, not into `design/TECHNICAL.md`.
 
+
+### S140 (upkeep, guard first) the console's known gaps and test polish, console/ only
+(sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder claude by rule 3 (last two S138 codex, S139 codex),
+reviewer codex; in flight, cloud, routine `trig_01Hkd9KmgKVeQ1HVtLVY31hY` fires 12:18 UTC; DELIVERED as PR #63 at 5ee2aac (13:01 UTC, +243/-30; items 2, 3, 5 already fixed by S139, dropped; CI green); r1: Codex review https://chatgpt.com/local/6b0830f4-f93c-83ed-b07a-f5fbc2366044, 13:17 UTC; r1: 1/2 (changes; F1.1 the 240-char preview counts UTF-16 units, ruled narrow), posted 13:29 UTC with the answer brief as a PR comment for the subscribed build session (it woke on it); r1 answers at 27f9956 (13:33 UTC); r2: Codex follow-up in the same task, 13:35 UTC; r2: 0/0, VERDICT: approve on 27f9956 (13:41 UTC); CI `gate` timed out at 15 min once on 27f9956, green on rerun (second sighting after S134); user-sim not reported by the review lead, asked in the same task 14:00 UTC; adversary not run (deputy: `provider/BOUNDARIES.md` is a copy, `publish-test-mods.sh` an equivalent JSON read, tested both ways); the build session (`cse_01LxwP8xUGgojrr3XJGNbqD4`) subscribed to PR activity, so it may wake on the review: check it before any answer routine (one writer); spec-check not run: the slice changes no spec text (below). Upkeep is exempt from the size rule.)
+Why: Upkeep holds console work that no slice in flight touches; S138 edits only kernel/, design/ and the wit/deps folders.
+Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
+(1) *guard* the `installed-agent` flake: `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code
+settings' after AC1 passes (S40, twice): the race found and fixed, or the wait bounded and measured, with the reason in the
+test; (2) the console's consent activity names the folder the app asks for (S131 F1.2), and `stage_c.mjs` drops its
+known-gap line for it; (3) after Stop the transcript shows no 'An event this console does not know' for claude's
+`control_response` to the interrupt, and a stopped turn's footer does not read 'Completed'; with no Claude Code binary
+chosen the error points to Settings → Claude Code (S39 review); (4) S39 polish P1.2 to P1.5 and S139 r1 polish P1.1 to P1.4,
+P1.6, P1.7 (PR #62), each where its fix lands outside kernel/ and design/; (5) S36 r1 polish P1.2 and P1.3 (console tests).
+Touches: `console/`, `provider/BOUNDARIES.md` (S39 P1.4). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface, no spec text change: an item whose fix needs a rule change in design/ or a kernel change
+stays in Upkeep with a line in the PR body; a guard never weakens; `installed-agent` must not be made weaker to pass.
+deputy compares: the stopped-turn transcript and footer, and the consent activity, against the console design (TECHNICAL 18).

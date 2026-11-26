@@ -27,26 +27,9 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S138 (consumer half of watane S133/S136, Codex build); S140 (upkeep, console, Claude build); S139 merged.
+S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane release); S140 merged.
 
 ## Sketched
-### S140 (upkeep, guard first) the console's known gaps and test polish, console/ only
-(sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder claude by rule 3 (last two S138 codex, S139 codex),
-reviewer codex; in flight, cloud, routine `trig_01Hkd9KmgKVeQ1HVtLVY31hY` fires 12:18 UTC; DELIVERED as PR #63 at 5ee2aac (13:01 UTC, +243/-30; items 2, 3, 5 already fixed by S139, dropped; CI green); r1: Codex review https://chatgpt.com/local/6b0830f4-f93c-83ed-b07a-f5fbc2366044, 13:17 UTC; r1: 1/2 (changes; F1.1 the 240-char preview counts UTF-16 units, ruled narrow), posted 13:29 UTC with the answer brief as a PR comment for the subscribed build session (it woke on it); r1 answers at 27f9956 (13:33 UTC); r2: Codex follow-up in the same task, 13:35 UTC; r2: 0/0, VERDICT: approve on 27f9956 (13:41 UTC); CI `gate` timed out at 15 min once on 27f9956, green on rerun (second sighting after S134); user-sim not reported by the review lead, asked in the same task 14:00 UTC; adversary not run (deputy: `provider/BOUNDARIES.md` is a copy, `publish-test-mods.sh` an equivalent JSON read, tested both ways); the build session (`cse_01LxwP8xUGgojrr3XJGNbqD4`) subscribed to PR activity, so it may wake on the review: check it before any answer routine (one writer); spec-check not run: the slice changes no spec text (below). Upkeep is exempt from the size rule.)
-Why: Upkeep holds console work that no slice in flight touches; S138 edits only kernel/, design/ and the wit/deps folders.
-Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
-(1) *guard* the `installed-agent` flake: `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code
-settings' after AC1 passes (S40, twice): the race found and fixed, or the wait bounded and measured, with the reason in the
-test; (2) the console's consent activity names the folder the app asks for (S131 F1.2), and `stage_c.mjs` drops its
-known-gap line for it; (3) after Stop the transcript shows no 'An event this console does not know' for claude's
-`control_response` to the interrupt, and a stopped turn's footer does not read 'Completed'; with no Claude Code binary
-chosen the error points to Settings → Claude Code (S39 review); (4) S39 polish P1.2 to P1.5 and S139 r1 polish P1.1 to P1.4,
-P1.6, P1.7 (PR #62), each where its fix lands outside kernel/ and design/; (5) S36 r1 polish P1.2 and P1.3 (console tests).
-Touches: `console/`, `provider/BOUNDARIES.md` (S39 P1.4). Not kernel/ or design/ (S138), not the wit/deps folders.
-Constraints: no new interface, no spec text change: an item whose fix needs a rule change in design/ or a kernel change
-stays in Upkeep with a line in the PR body; a guard never weakens; `installed-agent` must not be made weaker to pass.
-deputy compares: the stopped-turn transcript and footer, and the consent activity, against the console design (TECHNICAL 18).
-
 ### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
 (sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
 S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).) r1 answers at 07d910f (12:20 UTC; F1.1 to F1.3 fixed; F1.ci needs a watane release with S136, the human's, asked 12:23 UTC by Deputy Rock); r2: Claude routine `trig_014PqYzP7y2xYu5EcKcccLX4`, 12:22 UTC. r2: 0/4, VERDICT: approve on 07d910f (12:30 UTC); **approved, held**: merges once a watane release with S136 turns `installed-agent` green (Waiting on the human). Friction: the reviewer found no `.claude/factory/review-lead.md` in this repository and used the README's review-team row.
@@ -139,21 +122,19 @@ reviewer claude. Cloud.
 
 - **(guard, S138 r2 P2.1)** no test pins `run_client`'s `me() == "page"` guard on arming `page-origin` (a non-page chain arming it would give page firings that mod's authority), nor "every successful client call drains what is owed": add a Harness step in `kernel/wasm/tests/harness/run.sh`. **(S138 r2 polish)** P2.2 `design/LOG.md:9` attributes D001 to the human while it is `human: pending`; P2.3 drain owed work in one layer (`Kernel::read` and `run_client`); P2.4 `harness/run.sh` and `production/run.sh` into CI `installed-agent` once the watane release exists; S138 r1 P1.1 to P1.8, P1.10 of https://github.com/civic-tech-pioneer/agentic-harness/pull/61.
 
-- **(S139 r1 polish)** P1.1 to P1.7 of https://github.com/civic-tech-pioneer/agentic-harness/pull/62 (review r1): tests for `cannotInterrupt` on the taken-row retry and the control-ack fold; the older `workspace:/abs` consent form; `stage_c.mjs:316` asserts `q.what`; P1.5 spec drift in `design/`; the 240-char preview as a slice; a folder with a newline.
+- **(S139 r1 polish, left by S140)** P1.5 spec drift in `design/` (PR #62 review r1).
 
 - **(from S131 F1.8)** a stage D load run lost 1 item and 4 tool calls of one OpenAI session at the page (1 of 3 runs, undiagnosed; maybe its last step cut by Stop). Diagnose before the stage D Budget row can close.
 - **(after S127)** `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (watane S129 has merged).
 - **(S127 polish)** P4.1 `kernel/tests/it/s127_judge.rs:333`: assert that the replacement launch carries the original follow-up.
-- **(from S131 F1.2)** the console's consent activity does not name the folder the app asks for (`console/src`); S131's `stage_c.mjs` keeps it as a named known gap.
 - **(guard, the human's (b) on S40 F6.1)** a timer firing of an OpenAI session whose owner mod was disabled during a timed pause may send one more model request under the kernel's origin. Fix: read the host-resolved origin of a timer firing through the production adapter (watane reports the caller of a timer callback as `host` and keeps the resolved origin apart), stop only foreign firings, and test it through the real adapter: an enabled owner's pause resumes by itself, a disabled owner's stops with no work.
 
-- **(guard, second sighting) `installed-agent` CI flake:** `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code settings' after AC1 passes; on S40 at 890caad and 10ed0a3, green on rerun. Find the race or give the wait a bound that measures it.
 
 - **Case 22's idempotent half (from S40 r2):** after a restart, reissue an idempotent job under its key, with the toolset reopened under the session owner's origin and the job sent only once the handle is usable.
 
 - **S40 on `watane-dev serve` (after watane S114 merges):** turn the SKIP lines of `test:host:d` into checks, run S40 outcomes 2 to 4 on a preview with a scripted OpenAI stream, and add the stage D load test.
 
-- **From S39's review (2026-11-24), console, earlier slices:** after Stop the transcript shows 'An event this console does not know' (claude's `control_response` to the interrupt); a stopped turn's footer reads 'Completed'; with no Claude Code binary chosen the error does not point to Settings → Claude Code; S39 polish P1.2 to P1.5 (exit 2 when binaries are missing, full grant lists in the consent check, a commit id in `provider/BOUNDARIES.md`, `node -e` instead of `python3`). For watane: the consent window's Call line reads as an interface name, not words.
+- **From S39's review, for watane (left by S140):** the consent window's Call line reads as an interface name, not words.
 
 - **From watane S103 r1 (2026-11-24):** Stop before `initialized` (while a folder consent waits) should cancel the stream, not send `interrupt`: an interrupt leaves the app's question open, and a later yes answers into an idle session. The host's cancel path drops the question and prevents the launch.
 
@@ -162,11 +143,7 @@ reviewer claude. Cloud.
 
 - **S36 accepted limits (r7, the human merged it as it stood, 2026-11-24):** F7.1 and F7.2 are the S35 Send limit (TECHNICAL 18.6): an Edit send refused after leaving the session keeps only the original text, and a reload while an accepted take's reply is in flight can offer it once more. F7.3: the load check's 2x spacing failed once on timer jitter (40.585 ms delta gap); widen to 3x (60/600 ms) if it fails again. Also P7.1: exact just-over-limit fixtures in `console/test/host/load_check.test.ts`.
 
-- **Polish from S36's review r1 (2026-11-23):** P1.1 `kernel/tests/it/s36_firing.rs:49, :96` (assert the write delta,
-  the retry delay and a later successful call; the ceiling fixture at the actual ceiling); P1.2
-  `console/src/replaced_S36_3.test.tsx` (exact replay cursor, notice timing, enabled controls around takeover, session
-  switch on one mounted app); P1.3 the rest of `console/test/host/stage_b.mjs` browser assertions (card input and expiry,
-  scoped grant and removal, Deny with reason, queue and Stop transitions).
+- **Polish from S36's review r1, left by S140:** P1.1 `kernel/tests/it/s36_firing.rs:49, :96` (assert the write delta, the retry delay and a later successful call; the ceiling fixture at the actual ceiling).
 - **Felt wrong in S36's user-sim:** queue rows show a whole 255 KiB message; Edit and Undo re-queue at the end; Stop and
   send is offered on a queued row while the session reads Not running.
 - **Polish, low priority (the human, 2026-11-23):** a sent message's text stays recoverable until the kernel
@@ -175,6 +152,7 @@ reviewer claude. Cloud.
 
 ## Done
 
+- **S140** (upkeep) the console's known gaps and test polish: a red `installed-agent` or stage C run says what it checked and why (the whole grant list, the old flake's routing race, NOT RUN with exit 2 for a missing binary); the queue preview keeps 240 code points; a folder with a newline or tab reads as itself in the consent wait; the release script uses `node -e`; `provider/BOUNDARIES.md` names its commit (PR #63, rebase-merged 2026-11-26 14:29 UTC by Deputy Rock, no bypass; builder claude, reviewer codex, 2 rounds 1/2, 0/0; ~2.2 h in flight). Items 2, 3, 5 were already done by S139. User-sim ACCEPTED; adversary not run (a copy and an equivalent JSON read). Friction: CI `gate` timed out at 15 min once (second sighting); the review lead did not run user-sim until asked; `review-lead.md` missing. Sketch in factory/DONE.md.
 - **S131** (upkeep) the host tests check what they skip: stage C runs on a participant home with a fake Confirm and its budgets are measured; the expiry check requires deny by host for `expired` at or after the deadline; S128/S36/S38 test polish done; the console's folder name in consent is a named KNOWN GAP (Upkeep). PR #58, squash-merged 2026-11-26 ~08:58 UTC at 05cda43 by Deputy Paper, no bypass; builder claude, reviewer codex, 3 rounds (8/2, 1/1, 0/0); ruled by Deputy Rock at r1 (F1.1/P1.1 sketch amended, F1.2 a known gap, F1.7/F1.8 narrowed); boundary HELD; Codex could not run the host commands (no watane-dev), judged from the builder's red-first runs; ~2.5 h in flight. Sketch in factory/DONE.md.
 - **S132** (design) stage F, delegation and counters, made one consistent contract: AGT-J5 runs on an OpenAI root with two sibling children (depth 1); Claude keeps its launch-time subagents; `task` returns one terminal result, a child shows as an indexed `child` entry; counters per turn; §14 child admission spelled out (PR #59, rebase-merged 2026-11-26 ~08:30 UTC at 95ec3bc7 by Deputy Rock, no bypass; builder codex, reviewer claude, 1 round 0/12; ~25 min in flight). **Door C, reported to the human for veto:** 9 choices in PR #59's body; two narrow a FUNCTIONAL promise: AGT-F-36 counters per turn instead of per session, and Claude refuses `max-tokens` and `max-tool-errors` (only its native `max-turns`); both fail closed. Polish P1.1 to P1.12 ride with S134's brief. Sketch in factory/DONE.md.
 - **S127** (stage E) Alice's Claude session runs through the checked provider with Jev as its judge: the console shows `checking` before each tool call, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and repeated denials trip the breaker, which says why (PR #56, rebase-merged 2026-11-26 07:57 UTC at 8e92d1b4 by Deputy Rock, no bypass; builder claude, reviewer codex, 4 rounds 4/2, 2/1, 1/1, 0/1; ~13 h in flight). Cut at r2 (deputy-7): F2.1 a known limit in TECHNICAL 10 (a verdict's reason can be lost under backpressure at teardown); r3's F3.1 fixed on existing state (TECHNICAL 9.4). Boundary HELD, outcomes ACCEPTED on fakes. Codex's cyber filter refused the adversary twice in r1 (worded as a boundary check since). Sketch in factory/DONE.md.
