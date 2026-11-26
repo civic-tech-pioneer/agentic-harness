@@ -561,6 +561,9 @@ pub(crate) struct Work {
     pub(crate) stored: Option<u64>,
     /// The live owner stream of the session an item call acted on, as its record ends the call.
     pub(crate) live: Option<String>,
+    /// A call that resolves a child's `task` call for its root (9.7) also works on the root: the
+    /// root's pushes and its live owner stream, which are not this call's session's.
+    pub(crate) peer: Option<(Option<String>, Vec<Push>)>,
 }
 
 /// The owner's account and the kernel's, as read for a call and kept for its one write (9.3 Quota).
@@ -574,7 +577,19 @@ pub(crate) struct Acct {
     account0: Usage,
 }
 
-fn add_signed(v: u64, d: i64) -> u64 {
+impl Acct {
+    /// One more session of the owner, on owner page `n` (9.1, 9.3).
+    pub(crate) fn add_session(&mut self, n: usize) {
+        if self.owner.pages.len() <= n {
+            self.owner.pages.resize(n + 1, 0);
+        }
+        self.owner.pages[n] += 1;
+        self.owner.sessions += 1;
+        self.account.sessions += 1;
+    }
+}
+
+pub(crate) fn add_signed(v: u64, d: i64) -> u64 {
     if d >= 0 {
         v.saturating_add(d as u64)
     } else {
@@ -767,7 +782,7 @@ fn slash_space(c: char) -> bool {
 }
 
 /// 9.3: an input whose first text block starts with `/` after white space is refused.
-fn check_slash(input: &str) -> Result<(), KernelError> {
+pub(crate) fn check_slash(input: &str) -> Result<(), KernelError> {
     let blocks = user_content(input);
     let text = blocks
         .as_array()
@@ -1660,7 +1675,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         };
         // 9.7, "Revoking": a revoked profile starts nothing; the queue is kept.
-        if !self.may_use(&rec.owner, &rec.profile) {
+        if !self.may_work(&rec.owner.clone(), rec) {
             return Ok(());
         }
         let send = self.target(rec);
@@ -1878,12 +1893,22 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// The end of a call that did not defer: its pushes go to the session's live owner stream, then
     /// its requests leave (after the last write, 7).
-    pub(crate) fn flush(&mut self, work: Work, live: Option<&str>) -> Vec<Push> {
+    pub(crate) fn flush(&mut self, mut work: Work, live: Option<&str>) -> Vec<Push> {
         self.deliver(&work.pushes, live);
+        self.deliver_peer(&mut work);
         for r in work.requests {
             self.host.request(r);
         }
         work.pushes
+    }
+
+    /// The pushes a call made for its peer session (the root of a resolved `task` call) go to that
+    /// session's live owner stream, then join the call's own.
+    pub(crate) fn deliver_peer(&mut self, work: &mut Work) {
+        if let Some((live, pushes)) = work.peer.take() {
+            self.deliver(&pushes, live.as_deref());
+            work.pushes.extend(pushes);
+        }
     }
 
     /// The live owner stream of a session: `live/<session>` (9.1).
@@ -1959,6 +1984,19 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
     }
 
+    /// 9.7 "Revoking": whether a call that gives the session more work may go on. A root is
+    /// checked against its owner's access; a child is checked as its root is, against the root's
+    /// owner (it has no entry of its own), and a missing root is refused: fail closed.
+    pub(crate) fn may_work(&mut self, owner: &str, rec: &Record) -> bool {
+        match &rec.parent {
+            None => self.may_use(owner, &rec.profile),
+            Some(root) => match Record::load(&mut self.state, root) {
+                Some(r) => self.may_use(&r.owner, &r.profile),
+                None => false,
+            },
+        }
+    }
+
     fn revoked() -> KernelError {
         refused("profile", "this client may not use this profile")
     }
@@ -1974,7 +2012,7 @@ impl<S: State, H: Host> Kernel<S, H> {
 
     /// 9.1: the first page of the owner's session ids with room, or the next one: its number,
     /// its key and its ids.
-    fn owner_page(&mut self, caller: &str, acct: &Acct) -> (usize, String, Vec<String>) {
+    pub(crate) fn owner_page(&mut self, caller: &str, acct: &Acct) -> (usize, String, Vec<String>) {
         let n = acct
             .owner
             .pages
@@ -2215,7 +2253,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         check_input(input)?;
         check_slash(input)?;
         let mut rec = self.load_owned(caller, session)?;
-        if !self.may_use(caller, &rec.profile) {
+        if !self.may_work(caller, &rec) {
             return Err(Self::revoked());
         }
         let mut acct = self.accounts(caller);
@@ -2376,7 +2414,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let mut rec = self.load_owned(caller, session)?;
         let d = parse_decision(decision)?;
-        if d.allow && !self.may_use(caller, &rec.profile) {
+        if d.allow && !self.may_work(caller, &rec) {
             return Err(Self::revoked());
         }
         let mut acct = self.accounts(caller);
@@ -2607,7 +2645,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(input) = replacement {
             check_input(input)?;
             check_slash(input)?;
-            if !self.may_use(caller, &rec.profile) {
+            if !self.may_work(caller, &rec) {
                 return Err(Self::revoked());
             }
             self.refuse_past(&acct)?;
@@ -2664,6 +2702,19 @@ impl<S: State, H: Host> Kernel<S, H> {
                 sent = cx.dirty;
             }
             self.end_interrupted(&mut rec, past, now, &mut work)?;
+            // 9.7: the owner interrupting a child's first turn resolves the root's call.
+            if rec.task_call.is_some() {
+                let mut cx = Cx {
+                    slots: &mut slots,
+                    a: &mut acct,
+                    work: &mut work,
+                    past,
+                    now,
+                    dirty: false,
+                };
+                self.end_task(&mut rec, &mut cx, None)?;
+                sent |= cx.dirty;
+            }
             if let Some((stream, direct)) = live.clone() {
                 // `claude` ends the interrupted turn with an `idle` of its own, later (S36).
                 rec.owed_idles = rec.owed_idles.saturating_add(1);
@@ -4044,7 +4095,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Option<((&'static str, &'static str, Option<&'static str>), Value)> {
         let held = Self::ask_scope(rec, body)
             .is_some_and(|(t, k)| rec.allows.iter().any(|a| a.tool == t && a.key == k));
-        if held && self.may_use(&rec.owner, &rec.profile) {
+        if held && self.may_work(&rec.owner.clone(), rec) {
             return Some((("allow", "session-allow", None), json!({"allow": true})));
         }
         if rec.owner.starts_with("agent:") || rec.live.is_none() {
@@ -4146,6 +4197,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.finish_as(Some(&mut rec), &mut acct, true)?;
         // After the last write (7): the live owner stream gets the entry, or is dropped `lagging`.
         self.deliver(&work.pushes, rec.live.as_deref());
+        self.deliver_peer(work);
         Ok(())
     }
 

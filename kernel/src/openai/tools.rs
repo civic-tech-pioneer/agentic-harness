@@ -8,6 +8,8 @@
 use crate::adapters::responses;
 use crate::error::KernelError;
 use crate::openai::run::{Cx, LoopState, Pending, Phase};
+use crate::openai::task::TASK;
+use crate::profile::PreToolCheck;
 use crate::record::{Deadline, OpenAsk, Record, Stop, Turn, DEADLINES, OPEN_ASKS};
 use crate::rules::{glob, Rules, Verdict};
 use crate::sessions::{wire_update, Host, Kernel, Push, StreamKey, Tool};
@@ -42,6 +44,19 @@ pub struct Policy {
     pub max_tool_errors: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u64>,
+    /// What admission of a child compares (9.7): the compiled profile's delegation and the
+    /// fields a child must match or narrow, kept so a later edit of the stored profile cannot
+    /// widen what this session's children may be.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub delegates: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subagent_limits: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ask: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pre_tool_check: Option<PreToolCheck>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub persist: Option<bool>,
 }
 
 impl Policy {
@@ -89,6 +104,9 @@ pub enum CallState {
     Pending,
     /// Running as a job on this stream.
     Job { stream: String },
+    /// A `task` call whose delegated first turn runs in this child session (9.7): the call holds
+    /// no stream and no slot.
+    Child { session: String },
 }
 
 /// A `function_call` item of the step with no output yet.
@@ -100,7 +118,7 @@ pub struct Call {
 }
 
 impl Call {
-    fn id(&self) -> &str {
+    pub(crate) fn id(&self) -> &str {
         self.item["call_id"].as_str().unwrap_or_default()
     }
 }
@@ -213,6 +231,16 @@ impl<S: State, H: Host> Kernel<S, H> {
                 fail(e)
             }
         })?;
+        // 9.7: a toolset function named like a built-in is refused before any request.
+        if let Some(t) = tools.iter().find(|t| t.name == TASK || t.name == "skill") {
+            let handle = set.handle.clone();
+            let name = t.name.clone();
+            ls.tools = None;
+            self.host.tools_close(&handle);
+            return Err(SetupError::Failed(format!(
+                "toolsets: the function {name} collides with a built-in of the kernel"
+            )));
+        }
         set.described = true;
         set.defs = tools.iter().map(definition).collect();
         set.info = tools
@@ -250,6 +278,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .tools
             .iter()
             .flat_map(|t| t.info.iter().map(|i| i.name.clone()))
+            .chain([TASK.to_string()])
             .collect();
         let names: Vec<&str> = names.iter().map(String::as_str).collect();
         let (rules, _) = Rules::compile(
@@ -264,7 +293,15 @@ impl<S: State, H: Host> Kernel<S, H> {
                 continue;
             }
             let name = item["name"].as_str().unwrap_or_default().to_string();
-            if ls.tools.as_ref().and_then(|t| t.info(&name)).is_none() {
+            // A child's `task` call is refused at dispatch without asking anyone (9.7).
+            if name == TASK && rec.parent.is_some() {
+                ls.calls.push(Call {
+                    item,
+                    st: CallState::Pending,
+                });
+                continue;
+            }
+            if name != TASK && ls.tools.as_ref().and_then(|t| t.info(&name)).is_none() {
                 // A session with no toolsets has nothing to run: its call is `aborted` (S40-3).
                 let out = match ls.tools {
                     Some(_) => error_text("unknown tool"),
@@ -300,8 +337,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let info = ls.tools.clone().unwrap_or_default();
         ls.serial = !ls.calls.iter().all(|c| {
-            info.info(c.item["name"].as_str().unwrap_or_default())
-                .is_some_and(|i| i.parallel)
+            let name = c.item["name"].as_str().unwrap_or_default();
+            name == TASK || info.info(name).is_some_and(|i| i.parallel)
         });
         ls.phase = if ls.calls.iter().any(|c| c.st == CallState::Ask) {
             Phase::Waiting
@@ -552,7 +589,12 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         };
         let blocked = self.start_jobs(rec, ls, cx)?;
-        if rec.turn.is_active() && self.stop_on_errors(rec, ls, cx)? {
+        if !rec.turn.is_active() {
+            // A call or a child entry not stored past the quota ended the turn (9.3): the loop
+            // stops with the calls aborted.
+            return self.openai_stop(rec, ls, cx);
+        }
+        if self.stop_on_errors(rec, ls, cx)? {
             return Ok(());
         }
         if ls.calls.is_empty() {
@@ -594,6 +636,18 @@ impl<S: State, H: Host> Kernel<S, H> {
                     .any(|c| matches!(c.st, CallState::Job { .. }))
             {
                 return Ok(Blocked::No);
+            }
+            if ls.calls[i].item["name"] == TASK {
+                // A `task` call holds no job slot or stream: the child is the work (9.7).
+                let open = ls.calls.len();
+                self.start_task(rec, ls, cx, i)?;
+                if !rec.turn.is_active() || errors_reached(ls) {
+                    return Ok(Blocked::No);
+                }
+                if ls.calls.len() == open {
+                    i += 1;
+                }
+                continue;
             }
             if ls.jobs >= self.limits.session_job || rec.stream_room().is_err() {
                 return Ok(Blocked::Session);
@@ -723,7 +777,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.release_job(rec, &mut none, stream, cx, false);
     }
 
-    fn after_output(
+    pub(crate) fn after_output(
         &mut self,
         rec: &mut Record,
         ls: &mut LoopState,

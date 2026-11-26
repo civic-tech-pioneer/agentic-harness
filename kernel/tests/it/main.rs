@@ -48,6 +48,7 @@ mod runners;
 mod s127_judge;
 mod s134_admission;
 mod s134_limits;
+mod s134_task;
 mod s26;
 mod s28;
 mod s29_ceiling;

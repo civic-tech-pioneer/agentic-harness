@@ -212,6 +212,10 @@ pub struct Record {
     pub overlay: Option<Overlay>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    /// On a child: the root's `task` call id while its delegated first turn is outstanding;
+    /// cleared when that call is resolved (9.7, `openai/task.rs`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_call: Option<String>,
     pub children: Vec<String>,
     pub turn: Turn,
     pub boot: u64,
@@ -262,6 +266,7 @@ impl Default for Record {
             claude_uuid: None,
             overlay: None,
             parent: None,
+            task_call: None,
             children: Vec::new(),
             turn: Turn::default(),
             boot: 0,
