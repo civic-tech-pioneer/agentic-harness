@@ -141,7 +141,8 @@ reviewer claude. Cloud.
 
 - **(S139 r1 polish, left by S140)** P1.5 spec drift in `design/` (PR #62 review r1).
 
-- **(from S131 F1.8)** a stage D load run lost 1 item and 4 tool calls of one OpenAI session at the page (1 of 3 runs, undiagnosed; maybe its last step cut by Stop). Diagnose before the stage D Budget row can close.
+- **(from S131 F1.8, S142 r1 P1.2)** Stop race against the stage D runner's window, owner undecided. A controlled delay reproduced one missing item and four missing tool calls: the origin wrote them 64 ms before the click and the interrupted turn was stored before the batch reached the request sink. The original run lacks that trace. Diagnose before the stage D Budget row can close.
+- **(S142 r1 P1.3)** Investigate stage D Claude source-spacing gaps. The instrumented run saw gaps up to 57.2 ms against the existing 40 ms check.
 - **(after S127)** `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (watane S129 has merged).
 - **(S127 polish)** P4.1 `kernel/tests/it/s127_judge.rs:333`: assert that the replacement launch carries the original follow-up.
 - **(guard, the human's (b) on S40 F6.1)** a timer firing of an OpenAI session whose owner mod was disabled during a timed pause may send one more model request under the kernel's origin. Fix: read the host-resolved origin of a timer firing through the production adapter (watane reports the caller of a timer callback as `host` and keeps the resolved origin apart), stop only foreign firings, and test it through the real adapter: an enabled owner's pause resumes by itself, a disabled owner's stops with no work.
@@ -154,6 +155,8 @@ reviewer claude. Cloud.
 - **From S39's review, for watane (left by S140):** the consent window's Call line reads as an interface name, not words.
 
 - **From watane S103 r1 (2026-11-24):** Stop before `initialized` (while a folder consent waits) should cancel the stream, not send `interrupt`: an interrupt leaves the app's question open, and a later yes answers into an idle session. The host's cancel path drops the question and prevents the launch.
+- **(S142 r1 A1, kernel)** Make an interrupt before `initialized` cancel the launch. Decide from the kernel's current state to close the races between a consent transition and the console's view.
+  - **(S142 r1 A2)** Cover Escape while the console still reads Loading. It can send an interrupt before the first turn arrives, so exercise this path against the A1 kernel rule.
 
 - **Polish from S38 (merged 2026-11-24):** P1.2 (assistant line without `session_id` in `kernel/tests/it/s38.rs`), P2.2 (TECHNICAL 18.5 words 'Workspace access was refused for …', 'Connection to Claude Code ended'), P2.3 (picked folders get no file write key at all: say so in 9.6 and 14), P2.5 (`start-in-folder` shares `start`'s key kind; its own refusals in 2.3/4.6), P2.6 ('Open the question' does nothing; show the folder in the wait, per `States-2`); stale half-streamed message after `gone` until reload (stage B carry).
 

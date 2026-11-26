@@ -57,7 +57,7 @@ function failedWords(stop: { error: string; cause?: string }): string {
   return stop.cause ?? stop.error;
 }
 
-function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: number, actions: Actions): Spec {
+function spec(view: SessionView, now: number, answered: number, actions: Actions): Spec {
   const t = view.turn;
   if (!t) return view.loading ? { word: "Loading", shape: "loading" } : { word: "Idle", shape: "ring" };
   switch (t.state) {
@@ -69,7 +69,7 @@ function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: 
       if (a?.kind === "consent") {
         const folder = workspaceFolder(a.what);
         const word = folder ? `Waiting for your answer in watane for ${folder}` : "Waiting for your answer in watane";
-        return { word, shape: "diamond", act: { label: "Open the question", run: onNeedsYou } };
+        return { word, shape: "diamond", act: { label: "Open the question" } };
       }
       return { word: runningWord(view.rows), shape: "dot", clock: clk, esc: true };
     }
@@ -96,7 +96,7 @@ export function StatusLine(props: { view: SessionView; now: number; stopping: bo
   const noKernel = useId();
   const s: Spec = stopping && view.turn?.state !== "idle"
     ? { word: "Stopping…", shape: "dot" }
-    : spec(view, now, props.onNeedsYou, props.answered ?? 0, props.actions);
+    : spec(view, now, props.answered ?? 0, props.actions);
   return (
     <div className="wa-status" data-state={view.turn?.state ?? "none"}>
       <span className="wa-shape" data-shape={s.shape} role="img" aria-label={NAMES[s.shape]} />
