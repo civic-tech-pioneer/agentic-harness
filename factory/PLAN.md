@@ -31,7 +31,7 @@ S145 (upkeep, console, Codex build); S148 (stage F, `skill` on OpenAI, Codex bui
 
 ## Sketched
 ### S148 stage F: an OpenAI session uses the skills its profile names, through the `skill` function (TECHNICAL 11, 9.7)
-(sketched 2026-11-26 by Deputy Scissors, the main line; builder codex by rule 3 (last two: watane S147 codex, watane S146 claude); reviewer claude.)
+(sketched 2026-11-26 by Deputy Scissors, the main line; builder codex by rule 3 (last two: watane S147 codex, watane S146 claude); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b08ad95-8eb0-83ed-bcee-2e4bc0c8706b, 22:15 UTC.)
 Why: stage F's remaining backend (TECHNICAL 17, row F: "OpenAI delegation and `skill`"). S134 built delegation and the counters; until `skill` exists, any `skills` on an OpenAI profile is refused (11), so a factory profile cannot carry its skills on OpenAI.
 Outcomes, each checkable on dev's scripted Responses server:
 (1) Alice starts an OpenAI session whose profile names two adopted skills: the first request advertises a `skill` function whose listing gives each skill's name and description, with `</description>` and `<` escaped (T8); the model calls `skill` with one name and gets that skill's SKILL.md as the result, shown in the transcript as an ordinary tool row;
