@@ -261,9 +261,28 @@ async function main() {
     let first, withdrawn, refusedAgain, refusedOther, otherFolder;
     const page = await openPage(browser, url);
     try {
+      await check("home, S142: Stop dismisses the native folder question before Claude starts", async () => {
+        const stoppedDir = mkdtempSync(join(tmp, "stopped-"));
+        const asked = home.asked.length;
+        await startInPage(page, stoppedDir, "stop this launch");
+        const question = await until(() => home.asked[asked], 20_000, "the folder question");
+        await page.getByText(`Waiting for your answer in watane for ${realpathSync(stoppedDir)}`, { exact: true }).waitFor({ timeout: 15_000 });
+        const session = await sessionOf(url, "stop this launch");
+        await page.getByRole("button", { name: "Stop", exact: true }).click();
+        await until(() => home.dropped.includes(question.i), 10_000, "the host to drop the folder question");
+        const lateAnswer = await home.send({ op: "answer", i: question.i, answer: "granted" }).then(() => null, (e) => e.message);
+        ensure(/dropped|not open/.test(lateAnswer ?? ""), `the old question accepted a late answer: ${lateAnswer}`);
+        const turn = await until(async () => {
+          const current = lastTurn(await transcript(url, session.id));
+          return current?.state === "idle" ? current : null;
+        }, 10_000, "the cancelled turn to end");
+        ensure(turn.stop?.kind === "interrupted", `the cancelled turn: ${JSON.stringify(turn)}`);
+        ensure(fake.starts().length === 0, "Claude started after the stopped folder launch");
+      });
       await check("home, outcome 1: while the app holds the question the page shows the consent wait; once granted the fake runs in that folder and the page shows the turn", async () => {
+        const asked = home.asked.length;
         await startInPage(page, notesDir, "read my notes");
-        const q = await until(() => home.asked[0], 20_000, "the app's question");
+        const q = await until(() => home.asked[asked], 20_000, "the app's question");
         ensure(q.what === pendingFolder && q.origin === "agent" && q.via === "claude-code", `the question: ${JSON.stringify(q)}`);
         await page.waitForFunction((f) => document.querySelector(".wa-status-word")?.textContent === `Waiting for your answer in watane for ${f}`, folder, { timeout: 15_000 });
         first = await sessionOf(url, "read my notes");
