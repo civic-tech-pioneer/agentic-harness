@@ -776,8 +776,16 @@ async function main() {
         await waitWord(page, "Idle", "the first turn to end");
         // the same call again: no card asks, the kernel's allow stands
         await ok("sessions.say", { session: s, key: `k-${Date.now()}-2`, input: "read g2" });
-        await until(async () => { const es = await transcript(s); return lastTurn(es)?.state === "idle" && asksOf(es).some((e) => e.body?.path?.endsWith("/g2.txt")) ? es : null; }, 20_000, "the second turn to end");
-        ensure(!(await page.getByRole("button", { name: "Allow once" }).count()), "the page asked for a call the grant covers");
+        const es2 = await until(async () => { const es = await transcript(s); return lastTurn(es)?.state === "idle" && asksOf(es).some((e) => e.body?.path?.endsWith("/g2.txt")) ? es : null; }, 20_000, "the second turn to end");
+        // the covered call's own card: the kernel answered it with the session allow, and once that decision reaches the page the card
+        // offers no answer (S131 r1: a count of every Allow once on the page, taken at the turn's end, raced the decision's arrival)
+        const g2 = asksOf(es2).find((e) => e.body?.path?.endsWith("/g2.txt") && !e.body?.decision);
+        const d2 = decisionsOf(es2, g2.body.id);
+        ensure(d2.length === 1 && d2[0].body.decision.by === "session-allow" && d2[0].body.decision.outcome === "allow", `the covered call's decisions: ${JSON.stringify(d2.map((d) => d.body.decision))}`);
+        const card2 = page.locator(`section.wa-tool[data-ask="${g2.body.id}"]`);
+        await until(async () => (await card2.count()) === 1 && (await card2.getByRole("button", { name: /^(Allow|Deny)/ }).count()) === 0, 10_000, "the covered call's card to show it decided, with no answer offered")
+          .catch(async (e) => { throw new Error(`${e.message}: the page asked for a call the grant covers (${JSON.stringify((await card2.textContent().catch(() => ""))?.slice(0, 160))})`); });
+        ensure(!(await page.getByRole("button", { name: "Allow once" }).count()), "the page offers an answer while no ask is open");
         // Alice removes it in the page
         await chip.click();
         await page.locator(".wa-header .grant").waitFor({ state: "detached", timeout: 15_000 });
