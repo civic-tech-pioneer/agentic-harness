@@ -63,6 +63,8 @@ export const emptyView: SessionView = {
   rows: [], openAsks: [], turn: null, queue: [], plan: null, usage: null,
   allows: [], lastIndex: 0, synced: false, loading: false,
 };
+export const SESSION_IN_ANOTHER_TAB = "This session is open in another tab.";
+
 export interface Actions {
   /** The view's stream went to another tab: asks, Send and Stop are off (18.6 "Another tab"). */
   off?: boolean;

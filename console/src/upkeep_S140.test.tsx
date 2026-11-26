@@ -1,5 +1,5 @@
 // S140 (upkeep): S139 review r1 polish P1.1 and P1.6 (PR #62). A taken-out message's "Stop and send" retry is
-// closed while the session cannot be interrupted, as the queue row's is; the queue preview keeps 240 characters.
+// unavailable while the session cannot be interrupted, as the queue row's is; the queue preview keeps 240 characters.
 // TECHNICAL 18.5, 18.6 "Queue".
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -21,7 +21,7 @@ const items = () => [...document.querySelectorAll(".wa-queue li .wa-queue-text")
 
 describe("S140", () => {
   it.each(["unknown", "resume-lost"])(
-    "p1_1_taken_row_stop_and_send_retry_is_disabled_when_the_turn_is_%s", async (state) => {
+    "p1_1_taken_row_stop_and_send_retry_is_unavailable_when_the_turn_is_%s", async (state) => {
       const f = fakeKernel([...story, queue("first one"), [w({ type: "turn", state: { state } })]]);
       for (let n = 0; n <= story.length; n++) f.play(n);
       render(<App kernel={f} info={INFO} />);
@@ -40,7 +40,11 @@ describe("S140", () => {
       expect(retry()).toBeEnabled();
       act(() => f.play(story.length + 1));
       await settle();
-      expect(retry()).toBeDisabled();
+      if (state === "unknown") expect(retry()).toBeUndefined();
+      else {
+        expect(retry()).toBeDisabled();
+        expect(retry()).toHaveAccessibleDescription("Claude no longer has this session.");
+      }
       expect([...note().querySelectorAll("button")].find((b) => b.textContent === "Discard")).toBeEnabled();
     });
 

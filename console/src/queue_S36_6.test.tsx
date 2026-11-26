@@ -48,6 +48,7 @@ describe("S36-6", () => {
   it("ac1_edit_takes_the_item_back_first_and_puts_its_text_in_the_composer", async () => {
     const { f, calls } = await open();
     expect(items()).toEqual(["first one", "second one"]);
+    expect(screen.getByText("Queued · 2 of 32 · sent when this turn ends")).toBeVisible();
     const u = userEvent.setup();
     await u.click(screen.getByRole("button", { name: "Edit queued message 1" }));
     await settle();
@@ -74,10 +75,10 @@ describe("S36-6", () => {
   it("ac3_remove_shows_undo_for_6_s_and_undo_says_the_input_again", async () => {
     const { calls } = await open();
     const u = userEvent.setup();
-    await u.click(screen.getByRole("button", { name: "Remove queued message 2" }));
+    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[1]!);
     await settle();
     expect(calls("unqueue").map((c) => c.args)).toEqual([["s1", 8]]);
-    expect(lines()[0]!.textContent).toContain("Removed.");
+    expect(lines()[0]).toHaveTextContent("Removed “second one” from the queue");
     await u.click(screen.getByRole("button", { name: "Undo" }));
     expect(calls("say").map((c) => c.args[2])).toEqual(["second one"]);
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
@@ -85,7 +86,7 @@ describe("S36-6", () => {
   it("ac3_undo_is_gone_after_6_s", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { calls } = await open();
-    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(5900); });
@@ -117,14 +118,19 @@ describe("S36-6", () => {
   });
   it("ac6_each_control_is_a_named_button_reachable_by_keyboard", async () => {
     await open();
-    for (const n of [1, 2]) for (const w of ["Edit", "Remove", "Stop and send"]) {
+    for (const n of [1, 2]) for (const w of ["Edit", "Stop and send"]) {
       const b = screen.getByRole("button", { name: `${w} queued message ${n}` });
       expect(b.tabIndex).toBeGreaterThanOrEqual(0);
     }
+    const remove = screen.getAllByRole("button", { name: "Remove from queue" });
+    expect(remove).toHaveLength(2);
+    remove.forEach((b) => expect(b.tabIndex).toBeGreaterThanOrEqual(0));
     const u = userEvent.setup();
     screen.getByRole("button", { name: "Edit queued message 1" }).focus();
     await u.tab();
-    expect(screen.getByRole("button", { name: "Remove queued message 1" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Stop and send queued message 1" })).toHaveFocus();
+    await u.tab();
+    expect(screen.getAllByRole("button", { name: "Remove from queue" })[0]!).toHaveFocus();
     await u.keyboard("{Enter}");
     await settle();
     expect(items()).toEqual(["second one"]);

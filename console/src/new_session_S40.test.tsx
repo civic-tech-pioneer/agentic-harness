@@ -45,6 +45,8 @@ describe("S40-6 AC1 the profiles", () => {
     expect(other).toHaveAttribute("aria-pressed", "false");
     expect(other).toBeDisabled();
     expect(other).toHaveAttribute("title", "Set in the profile");
+    expect(other).toHaveAccessibleDescription("Set in the profile");
+    expect(screen.getByText("Set in the profile")).toBeVisible();
     fireEvent.click(screen.getByRole("radio", { name: /Sort/ }));
     await tick();
     expect(g.getByRole("button", { name: "ChatGPT" })).toHaveAttribute("aria-pressed", "true");
@@ -84,7 +86,8 @@ describe("S40-6 AC2 the kernel's refusals", () => {
     expect([...region.querySelectorAll(".wa-ref")].map((r) => [r.querySelector("code")!.textContent, r.querySelector("span")!.textContent])).toEqual([
       ["tools", "ChatGPT runs no file tools."], ["allow", "An allow rule needs Claude Code."]]);
     expect(start()).toBeDisabled();
-    expect(document.querySelector(".wa-send-off")!.textContent).toContain("Tidy cannot run on ChatGPT");
+    expect(screen.getByText(/Tidy cannot run on ChatGPT/)).toBeVisible();
+    expect(start()).toHaveAccessibleDescription(/Tidy cannot run on ChatGPT/);
     fireEvent.keyDown(box(), { key: "Enter" });
     await tick();
     expect(f.calls.some((c) => c.fn === "sessions.start")).toBe(false);

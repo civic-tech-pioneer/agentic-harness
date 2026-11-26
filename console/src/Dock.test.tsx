@@ -35,7 +35,9 @@ describe("Dock", () => {
   it("ac4_ac6_full_queue_turns_send_off_and_says_why", () => {
     dock(V({ turn: running, queue: Array.from({ length: 32 }, (_, n) => ({ n, input: `q${n}` })) }));
     expect(box()).toHaveAttribute("placeholder", "The queue is full: 32 messages wait. Remove one, or stop the turn.");
-    expect(screen.getByRole("button", { name: "Queue message" })).toBeDisabled();
+    const b = screen.getByRole("button", { name: "Queue message" });
+    expect(b).toBeDisabled();
+    expect(b).toHaveAccessibleDescription(/queue is full/);
   });
 
   it("ac5_stop_button_only_while_a_turn_runs_or_waits", async () => {
@@ -60,6 +62,8 @@ describe("Dock", () => {
     dock(V({}));
     const s = screen.getByRole("button", { name: "Send message" });
     expect(s).toBeDisabled();
+    expect(s).toHaveAccessibleDescription("Enter a message first.");
+    expect(screen.getByText("Enter a message first.")).toBeVisible();
     expect(s.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     await userEvent.setup().type(box(), "hi");
     expect(s).toBeEnabled();
@@ -70,7 +74,7 @@ describe("Dock", () => {
     expect(document.querySelector(".wa-irow")).toHaveTextContent("Claude Sonnet· Ask before edits");
     a.unmount();
     render(<Dock view={V({})} actions={mk()} onNeedsYou={() => {}} status={null} session={{ mode: "Plan" }} />);
-    expect(document.querySelector(".wa-irow")).toHaveTextContent(/^Plan$/);
+    expect(document.querySelector(".wa-irow .wa-tag")).toHaveTextContent(/^Plan$/);
     expect(document.querySelectorAll(".wa-tag").length).toBe(1);
   });
 

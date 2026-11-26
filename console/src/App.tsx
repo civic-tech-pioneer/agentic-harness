@@ -104,7 +104,7 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     stop: () => {
       const turn = viewRef.current.turn;
       setStopping(true);
-      // During launch consent, cancelling the provider stream also dismisses Watane's question.
+      // During launch consent, cancelling the provider stream also dismisses watane's question.
       const stop = isFolderConsent(turn)
         ? kernel.cancel(info.id)
         : kernel.interrupt(info.id);
@@ -112,7 +112,7 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     },
     unqueue: (n) => kernel.unqueue(info.id, n),
     interrupt: (replacement) => {
-      if (isFolderConsent(viewRef.current.turn)) return Promise.reject(new Error("Stop and send is unavailable while Watane waits for folder consent."));
+      if (isFolderConsent(viewRef.current.turn)) return Promise.reject(new Error("Stop and send is unavailable while watane waits for folder consent."));
       setStopping(true);
       return kernel.interrupt(info.id, replacement).catch((e) => { setStopping(false); throw e; });
     },

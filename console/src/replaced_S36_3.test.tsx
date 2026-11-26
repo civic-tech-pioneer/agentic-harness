@@ -92,7 +92,10 @@ describe("S36-3", () => {
     await user.type(draft, "after takeover");
     act(() => ends[0]!("replaced"));
     expect(notice()).toHaveTextContent(NOTICE);
-    controls().forEach((control) => expect(control).toBeDisabled());
+    controls().forEach((control) => {
+      expect(control).toBeDisabled();
+      expect(control).toHaveAccessibleDescription(NOTICE);
+    });
     await user.click(screen.getByRole("button", { name: "Use here" }));
     expect(notice()).toHaveTextContent(NOTICE);
     controls().forEach((control) => expect(control).toBeDisabled());

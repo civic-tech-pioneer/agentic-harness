@@ -95,13 +95,13 @@ describe("S36 r6", () => {
     const dock = (q: typeof queue) => <Dock sessionId="d1" view={{ ...emptyView, queue: q }} actions={actions} onNeedsYou={() => {}} status={null} />;
     const r = render(dock(queue));
     const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    await u.click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     await u.click(screen.getByRole("button", { name: "Undo" })); // refused: its retry stays, with no deadline
     await settle();
     act(() => { vi.advanceTimersByTime(6500); });
     r.rerender(dock(queue.slice(1)));
-    await u.click(screen.getByRole("button", { name: "Remove queued message 1" })); // "second one"
+    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!); // "second one"
     await settle();
     expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(2);
     act(() => { vi.advanceTimersByTime(6100); });
@@ -113,7 +113,7 @@ describe("S36 r6", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const f = await open([[queueOf(["first one", "second one"])]]);
     const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    await u.click(screen.getByRole("button", { name: "Remove queued message 1" }));
+    await u.click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     const undo = screen.getByRole("button", { name: "Undo" });
     vi.setSystemTime(Date.now() + 6100); // the clock passes the deadline before any timer runs

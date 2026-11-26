@@ -1,6 +1,6 @@
 // TECHNICAL 18.5, 18.6: the dock: Needs you, plan, queue, status line, input.
-import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
-import { epochOf, errorWords, isFolderConsent, type Actions, type SessionView } from "../kit";
+import { useEffect, useId, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import { epochOf, errorWords, isFolderConsent, SESSION_IN_ANOTHER_TAB, type Actions, type SessionView } from "../kit";
 import { drop, heldOf, hold, refused, release, send as claim, take, undoShown, useTaken, type Taken } from "./taken";
 
 export const QUEUE_MAX = 32;
@@ -25,7 +25,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
   /** The session whose taken items (taken.ts) the composer can hold; none: it holds none. */ taken?: string;
   /** Filled with a hold on the text (the queue's Edit reads and sets it). */ ctl?: MutableRefObject<Ctl | null>;
   /** Words for a composer that is not a session's (the new-session view). */ placeholder?: string; sendLabel?: string;
-  /** Why Start is off (the new-session view's refusals), as text above the composer; none: not blocked. */ blocked?: string;
+  /** Why Start is off (the new-session view's refusals); none: not blocked. */ blocked?: string;
 }) {
   const [text, setText_] = useState(() => draftOf(draftKey));
   const now = useRef(text); // the text as of the last change, for calls that land in one render batch (S36 r5 F5.1)
@@ -82,12 +82,12 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
     : full ? "The queue is full: the messages that wait hold all the text it takes. Remove one, or stop the turn." : null;
   const placeholder = given ?? why ?? (busy ? "Add a message: it is queued and sent when this turn ends"
     : "Message the agent  ·  Enter to send, Shift+Enter for a new line");
-  const alert = refused ?? (why && given === undefined && text.trim() ? why : null); // the placeholder is hidden under text: Send off says why here
+  const reasonId = useId();
+  const sendReason = off ? SESSION_IN_ANOTHER_TAB : blocked ?? why ?? (!text.trim() ? "Enter a message first." : null);
   const tags = [session?.model, session?.mode].filter((x): x is string => !!x);
   return (
     <form className="wa-composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
-      {alert ? <p className="wa-send-err" role="alert">{alert}</p> : null}
-      {blocked ? <p className="wa-send-off">{blocked}</p> : null}
+      {refused ? <p className="wa-send-err" role="alert">{refused}</p> : null}
       <textarea aria-label="Message" rows={2} value={text} placeholder={placeholder}
         onChange={(e) => { edited.current++; setRefused(null); setText(e.target.value); if (!e.target.value.trim()) holdIt(undefined); }}
         onKeyDown={(e) => {
@@ -96,13 +96,14 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
         }} />
       <div className="wa-irow">
         {tags.map((t, n) => <span key={n} className="wa-tag">{n > 0 ? <span aria-hidden="true">· </span> : null}{t}</span>)}
+        {sendReason ? <span id={reasonId} className="wa-control-reason">{sendReason}</span> : null}
         {busy ? (
-          <button type="button" className="wa-stop" disabled={off} onClick={() => actions.stop()}>
+          <button type="button" className="wa-stop" disabled={off} aria-describedby={off ? reasonId : undefined} onClick={() => actions.stop()}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
             {stopping ? "Stopping…" : "Stop"}
           </button>
         ) : null}
-        <button type="submit" className="wa-send" aria-label={sendLabel ?? (busy ? "Queue message" : "Send message")} disabled={full || off || !!blocked || !text.trim()}>
+        <button type="submit" className="wa-send" aria-label={sendLabel ?? (busy ? "Queue message" : "Send message")} disabled={!!sendReason} aria-describedby={sendReason ? reasonId : undefined}>
           <svg width="16" height="16" strokeWidth="2.4" {...svg}><path d="M12 19V5M6 11l6-6 6 6" /></svg>
         </button>
       </div>
@@ -112,9 +113,9 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
 
 /** A queued message's row: its first 240 code points and "…" when longer. The scan stops at the cut, so a long message
  * costs no more than a short one. */
-function preview(text: string): string {
+function preview(text: string, limit = 240): string {
   let end = 0;
-  for (let n = 0; n < 240 && end < text.length; n++) end += text.codePointAt(end)! > 0xffff ? 2 : 1;
+  for (let n = 0; n < limit && end < text.length; n++) end += text.codePointAt(end)! > 0xffff ? 2 : 1;
   return end < text.length ? `${text.slice(0, end)}…` : text;
 }
 
@@ -122,11 +123,17 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   session?: { model?: string; mode?: string }; stopping?: boolean; sessionId?: string; replaced?: boolean; onUseHere?: () => void }) {
   const { view } = props;
   const notRunning = view.turn?.state === "unknown";
-  const cannotInterrupt = notRunning || view.turn?.state === "resume-lost" || isFolderConsent(view.turn);
+  const consentWait = isFolderConsent(view.turn);
+  const interruptReason = consentWait ? "Stop and send is unavailable while watane waits for folder consent."
+    : view.turn?.state === "resume-lost" ? "Claude no longer has this session." : null;
   const [opened, setOpened] = useState<boolean | null>(null);
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
   const { actions } = props;
   const off = !!actions.off;
+  const offId = useId();
+  const interruptId = useId();
+  const pendingId = useId();
+  const stopReasonId = off ? offId : interruptReason ? interruptId : undefined;
   const ctl = useRef<Ctl | null>(null);
   const sid = props.sessionId ?? "";
   // 18.6 "Queue" (S36 r4 F4.1, r5): what the actions took is the session's list (taken.ts), outside this component; `note` is
@@ -210,13 +217,16 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
       ) : null}
       {view.queue.length ? (
         <section className="wa-queue" aria-label="Queue">
-          <ul>{view.queue.slice(0, SHOWN).map((q, k) => (
+          <p className="wa-queue-label">Queued · {view.queue.length} of {QUEUE_MAX} · sent when this turn ends</p>
+          <ul role="list">{view.queue.slice(0, SHOWN).map((q, k) => (
             <li key={q.n}>
               <span className="wa-queue-text">{preview(q.input)}</span>
               <span className="wa-queue-ctl">
-                <button type="button" className="wa-chip" aria-label={`Edit queued message ${k + 1}`} disabled={off} onClick={() => edit(q)}>Edit</button>
-                <button type="button" className="wa-chip" aria-label={`Remove queued message ${k + 1}`} disabled={off} onClick={() => remove(q)}>Remove</button>
-                {!notRunning && <button type="button" className="wa-chip" aria-label={`Stop and send queued message ${k + 1}`} disabled={off || cannotInterrupt} onClick={() => stopAndSend(q)}>Stop and send</button>}
+                <button type="button" className="wa-queue-action" aria-label={`Edit queued message ${k + 1}`} disabled={off} aria-describedby={off ? offId : undefined} onClick={() => edit(q)}>Edit</button>
+                {!notRunning && <button type="button" className="wa-queue-action" aria-label={`Stop and send queued message ${k + 1}`} disabled={!!stopReasonId} aria-describedby={stopReasonId} onClick={() => stopAndSend(q)}>Stop and send</button>}
+                <button type="button" className="wa-queue-action wa-queue-remove" aria-label="Remove from queue" disabled={off} aria-describedby={off ? offId : undefined} onClick={() => remove(q)}>
+                  <svg width="14" height="14" strokeWidth="2" {...svg}><path d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
               </span>
             </li>
           ))}</ul>
@@ -225,19 +235,24 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
       ) : null}
       {note ? <p className="wa-queue-note" role="status">{note}</p> : null}
       {taken.length ? (
-        <ul className="wa-taken" aria-label="Taken from the queue">{taken.map((x) => (
+        <ul className="wa-taken" role="list" aria-label="Taken from the queue">{taken.map((x) => (
           <li key={x.id} className="wa-queue-note" role="status">
-            {x.error ?? (x.tried === "undo" ? "Removed." : x.tried === "edit" ? "Taken out to edit." : "Taken out to send.")}
-            {" "}<q className="wa-taken-text">{x.text}</q>
-            {!x.held && undoShown(x) ? <> <button type="button" className="wa-chip" disabled={off || !!x.out} onClick={() => void again(x, "say")}>Undo</button></> : null}
-            {!x.held && x.tried === "stop" ? <> <button type="button" className="wa-chip" disabled={off || cannotInterrupt || !!x.out} onClick={() => void again(x, "interrupt")}>Stop and send</button></> : null}
-            {" "}<button type="button" className="wa-chip" disabled={!!x.out} onClick={() => drop(sid, x.id)}>Discard</button>
+            {x.error === undefined && x.tried === "undo"
+              ? <span className="wa-taken-text">Removed “{preview(x.text, 40)}” from the queue</span>
+              : <>{x.error ?? (x.tried === "edit" ? "Taken out to edit." : "Taken out to send.")} <q className="wa-taken-text">{x.text}</q></>}
+            {!x.held && undoShown(x) ? <button type="button" className="wa-queue-action" disabled={off || !!x.out} aria-describedby={x.out ? pendingId : off ? offId : undefined} onClick={() => void again(x, "say")}>Undo</button> : null}
+            {!x.held && !notRunning && x.tried === "stop"
+              ? <button type="button" className="wa-queue-action" disabled={!!stopReasonId || !!x.out} aria-describedby={x.out ? pendingId : stopReasonId} onClick={() => void again(x, "interrupt")}>Stop and send</button> : null}
+            <button type="button" className="wa-queue-action" disabled={!!x.out} aria-describedby={x.out ? pendingId : undefined} onClick={() => drop(sid, x.id)}>Discard</button>
           </li>
         ))}</ul>
       ) : null}
+      {stopReasonId === interruptId && (view.queue.length > 0 || taken.some((x) => !x.held && x.tried === "stop"))
+        ? <p id={interruptId} className="wa-control-reason">{interruptReason}</p> : null}
+      {taken.some((x) => x.out) ? <p id={pendingId} className="wa-control-reason">Wait for the current send to finish.</p> : null}
       {props.status}
-      {props.replaced ? (
-        <p className="wa-replaced" role="status">This session is open in another tab. <button type="button" className="wa-chip" onClick={props.onUseHere}>Use here</button></p>
+      {off ? (
+        <p className="wa-replaced" role="status"><span id={offId}>{SESSION_IN_ANOTHER_TAB}</span>{props.replaced ? <button type="button" className="wa-chip" onClick={props.onUseHere}>Use here</button> : null}</p>
       ) : null}
       <Composer key={props.sessionId} ctl={ctl} epoch={() => epochOf(sid)} taken={props.sessionId} draftKey={draftKey} queued={view.queue.length} actions={props.actions} session={props.session} stopping={props.stopping}
         busy={view.turn?.state === "running" || view.turn?.state === "waiting"} />
