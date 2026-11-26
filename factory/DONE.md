@@ -282,3 +282,15 @@ Touches: `console/` (src, kit, test/host), `ui/` (the built console). Not kernel
 Constraints: no new interface and no spec text change: an item that needs a rule change in design/ or a kernel change
 stays in Upkeep with a line in the PR body; a guard never weakens; a flake is never fixed by a retry alone.
 deputy compares: the consent wait and the queue rows against the console design (TECHNICAL 18).
+
+### S144 (upkeep) the console's queue rows and disabled controls match the design, and its flakes and stage D race, console/ only
+(sketched 2026-11-26 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: watane S143 claude, S142 codex); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b085267-a7a0-83eb-ac29-92339e15f025, 15:47 UTC; DELIVERED as PR #65 at 30df2491 (16:12 UTC; validator PASS, adversary HELD, user-sim ACCEPTED); r1 review routine `trig_01TJ5VCT4SVA7q2jNmTep5wU` 16:14 UTC; r1: 2/7 findings (16:31; validator RETURN, adversary BREACHED 1 in the Stage D check, user-sim REJECTED on a pre-existing phone wrap); answer to Codex (same task) 16:35 UTC, rulings: F1.1 rebuild ui/, F1.2 narrow the Stop-cut excuse with both red tests; A1.1 to A1.3 accepted (Deputy Paper: older than S144 or already owned; A1.1 to Upkeep); answers d04a87ee 16:38; r2 review routine `trig_01M1iUYmDmjHutE5NFbeD3RE` 16:40 UTC; spec-check not run: no spec text changes. Upkeep is exempt from the size rule.)
+Why: the console's Upkeep items, while S138 (approved, held on a watane release) keeps kernel/ and design/.
+Outcomes, each its Upkeep item's check:
+(1) the queue rows look as `Main-2` draws them: the "QUEUED · n of 32 · sent when this turn ends" label, a dashed row per item, quiet buttons, the × with aria "Remove from queue", and the "Removed … from the queue [Undo]" line; a row shows a long message cut to a few lines, not all 255 KiB (S36 user-sim); Stop and send is not offered while the session reads Not running (S36 user-sim);
+(2) every disabled control says why, visibly and to a screen reader (S142 P2.1, with the r2 review's red test `regress_S142_r2_disabled_stop_and_send_says_why` committed unchanged; "Try again", "Resume now"); the consent wait shows "Esc to stop" (P2.2); one spelling of watane (P2.3);
+(3) the `parts_S15` replay flake is a fixed cause, not a longer timeout; S36 F7.3's load check spacing widened to 3x;
+(4) stage D's Stop race against the runner's window is diagnosed: the runner counts by the stored interrupted turn, or the Upkeep line names the owner with its trace; the 40 ms source-spacing gaps explained or the check corrected with a reason.
+Touches: `console/` (src, kit, test/host), `ui/` (the built console). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface, no spec text change: an item that needs one stays in Upkeep with a line in the PR body; a guard never weakens; `installed-agent` must not be made weaker to pass.
+deputy compares: the queue rows and the consent wait against `Main-2` and `States-2` (TECHNICAL 18).
