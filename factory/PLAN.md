@@ -32,7 +32,7 @@ S127 (main line, claude, PR #56); S131 (upkeep, claude); watane S130. (watane S1
 ## Sketched
 ### S131 (upkeep) the host tests check what they skip: stage C on a participant home, stage B and D test polish
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S130 codex, S129 codex; the upkeep
-lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched. Size: an upkeep slice.)
+lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC. Size: an upkeep slice.)
 Outcomes, each item's check (re-check each against main first; drop the ones already true and say so):
 1. S38 after watane S103: S38 outcomes 1 to 3 run on a participant home with a fake `Confirm` (host 19.7), outcomes 2 and 4
    on `watane-dev serve`, and the stage C budgets of TECHNICAL 17 are measured and recorded in the Suite time table.
@@ -51,7 +51,7 @@ line, sketched 2026-11-25 by deputy-6; routine `trig_01E1Ngk3t7NCGXJnEjBgEjHR`, 
 DELIVERED 18:58 UTC as PR #56 (+3705/-38). Deputy D1.1 (blocking): the answer field is `noul`, not `probability`
 (PR comment 7171667656); BLOCKED question (outcome verification) ruled (b): merged on its native proof, `--scripted-judge`
 as watane S129, then `test:host:e` in Upkeep. r1: Codex review https://chatgpt.com/local/6b073026-11b0-83ed-b550-0ef125943064,
-dispatched 19:00 UTC; withheld by Codex's cyber filter; retried once with the adversary worded as a boundary check: https://chatgpt.com/local/6b07347c-1450-83ed-b77a-1aabbc8df068 (a second refusal: r1 runs on Claude). D1.1 and D1.2 answered at 4fe51c4 (CI green).
+dispatched 19:00 UTC; withheld by Codex's cyber filter; retried once with the adversary worded as a boundary check: https://chatgpt.com/local/6b07347c-1450-83ed-b77a-1aabbc8df068 (a second refusal: r1 runs on Claude). D1.1 and D1.2 answered at 4fe51c4 (CI green). r1 (Codex, 2026-11-25 20:33): 4/2, `changes (4)` (validator RETURN, adversary gap F1.1, user-sim REJECTED), posted 2026-11-26 06:28 with the deputy's ruling (all four blocking; the preview-scores risk accepted); the build session `cse_01LxwP8z269aT6xNUfUx25Zw` answers it.
 Story (AGT-J3; TECHNICAL 17 stage E, "this repository" column): Alice installs the checked provider, enters her judge's key
 and origin in the app (watane S122), and runs a Claude session through it: before each tool call the console shows
 `checking`, a safe call goes on, an unsafe or unsure one is denied with a reason she can read, and after repeated denials
