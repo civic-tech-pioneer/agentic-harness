@@ -110,9 +110,30 @@ describe("S36 r6 load checks", () => {
     // the real stage B run's worst gaps: 28.5 ms between deltas, 205 ms between entries, window edges included
     expect(loadWindow(run(28.5, 205, 8000), 8000, RATE, 6).faults).toEqual([]);
   });
-  it("regress_S36_r6_a_gap_over_twice_the_spacing_fails (F6.3)", () => {
-    expect(loadWindow(run(20, 200, 8000, { kind: "delta", ms: 41 }), 8000, RATE, 6).faults.length).toBeGreaterThan(0);
-    expect(loadWindow(run(20, 200, 8000, { kind: "entry", ms: 401 }), 8000, RATE, 6).faults.length).toBeGreaterThan(0);
-    expect(loadWindow(run(20, 200, 8000), 7980 + 41, RATE, 6).faults.length).toBeGreaterThan(0); // the window's right edge
+  it("regress_S36_r6_an_explicit_two_times_limit_still_fails (F6.3)", () => {
+    expect(loadWindow(run(20, 200, 8000, { kind: "delta", ms: 41 }), 8000, RATE, 6, 2).faults.length).toBeGreaterThan(0);
+    expect(loadWindow(run(20, 200, 8000, { kind: "entry", ms: 401 }), 8000, RATE, 6, 2).faults.length).toBeGreaterThan(0);
+    expect(loadWindow(run(20, 200, 8000), 7980 + 41, RATE, 6, 2).faults.length).toBeGreaterThan(0); // the window's right edge
+  });
+});
+
+describe("S144 Stage B/C source spacing", () => {
+  it("ac2_three_times_spacing_accepts_jitter_and_covers_both_window_edges", () => {
+    const steady = source(0, 8000);
+    // The latest source opens the window at 100 ms. The first source's initial
+    // delta after that is 160 ms, and its final delta precedes Stop by 60 ms.
+    const jittered = steady.filter(({ at, kind }) => kind !== "delta" ||
+      (at < 100 || at >= 160) && at !== 3020 && at !== 3040 && at < 7940);
+    const by = new Map([["first", jittered], ["last", source(100, 7970)]]);
+    expect(loadWindow(by, 7980, RATE, 6).faults).toEqual([]);
+    for (const at of [160, 3060, 7920]) {
+      by.set("first", jittered.filter(({ at: stamp, kind }) => kind !== "delta" || stamp !== at));
+      expect(loadWindow(by, 7980, RATE, 6).faults).toHaveLength(1);
+    }
+    // 600 ms is the corresponding maximum for entries at 5/s.
+    by.set("first", steady.filter(({ at, kind }) => kind !== "entry" || (at !== 3181 && at !== 3381)));
+    expect(loadWindow(by, 7980, RATE, 6).faults).toEqual([]);
+    by.set("first", by.get("first")!.filter(({ at, kind }) => kind !== "entry" || at !== 3581));
+    expect(loadWindow(by, 7980, RATE, 6).faults).toHaveLength(1);
   });
 });
