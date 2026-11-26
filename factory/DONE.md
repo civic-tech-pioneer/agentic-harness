@@ -180,3 +180,15 @@ shape stays (Leftovers there); a gap is a question to the deputy. A real Jev run
 Touches: `provider-checked/` (new, R-B1), `kernel/` (`checking` activity and verdict items only where 9.3/9.8 need it),
 `console/` (the activity and verdict display), `design/` (above). Boundary: TECHNICAL 14 (the key never reaches the
 provider or kernel; only the owner may spend the judge: adversary runs). Protects: *core*.
+
+### S132 (design) stage F: delegation and counters, made one consistent contract
+(in flight, cloud, builder codex, reviewer claude; Codex task https://chatgpt.com/local/6b07e7d8-0604-83eb-98fc-12f978a90070, 08:03 UTC; DELIVERED ~08:14 as PR #59 at 7e61cae (+281/-68, design/ only; 7 Door C choices in its body, §14 child admission rewritten); r1: Claude review routine `trig_01Vhs2W87TUiUeaQZFqNtwmm`, 08:16 UTC; rule 3: last two handed out S131 claude, watane S130 codex, but Deputy Rock's reason: a design slice of spec text suits either side, and Codex builds two in three; the main line, sketched 2026-11-26 by Deputy Rock after S127 merged; spec-check 10abec0, report `factory/spec-check-S132.md` (Sonnet, no second-vendor confirmation). Size: a design slice, below 1,500 lines by nature; it unblocks stage F's build.)
+Why: stage F's clauses do not fit together. AGT-J5, stage F's own done-when, cannot run on any backend: a foreman (a child) must start a validator, but an OpenAI child has no `task` tool and Claude has no child sessions, only launch-time subagents. A build slice on this would come back as a question in every round.
+Outcomes (the review checks them in the documents):
+1. AGT-J5 runs, as written or as narrowed: the design says which backend's sessions can be children and parents, at what depth, and FUNCTIONAL 3.9, AGT-J5 and TECHNICAL 9.7 agree with it (spec-check findings 1, 2, 4).
+2. A child's narrowing is a rule: which profile fields compare, where the check runs, the refusal field, and the child's workspace, folder and owner (findings 3, 10).
+3. The counters and `usage` per backend: scope (session or turn), what happens at `max-turns` on Claude, how `max-tokens` stops a turn, and the stage `usage` lands in (findings 5, 7).
+4. `task`'s result, the transcript entry that carries a child, restart with live children, and the console's clause for children (findings 6, 9, 10); the OpenAI `skill` tool's stage (finding 11).
+5. The stage F budget row holds against the slot caps, or is restated (finding 8). The low findings are fixed where one line does it.
+Touches: `design/FUNCTIONAL.md` (3.9, 3.11, AGT-J5), `design/TECHNICAL.md` (2.3, 9.1 to 9.5 where 9.7 cites them, 9.7, 14, 16 cases 23, 24, 52, 17, 18.3), `factory/spec-check-S132.md`. No code.
+Constraints: design only, through the `spec-change` skill; no code, no VISION change (a needed one goes to the deputy as BLOCKED). Prefer narrowing to building: a mechanism only where FUNCTIONAL promises the behaviour. Each Door C choice (an interface, a public tool, a format) is listed in the PR body with its options and why, so the deputy can report it for the human's veto. Out of scope: the factory profiles and N5 (waiting on the human).
