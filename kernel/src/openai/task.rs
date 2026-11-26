@@ -27,6 +27,14 @@
 //!    and a start never sends before its writes. A call that may be another owner's (`foreign`:
 //!    a drained job's item) starts no child: the output is `{"err":{"code":"busy"}}`.
 //!
+//! 3. **Stopping (S134-6).** `stop_children` runs inside the root's interrupt, cancel or delete,
+//!    before the root's calls are aborted: it cuts each live child's `task_call` first (so its end
+//!    resolves nothing and the root's call gets the cleanup's `aborted`), then interrupts or
+//!    cancels it with a `Work` of its own, whose pushes leave before the root's (`Work::stopped`).
+//!    A child's own cancel or delete resolves the root's call `aborted` (`abort_task`). A restart
+//!    stops no child: the root's calls are aborted by its R4 step, each child takes its own, and
+//!    its `task_call` goes with it.
+//!
 //! One-call bound (17): a call that starts children writes the root, and for each `task` call it
 //! dispatches one new child record, its first turn and its FIFO place. A response can hold at most
 //! as many accepted `task` calls as the root's live cap (at most 20: the rest are refused at
@@ -348,6 +356,94 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.resolve_task(rec, output, ok, cx)
     }
 
+    /// The root's call for `child` gets the `aborted` output (the child was cancelled or deleted,
+    /// 9.7). It is not counted toward `max-tool-errors`, like every cleanup abort.
+    pub(crate) fn abort_task(
+        &mut self,
+        child: &mut Record,
+        cx: &mut Cx,
+    ) -> Result<(), KernelError> {
+        self.resolve_with(child, None, cx)
+    }
+
+    /// The owner's interrupt, cancel or delete of a root stops each live child it holds in a
+    /// `Child` call, before the root's own calls are aborted (9.7). An interrupt ends the child's
+    /// turn `interrupted` and keeps its handle; a cancel (or the delete) cancels it and closes the
+    /// handle. The child's association is cut first, so its end resolves nothing: the root's call
+    /// gets the cleanup's `aborted`. The child records stay. At most the live cap of children are
+    /// touched, each with its own streams; their pushes leave before the root's.
+    pub(crate) fn stop_children(
+        &mut self,
+        root: &mut Record,
+        ls: &LoopState,
+        cx: &mut Cx,
+        cancel: bool,
+    ) -> Result<(), KernelError> {
+        let ids: Vec<String> = ls
+            .calls
+            .iter()
+            .filter_map(|c| match &c.st {
+                CallState::Child { session } => Some(session.clone()),
+                _ => None,
+            })
+            .collect();
+        for id in ids {
+            root.children.retain(|c| *c != id);
+            let Some(mut child) = Record::load(&mut self.state, &id) else {
+                continue;
+            };
+            if child.parent.as_deref() != Some(root.id.as_str())
+                || child.owner != root.owner
+                || child.boot != cx.slots.boot
+            {
+                continue;
+            }
+            child.task_call = None;
+            let before = self.state.change().session;
+            let mut work = Work::default();
+            let live = child.live.clone();
+            {
+                let mut ccx = Cx {
+                    slots: &mut *cx.slots,
+                    a: &mut *cx.a,
+                    work: &mut work,
+                    past: cx.past,
+                    now: cx.now,
+                    dirty: false,
+                };
+                if cancel {
+                    self.cancel_rec(&mut child, &mut ccx)?;
+                } else {
+                    self.interrupt_rec(&mut child, &mut ccx)?;
+                }
+                cx.dirty |= ccx.dirty;
+            }
+            self.save_peer(&mut child, before)?;
+            cx.work.stopped.push((live, work.pushes));
+            cx.work.requests.append(&mut work.requests);
+        }
+        Ok(())
+    }
+
+    /// An interrupt of one OpenAI session in the root's call: its turn ends `interrupted`, its
+    /// loop is idle, its handle kept.
+    fn interrupt_rec(&mut self, rec: &mut Record, cx: &mut Cx) -> Result<(), KernelError> {
+        let was = rec.turn.is_active();
+        if !was {
+            return Ok(());
+        }
+        let before = rec.deadlines.clone();
+        if let Some(mut ls) = self.loop_load(&rec.id) {
+            self.openai_stop(rec, &mut ls, cx)?;
+            self.loop_save(&rec.id, &ls)?;
+        }
+        self.end_interrupted(rec, cx.past, cx.now, cx.work)?;
+        cx.dirty |= self.sync_timer(rec, cx.slots, cx.a, &before, cx.now, false);
+        self.sync_active(rec, cx.slots, was)?;
+        rec.updated = cx.now;
+        Ok(())
+    }
+
     /// Writes the root's output for `child`'s delegated call once and continues the root as a
     /// finished job does (`after_output`); a no-op when the root no longer has the matching
     /// `Child {session}` call. `ok` is true only for the `{"ok"}` envelope (9.7 "Limits").
@@ -356,6 +452,16 @@ impl<S: State, H: Host> Kernel<S, H> {
         child: &mut Record,
         output: String,
         ok: bool,
+        cx: &mut Cx,
+    ) -> Result<(), KernelError> {
+        self.resolve_with(child, Some((output, ok)), cx)
+    }
+
+    /// `resolve_task`, or with no output the cleanup's `aborted`.
+    fn resolve_with(
+        &mut self,
+        child: &mut Record,
+        output: Option<(String, bool)>,
         cx: &mut Cx,
     ) -> Result<(), KernelError> {
         // The association is consumed here, whatever follows: it produces one output at most.
@@ -393,7 +499,12 @@ impl<S: State, H: Host> Kernel<S, H> {
             };
             let call = ls.calls.remove(at);
             root.children.retain(|c| *c != child.id);
-            self.put_output(&mut root, &mut ls, &mut rcx, &call.item, output, ok)?;
+            match output {
+                Some((output, ok)) => {
+                    self.put_output(&mut root, &mut ls, &mut rcx, &call.item, output, ok)?
+                }
+                None => self.put_aborted(&mut root, &mut ls, &mut rcx, &call.item)?,
+            }
             self.after_output(&mut root, &mut ls, &mut rcx)?;
             dirty = rcx.dirty;
         }

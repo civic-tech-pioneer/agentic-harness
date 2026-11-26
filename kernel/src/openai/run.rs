@@ -1634,6 +1634,33 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(())
     }
 
+    /// R4 on a paused child: its `resume` deadline and timer go, its loop is idle and its turn
+    /// `unknown`, with its queue and transcript kept for the owner's next message (9.3).
+    pub(crate) fn openai_restart_paused(
+        &mut self,
+        rec: &mut Record,
+        a: &mut Acct,
+        slots: &mut Slots,
+        work: &mut Work,
+        now: u64,
+    ) -> Result<(), KernelError> {
+        let Some(mut ls) = self.loop_load(&rec.id) else {
+            return Ok(());
+        };
+        let before = rec.deadlines.clone();
+        rec.deadlines
+            .retain(|d| d.what != RETRY && d.what != RESUME);
+        ls.phase = Phase::Idle;
+        ls.reset_turn();
+        ls.consent = None;
+        self.turn_to(rec, a.past, Turn::Unknown, now, work)?;
+        self.loop_save(&rec.id, &ls)?;
+        if self.sync_timer(rec, slots, a, &before, now, false) {
+            slots.save(&mut self.state)?;
+        }
+        Ok(())
+    }
+
     // ---- the FIFO
 
     /// Sends the oldest waiting requests whose session and owner are under their caps, while
