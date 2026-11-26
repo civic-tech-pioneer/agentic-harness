@@ -56,7 +56,7 @@ idempotent half stays a known limit (S133 gives no restart callback). Adversary:
 firing tries to make the kernel act for a different owner (TECHNICAL 14).
 
 ### S139 (upkeep) the console's known gaps and the `installed-agent` flake
-(sketched 2026-11-26 by Deputy Scissors, the upkeep lane; builder codex, reviewer claude by rule 3; in flight, cloud, Codex task https://chatgpt.com/local/6b081583-0fe0-83ed-9e52-86ea878b7056, 11:23 UTC; exempt from the size
+(sketched 2026-11-26 by Deputy Scissors, the upkeep lane; builder codex, reviewer claude by rule 3; in flight, cloud, Codex task https://chatgpt.com/local/6b081583-0fe0-83ed-9e52-86ea878b7056, 11:23 UTC; DELIVERED as PR #62 at 148004e (+259/-97; also ui/); r1: Claude routine `trig_01WWHnzB9VfNZRDLjpxzK4Q1`, 11:54 UTC; exempt from the size
 rule (upkeep).)
 Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
 1. *guard* the `installed-agent` CI flake (`console/test/host/installed.mjs:216`, second sighting): the race found and
