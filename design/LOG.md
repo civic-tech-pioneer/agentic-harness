@@ -4,6 +4,14 @@ A record (`AGENTS.md`, "Contracts and records"): why the contracts changed, newe
 project has not run `spec-adopt` yet, so its config has only the older `spec = [...]` list and no
 `spec-lint`; entries cite sections, not ids.
 
+## 2026-11-26: S134 r2, answers (build team, Claude)
+
+- TECHNICAL 16 "Budget record": the page-level stage F budgets are "not measured (needs
+  watane-dev)", a known limit, by the deputy's ruling on r1 F1.9 (was "stage F is not done until
+  they are measured"); the 10% history tolerance is also met by the p95 series.
+- Deputy's rulings recorded: F1.4 on the build team's reading (toolsets by name), F1.5 OpenAI
+  `persist: false` a known limit for root and child alike (11).
+
 ## 2026-11-26: S134 r1, answers to the Codex review (build team, Claude)
 
 Who: the S134 build team, answering review r1 (PR #60). No `must`, vision statement or security
