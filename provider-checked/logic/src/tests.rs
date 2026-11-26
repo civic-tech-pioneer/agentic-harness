@@ -57,6 +57,13 @@ impl Host for Fake {
             *n -= 1;
         }
         self.pushed.push((s.to_string(), item.to_vec()));
+        // In the one log too, so a test sees a push's order against a close (r3 P3.1).
+        let v: Value = serde_json::from_slice(item).unwrap_or(Value::Null);
+        self.log.push(format!(
+            "push {s} {}:{}",
+            v["type"].as_str().unwrap_or(""),
+            v["on"].as_str().unwrap_or("")
+        ));
         Ok(())
     }
     fn close(&mut self, s: &str, outcome: StreamOutcome) {
@@ -1389,6 +1396,8 @@ fn f2_1_the_outbox_drains_before_the_own_stream_closes() {
         .collect();
     assert_eq!(b.len(), 1);
     assert_eq!(f.calls("close"), [format!("close {own} closed")]);
+    let at = |l: &str| f.log.iter().position(|x| x == l).unwrap();
+    assert!(at(&format!("push {own} verdict:breaker")) < at(&format!("close {own} closed")));
 }
 
 #[test]
