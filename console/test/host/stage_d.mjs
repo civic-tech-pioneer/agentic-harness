@@ -5,6 +5,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { cpSync, existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
+import https from "node:https";
 import { cpus, loadavg, release, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -127,29 +128,24 @@ function wrapLoadClaude(folder) {
   const link = join(folder, "fake-claude");
   const real = join(folder, "scripted-claude");
   renameSync(link, real);
+  // the rewrite is stage-d-tools/stamp_claude.py's, which metrics.test.ts checks (S131 P2.2)
   writeFileSync(link, `#!/usr/bin/env python3
-import re
 import subprocess
 import sys
 import time
 import uuid
 
+sys.dont_write_bytecode = True
+sys.path.insert(0, ${JSON.stringify(join(consoleDir, "test", "host", "stage-d-tools"))})
+from stamp_claude import rewrite
+
 child = subprocess.Popen([sys.argv[0], *sys.argv[1:]], executable=${JSON.stringify(real)}, stdout=subprocess.PIPE)
-original = b'"session_id":"fake-session"'
 identity = uuid.uuid4().hex.encode()
-session = b'"session_id":"' + identity + b'"'
 with open(${JSON.stringify(join(tmp, "claude.stamps"))}, "ab", buffering=0) as stamps:
     for line in child.stdout:
-        match = re.search(rb'"text":"(delta|entry) ([0-9]+) ', line)
-        marker = None
-        if match:
-            marker = b"cl-" + identity + b"-" + match[1] + b"-" + match[2]
-            end = line.index(b'"', match.end())
-            extra = len(marker) - (match.end(2) - match.start(1))
-            suffix = end - extra if match[1] == b"entry" else end
-            line = line[:match.start(1)] + marker + line[match.end(2):suffix] + line[end:]
+        line, marker = rewrite(line, identity)
         at = time.time_ns()
-        sys.stdout.buffer.write(line.replace(original, session))
+        sys.stdout.buffer.write(line)
         sys.stdout.buffer.flush()
         if marker:
             stamps.write(str(at).encode() + b" " + marker + b"\\n")
@@ -313,6 +309,7 @@ async function mixedLoad(browser) {
 
 async function main() {
   if (spawnSync("watane-dev", ["--version"], { encoding: "utf8" }).error) throw new NotRun("watane-dev cannot run: not on PATH");
+  if (spawnSync("openssl", ["version"], { encoding: "utf8" }).error) throw new NotRun("openssl cannot run: not on PATH (it makes the redirect check's https target)");
   if (!existsSync(join(wasmSrc, "wit"))) throw new Error("kernel/wasm/wit is missing");
   const have = spawnSync("rustup", ["target", "list", "--installed"], { encoding: "utf8" });
   if (!have.error && !/^wasm32-wasip2$/m.test(have.stdout)) execFileSync("rustup", ["target", "add", "wasm32-wasip2"], { stdio: "inherit" });
@@ -360,11 +357,15 @@ async function main() {
     sse(toolEvent),
     { completed: { input_tokens: 100, output_tokens: 20 } },
   ] };
+  // S131 P1.5: an https target, so that zero connections means the host did not follow the 307, not that it
+  // refuses plain http; a connection counts even when the TLS handshake then fails on this self-signed name
   let redirectsFollowed = 0;
-  redirectTarget = http.createServer((_request, response) => {
-    redirectsFollowed++;
+  execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-days", "1",
+    "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", join(tmp, "redirect.key"), "-out", join(tmp, "redirect.crt")], { stdio: "ignore" });
+  redirectTarget = https.createServer({ key: readFileSync(join(tmp, "redirect.key")), cert: readFileSync(join(tmp, "redirect.crt")) }, (_request, response) => {
     response.writeHead(500).end();
   });
+  redirectTarget.on("connection", () => redirectsFollowed++);
   redirectTarget.listen(0, "127.0.0.1");
   await once(redirectTarget, "listening");
   const loadReplies = () => Array.from({ length: 128 }, (_, step) => ({ sse: [
@@ -379,7 +380,7 @@ async function main() {
     reply("I sorted the notes."),
     { "usage-limit": { resets_in_s: 5 } },
     reply("I continued after the limit."),
-    { redirect: `http://127.0.0.1:${redirectTarget.address().port}/never` },
+    { redirect: `https://127.0.0.1:${redirectTarget.address().port}/never` },
   ] }));
 
   let browser;
@@ -513,8 +514,16 @@ async function main() {
           await page.locator(".wa-status-word", { hasText: "Idle" }).waitFor({ timeout: 15_000 });
           await message.fill("continue sorting");
           await page.locator(".wa-send").click();
-          await page.locator(".wa-status-word", { hasText: /^Paused until / }).waitFor({ timeout: 10_000 });
+          // S131 P1.4: a time follows "Paused until", and the pause lasts until the scripted reset (resets_in_s: 5)
+          const paused = page.locator(".wa-status-word", { hasText: /^Paused until / });
+          await paused.waitFor({ timeout: 10_000 });
+          const pausedAt = Date.now();
+          const word = await paused.textContent();
+          ensure(/^Paused until \S*\d/.test(word ?? ""), `the pause names no time: ${JSON.stringify(word)}`);
           await page.getByText("I continued after the limit.", { exact: true }).waitFor({ timeout: 20_000 });
+          const pausedFor = Date.now() - pausedAt;
+          ensure(pausedFor >= 4000, `the turn resumed ${pausedFor} ms after "${word}", before the 5 s reset`);
+          say(`  paused ${pausedFor} ms: ${word}`);
           ensure(await page.evaluate(() => window.scriptedDeltas.includes("I continued after the limit.")),
             "the resumed reply did not reach the page as a live text chunk");
           await page.locator(".wa-status-word", { hasText: "Idle" }).waitFor({ timeout: 10_000 });
