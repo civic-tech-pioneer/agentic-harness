@@ -1219,3 +1219,43 @@ fn r2_f2_1_a_toolset_task_in_a_session_without_delegates_runs_as_its_tool() {
         .clone();
     assert_eq!(out, json!("\"done by the toolset\""));
 }
+
+/// S134 r3 F3.1: a child's failed result that takes the root to `max-tool-errors` interrupts the
+/// sibling, and the sibling's Stop reaches its own attached stream before the root's Stop.
+#[test]
+fn r3_f3_1_a_child_result_that_stops_the_root_pushes_the_siblings_stop_first() {
+    let mut k = kernel(r#","max-tool-errors":1"#);
+    for p in ["foreman", "validator"] {
+        k.state
+            .put(
+                &format!("profile/{p}"),
+                openai(r#","max-tool-errors":1"#).into_bytes(),
+            )
+            .unwrap();
+    }
+    let (root, a, b) = root_with_two(&mut k);
+    let AttachedLive(b_stream) = attach_live(&mut k, &b);
+    let AttachedLive(root_stream) = attach_live(&mut k, &root);
+    k.host.calls.clear();
+    // Child `a` fails: its `task` output is an `err`, the root's streak reaches the cap.
+    let s = stream_of(&mut k, &a);
+    let n = last_seq(&mut k, &s);
+    let head = json!({"status": 400, "headers": {"content-type": "application/json"}});
+    k.provider_lines(&s, vec![(n + 1, head.to_string().into_bytes())])
+        .unwrap();
+    k.provider_ended_with(&s, None).unwrap();
+    assert!(
+        matches!(stop_of(&mut k, &root), Stop::Stopped { limit } if limit == "max-tool-errors")
+    );
+    assert!(matches!(stop_of(&mut k, &b), Stop::Interrupted));
+    let turn_at = |stream: &str, state: &str| {
+        k.host.calls.iter().position(|h| {
+            matches!(h, HostCall::Push { stream: s, value } if s == stream
+                && value.to_string().contains("\"turn\"")
+                && value.to_string().contains(state))
+        })
+    };
+    let b_stop = turn_at(&b_stream, "interrupted").expect("the sibling's Stop is pushed live");
+    let root_stop = turn_at(&root_stream, "max-tool-errors").expect("the root's Stop is pushed");
+    assert!(b_stop < root_stop, "the sibling's Stop comes first");
+}

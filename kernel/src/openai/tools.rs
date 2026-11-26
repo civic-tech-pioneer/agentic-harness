@@ -896,7 +896,6 @@ impl Call {
     }
 }
 
-/// One tool as the request lists it (AC1).
 /// The session advertises the built-in `task`: a root that names delegates (9.7).
 pub(crate) fn delegating(rec: &Record, ls: &LoopState) -> bool {
     rec.parent.is_none() && !ls.policy.delegates.is_empty()
@@ -909,6 +908,7 @@ pub(crate) fn builtin_task(rec: &Record, ls: &LoopState, name: &str) -> bool {
     name == TASK && (rec.parent.is_some() || delegating(rec, ls))
 }
 
+/// One tool as the request lists it (AC1).
 fn definition(t: &Tool) -> Value {
     let schema: Value = serde_json::from_str(&t.input_schema)
         .ok()

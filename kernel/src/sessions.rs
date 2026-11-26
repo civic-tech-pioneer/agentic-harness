@@ -569,6 +569,15 @@ pub(crate) struct Work {
     pub(crate) stopped: Vec<(Option<String>, Vec<Push>)>,
 }
 
+impl Work {
+    /// The one rule for `stopped` (S134 r3 F3.1): a `Work` made inside a call for another record
+    /// hands the children's updates it collected on to the call's own, so the caller's delivery
+    /// (`flush`, `tail`, `deliver_stopped`) sends them; no path drops them.
+    pub(crate) fn hand_on_stopped(&mut self, inner: &mut Work) {
+        self.stopped.append(&mut inner.stopped);
+    }
+}
+
 /// The owner's account and the kernel's, as read for a call and kept for its one write (9.3 Quota).
 pub(crate) struct Acct {
     /// Past quota when the accounts were read; only `accounts` makes it.
@@ -1924,8 +1933,6 @@ impl<S: State, H: Host> Kernel<S, H> {
         all
     }
 
-    /// The pushes a call made for its peer session (the root of a resolved `task` call) go to that
-    /// session's live owner stream, then join the call's own.
     /// The pushes of children a stop of this call's session stopped go to each child's own live
     /// owner stream, before the session's own (its Stop comes last, 9.7; S134 r2 F2.2), then
     /// join the call's own.
@@ -1938,6 +1945,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         work.pushes.splice(0..0, theirs);
     }
 
+    /// The pushes a call made for its peer session (the root of a resolved `task` call) go to that
+    /// session's live owner stream, then join the call's own.
     pub(crate) fn deliver_peer(&mut self, work: &mut Work) {
         if let Some((live, pushes)) = work.peer.take() {
             self.deliver(&pushes, live.as_deref());
@@ -4329,6 +4338,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 let stepped = self.step(&mut rec, &mut acct, slots, &mut done).is_ok();
                 if stepped {
                     work.pushes.append(&mut done.pushes);
+                    work.hand_on_stopped(&mut done);
                 }
                 // The firing commits what the step wrote, failed or not: the stored record's
                 // `bytes` and both accounts take it, past the reserve too (a firing cannot fail).

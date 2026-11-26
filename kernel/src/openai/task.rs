@@ -301,6 +301,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             )
             .map_err(|t| KernelError::TooLarge(t.0 as u64))?;
         cx.a.add_session(n);
+        cx.work.hand_on_stopped(&mut work);
         self.save_peer(&mut child, before)
     }
 
@@ -422,6 +423,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 cx.dirty |= ccx.dirty;
             }
             self.save_peer(&mut child, before)?;
+            cx.work.hand_on_stopped(&mut work);
             cx.work.stopped.push((live, work.pushes));
             cx.work.requests.append(&mut work.requests);
         }
@@ -524,6 +526,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut pushes = pushes;
         pushes.append(&mut work.pushes);
         cx.work.peer = Some((live.or(root.live.clone()), pushes));
+        cx.work.hand_on_stopped(&mut work);
         cx.work.requests.append(&mut work.requests);
         Ok(())
     }
