@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane release); S145 (upkeep, console, Codex build); S142, S144 merged.
+S138 (consumer half of watane S133/S136, Codex build; approved, F1.ci answer round: pin bump); S145 (upkeep, console, Codex build); S142, S144 merged.
 
 ## Sketched
 ### S145 (upkeep) the console's last S142/S144 polish and its Stage D clocks, console/ only
@@ -43,7 +43,7 @@ deputy compares: the consent wait at 390 px and 1280 px, and the composer, again
 
 ### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
 (sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
-S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).) r1 answers at 07d910f (12:20 UTC; F1.1 to F1.3 fixed; F1.ci needs a watane release with S136, the human's, asked 12:23 UTC by Deputy Rock); r2: Claude routine `trig_014PqYzP7y2xYu5EcKcccLX4`, 12:22 UTC. r2: 0/4, VERDICT: approve on 07d910f (12:30 UTC); **approved, held**: merges once a watane release with S136 turns `installed-agent` green (Waiting on the human). Friction: the reviewer found no `.claude/factory/review-lead.md` in this repository and used the README's review-team row.
+S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).) r1 answers at 07d910f (12:20 UTC; F1.1 to F1.3 fixed; F1.ci needs a watane release with S136, the human's, asked 12:23 UTC by Deputy Rock); r2: Claude routine `trig_014PqYzP7y2xYu5EcKcccLX4`, 12:22 UTC. r2: 0/4, VERDICT: approve on 07d910f (12:30 UTC); approved; F1.ci needs no release (Deputy Rock's correction, 2026-11-26 17:00 UTC): `installed-agent.yml` builds watane from a pinned commit (a923a8dc) that predates S136. r2 answer to Codex (same task) 17:02 UTC: bump the pin to watane main 44422b22; the r3 review checks only that diff. Friction: the reviewer found no `.claude/factory/review-lead.md` in this repository and used the README's review-team row.
 Why: the guard in Upkeep (the human's (b) on S40 F6.1): a timer firing of an OpenAI session whose owner mod was disabled
 during a timed pause may send one more model request under the kernel's origin. watane now gives a mod's own top-level
 `timer-sink.fired` the read `timers.firing-origin() -> option<string>` (the resolved origin identity, the timer owner's
@@ -698,7 +698,6 @@ S2 writes each into the document that owns it.
 
 ## Waiting on the human
 
-- **(2026-11-26, Door H, publishing) a watane release containing S136** for S138: CI `installed-agent` installs the released watane, whose host lacks `timers.firing-origin`, so `watane-dev add` refuses the kernel (F1.ci). S138 cannot merge green until that release exists.
 
 - **N5 (2026-11-26, Deputy Rock): stage E has merged, so N5 is due** (your 2026-11-23 words: revisit once stage E starts). The factory's implementer needs a shell. (a) the Claude grant with shell and web: nothing new, recommended by TECHNICAL 17; (b) a `codex app-server` backend in the host, a third native process kind, which keeps a second vendor for cross-checking (your leaning). Holds only stage F's factory profiles; S132 (delegation and counters) goes on without it.
 
