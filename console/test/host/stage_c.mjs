@@ -34,6 +34,14 @@ async function check(name, f) {
   try { await f(); pass++; say(`PASS ${name}`); }
   catch (e) { fail++; say(`FAIL ${name}: ${e instanceof Error ? e.message : String(e)}`); }
 }
+/** A known gap (S131 r1 F1.2, the deputy's ruling): the check runs and says so. It is not counted as a failure while the gap holds,
+ * and it fails once the gap is closed (XPASS), so the line is removed rather than left to pass silently. */
+let gaps = 0;
+async function knownGap(name, why, f) {
+  if (process.env.ONLY && !new RegExp(process.env.ONLY).test(name)) return;
+  try { await f(); fail++; say(`FAIL ${name}: XPASS, the known gap is closed (${why}): turn this into a plain check`); }
+  catch (e) { gaps++; say(`KNOWN GAP ${name} (${why}): ${e instanceof Error ? e.message : String(e)}`); }
+}
 function ensure(c, msg) { if (!c) throw new Error(typeof msg === "function" ? msg() : msg); }
 async function until(f, ms, what) { const t = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t > ms) throw new Error(`timed out after ${ms} ms: ${what}`); await sleep(50); } }
 const keyOf = () => `host-c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -129,6 +137,29 @@ function wataneSrc() {
   return null;
 }
 
+// ---- the kernel's stored session records, read from a stopped host's state (S131 r1 F1.3: `sessions.list` shows no folder or
+// stream; test/host/seed's `--get` reads `session/<id>` of `local/agent`, a test-only reach into the host's private state) ----
+const seedBin = join(consoleDir, "test", "host", "seed", "target", "release", "seed-state");
+function storedRecord(homeDir, id) {
+  const r = spawnSync(seedBin, ["--get", homeDir, "local/agent", `session/${id}`], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`no stored record of ${id} in ${homeDir}: ${r.stderr || `exit ${r.status}`}`);
+  return JSON.parse(r.stdout);
+}
+/** The provider streams the record still holds: every stream but the owner's live one (an `attach`), TECHNICAL 9.1. */
+const providerStreams = (rec) => (rec.streams ?? []).filter((x) => x !== rec.live);
+/** A launch the host refused or ended: no folder (no file key, 9.6), no first init seen, no provider stream held, the turn idle failed. */
+function ensureRefusedRecord(rec, cause) {
+  ensure(rec.folder === undefined && !rec.init_seen, `the record keeps a folder: ${JSON.stringify({ folder: rec.folder, init_seen: rec.init_seen })}`);
+  ensure(providerStreams(rec).length === 0, `the record holds provider streams ${JSON.stringify(providerStreams(rec))} (live ${rec.live})`);
+  ensure(rec.turn?.state === "idle" && rec.turn.stop?.kind === "failed" && cause.test(rec.turn.stop.cause ?? ""), `the stored turn: ${JSON.stringify(rec.turn)}`);
+}
+const zombieOrGone = (pid) => { try { return /^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, "utf8")); } catch { return true; } };
+async function killHost(homeDir) {
+  const pid = Number(JSON.parse(readFileSync(join(homeDir, "run.json"), "utf8")).pid);
+  process.kill(pid, "SIGTERM");
+  await until(() => zombieOrGone(pid), 15_000, "the preview host to stop");
+}
+
 // ---- the page ----
 async function openPage(browser, url) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
@@ -180,6 +211,7 @@ async function main() {
     return j.result;
   };
   dev(["add", providerDir]);
+  execFileSync("cargo", ["build", "--release", "-q"], { cwd: join(consoleDir, "test", "host", "seed"), stdio: "inherit" });
   const harness = join(consoleDir, "test", "host", "home");
   const target = join(src, "target");
   execFileSync("cargo", ["build", "-q", "--config", `patch."https://github.com/civic-tech-pioneer/watane".watane-host.path=${JSON.stringify(join(src, "host"))}`],
@@ -196,6 +228,7 @@ async function main() {
     const pvFake = join(dirname(served.home), "claude", "fake-claude.json");
     writeFileSync(pvFake, JSON.stringify({ steps: [{ do: "expect-user" }, { do: "message", text: "I read the notes." }, { do: "result" }, { do: "idle" }] }));
     const notes1 = mkdtempSync(join(tmp, "notes-pv-"));
+    let pvRefused;
     await check("preview, outcome 2: a folder session is refused at once, the page names the folder, no stream stays open, no folder key", async () => {
       const page = await openPage(browser, pv);
       try {
@@ -205,16 +238,20 @@ async function main() {
         const s = await sessionOf(pv, "read my notes (preview)");
         const t = lastTurn(await transcript(pv, s.id));
         ensure(t?.state === "idle" && t.stop?.kind === "failed" && /^consent-refused\(workspace:/.test(t.stop.cause ?? ""), `the turn: ${JSON.stringify(t)}`);
-        ensure(!s.folder && (s.workspace === notes1 || s.workspace === folder || !s.workspace), `the session keeps a folder: ${JSON.stringify(s)}`);
-        await ensureNoStream(pv, s.id);
+        pvRefused = s.id; // its stored record is checked once the preview host stops, below
       } finally { await page.close(); }
     });
     await check("preview, outcome 4: a folder in ~/.ssh is refused before any question, and the page names the cause", async () => {
       await refusedSsh(browser, pv, "preview");
     });
-    // the mods the preview built and installed, copied before its stop clears its home
+    // the mods the preview built and installed, copied before its stop clears its home; the host is stopped first so its state can be read
     const mods = join(tmp, "built");
     cpSync(join(served.home, "mods"), mods, { recursive: true });
+    await killHost(served.home);
+    await check("preview, outcome 2 (stored): the refused session's record holds no folder and no provider stream, its turn failed consent-refused", async () => {
+      ensure(pvRefused, "no refused session from the preview");
+      ensureRefusedRecord(storedRecord(served.home, pvRefused), /^consent-refused\(workspace:/);
+    });
     spawnSync("watane-dev", ["serve", "--stop", "--json", "--dir", kernelDir], { env, encoding: "utf8", timeout: 60_000 });
 
     // ---- the participant home with a fake Confirm: outcomes 1 to 4 ----
@@ -229,7 +266,7 @@ async function main() {
     const pendingFolder = `workspace:local/claude-code:${folder}`; // `via` is the provider's identity (host 19.7)
     fake.script([{ do: "expect-user", contains: "read my notes" }, { do: "delta", text: "I read the notes." }, { do: "message", text: "I read the notes." }, { do: "result" }, { do: "idle" },
       { do: "expect-user" }, { do: "delta", text: "Working through them" }, { do: "message", text: "Working through them." }, { do: "sleep", ms: 60_000 }, { do: "message", text: "never sent" }]);
-    let first;
+    let first, withdrawn, refusedAgain, refusedOther, otherFolder;
     const page = await openPage(browser, url);
     try {
       await check("home, outcome 1: while the app holds the question the page shows the consent wait; once granted the fake runs in that folder and the page shows the turn", async () => {
@@ -237,6 +274,10 @@ async function main() {
         const q = await until(() => home.asked[0], 20_000, "the app's question");
         ensure(q.what === pendingFolder && q.origin === "agent" && q.via === "claude-code", `the question: ${JSON.stringify(q)}`);
         await page.waitForFunction(() => document.querySelector(".wa-status-word")?.textContent === "Waiting for your answer in watane", null, { timeout: 15_000 });
+        await knownGap("home, outcome 1: the consent wait names the folder it waits for", "console/src shows only 'Waiting for your answer in watane' (S38 P2.6, Upkeep)", async () => {
+          const shown = await page.evaluate(() => document.querySelector(".wa-status")?.textContent ?? document.querySelector(".wa-status-word")?.parentElement?.textContent ?? "");
+          ensure(shown.includes(folder), `the status line reads ${JSON.stringify(shown)}, not the folder ${folder}`);
+        });
         first = await sessionOf(url, "read my notes");
         await sleep(400);
         ensure(fake.cwds().length === 0, () => `the fake started before the answer: ${JSON.stringify(fake.starts())}`);
@@ -268,7 +309,7 @@ async function main() {
         // the withdrawal ended the stream at the host: the fake claude of that session exits (host 19.7 "Withdrawal")
         const live = (pid) => { try { return !/^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, "utf8")); } catch { return false; } };
         await until(() => fake.starts().every(({ pid }) => !live(pid)), 5_000, "the session's fake claude to exit");
-        await ensureNoStream(url, first.id);
+        withdrawn = first.id;
         await page.reload();
         await page.getByText("Working through them.", { exact: true }).first().waitFor({ timeout: 15_000 });
         const asked = home.asked.length;
@@ -278,6 +319,7 @@ async function main() {
         ensure(q.what === pendingFolder, `the question: ${JSON.stringify(q)}`);
         await home.send({ op: "answer", i: q.i, answer: "refused" });
         await until(async () => lastTurn(await transcript(url, next))?.state === "idle", 15_000, "the refused launch to end");
+        refusedAgain = next;
       });
       await check("home, outcome 2: a refused consent ends the launch, the page names the folder, no stream stays open, no folder key", async () => {
         const other = mkdtempSync(join(tmp, "other-"));
@@ -290,8 +332,8 @@ async function main() {
         const s = await sessionOf(url, "read the other notes");
         const t = lastTurn(await transcript(url, s.id));
         ensure(t?.stop?.cause === `consent-refused(${q.what})`, `the turn: ${JSON.stringify(t)}`);
-        ensure(!s.folder, `a folder key: ${JSON.stringify(s)}`);
-        await ensureNoStream(url, s.id);
+        ensure(!fake.cwds().includes(realpathSync(other)), `the fake claude started in the refused folder: ${JSON.stringify(fake.starts())}`);
+        refusedOther = s.id; otherFolder = realpathSync(other); // its stored record is checked once the home stops, below
         const consents = await home.send({ op: "consents", local: "agent" });
         ensure(!JSON.stringify(consents).includes(realpathSync(other)), `a refused consent was kept: ${JSON.stringify(consents)}`);
       });
@@ -302,18 +344,22 @@ async function main() {
       await sleep(500);
       ensure(home.asked.length === asked, `the app was asked: ${JSON.stringify(home.asked.slice(asked))}`);
     });
+    // the stored records, read once the home stopped
+    await home.stop();
+    await check("home, outcomes 2 and 3 (stored): refused launches hold no folder and no provider stream; the withdrawn session holds no provider stream and its turn failed gone", async () => {
+      ensure(refusedOther && refusedAgain && withdrawn, `missing sessions: ${JSON.stringify({ refusedOther, refusedAgain, withdrawn })}`);
+      ensureRefusedRecord(storedRecord(home.ready.home, refusedOther), new RegExp(`^consent-refused\\(workspace:local/claude-code:${otherFolder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)$`));
+      ensureRefusedRecord(storedRecord(home.ready.home, refusedAgain), /^consent-refused\(workspace:/);
+      const w = storedRecord(home.ready.home, withdrawn);
+      ensure(providerStreams(w).length === 0, `the withdrawn session still holds provider streams ${JSON.stringify(providerStreams(w))}`);
+      ensure(w.turn?.state === "idle" && w.turn.stop?.cause === "gone", `the withdrawn session's stored turn: ${JSON.stringify(w.turn)}`);
+    });
   } finally {
     await home?.stop();
     await browser.close();
   }
 }
 
-/** The session's turn is idle and the kernel holds no live stream for it: an attach gives a fresh stream that ends no launch. */
-async function ensureNoStream(url, id) {
-  const s = (await ok(url, "sessions.list", { after: null, max: 256 })).find((x) => x.id === id);
-  ensure(s, `session ${id} is not listed`);
-  ensure(s.state === undefined || !/running|waiting/.test(JSON.stringify(s.state)), `the session still runs: ${JSON.stringify(s)}`);
-}
 async function refusedSsh(browser, url, where) {
   const ssh = join(homedir(), ".ssh");
   mkdirSync(ssh, { recursive: true, mode: 0o700 });
@@ -345,7 +391,7 @@ catch (e) {
 }
 if (code !== 2) {
   for (const n of notes) say(`note: ${n}`);
-  say(`stage C on the host: ${pass} pass, ${fail} fail`);
+  say(`stage C on the host: ${pass} pass, ${fail} fail, ${gaps} known gap${gaps === 1 ? "" : "s"}`);
   code = fail ? 1 : 0;
 }
 process.exit(code);
