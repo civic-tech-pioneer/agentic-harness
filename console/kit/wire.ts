@@ -19,7 +19,10 @@ export type Msg =
   | { t: "plan"; items: PlanItem[]; i?: number; at?: number }
   | { t: "synced"; through: number; writing: boolean }
   | { t: "queue"; inputs: { n: number; input: string }[] }
-  | { t: "usage"; used: number; window: number; compactAt?: number };
+  | { t: "usage"; used: number; window: number; compactAt?: number }
+  /** 9.7 "Usage": `{"context-used":null,"context-window":null}` clears the meter. */
+  | { t: "usage-clear" }
+  | { t: "child"; i: number; session: string; toolCallId: string };
 
 type Rec = Record<string, unknown>;
 const isRec = (x: unknown): x is Rec => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -146,6 +149,10 @@ function parseEntry(e: Rec): Msg {
       return t ? { t: "turn", i, ...t } : bad;
     }
     case "compaction": return { t: "compaction", i };
+    case "child": {
+      const session = str(b.session), toolCallId = str(b.toolCallId);
+      return session === undefined || toolCallId === undefined ? bad : { t: "child", i, session, toolCallId };
+    }
     case "unknown": return { t: "unreadable", i, raw: b.raw };
   }
   return bad;
@@ -186,6 +193,7 @@ function parseItem(w: Rec, o: Rec): Msg {
       return { t: "queue", inputs };
     }
     case "usage": {
+      if (w["context-used"] === null && w["context-window"] === null) return { t: "usage-clear" };
       const used = num(w["context-used"]), window = num(w["context-window"]), compactAt = num(w["compact-at"]);
       if (used === undefined || window === undefined) return { t: "unreadable", raw: o };
       return { t: "usage", used, window, ...(compactAt !== undefined ? { compactAt } : {}) };

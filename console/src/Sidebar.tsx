@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.6: the sidebar, 260 px, hidden under 760 px: Agents, the off "+ New session", rows grouped by state.
 import { useEffect, useRef, useState } from "react";
-import type { TurnState } from "../kit";
+import { errorWords, type TurnState } from "../kit";
 import { metaOf, type SessionInfo } from "./Header";
 
 export type SessionShape = "needs" | "running" | "paused" | "idle" | "unknown";
@@ -29,9 +29,9 @@ const groupOf = (s: SessionShape): Group => (s === "needs" ? "needs" : s === "ru
 const GROUPS: [Group, string][] = [["needs", "Needs you"], ["running", "Running"], ["recent", "Recent"]];
 const OFF = "Not in this console yet.";
 
-function Row({ s, on }: { s: SidebarSession; on?: boolean }) {
+function Row({ s, on, onOpen }: { s: SidebarSession; on?: boolean; onOpen?: () => void }) {
   return (
-    <button type="button" className="wa-srow" aria-current={on ? "true" : undefined}>
+    <button type="button" className="wa-srow" aria-current={on ? "true" : undefined} onClick={onOpen}>
       <span className="wa-mono" aria-hidden="true" style={{ background: colorOf(s.place) }}>{s.place.charAt(0).toUpperCase()}</span>
       <span className="wa-stext"><span className="wa-stitle">{s.title}</span><span className="wa-smeta">{s.meta}</span></span>
       <span className={`glyph ${GLYPH[s.state]}`} role="img" aria-label={WORD[s.state]} />
@@ -40,7 +40,9 @@ function Row({ s, on }: { s: SidebarSession; on?: boolean }) {
 }
 
 /** `info` is absent in the new-session view (no session is open); `onNew` makes New session work (served by watane). */
-export function Sidebar({ info, turn, needs, sessions = [], onNew }: { info?: SessionInfo; turn?: TurnState["state"]; needs?: boolean; sessions?: SidebarSession[]; onNew?: () => void }) {
+export function Sidebar({ info, turn, needs, sessions = [], onNew, onOpen }: { info?: SessionInfo; turn?: TurnState["state"]; needs?: boolean; sessions?: SidebarSession[]; onNew?: () => void; onOpen?: (id: string) => Promise<void> }) {
+  const [err, setErr] = useState<string | null>(null);
+  const pick = (id: string) => () => { setErr(null); if (onOpen) onOpen(id).catch((e) => setErr(errorWords(e))); };
   const [held, setHeld] = useState<Group | null>(null);
   const [over, setOver] = useState(false);
   // React flushes mouseleave at continuous priority, so a leave can still be pending when a sync render runs: the hold effect
@@ -75,6 +77,7 @@ export function Sidebar({ info, turn, needs, sessions = [], onNew }: { info?: Se
         New session
       </button>
       {onNew ? null : <span id="wa-off-new" className="wa-sr">{OFF}</span>}
+      {err ? <p className="wa-child-err" role="alert">{err}</p> : null}
       {GROUPS.map(([g, label]) => {
         const rows = others.filter((s) => groupOf(s.state) === g);
         const here = group === g;
@@ -83,7 +86,7 @@ export function Sidebar({ info, turn, needs, sessions = [], onNew }: { info?: Se
           <div className="wa-group" key={g}>
             <div className="wa-glabel">{label}</div>
             {here && cur ? <Row s={cur} on /> : null}
-            {rows.map((s) => <Row key={s.id} s={s} />)}
+            {rows.map((s) => <Row key={s.id} s={s} onOpen={onOpen ? pick(s.id) : undefined} />)}
           </div>
         );
       })}

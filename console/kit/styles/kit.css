@@ -83,3 +83,7 @@
 .wa-code-lang { position: absolute; top: 2px; right: 8px; font-size: 10.5px; color: var(--muted); user-select: none; }
 .wa-code code span[style] { color: var(--shiki-light); }
 @media (prefers-color-scheme: dark) { .wa-code code span[style] { color: var(--shiki-dark); } }
+.wa-child { margin: 4px 0 0; font-size: 13px; }
+.wa-child-link { font: inherit; color: var(--accent, inherit); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.wa-child-link code { font-size: 12px; }
+.wa-child-err { margin-left: 8px; color: var(--bad, inherit); }
