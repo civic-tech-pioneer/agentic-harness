@@ -304,3 +304,41 @@ fn f2_2_a_terminal_launch_denial_keeps_the_queued_follow_up() {
         Turn::Idle { stop: Stop::Failed { ref error, .. }, .. } if error == "judge"
     ));
 }
+
+/// Review r3 F3.1: a `say` in the window between a terminal launch verdict and the stream's
+/// `ended` (Watane delivers them in separate calls) sends nothing to the ended stream; the queued
+/// follow-up starts a new launch, and the late `ended` changes nothing.
+#[test]
+fn f3_1_a_say_between_the_launch_verdict_and_ended_sends_nothing_to_that_stream() {
+    let (mut k, id, t) = session(false);
+    k.say(
+        "alice",
+        &id,
+        "k2",
+        r#"[{"type":"text","text":"follow up"}]"#,
+    )
+    .unwrap();
+    feed(
+        &mut k,
+        &t,
+        r#"{"type":"verdict","on":"launch","outcome":"unsafe","reasons":["r"]}"#,
+    );
+    let sent_before = k.host.calls.len();
+    k.say("alice", &id, "k3", r#"[{"type":"text","text":"later"}]"#)
+        .unwrap();
+    let to_old = k.host.calls[sent_before..]
+        .iter()
+        .filter(|c| matches!(c, HostCall::Request(Request::Turn { stream, .. }) if *stream == t))
+        .count();
+    assert_eq!(
+        to_old, 0,
+        "nothing goes to the stream the launch verdict ended"
+    );
+    assert!(!Record::load(&mut k.state, &id)
+        .unwrap()
+        .streams
+        .contains(&t));
+    let rec = Record::load(&mut k.state, &id).unwrap();
+    k.provider_ended(&t).unwrap();
+    assert_eq!(Record::load(&mut k.state, &id).unwrap().turn, rec.turn);
+}
