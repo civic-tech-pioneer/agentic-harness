@@ -235,10 +235,20 @@ fn ac4_on_a_direct_stream_both_stay_unknown() {
     }
 }
 
-/// Review r1 F1.3: a denied later input with a follow-up already queued: the turn fails `judge`
-/// and the kernel sends the queued input (the same queue advance as any other turn end, 9.3).
+fn follow_up_turns(k: &K) -> usize {
+    k.host
+        .calls
+        .iter()
+        .filter(|c| {
+            matches!(c, HostCall::Request(Request::Turn { input, .. }) if input.contains("follow up"))
+        })
+        .count()
+}
+
+/// Review r1 F1.3 (r2: on a later input): a denied later input with a follow-up already queued:
+/// the turn fails `judge` and the kernel sends the queued input (the queue advance of 9.3).
 #[test]
-fn f1_3_a_denied_input_starts_the_queued_follow_up() {
+fn f1_3_a_denied_later_input_starts_the_queued_follow_up() {
     let (mut k, id, t) = session(false);
     feed(
         &mut k,
@@ -252,28 +262,45 @@ fn f1_3_a_denied_input_starts_the_queued_follow_up() {
         r#"[{"type":"text","text":"follow up"}]"#,
     )
     .unwrap();
-    let turns = |k: &K| {
-        k.host
-            .calls
-            .iter()
-            .filter(|c| {
-                matches!(c, HostCall::Request(Request::Turn { input, .. }) if input.contains("follow up"))
-            })
-            .count()
-    };
-    assert_eq!(turns(&k), 0, "queued while the turn runs");
+    assert_eq!(follow_up_turns(&k), 0, "queued while the turn runs");
+    feed(
+        &mut k,
+        &t,
+        r#"{"type":"verdict","on":"input/2","outcome":"unsafe","reasons":["r"]}"#,
+    );
+    assert_eq!(follow_up_turns(&k), 1, "the queued input goes out");
+    assert!(Queue::load(&mut k.state, &id).is_empty());
+}
+
+/// Review r2 F2.2: an unsafe launch ends the provider's session, so a follow-up Alice already
+/// queued stays queued: it is neither sent to the closed provider nor dropped.
+#[test]
+fn f2_2_a_terminal_launch_denial_keeps_the_queued_follow_up() {
+    let (mut k, id, t) = session(false);
+    k.say(
+        "alice",
+        &id,
+        "k2",
+        r#"[{"type":"text","text":"follow up"}]"#,
+    )
+    .unwrap();
+    assert!(!Queue::load(&mut k.state, &id).is_empty());
     feed(
         &mut k,
         &t,
         r#"{"type":"verdict","on":"launch","outcome":"unsafe","reasons":["r"]}"#,
     );
     assert_eq!(
-        turns(&k),
-        1,
-        "the queued input goes out when the denied turn ends"
+        follow_up_turns(&k),
+        0,
+        "nothing goes to the closed provider"
+    );
+    assert!(
+        !Queue::load(&mut k.state, &id).is_empty(),
+        "the follow-up is kept"
     );
     assert!(matches!(
         Record::load(&mut k.state, &id).unwrap().turn,
-        Turn::Running { .. }
+        Turn::Idle { stop: Stop::Failed { ref error, .. }, .. } if error == "judge"
     ));
 }
