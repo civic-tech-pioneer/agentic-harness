@@ -79,7 +79,11 @@ it("ac1_reports_missing_page_markers_for_a_step_recorded_before_the_interrupted_
   const earlier = step(2, 2000);
   const last = step(3, 3000);
   const seen = new Set(earlier.map(({ marker }) => marker));
-  const stored = [...storedTools(2, 10), ...storedTools(3, 14), interrupted];
+  const accepted = storedTools(3, 14)[0];
+  // A job aborted by Stop is persisted as a failed tool with the output "aborted".
+  const aborted = { ...accepted, body: { ...accepted.body, status: "failed",
+    content: [{ type: "content", content: { type: "text", text: "aborted" } }] } };
+  const stored = [...storedTools(2, 10), aborted, interrupted];
   const coverage = openaiPageCoverage([...earlier, ...last], seen, stored, 1000, 3064);
   expect(coverage.cut).toEqual([]);
   expect(coverage.faults.join(" ")).toContain("oa-s1-3");

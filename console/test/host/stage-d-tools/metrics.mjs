@@ -43,8 +43,12 @@ export function openaiPageCoverage(wire, seen, stored, from, to) {
   const interrupted = stored.findLast(({ kind }) => kind === "turn");
   const confirmed = isInterrupted(interrupted?.body);
   if (!confirmed) faults.push("no stored interrupted turn");
+  // OpenAI's pending calls are live events. The kernel writes a terminal tool row
+  // when a job completes or fails, and writes aborted outcomes before the interrupted
+  // turn for any jobs still open. Presence of any row therefore proves admission.
   const acceptedTools = new Set(stored
-    .filter(({ kind, i }) => kind === "tool" && (!confirmed || i < interrupted.i))
+    .filter(({ kind, i, body }) => kind === "tool" && (!confirmed || i < interrupted.i)
+      && (body.status === "completed" || body.status === "failed"))
     .map(({ body }) => body.toolCallId));
   const steps = wire.filter(({ marker, step }) => marker === step).sort((a, b) => a.at - b.at);
   const tail = confirmed ? steps.findLast(({ at }) => at <= interrupted.at) : undefined;
@@ -52,17 +56,26 @@ export function openaiPageCoverage(wire, seen, stored, from, to) {
   for (const start of steps.filter(({ at }) => at >= from && at < to)) {
     const writes = wire.filter(({ step }) => step === start.marker);
     const calls = writes.filter(({ marker }) => marker.startsWith("call_"));
-    // Apply the same upper bound on a single step as the cadence check. This confines the
-    // exception to the Stop edge and cannot hide a stalled or disconnected source.
-    if (start === tail && interrupted.at - start.at <= 1200
-        && !calls.some(({ marker }) => acceptedTools.has(marker))) {
-      cut = writes;
+    const ids = new Set(calls.map(({ marker }) => marker));
+    const prefix = /^call_\d+_/.exec(calls[0]?.marker)?.[0];
+    const validCalls = ids.size === calls.length
+      && [...ids].every((id) => prefix && id.startsWith(prefix) && /^[0-3]$/.test(id.slice(prefix.length)));
+    const completions = writes.filter(({ marker }) => marker === `${start.marker}/completed`);
+    const missing = [start, ...calls].filter(({ marker }) => !seen.has(marker));
+    const complete = completions.length === 1 && calls.length === 4;
+    // Apply the cadence check's upper bound at the Stop edge. With no completion
+    // write, require a logged write to overlap the durable interrupt itself.
+    const overlaps = completions.length === 0 && writes.some(({ at }) => at >= interrupted?.at);
+    if (start === tail && interrupted.at - start.at <= 1200 && validCalls
+        && (complete || overlaps) && !calls.some(({ marker }) => acceptedTools.has(marker))) {
+      if (missing.length) cut = writes;
       continue;
     }
-    if (calls.length !== 4) faults.push(`${start.marker}: source wrote ${calls.length} tool calls instead of four`);
-    for (const { marker } of [start, ...calls]) {
-      if (!seen.has(marker)) faults.push(`missing page marker ${marker}`);
+    if (!validCalls || calls.length !== 4) {
+      faults.push(`${start.marker}: source wrote ${[...ids].join(", ") || "no calls"} instead of four distinct calls for this step`);
     }
+    if (completions.length !== 1) faults.push(`${start.marker}: expected one completion write, got ${completions.length}`);
+    for (const { marker } of missing) faults.push(`missing page marker ${marker}`);
   }
   return { faults, interrupted, cut };
 }
