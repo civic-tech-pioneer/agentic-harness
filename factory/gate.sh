@@ -4,7 +4,7 @@
 # .claude/factory/check-mod.sh (Markdown links; watane-dev when wit/world.wit exists);
 # kernel/ `cargo fmt --check`, `cargo test`, then `cargo clippy --all-targets -- -D warnings` when kernel/Cargo.toml exists;
 # provider/logic `cargo fmt --check`, `cargo test`, `cargo clippy -- -D warnings` when provider/logic/Cargo.toml exists;
-# provider-checked/logic the same, then its wasm32-wasip2 build, when provider-checked/logic/Cargo.toml exists;
+# provider-checked/logic the same (fmt, test, clippy) when provider-checked/logic/Cargo.toml exists;
 # console/ `npm ci` then `npm test` when console/package.json exists.
 # See factory/PLAN.md, slice S3, outcome 5 and the decision "One gate script".
 set -e
