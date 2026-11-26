@@ -32,7 +32,7 @@ S127 (main line, claude, PR #56); S131 (upkeep, claude); watane S130. (watane S1
 ## Sketched
 ### S131 (upkeep) the host tests check what they skip: stage C on a participant home, stage B and D test polish
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S130 codex, S129 codex; the upkeep
-lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC. Size: an upkeep slice.)
+lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC; PR #58 opened ~07:20 at 495975c (+6524/-60, 5.3k of it the test home's Cargo.lock; shares only AGENTS.md with S127); r1: Codex review https://chatgpt.com/local/6b07deda-2b30-83ed-ae72-c1ec08020061, 07:27 UTC. Size: an upkeep slice.)
 Outcomes, each item's check (re-check each against main first; drop the ones already true and say so):
 1. S38 after watane S103: S38 outcomes 1 to 3 run on a participant home with a fake `Confirm` (host 19.7), outcomes 2 and 4
    on `watane-dev serve`, and the stage C budgets of TECHNICAL 17 are measured and recorded in the Suite time table.
