@@ -5,6 +5,7 @@ pub mod adapters;
 pub mod broker;
 pub mod call;
 pub mod check;
+pub mod delegation;
 pub mod error;
 pub mod launch;
 pub mod named;

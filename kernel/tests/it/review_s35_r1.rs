@@ -6,7 +6,8 @@ use agent_kernel::call;
 use agent_kernel::*;
 use serde_json::Value;
 
-const P: &str = r#"{"backend":"claude","model":"sonnet","tools":["Read"],"allow":["Read(**)"],"partial":true,"max-tokens":5}"#;
+const P: &str =
+    r#"{"backend":"claude","model":"sonnet","tools":["Read"],"allow":["Read(**)"],"partial":true}"#;
 const IN: &str = r#"[{"type":"text","text":"hello"}]"#;
 
 fn seeded() -> MemState {

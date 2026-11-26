@@ -203,7 +203,20 @@ fn ac6_good_profile_round_trips_and_passes() {
     });
     let (p, ps) = parse(&doc.to_string());
     assert!(ps.is_empty(), "{ps:?}");
-    assert!(refuse(&p, Backend::Claude, "claude-opus-5-5", None).is_empty());
+    // S134-3: Claude refuses the stage F fields (11), and only those.
+    let f: Vec<String> = refuse(&p, Backend::Claude, "claude-opus-5-5", None)
+        .into_iter()
+        .map(|r| r.field)
+        .collect();
+    assert_eq!(
+        f,
+        [
+            "delegates",
+            "subagent-limits",
+            "max-tool-errors",
+            "max-tokens"
+        ]
+    );
     assert_eq!(serde_json::to_value(&p).unwrap(), doc);
     assert_eq!(
         p.system_prompt,
