@@ -1185,3 +1185,24 @@ fn review_completion_only_compaction_preserves_quota_stop() {
     assert_eq!(lp(&mut k, &id)["state"], "idle");
     assert_eq!(starts(&k).len(), n, "no request follows");
 }
+
+#[test]
+fn regress_s138_a_page_owned_pause_resumes_at_the_reset() {
+    let mut k = kernel();
+    k.state.put("access/page", br#"["o"]"#.to_vec()).unwrap();
+    let id = started(&mut k, "page", "page");
+    k.host.firing_origin = Some("published/kernel".into());
+    k.timer("page-origin");
+    let stream = stream_of(&mut k, &id);
+    feed(
+        &mut k,
+        &stream,
+        vec![head(429, "application/json"), usage_limit_body(1)],
+    );
+
+    k.host.now += 1_000;
+    k.timer(&format!("s/{id}"));
+
+    assert_eq!(starts(&k).len(), 2);
+    assert!(matches!(turn(&mut k, &id), Turn::Running { .. }));
+}
