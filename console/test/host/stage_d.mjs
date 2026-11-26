@@ -293,6 +293,7 @@ async function mixedLoad(browser) {
           const stored = await entriesOf(session);
           const lastToolCalls = stored.filter(({ kind }) => kind === "tool").slice(-8);
           say(`LOSS ${id} ${JSON.stringify({
+            window: { from, to },
             stopAt: end,
             interruptedAt: idle?.at,
             missing: missing.map(offsets),
@@ -303,7 +304,7 @@ async function mixedLoad(browser) {
               .map(({ marker, at, step }) => ({ step, ...offsets([marker, at]) })),
             lastPageTools: items.filter(({ marker }) => marker?.startsWith("call_")).slice(-8),
             lastStoredTools: lastToolCalls.map(({ i, at, body }) => ({ i, at, id: body.toolCallId, status: body.status })),
-            lastStoredTurn: stored.filter(({ kind }) => kind === "turn").at(-1)?.body,
+            lastStoredTurn: stored.findLast(({ kind }) => kind === "turn"),
           })}`);
         }
       }
