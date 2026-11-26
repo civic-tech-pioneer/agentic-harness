@@ -207,6 +207,6 @@ describe("S15-1 the fake", () => {
     const first = feed(story[0]!);
     expect(first.turn).toMatchObject({ state: "running" });
     render(<StatusLine view={first} now={Date.now()} stopping={false} actions={mk()} onNeedsYou={() => {}} />);
-    expect(within(screen.getByRole("status").parentElement!).getByText(/^· \d+ s$/)).toBeInTheDocument();
+    expect(within(screen.getByRole("status").closest(".wa-status")!).getByText(/^· \d+ s$/)).toBeInTheDocument();
   });
 });
