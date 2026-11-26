@@ -27,35 +27,9 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-watane S133 (design, Codex build); S134 (stage F, Codex review r4). The consumer half of S133 waits for a first version of the interface on watane's `slice/s133`.
+watane S133 (design, Codex build); S134 merged. The consumer half of S133 waits for a first version of the interface on watane's `slice/s133`.
 
 ## Sketched
-### S134 stage F: an OpenAI agent delegates to two children, and every turn stops at its limits
-(in flight, cloud, builder claude, reviewer codex by rule 3 (last two S133 codex, S132 codex); sketched 2026-11-26 by
-Deputy Paper, the main line; spec-check 35b3abe: 0 severe, 2 medium (term clashes: `subagent-limits` names OpenAI
-children while FUNCTIONAL keeps 'subagent' for Claude; `max-turns` counts OpenAI model steps, not turns), 3 unsure
-(the tool-error streak counts denials; `usage-unavailable` absent from AGT-F-36 and case 23; Claude's weaker limits are
-S132's Door C, already out for veto): the build team settles the first four with spec-change; routine `trig_01Pey52A9vKhTvnKCAC6SgG5`, fires 08:36 UTC; DELIVERED as PR #60 at 06e67e6 (+4934/-194); r1: Codex review https://chatgpt.com/local/6b07fd23-9fbc-83eb-ac12-256d44550040 r1: 9/1 findings (changes), posted 10:02 UTC; answer brief as PR comment (the build session is subscribed); Deputy Scissors ruled F1.9 narrow: p95 state bytes on the fake host, page-level budgets "not measured (needs watane-dev)" as a known limit; r1 answers e0c1c1d (7 fixed, F1.4 and F1.5 disagree, F1.9 in part); r2: Codex follow-up in the same task, 10:14 UTC; r2: 3/1 (changes), answer brief as PR comment 10:27 UTC; r2 answers abb3a97 (4 fixed); r3: Codex follow-up, 10:33 UTC; r3: 1/1 (changes; F3.1 same mechanism as F2.2), answer brief 10:50 UTC with a ruling: one rule (no path drops `Work.stopped`), and a recurrence in r4 becomes a known limit. r4 check-in: worth it, blocking fell 9→3→1, one narrow fix left, live-UI only (stored state right); r3 answers 5535d7f (2 fixed); r4: Codex follow-up, 10:56 UTC, ~09:50 UTC. Size: a whole stage, likely over 1,500 lines.)
-Why: stage F of TECHNICAL 17, on S132's design (9.7, merged at 95ec3bc7). The factory as mods needs an agent that hands
-named work to other agents and a turn that cannot run away.
-Outcomes (user-sim on the real programs, scripted Responses and dev's fake `claude`, no real provider):
-1. AGT-J5: Alice runs an OpenAI root profile with two named delegates; the console shows two sibling children as indexed
-   `child` entries, each opens its own transcript, and the root's final answer uses both children's results.
-2. Admission (9.7, cases 23 and 24): a child that calls `task`, a name outside `delegates`, and a candidate wider than
-   its root (one row of the child-rule table each) are refused with that field named, and no child session exists.
-3. Counters (AGT-F-36, case 52 `task` part): an OpenAI turn stops at `max-turns` (with at most one tool-free summary step),
-   at `max-tool-errors` and at `max-tokens`, each naming the limit; a Claude turn's native `max-turns` stop is reported;
-   a Claude profile with `max-tokens` or `max-tool-errors` is refused (S132's Door C choice).
-4. Revoking: once `access/<owner>` no longer names the root's profile, a `task` call gets the `profile` refusal as its
-   output, and reads still work.
-5. The stage F budgets of TECHNICAL 17 are measured and recorded in Suite time.
-Touches: `kernel/src/` (9.7), `console/src/` and `console/kit/` (child entries), their tests, `design/` only where the
-build finds a gap (through spec-change). Not S131's files (`console/test/host/`, `kernel/tests/it/s36_firing.rs`,
-`s38.rs`, `AGENTS.md`) until S131 merges; then merge main.
-Constraints: S132's nine Door C choices stand (PR #59 body), do not reopen them; fold S132's review polish P1.1 to P1.12
-(PR #59, comment 'Review r1 by Claude') in where cheap. Factory profiles wait on N5 (Waiting on the human): out of
-scope. No watane change: if one is needed, BLOCKED with the interface it needs.
-
 ### S35: stage B, end to end: Alice has a first conversation with Claude on dev's fake `claude` (DONE 2026-11-23: PR #43 merged with --admin at 042b0dd on the human's word after the extra round, r6 changes 2 answered (F6.1 done on main, F6.2 fixed); was in flight, builder claude, reviewer codex; continuation DELIVERED 21:31 UTC at 8fc6db6 on watane c2a7d4d (routine `trig_01NpPnJxwNjH279WAFwnziDk`), screenshots in `factory/runs/S35/screens/`; r1: Codex review dispatched 21:40 UTC, https://chatgpt.com/local/6b035f75-9cbc-83eb-953f-4ea568e56065; r1: 8 Codex findings (validator RETURN, adversary BREACHED, user-sim REJECTED) plus deputy design findings D1.1, D1.2, answer dispatched 22:04 UTC (session `cse_01LxwP923RKBfVNTWsTUagAQ`); r1 answered at 4522428 (all 10 fixed); r2 (22:37): Codex `changes (6)`, validator RETURN, adversary HELD, user-sim ACCEPTED; answer r2 dispatched 23:10 UTC (session `cse_01LxwP8yPPmPVipCPszcmKqW`; a 23:00 fire carried the stale r1 brief and pushed nothing); r2 answered at ea98cb9 (all 6 fixed); r3: Codex review dispatched 23:29 UTC; r3 (23:58): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim ACCEPTED); answer r3 dispatched 00:01 UTC (session `cse_01LxwP8zfZtC4o6shbfqRvp7`); r3 answered at d0dfddd (all 3 fixed); r4: Codex review dispatched 00:20 UTC; r4 (00:26): Codex `changes (3)` (validator RETURN, adversary HELD, user-sim REJECTED), all on the composer's kept draft; deputy ruling (same finding 4 rounds running) and answer r4 dispatched 00:51 UTC (session `cse_01LxwP92VSjjigxaiXQaSyiJ`); r4 answered at 8177ca5 (by the ruling); r5 (last): Codex review dispatched 01:12 UTC; r5 (01:18): `changes (1)` (validator RETURN, adversary HELD, user-sim ACCEPTED): **round cap reached, held for the human** (Waiting: S35-CAP); then the human's R-B1 before merge; first routine `trig_01XowNDWUGosFjLtAtbGFBwc`)
 
 Story: Alice runs `watane-dev serve` with the agent kernel and the unchecked provider installed,
@@ -430,6 +404,7 @@ reviewer claude. Cloud.
   detection is `host-info.generation()`; `timer-error` gains `bad-delay` (30-day cap); 4.1 gains
   `profile`; 15 gains the H2 rows. User-sim ACCEPTED; adversary HELD, BREACHED 2 (a Unicode
   `Makefile`; an uncharged timer firing at the ceiling), fixed, HELD.
+- **S134** stage F: an OpenAI root delegates to two named sibling children (AGT-J5), each a `child` link in the console with its own transcript; a child that would widen its root (calls `task`, a name outside `delegates`, a wider rule) is refused with no session; stopping, cancelling or deleting the root stops its children, live and stored; every OpenAI turn stops at `max-turns`, `max-tool-errors` or `max-tokens` and names it; Claude reports its native `max-turns` and refuses the other two. PR #60, squash-merged 2026-11-26 11:16 UTC at f8c0fe0d by Deputy Scissors, no bypass; builder claude, reviewer codex, 4 rounds (9/1, 3/1, 1/1, 0/0); ~2.7 h in flight. Adversary BREACHED in r1 (F1.1 to F1.8), every breach fixed by r4; outcome check on scripted Responses, `watane-dev` absent (page-level budgets a known limit). Accepted: F1.5 (`persist: false` not built for OpenAI). F1.4 on the builder's reading. F3.1 ruled (no path drops `Work.stopped`). CI: one gate timeout at 15 min on 5535d7f, green on rerun (Friction). Sketch in factory/DONE.md.
 
 ## Deputy decisions
 
@@ -709,6 +684,8 @@ S2 writes each into the document that owns it.
   ships. Undo: (a) one refuse-table row; (b) a host component.
 
 ## Friction
+
+- (2026-11-26, Deputy Scissors, S134) CI `gate` was cancelled at its 15-min limit on 5535d7f (runs before took ~7 min); green on rerun. Watch for a second sighting.
 
 - 2026-11-24 (S38 r2) `RemoteTrigger` update then run fired the routine's old brief in a new session (second time after S35 r2): for a later round, create a new routine instead of update+run. (deputy-3)
 
