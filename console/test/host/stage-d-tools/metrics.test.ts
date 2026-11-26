@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
 // @ts-expect-error: a plain ES module of the host runner
-import { clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, writerBusy } from "./metrics.mjs";
+import { clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./metrics.mjs";
 
 it("charges only commit time in the common window", () => {
   expect(writerBusy([[13, 15], [5, 12], [11, 14], [19, 22]], 10, 20)).toBe(60);
@@ -163,10 +163,16 @@ it("ac3_does_not_count_a_durable_OpenAI_message_as_its_live_delta", () => {
   const entry = { _meta: { watane: { entry: { kind: "message", body: { role: "agent",
     content: [{ type: "text", text }] } } } } };
   expect(pageItem({ at: 1000, body: JSON.stringify(live) }).marker).toBe(text);
+  const indexed = { ...live, _meta: { watane: { i: 19 } } };
+  expect(pageItem({ at: 1001, body: JSON.stringify(indexed) }).marker).toBeUndefined();
   expect(pageItem({ at: 1001, body: JSON.stringify(entry) }).marker).toBeUndefined();
-  expect(openaiPageCoverage(step(3, 3000), new Set(), [
+  const tail = step(3, 3000);
+  const coverage = openaiPageCoverage(tail, new Set(), [
     { ...entry._meta.watane.entry, i: 19, at: 3001 }, interrupted,
-  ], 1000, 3064, 3064).faults).toContain(`missing page marker ${text}`);
+  ], 1000, 3064, 3064);
+  expect(coverage.faults).toContain(`missing page marker ${text}`);
+  expect(coverage.hasStoredMarker).toBe(true);
+  expect(openaiPageCoverage(tail, new Set(), [interrupted], 1000, 3064, 3064).hasStoredMarker).toBe(false);
 });
 
 it("ac3_stamps_Stop_on_the_wall_clock_at_the_click", () => {
@@ -176,6 +182,23 @@ it("ac3_stamps_Stop_on_the_wall_clock_at_the_click", () => {
   try {
     expect(clickStop()).toBe(12_345);
     expect(click).toHaveBeenCalledOnce();
+  } finally {
+    vi.unstubAllGlobals();
+    clock.mockRestore();
+  }
+});
+
+it("ac3_stamps_receipt_on_the_wall_clock_before_dispatch", () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(12_346);
+  const page = { watane: { on: (receive: (event: object) => void) => {
+    receive({ type: "stream", stream: "st1", items: [{ body: "one" }] });
+  } }, loadItems: [] as unknown[] };
+  vi.stubGlobal("window", page);
+  try {
+    const real = page.watane;
+    pageProbe();
+    page.watane = real;
+    page.watane.on(() => expect(page.loadItems).toEqual([{ at: 12_346, stream: "st1", body: "one" }]));
   } finally {
     vi.unstubAllGlobals();
     clock.mockRestore();

@@ -75,7 +75,7 @@ describe("Dock", () => {
   });
 
   it.each([
-    [{ state: "paused" }, "waiting for you to resume"],
+    [{ state: "paused" }, "send a message to resume"],
     [{ state: "paused", until: 1000 }, "sent after the session resumes"],
     [{ state: "idle", stop: { kind: "failed", error: "boom" } }, "sent when you send another message"],
   ] as const)("ac2_explains_when_an_inactive_queue_advances (%j)", (turn, words) => {

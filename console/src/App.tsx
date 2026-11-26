@@ -33,6 +33,7 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
   const heldRef = useRef(held); heldRef.current = held;
   const subRef = useRef(sub); subRef.current = sub;
   const [replaced, setReplaced] = useState(false); // 18.6 "Another tab": the stream went to another tab
+  const replacedRef = useRef(false);
   const reattach = useRef<(() => void) | null>(null);
   const [needsHidden, setNeedsHidden] = useState(false);
   const lastAsk = useRef<string | null>(null); // the ask whose card last took focus
@@ -44,8 +45,13 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     let open = true; // a late view of a closed session is never kept
     const tok = {};
     setSub(tok);
+    replacedRef.current = false;
     setReplaced(false);
-    const s = openSession(kernel, id, (v) => { if (open) setHeld({ tok, id, kernel, view: v }); }, (r) => { if (open) setReplaced(r); });
+    const s = openSession(kernel, id, (v) => { if (open) setHeld({ tok, id, kernel, view: v }); }, (r) => {
+      if (!open) return;
+      replacedRef.current = r;
+      setReplaced(r);
+    });
     reattach.current = s.reattach;
     return () => { open = false; reattach.current = null; s.close(); };
   }, [kernel, info.id]);
@@ -105,7 +111,7 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     },
     stop: () => {
       const turn = viewRef.current.turn;
-      if (off || !isActiveTurn(turn)) return;
+      if (replacedRef.current || !isActiveTurn(turn)) return;
       setStopping(true);
       // During launch consent, cancelling the provider stream also dismisses watane's question.
       const stop = isFolderConsent(turn)
@@ -115,9 +121,15 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
     },
     unqueue: (n) => kernel.unqueue(info.id, n),
     interrupt: (replacement) => {
+      // Unqueue may have awaited the kernel while the tab or session changed.
+      const h = heldRef.current;
+      if (h.tok !== subRef.current || h.id !== info.id || h.kernel !== kernel) {
+        return Promise.reject(new Error("The view is no longer this session's."));
+      }
+      if (replacedRef.current) return Promise.reject(new Error("The queued message was taken back before another tab took over."));
       const turn = viewRef.current.turn;
       if (isFolderConsent(turn)) return Promise.reject(new Error("Stop and send is unavailable while watane waits for folder consent."));
-      if (off || !isActiveTurn(turn)) return Promise.reject(new Error("There is no active turn to stop."));
+      if (!isActiveTurn(turn)) return Promise.reject(new Error("There is no active turn to stop."));
       setStopping(true);
       return kernel.interrupt(info.id, replacement).catch((e) => { setStopping(false); throw e; });
     },

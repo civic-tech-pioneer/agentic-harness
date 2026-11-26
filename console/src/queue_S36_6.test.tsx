@@ -93,10 +93,12 @@ describe("S36-6", () => {
     await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getAllByRole("button", { name: "Remove from queue" })[0]!);
     await settle();
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Discard" })).not.toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(5900); });
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(200); });
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeEnabled();
     expect(calls("say")).toHaveLength(0);
   });
   it("ac4_stop_and_send_unqueues_then_interrupts_with_the_input", async () => {

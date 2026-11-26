@@ -1,7 +1,7 @@
 // TECHNICAL 18.5, 18.6: the dock: Needs you, plan, queue, status line, input.
 import { useEffect, useId, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { epochOf, errorWords, isActiveTurn, isFolderConsent, SESSION_IN_ANOTHER_TAB, type Actions, type SessionView } from "../kit";
-import { drop, heldOf, hold, refused, release, send as claim, take, undoShown, useTaken, type Taken } from "./taken";
+import { drop, heldOf, hold, refused as refuseTaken, send as claim, take, undoShown, useTaken, type Taken } from "./taken";
 
 export const QUEUE_MAX = 32;
 const SHOWN = 3;
@@ -75,9 +75,11 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
     keepDraft(draftKey, ""); // rule 2: out of the kept draft before the send is dispatched, not in the effect after
     const back = (e: unknown) => {
       // typing since wins the composer (18.6 "Send")
-      if (edited.current === mark) { setText(t); holdIt(of); refuse(e, at); }
-      else full_(e, at); // her newer draft stays; Send is off and says why; the item is back with its row
-      if (of !== undefined) release(of);
+      const restore = edited.current === mark;
+      if (restore) { setText(t); holdIt(of); }
+      if (of === undefined && restore) refuse(e, at);
+      else full_(e, at); // keep a newer draft and apply only a current capacity refusal
+      if (of !== undefined) refuseTaken(taken!, of, errorWords(e));
     };
     try { Promise.resolve(actions.say(t)).then(() => { if (of !== undefined) drop(taken!, of); }, back); } catch (e) { back(e); }
   };
@@ -133,7 +135,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   const resumeLost = view.turn?.state === "resume-lost";
   const showStopAndSend = active || resumeLost;
   const queueTiming = active ? "sent when this turn ends"
-    : view.turn?.state === "paused" ? (view.turn.until === undefined ? "waiting for you to resume" : "sent after the session resumes")
+    : view.turn?.state === "paused" ? (view.turn.until === undefined ? "send a message to resume" : "sent after the session resumes")
     : view.turn?.state === "idle" && view.turn.stop.kind === "failed" ? "sent when you send another message"
     : "waiting for a new turn";
   const consentWait = isFolderConsent(view.turn);
@@ -179,7 +181,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
    * stays listed, with the error, until a send of it is accepted or she discards it (S36 r5 F5.1). */
   const place = (id: string, t: string, e?: unknown) => {
     if (live.current) ctl.current?.put(t, e, id);
-    refused(sid, id, e === undefined ? undefined : errorWords(e));
+    refuseTaken(sid, id, e === undefined ? undefined : errorWords(e));
   };
   const interrupt = async (id: string, t: string) => {
     try { await actions.interrupt!(t); drop(sid, id); } catch (e) { place(id, t, e); } // refused: to the composer, as Send's, or it stays
@@ -203,7 +205,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
     if (how === "say" && !undoShown(x)) return tick((n) => n + 1);
     if (heldOf(sid) === x.id || !claim(sid, x.id)) return;
     if (how === "interrupt") return interrupt(x.id, x.text);
-    try { await actions.say(x.text); drop(sid, x.id); } catch (e) { refused(sid, x.id, errorWords(e)); }
+    try { await actions.say(x.text); drop(sid, x.id); } catch (e) { refuseTaken(sid, x.id, errorWords(e)); }
   };
   const folded = !(opened ?? !(view.openAsks.length > 0 || view.queue.length > 0));
   return (
@@ -251,18 +253,21 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
       ) : null}
       {note ? <p className="wa-queue-note" role="status">{note}</p> : null}
       {taken.length ? (
-        <ul className="wa-taken" role="list" aria-label="Taken from the queue">{taken.map((x) => (
-          <li key={x.id} className="wa-queue-note" role={x.error === undefined ? "status" : undefined}>
-            {x.error !== undefined ? <p className="wa-taken-error" role="alert">{x.error}</p> : null}
-            {x.error === undefined && x.tried === "undo"
-              ? <span className="wa-taken-text">Removed “<bdi>{preview(x.text, 40)}</bdi>” from the queue</span>
-              : <>{x.error === undefined && (x.tried === "edit" ? "Taken out to edit." : "Taken out to send.")} <q className="wa-taken-text"><bdi>{preview(x.text)}</bdi></q></>}
-            {!x.held && undoShown(x) ? <button type="button" className="wa-queue-action" disabled={off || !!x.out} aria-describedby={x.out ? pendingId : off ? offId : undefined} onClick={() => void again(x, "say")}>Undo</button> : null}
-            {!x.held && showStopAndSend && x.tried === "stop"
-              ? <button type="button" className="wa-queue-action" disabled={!!stopReasonId || !!x.out} aria-describedby={x.out ? pendingId : stopReasonId} onClick={() => void again(x, "interrupt")}>Stop and send</button> : null}
-            <button type="button" className="wa-queue-action" disabled={!!x.out} aria-describedby={x.out ? pendingId : undefined} onClick={() => drop(sid, x.id)}>Discard</button>
-          </li>
-        ))}</ul>
+        <ul className="wa-taken" role="list" aria-label="Taken from the queue">{taken.map((x) => {
+          const ordinaryUndo = x.tried === "undo" && x.error === undefined && x.until !== undefined && undoShown(x);
+          return (
+            <li key={x.id} className="wa-queue-note" role={x.error === undefined ? "status" : undefined}>
+              {x.error !== undefined ? <p className="wa-taken-error" role="alert">{x.error}</p> : null}
+              {x.error === undefined && x.tried === "undo"
+                ? <span className="wa-taken-text">Removed “<bdi>{preview(x.text, 40)}</bdi>” from the queue</span>
+                : <>{x.error === undefined && (x.tried === "edit" ? "Taken out to edit." : "Taken out to send.")} <q className="wa-taken-text"><bdi>{preview(x.text)}</bdi></q></>}
+              {!x.held && undoShown(x) ? <button type="button" className="wa-queue-action" disabled={off || !!x.out} aria-describedby={x.out ? pendingId : off ? offId : undefined} onClick={() => void again(x, "say")}>Undo</button> : null}
+              {!x.held && showStopAndSend && x.tried === "stop"
+                ? <button type="button" className="wa-queue-action" disabled={!!stopReasonId || !!x.out} aria-describedby={x.out ? pendingId : stopReasonId} onClick={() => void again(x, "interrupt")}>Stop and send</button> : null}
+              {!ordinaryUndo ? <button type="button" className="wa-queue-action" disabled={!!x.out} aria-describedby={x.out ? pendingId : undefined} onClick={() => drop(sid, x.id)}>Discard</button> : null}
+            </li>
+          );
+        })}</ul>
       ) : null}
       {stopReasonId === interruptId && (view.queue.length > 0 || taken.some((x) => !x.held && x.tried === "stop"))
         ? <p id={interruptId} className="wa-control-reason">{interruptReason}</p> : null}
