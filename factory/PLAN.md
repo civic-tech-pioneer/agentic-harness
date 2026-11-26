@@ -27,9 +27,20 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane release); S142, S144 merged.
+S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane release); S145 (upkeep, console, Codex build); S142, S144 merged.
 
 ## Sketched
+### S145 (upkeep) the console's last S142/S144 polish and its Stage D clocks, console/ only
+(sketched 2026-11-26 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: S144 codex, watane S143 claude); reviewer claude; spec-check not run: no spec text changes. Upkeep is exempt from the size rule.)
+Why: the console's Upkeep items left by S142 and S144, while S138 (approved, held on a watane release) keeps kernel/ and design/.
+Outcomes, each its Upkeep item's check (Upkeep lines "S144 r2 polish", "S144 deputy compare", "S144 r1 P1.6", "S144 r1 A1.1", "S142 r2, polish", "S142 deputy compare"):
+(1) at 390 px the consent diamond sits beside its words (the user-sim's red test `regress_S144_consent_shape_beside_word_at_phone`, committed unchanged first); a taken row's error does not wrap into a narrow column nor repeat above the composer;
+(2) "Enter a message first." shows only after an empty send; the status line says "Thinking" for a `thinking` activity; Esc while Not running sends nothing; the queue label and Stop and send after a Failed turn or during Paused say what will happen (P1.6); the Removed line's Discard either matches a frame rule or goes;
+(3) Stage D: the click and the wire are timed on one clock (or the offset is recorded); the Stop-cut excuse ties a complete batch to the stored interrupt again (P2.1); `acceptedMessages` matches in the real load or is removed with its reason (P2.3); a red test for each.
+Touches: `console/` (src, kit, test/host), `ui/` (rebuilt and committed). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface, no spec text change (P1.1, P1.2's spec lines stay in Upkeep); a guard never weakens; `installed-agent` must not be made weaker to pass; open the PR ready for review, not as a draft.
+deputy compares: the consent wait at 390 px and 1280 px, and the composer, against `Main-2` and `States-2` (TECHNICAL 18).
+
 ### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
 (sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
 S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).) r1 answers at 07d910f (12:20 UTC; F1.1 to F1.3 fixed; F1.ci needs a watane release with S136, the human's, asked 12:23 UTC by Deputy Rock); r2: Claude routine `trig_014PqYzP7y2xYu5EcKcccLX4`, 12:22 UTC. r2: 0/4, VERDICT: approve on 07d910f (12:30 UTC); **approved, held**: merges once a watane release with S136 turns `installed-agent` green (Waiting on the human). Friction: the reviewer found no `.claude/factory/review-lead.md` in this repository and used the README's review-team row.
