@@ -3698,7 +3698,8 @@ impl<S: State, H: Host> Kernel<S, H> {
                             tools: None,
                             tokens: None,
                         };
-                        self.turn_to(&mut rec, past, failed, now, &mut work)?;
+                        // As any turn end: a queued input starts the next turn (S127 r1 F1.3).
+                        self.change_turn(&mut rec, past, failed, now, &mut work)?;
                     } else if let (true, Turn::Running { since, .. }) = (verdict, &rec.turn) {
                         // The `checking` activity ends with the verdict (9.3).
                         let t = Turn::Running {
