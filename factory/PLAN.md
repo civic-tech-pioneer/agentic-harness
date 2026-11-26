@@ -27,9 +27,21 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S145 (upkeep, console, Codex build); S138, S142, S144 merged.
+S145 (upkeep, console, Codex build); S148 (stage F, `skill` on OpenAI, Codex build); S138, S142, S144 merged.
 
 ## Sketched
+### S148 stage F: an OpenAI session uses the skills its profile names, through the `skill` function (TECHNICAL 11, 9.7)
+(sketched 2026-11-26 by Deputy Scissors, the main line; builder codex by rule 3 (last two: watane S147 codex, watane S146 claude); reviewer claude.)
+Why: stage F's remaining backend (TECHNICAL 17, row F: "OpenAI delegation and `skill`"). S134 built delegation and the counters; until `skill` exists, any `skills` on an OpenAI profile is refused (11), so a factory profile cannot carry its skills on OpenAI.
+Outcomes, each checkable on dev's scripted Responses server:
+(1) Alice starts an OpenAI session whose profile names two adopted skills: the first request advertises a `skill` function whose listing gives each skill's name and description, with `</description>` and `<` escaped (T8); the model calls `skill` with one name and gets that skill's SKILL.md as the result, shown in the transcript as an ordinary tool row;
+(2) a `skill` call for a name the profile does not name, or a profile skill that has other files besides SKILL.md, is refused with a reason she can read (launch refusal for the second, per 11), and no request carries it;
+(3) a child (9.7) gets only the skills its delegate names, a subset of its root's adopted skills at the same revisions; a child asking for a skill outside that subset is refused with no session;
+(4) a toolset function named `skill` collides with the active built-in and is refused before a request is sent (9.7), and a profile with no skills advertises no `skill` function;
+(5) Claude sessions are unchanged (their skills stay the plugin folder).
+Touches: `kernel/` (OpenAI loop, profile check, refusals), `design/TECHNICAL.md` 11 and 9.7 (the "refused on OpenAI until `skill` is built" lines become what is built), `fake/` or dev's scripted Responses fixtures if needed. Not `console/` or `ui/` (S145): a skill call renders as an existing tool row.
+Constraints: no change to the kernel interface (2.3) or WIT; a skill's body is read from its adopted revision only; stage F's load row (17) is measured only if the scripted fixtures allow it at kernel level, else named as a known limit in 16 with its reason (page-level budgets need `watane-dev`, as in S134). N5 (factory profiles) stays with the human. spec-check skipped: 11 and 9.7 were made one contract by S132 (design) and S134; the slice changes only the two "until built" lines (the review checks them).
+
 ### S145 (upkeep) the console's last S142/S144 polish and its Stage D clocks, console/ only
 (sketched 2026-11-26 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: S144 codex, watane S143 claude); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b0863c1-ae4c-83eb-8254-412ade2530c4, 16:58 UTC; r1 (Claude routine `trig_01UqV1ZKC5CDw4uU9ez2j5oh`): 3/7, CI gate red = F1.1, weighed by Deputy Scissors: all three blocking stand, P1.1 fixed with F1.3; answer sent to the same Codex task 21:42 UTC; DELIVERED as PR #66 at 24c692dd (17:38 UTC; validator PASS, adversary HELD, user-sim ACCEPTED); r1 review routine `trig_01UqV1ZKC5CDw4uU9ez2j5oh` 17:41 UTC; spec-check not run: no spec text changes. Upkeep is exempt from the size rule.)
 Why: the console's Upkeep items left by S142 and S144, while S138 (approved, held on a watane release) keeps kernel/ and design/.
