@@ -69,6 +69,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 @media (hover: hover) {
   button:not(:disabled):hover { border-color: var(--accent); }
   .wa-primary:not(:disabled):hover { filter: brightness(1.08); }
+  .wa-queue-action:enabled:hover { border-color: transparent; background: var(--hover); color: var(--ink); }
 }
 @media (prefers-reduced-motion: no-preference) {
   button { transition: transform 150ms ease, border-color 150ms ease; }
@@ -147,7 +148,6 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .wa-queue-text { flex: 1; min-width: 0; overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .wa-queue-ctl { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 60%; }
 .wa-queue-action { border-color: transparent; background: transparent; padding: 0 8px; min-height: 30px; border-radius: 6px; color: var(--muted); font-size: 12.5px; }
-.wa-queue-action:hover:enabled { background: var(--hover); color: var(--ink); }
 .wa-queue-remove { width: 30px; padding: 0; display: inline-grid; place-items: center; }
 .wa-queue-note { margin: 0; font-size: 13px; display: flex; align-items: center; gap: 8px; color: var(--muted); }
 .wa-taken { list-style: none; margin: 0; padding: 0 0 0 12px; display: flex; flex-direction: column; gap: 4px; }
