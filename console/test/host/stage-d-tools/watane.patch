@@ -16,7 +16,7 @@ index e065d556..1f44701a 100644
 +++ b/dev/src/scripted.rs
 @@ -37,0 +38 @@ enum Out {
 +    Paced(String, Vec<Vec<u8>>),
-@@ -367,0 +369,48 @@ fn serve_one<T: Clone>(
+@@ -367,0 +369,59 @@ fn serve_one<T: Clone>(
 +    if let Some(clock) = std::env::var_os("S128_LOAD_CLOCK")
 +        && side.log_sub == "responses"
 +        && req.method == "POST"
@@ -58,6 +58,17 @@ index e065d556..1f44701a 100644
 +                "output_index": 0, "content_index": 0, "delta": marker
 +            })),
 +        );
++        // Persist the delta's marker as an ordinary assistant message, before completion.
++        chunks.insert(
++            chunks.len() - 1,
++            event(serde_json::json!({
++                "type": "response.output_item.done",
++                "item": {
++                    "type": "message", "id": "msg_1", "role": "assistant",
++                    "content": [{ "type": "output_text", "text": marker }]
++                }
++            })),
++        );
 +        let mut remaining = due.saturating_sub(epoch_nanos() / 1_000_000);
 +        while remaining > 0 && !stop.load(Ordering::SeqCst) {
 +            thread::sleep(Duration::from_millis(remaining.min(25)));
@@ -65,7 +76,7 @@ index e065d556..1f44701a 100644
 +        }
 +        out = Out::Paced(marker, chunks);
 +    }
-@@ -380,0 +430,29 @@ fn serve_one<T: Clone>(
+@@ -380,0 +441,29 @@ fn serve_one<T: Clone>(
 +            Out::Paced(marker, chunks) => {
 +                for (i, c) in chunks.into_iter().enumerate() {
 +                    let tag = if i == 1 {
@@ -95,7 +106,7 @@ index e065d556..1f44701a 100644
 +                tls.flush()?;
 +                return Ok(());
 +            }
-@@ -393,0 +472,9 @@ fn serve_one<T: Clone>(
+@@ -393,0 +483,9 @@ fn serve_one<T: Clone>(
 +fn epoch_nanos() -> u64 {
 +    std::time::SystemTime::now()
 +        .duration_since(std::time::UNIX_EPOCH)

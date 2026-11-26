@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
 import { NotRun, outcomeOf } from "./outcome.mjs";
 import { isInterrupted, loadWindow } from "./load_check.mjs";
-import { ITEM_DELAY_MS, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
+import { ITEM_DELAY_MS, clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -220,12 +220,7 @@ async function mixedLoad(browser) {
     }));
     await sleep(Math.max(0, start + 8050 - Date.now()));
     const pages = sessions.filter((session) => session.page);
-    const stopAt = await Promise.all(pages.map(({ page }) => page.evaluate(() => {
-      const button = document.querySelector(".wa-stop");
-      const at = performance.timeOrigin + performance.now();
-      button?.click();
-      return button ? at : null;
-    })));
+    const stopAt = await Promise.all(pages.map(({ page }) => page.evaluate(clickStop)));
     const to = Math.min(...stopAt.map((at) => at ?? Infinity), Date.now());
     await sleep(1250);
     const wire = readStamps(join(tmp, "load-clock.sse"));
@@ -283,6 +278,7 @@ async function mixedLoad(browser) {
         const responseWire = wire.filter(({ step }) => step.startsWith(`oa-${id}-`));
         const stored = await entriesOf(session);
         const coverage = openaiPageCoverage(responseWire, markers, stored, from, to, end);
+        if (!coverage.hasStoredMarker) faults.push(`${id}: no tracked OpenAI step had a durable message marker in the load window`);
         for (const fault of coverage.faults) faults.push(`${id}: ${fault}`);
         if (coverage.cut.length || coverage.faults.length) {
           say(`${coverage.faults.length ? "LOSS" : "STOP CUT"} ${id} ${JSON.stringify({

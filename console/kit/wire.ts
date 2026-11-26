@@ -64,7 +64,7 @@ function parseTurn(o: unknown): { state: TurnState; extra: TurnExtra } | undefin
       const a = o.activity;
       let activity: Activity | undefined;
       if (isRec(a) && a.kind === "checking") activity = { kind: "checking", ...(str(a.on) !== undefined ? { on: a.on as string } : {}) };
-      else if (isRec(a) && a.kind === "compacting") activity = { kind: "compacting" };
+      else if (isRec(a) && (a.kind === "compacting" || a.kind === "thinking")) activity = { kind: a.kind };
       else if (isRec(a) && a.kind === "consent" && str(a.what) !== undefined) activity = { kind: "consent", what: a.what as string };
       return { state: { state: "running", ...(activity ? { activity } : {}), since: num(o.since) ?? 0 }, extra: {} };
     }

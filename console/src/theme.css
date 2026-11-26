@@ -147,10 +147,12 @@ button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px
 .wa-queue li { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--line); border-radius: 10px; padding: 4px 4px 4px 12px; font-size: 13.5px; }
 .wa-queue-text { flex: 1; min-width: 0; overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .wa-queue-ctl { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 60%; }
-.wa-queue-action { border-color: transparent; background: transparent; padding: 0 8px; min-height: 30px; border-radius: 6px; color: var(--muted); font-size: 12.5px; }
-.wa-queue-remove { width: 30px; padding: 0; display: inline-grid; place-items: center; }
+.wa-queue-action { border-color: transparent; background: transparent; padding: 0 8px; min-height: 36px; border-radius: 6px; color: var(--ink); font-size: 14px; }
+.wa-queue-remove { width: 36px; padding: 0; display: inline-grid; place-items: center; }
 .wa-queue-note { margin: 0; font-size: 13px; display: flex; align-items: center; gap: 8px; color: var(--muted); }
 .wa-taken { list-style: none; margin: 0; padding: 0 0 0 12px; display: flex; flex-direction: column; gap: 4px; }
+.wa-taken .wa-queue-note { flex-wrap: wrap; }
+.wa-taken-error { flex: 0 0 100%; min-width: 0; margin: 0; color: var(--danger); overflow-wrap: anywhere; }
 .wa-taken-text { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .wa-queue-more { margin: 0; padding-left: 12px; font-size: 12.5px; color: var(--muted); }
 .wa-plan-head { margin: 0; font-weight: 600; color: var(--muted); }

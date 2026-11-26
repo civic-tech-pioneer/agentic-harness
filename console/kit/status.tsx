@@ -71,7 +71,7 @@ function spec(view: SessionView, now: number, answered: number, actions: Actions
         const word = folder ? `Waiting for your answer in watane for ${folder}` : "Waiting for your answer in watane";
         return { word, shape: "diamond", esc: true, act: { label: "Open the question" } };
       }
-      return { word: runningWord(view.rows), shape: "dot", clock: clk, esc: true };
+      return { word: a?.kind === "thinking" ? "Thinking" : runningWord(view.rows), shape: "dot", clock: clk, esc: true };
     }
     case "waiting": {
       // every open ask answered by this console: the cards' own words, no countdown; else the next ask's own `expires-at`
@@ -102,8 +102,10 @@ export function StatusLine(props: { view: SessionView; now: number; stopping: bo
   const sharedReasonId = s.act?.run && s.act.off ? props.actions.offReasonId : undefined;
   return (
     <div className="wa-status" data-state={view.turn?.state ?? "none"}>
-      <span className="wa-shape" data-shape={s.shape} role="img" aria-label={NAMES[s.shape]} />
-      <span role="status" className="wa-status-word">{s.word}</span>
+      <span className="wa-status-label">
+        <span className="wa-shape" data-shape={s.shape} role="img" aria-label={NAMES[s.shape]} />
+        <span role="status" className="wa-status-word">{s.word}</span>
+      </span>
       {s.clock ? <span className="wa-status-clock" aria-hidden="true">· {s.clock}</span> : null}
       {s.act ? (
         <button type="button" onClick={s.act.run} disabled={!!disabledReason} aria-describedby={disabledReason ? sharedReasonId ?? reasonId : undefined}>

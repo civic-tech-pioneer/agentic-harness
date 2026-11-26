@@ -36,10 +36,11 @@ export function openaiCadence(stamps, from, to) {
 }
 
 export const ITEM_DELAY_MS = 100;
+const INTERRUPT_WINDOW_MS = 1200;
 const sourceMarker = (text) => /^(oa-s\d+-\d+|cl-[a-f\d]+-(?:delta|entry)-\d+)(?: |$)/.exec(text)?.[1];
 
 // The TLS log marks writes, not batches accepted by the kernel. Stop may cancel the final
-// in-flight batch before it creates any durable tool outcome. An earlier gap still fails,
+// in-flight batch before it creates any durable message or tool outcome. An earlier gap still fails,
 // as does a missing page item for any batch with a tool outcome before the interrupted turn.
 export function openaiPageCoverage(wire, seen, stored, from, to, stopAt) {
   const faults = [];
@@ -75,7 +76,8 @@ export function openaiPageCoverage(wire, seen, stored, from, to, stopAt) {
     const lastWrite = Math.max(...writes.map(({ at }) => at));
     const nearClick = Number.isFinite(stopAt) && Math.abs(lastWrite - stopAt) <= ITEM_DELAY_MS
       && missing.every(({ at }) => at >= stopAt - ITEM_DELAY_MS);
-    if (start === tail && nearClick && validCalls && (complete || overlaps)
+    const nearInterrupt = interrupted?.at - start.at <= INTERRUPT_WINDOW_MS;
+    if (start === tail && nearClick && validCalls && ((complete && nearInterrupt) || overlaps)
         && !acceptedMessages.has(start.marker) && !calls.some(({ marker }) => acceptedTools.has(marker))) {
       if (missing.length) cut = writes;
       continue;
@@ -86,7 +88,16 @@ export function openaiPageCoverage(wire, seen, stored, from, to, stopAt) {
     if (completions.length !== 1) faults.push(`${start.marker}: expected one completion write, got ${completions.length}`);
     for (const { marker } of missing) faults.push(`missing page marker ${marker}`);
   }
-  return { faults, interrupted, cut };
+  const hasStoredMarker = steps.some(({ at, marker }) => at >= from && at < to && acceptedMessages.has(marker));
+  return { faults, interrupted, cut, hasStoredMarker };
+}
+
+export function clickStop() {
+  const button = document.querySelector(".wa-stop");
+  if (!button) return null;
+  const at = Date.now();
+  button.click();
+  return at;
 }
 
 export function pageProbe() {
@@ -106,7 +117,7 @@ export function pageProbe() {
         },
         on(handler) {
           return real.on((event) => {
-            const at = performance.timeOrigin + performance.now();
+            const at = Date.now();
             for (const item of event.type === "stream" ? event.items : []) {
               window.loadItems.push({ at, stream: event.stream, body: item.body });
             }
@@ -125,7 +136,10 @@ export function pageItem({ at, body }) {
   const marker = sourceMarker(text);
   return {
     at,
-    marker: marker ?? (o.sessionUpdate === "tool_call" && o.status === "pending" ? o.toolCallId : undefined),
+    // OpenAI's final text also arrives as an indexed update or entry. It is
+    // evidence of admission in the transcript, never a substitute for the delta.
+    marker: marker?.startsWith("oa-") && (w?.i !== undefined || w?.entry) ? undefined
+      : marker ?? (o.sessionUpdate === "tool_call" && o.status === "pending" ? o.toolCallId : undefined),
     turn: w?.type === "turn" ? w.state : w?.entry?.kind === "turn" ? w.entry.body : undefined,
   };
 }
