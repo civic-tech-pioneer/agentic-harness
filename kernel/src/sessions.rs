@@ -3614,7 +3614,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let past = acct.past;
         let before = rec.clone();
         let was = rec.turn.is_active();
-        let ended = matches!(event, ProviderEvent::Ended)
+        let mut ended = matches!(event, ProviderEvent::Ended)
             .then_some(stream)
             .flatten();
         let mut slots = None;
@@ -3702,6 +3702,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                             // The launch's denial closes the provider's session: a queued input
                             // stays queued for the next launch, never sent to it (S127 r2 F2.2).
                             self.turn_to(&mut rec, past, failed, now, &mut work)?;
+                            // The stream is over now, as at its `ended` (which then finds no
+                            // key): a `say` in between opens a new one (S127 r3 F3.1).
+                            self.close_all_with(&mut rec, past, "ended", now, &mut work, false)?;
+                            ended = stream;
                         } else {
                             // As any turn end: a queued input starts the next turn (r1 F1.3).
                             self.change_turn(&mut rec, past, failed, now, &mut work)?;
@@ -3736,6 +3740,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
         }
         // 9.4: the stream's `ended` frees its slot and keys.
+        if ended.is_some() && slots.is_none() {
+            slots = Some(Slots::load(&mut self.state));
+        }
         let mut freed = false;
         if let (Some(t), Some(s)) = (ended, slots.as_mut()) {
             freed = self.release_provider(&mut rec, t, s, &mut acct);
