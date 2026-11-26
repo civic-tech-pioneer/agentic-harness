@@ -32,7 +32,7 @@ S138 (consumer half of watane S133/S136, Codex build); S139 (upkeep, console, Co
 ## Sketched
 ### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
 (sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
-S136 codex); spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).)
+S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).)
 Why: the guard in Upkeep (the human's (b) on S40 F6.1): a timer firing of an OpenAI session whose owner mod was disabled
 during a timed pause may send one more model request under the kernel's origin. watane now gives a mod's own top-level
 `timer-sink.fired` the read `timers.firing-origin() -> option<string>` (the resolved origin identity, the timer owner's
@@ -56,7 +56,7 @@ idempotent half stays a known limit (S133 gives no restart callback). Adversary:
 firing tries to make the kernel act for a different owner (TECHNICAL 14).
 
 ### S139 (upkeep) the console's known gaps and the `installed-agent` flake
-(sketched 2026-11-26 by Deputy Scissors, the upkeep lane; builder codex, reviewer claude by rule 3; exempt from the size
+(sketched 2026-11-26 by Deputy Scissors, the upkeep lane; builder codex, reviewer claude by rule 3; in flight, cloud, Codex task https://chatgpt.com/local/6b081583-0fe0-83ed-9e52-86ea878b7056, 11:23 UTC; exempt from the size
 rule (upkeep).)
 Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
 1. *guard* the `installed-agent` CI flake (`console/test/host/installed.mjs:216`, second sighting): the race found and
