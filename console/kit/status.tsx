@@ -39,13 +39,19 @@ function askSubject(view: SessionView): string {
   return "";
 }
 
+/** Host 19.7 includes the provider identity. Older records carry just the absolute folder. */
+function workspaceFolder(what: string): string | undefined {
+  return what.match(/^workspace:(?:[^:/][^:]*:)?(\/.*)$/s)?.[1];
+}
+
 /** 18.5: the cause of a failed turn in words: `no-binary` is Claude Code missing; another cause is its own text; none, the error's name. */
 function failedWords(stop: { error: string; cause?: string }): string {
-  if (stop.cause === "no-binary") return "Claude Code is not available here";
+  if (stop.cause === "no-binary") return "Choose a Claude Code binary in Settings → Claude Code";
   if (stop.error === "provider-ended" && stop.cause === "gone") return "Connection to Claude Code ended";
   if (stop.error === "judge" && stop.cause === undefined) return "your judge denied it";
-  const refused = stop.cause?.match(/^consent-refused\(workspace:(?:[^:\/][^:]*:)?(\/.*)\)$/s);
-  if (refused) return `Workspace access was refused for ${refused[1]}`;
+  const refused = stop.cause?.match(/^consent-refused\((.*)\)$/s);
+  const folder = refused ? workspaceFolder(refused[1]!) : undefined;
+  if (folder) return `Workspace access was refused for ${folder}`;
   return stop.cause ?? stop.error;
 }
 
@@ -58,7 +64,11 @@ function spec(view: SessionView, now: number, onNeedsYou: () => void, answered: 
       const a = t.activity;
       if (a?.kind === "checking") return { word: "Checking with your judge", shape: "square", clock: clk, esc: true };
       if (a?.kind === "compacting") return { word: "Making room", shape: "dot", clock: clk, esc: true };
-      if (a?.kind === "consent") return { word: "Waiting for your answer in watane", shape: "diamond", act: { label: "Open the question", run: onNeedsYou } };
+      if (a?.kind === "consent") {
+        const folder = workspaceFolder(a.what);
+        const word = folder ? `Waiting for your answer in watane for ${folder}` : "Waiting for your answer in watane";
+        return { word, shape: "diamond", act: { label: "Open the question", run: onNeedsYou } };
+      }
       return { word: runningWord(view.rows), shape: "dot", clock: clk, esc: true };
     }
     case "waiting": {

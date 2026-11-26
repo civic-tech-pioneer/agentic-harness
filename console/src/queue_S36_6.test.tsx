@@ -24,6 +24,27 @@ const box = () => screen.getByRole("textbox", { name: "Message" }) as HTMLTextAr
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 
 describe("S36-6", () => {
+  it("ac3_long_queue_preview_preserves_the_original_for_edit", async () => {
+    const original = "x".repeat(255 * 1024);
+    const kernel = fakeKernel([...story, queue(original)]);
+    for (let n = 0; n <= story.length; n++) kernel.play(n);
+    render(<App kernel={kernel} info={INFO} />);
+    await screen.findByRole("button", { name: "Edit queued message 1" });
+    expect(items()[0]?.length).toBeLessThan(300);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Edit queued message 1" }));
+    expect(box()).toHaveValue(original);
+  });
+
+  it("ac3_not_running_disables_stop_and_send_but_allows_edit", async () => {
+    const stopped = JSON.stringify({ _meta: { watane: { type: "turn", state: { state: "unknown" } } } });
+    const kernel = fakeKernel([...story, queue("take me back"), [stopped]]);
+    for (let n = 0; n <= story.length + 1; n++) kernel.play(n);
+    render(<App kernel={kernel} info={INFO} />);
+    expect(await screen.findByText("Not running: watane restarted")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop and send queued message 1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit queued message 1" })).toBeEnabled();
+  });
+
   it("ac1_edit_takes_the_item_back_first_and_puts_its_text_in_the_composer", async () => {
     const { f, calls } = await open();
     expect(items()).toEqual(["first one", "second one"]);

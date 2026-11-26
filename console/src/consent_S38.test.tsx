@@ -36,10 +36,10 @@ it.each([
   });
   expect(screen.getByTitle("Workspace")).toHaveTextContent(folder);
   const push = (...messages: [number, string][]) => act(() => host.push({ ...items(...messages), stream: "st1" }));
-  push([1, synced(0)], [2, turn({ state: "running", since: 1, activity: { kind: "consent", what } })]);
-  expect(await screen.findByText("Waiting for your answer in watane")).toBeInTheDocument();
+  push([1, synced(0)], [2, turn({ state: "running", since: 1, activity: { kind: "consent", what: `workspace:local/claude-code:${folder}` } })]);
+  expect(await screen.findByText(`Waiting for your answer in watane for ${folder}`)).toBeInTheDocument();
   push([3, turn({ state: "running", since: 1 })]);
-  await waitFor(() => expect(screen.queryByText("Waiting for your answer in watane")).toBeNull());
+  await waitFor(() => expect(screen.queryByText(`Waiting for your answer in watane for ${folder}`)).toBeNull());
   push([4, turn({ state: "idle", stop: { kind: "failed", error: "provider-ended", cause } })]);
   expect(await screen.findByText(`Failed: ${words}`)).toBeInTheDocument();
   page.unmount();

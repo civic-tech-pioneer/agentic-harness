@@ -209,7 +209,7 @@ function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra
   if (state.state !== "idle" || !prev || prev.state === "idle") return;
   const key = `f:${v.rows[v.rows.length - 1]?.key ?? ""}`;
   if (hasKey(key)) return;
-  push(v, { kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}), ...(state.stop.kind === "stopped" ? { stopped: state.stop.limit } : {}) });
+  push(v, { kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}), ...(state.stop.kind === "stopped" ? { stopped: state.stop.limit } : {}), ...(state.stop.kind === "interrupted" ? { interrupted: true as const } : {}) });
 }
 
 /** Folds the thought that is streaming, if any: its seconds run from its first to its last chunk's `at` (9.4 `message` row), as its entry's do. */
@@ -333,7 +333,7 @@ export function reduce(view: SessionView, message: string): SessionView {
 
   if (m.t === "chunk" || m.t === "call" || m.t === "plan") {
     if (!(m.t === "chunk" && m.part === "thought")) fold(v, x);
-  } else if (m.t !== "synced" && m.t !== "queue" && m.t !== "usage" && m.t !== "usage-clear" && m.t !== "turn") fold(v, x);
+  } else if (m.t !== "synced" && m.t !== "queue" && m.t !== "usage" && m.t !== "usage-clear" && m.t !== "turn" && m.t !== "control-ack") fold(v, x);
 
   switch (m.t) {
     case "synced":
@@ -358,7 +358,7 @@ export function reduce(view: SessionView, message: string): SessionView {
       break;
     }
     case "turn": setTurn(v, x, m.state, m.extra); break;
-    case "compaction": break;
+    case "compaction": case "control-ack": break;
     case "unreadable":
       push(v, { kind: "unknown", key: i !== undefined ? `e${i}` : nextKey(x, "u"), ...(i !== undefined ? { i } : {}), raw: m.raw });
       break;

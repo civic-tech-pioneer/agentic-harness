@@ -198,7 +198,9 @@ export function DecisionRow({ row }: { row: Of<"decision"> }) {
 }
 
 export function FooterRow({ row }: { row: Of<"footer"> }) {
-  const parts = [row.stopped !== undefined ? `Stopped at the ${row.stopped} after ${row.seconds} s` : `Completed in ${row.seconds} s`, plural(row.tools, "tool", "tools")];
+  const duration = row.stopped !== undefined ? `Stopped at the ${row.stopped} after ${row.seconds} s`
+    : row.interrupted ? `Stopped after ${row.seconds} s` : `Completed in ${row.seconds} s`;
+  const parts = [duration, plural(row.tools, "tool", "tools")];
   if (row.tokens !== undefined) parts.push(`${row.tokens >= 1000 ? `${Math.round(row.tokens / 1000)}k` : row.tokens} tokens`);
   return <p className="wa-footer">{parts.join(" · ")}</p>;
 }
