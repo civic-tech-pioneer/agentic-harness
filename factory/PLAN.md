@@ -32,7 +32,7 @@ S138 (consumer half of watane S133/S136, Codex build); S140 (upkeep, console, Cl
 ## Sketched
 ### S140 (upkeep, guard first) the console's known gaps and test polish, console/ only
 (sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder claude by rule 3 (last two S138 codex, S139 codex),
-reviewer codex; in flight, cloud, routine `trig_01Hkd9KmgKVeQ1HVtLVY31hY` fires 12:18 UTC; DELIVERED as PR #63 at 5ee2aac (13:01 UTC, +243/-30; items 2, 3, 5 already fixed by S139, dropped; CI green); r1: Codex review https://chatgpt.com/local/6b0830f4-f93c-83ed-b07a-f5fbc2366044, 13:17 UTC; r1: 1/2 (changes; F1.1 the 240-char preview counts UTF-16 units, ruled narrow), posted 13:29 UTC with the answer brief as a PR comment for the subscribed build session (it woke on it); r1 answers at 27f9956 (13:33 UTC); r2: Codex follow-up in the same task, 13:35 UTC; the build session (`cse_01LxwP8xUGgojrr3XJGNbqD4`) subscribed to PR activity, so it may wake on the review: check it before any answer routine (one writer); spec-check not run: the slice changes no spec text (below). Upkeep is exempt from the size rule.)
+reviewer codex; in flight, cloud, routine `trig_01Hkd9KmgKVeQ1HVtLVY31hY` fires 12:18 UTC; DELIVERED as PR #63 at 5ee2aac (13:01 UTC, +243/-30; items 2, 3, 5 already fixed by S139, dropped; CI green); r1: Codex review https://chatgpt.com/local/6b0830f4-f93c-83ed-b07a-f5fbc2366044, 13:17 UTC; r1: 1/2 (changes; F1.1 the 240-char preview counts UTF-16 units, ruled narrow), posted 13:29 UTC with the answer brief as a PR comment for the subscribed build session (it woke on it); r1 answers at 27f9956 (13:33 UTC); r2: Codex follow-up in the same task, 13:35 UTC; r2: 0/0, VERDICT: approve on 27f9956 (13:41 UTC); CI `gate` timed out at 15 min once on 27f9956, green on rerun (second sighting after S134); user-sim not reported by the review lead, asked in the same task 14:00 UTC; adversary not run (deputy: `provider/BOUNDARIES.md` is a copy, `publish-test-mods.sh` an equivalent JSON read, tested both ways); the build session (`cse_01LxwP8xUGgojrr3XJGNbqD4`) subscribed to PR activity, so it may wake on the review: check it before any answer routine (one writer); spec-check not run: the slice changes no spec text (below). Upkeep is exempt from the size rule.)
 Why: Upkeep holds console work that no slice in flight touches; S138 edits only kernel/, design/ and the wit/deps folders.
 Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
 (1) *guard* the `installed-agent` flake: `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code
@@ -134,6 +134,8 @@ reviewer claude. Cloud.
 
 
 ### Upkeep
+
+- **(flake, S140 r1 and r2 reviews)** `console/kit/parts_S15.test.ts:42` replay test times out under the full console run, passes alone and in the gate (twice in a Codex cloud).
 
 - **(guard, S138 r2 P2.1)** no test pins `run_client`'s `me() == "page"` guard on arming `page-origin` (a non-page chain arming it would give page firings that mod's authority), nor "every successful client call drains what is owed": add a Harness step in `kernel/wasm/tests/harness/run.sh`. **(S138 r2 polish)** P2.2 `design/LOG.md:9` attributes D001 to the human while it is `human: pending`; P2.3 drain owed work in one layer (`Kernel::read` and `run_client`); P2.4 `harness/run.sh` and `production/run.sh` into CI `installed-agent` once the watane release exists; S138 r1 P1.1 to P1.8, P1.10 of https://github.com/civic-tech-pioneer/agentic-harness/pull/61.
 
