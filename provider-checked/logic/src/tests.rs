@@ -1040,7 +1040,10 @@ fn f1_1_a_deadline_with_a_full_stream_is_final_at_once_and_its_verdict_waits_for
     fired_with(&mut f, "judge/own1/c1");
     // The deadline is final: the check is denied now, its judge stream cancelled, no re-arm.
     assert_eq!(f.calls("answer").len(), 1);
-    assert!(f.calls("answer")[0].starts_with("answer cl1 c1 deny:judge: no verdict before the deadline"));
+    assert!(
+        f.calls("answer")[0]
+            .starts_with("answer cl1 c1 deny:judge: no verdict before the deadline")
+    );
     assert!(!f.timers.contains_key("judge/own1/c1"));
     assert!(f.log.contains(&"cancel j1".to_string()));
     // A late safe reply after the stream drained changes nothing.
@@ -1052,7 +1055,10 @@ fn f1_1_a_deadline_with_a_full_stream_is_final_at_once_and_its_verdict_waits_for
     ready_with(&mut f, &own);
     let v = f.verdicts(&own);
     assert_eq!(v.len(), 1);
-    assert_eq!((v[0]["on"].as_str(), v[0]["outcome"].as_str()), (Some("c1"), Some("unsafe")));
+    assert_eq!(
+        (v[0]["on"].as_str(), v[0]["outcome"].as_str()),
+        (Some("c1"), Some("unsafe"))
+    );
 }
 
 /// Three checks denied by their deadlines; the third verdict takes the stream's last slot.
@@ -1076,9 +1082,16 @@ fn f1_2_the_breaker_reason_survives_a_full_stream_by_the_run_rule() {
     assert!(!f.verdicts(&own).iter().any(|v| v["on"] == "breaker"));
     f.room = None;
     ready_with(&mut f, &own);
-    let b: Vec<_> = f.verdicts(&own).into_iter().filter(|v| v["on"] == "breaker").collect();
+    let b: Vec<_> = f
+        .verdicts(&own)
+        .into_iter()
+        .filter(|v| v["on"] == "breaker")
+        .collect();
     assert_eq!(b.len(), 1);
-    assert_eq!(b[0]["reasons"][0], "3 denials in a row: the session was stopped");
+    assert_eq!(
+        b[0]["reasons"][0],
+        "3 denials in a row: the session was stopped"
+    );
     assert_eq!(b[0]["denials-in-a-row"], 3);
 }
 
@@ -1089,7 +1102,7 @@ fn f1_2_the_breaker_reason_survives_a_full_stream_by_the_window_rule() {
     initialized(&mut f, &claude);
     // 9 denials, never 3 in a row (a safe verdict after every second one).
     let mut n = 0;
-    for i in 0..13 {
+    for i in 0..20 {
         let id = format!("c{i}");
         from_claude(&mut f, &claude, check(&id));
         let p = if i % 3 == 2 { 0.0 } else { 0.9 };
@@ -1108,9 +1121,16 @@ fn f1_2_the_breaker_reason_survives_a_full_stream_by_the_window_rule() {
     assert_eq!(f.calls("interrupt").len(), 1);
     f.room = None;
     ready_with(&mut f, &own);
-    let b: Vec<_> = f.verdicts(&own).into_iter().filter(|v| v["on"] == "breaker").collect();
+    let b: Vec<_> = f
+        .verdicts(&own)
+        .into_iter()
+        .filter(|v| v["on"] == "breaker")
+        .collect();
     assert_eq!(b.len(), 1);
-    assert_eq!(b[0]["reasons"][0], "10 denials in the last 50 verdicts: the session was stopped");
+    assert_eq!(
+        b[0]["reasons"][0],
+        "10 denials in the last 50 verdicts: the session was stopped"
+    );
 }
 
 #[test]
@@ -1124,12 +1144,18 @@ fn f1_2_a_forwarded_item_never_overtakes_a_waiting_verdict() {
     f.full = false;
     // The stream has room, but the waiting verdict is first: the item call defers until `ready`.
     let line = json!({"type": "assistant", "message": {"content": []}});
-    assert!(matches!(from_claude(&mut f, &claude, line.clone()), SinkOutcome::Defer));
+    assert!(matches!(
+        from_claude(&mut f, &claude, line.clone()),
+        SinkOutcome::Defer
+    ));
     ready_with(&mut f, &own);
-    assert!(matches!(from_claude(&mut f, &claude, line), SinkOutcome::Taken));
+    assert!(matches!(
+        from_claude(&mut f, &claude, line),
+        SinkOutcome::Taken
+    ));
     let items = f.items(&own);
-    let v = items.iter().position(|i| i.contains("\"verdict\"")).unwrap();
-    let a = items.iter().position(|i| i.contains("\"assistant\"")).unwrap();
+    let v = items.iter().position(|i| i == "verdict:c1:unsafe").unwrap();
+    let a = items.iter().position(|i| i == "assistant").unwrap();
     assert!(v < a, "{items:?}");
 }
 
@@ -1141,9 +1167,15 @@ fn f1_4_a_refused_send_ends_the_session_and_never_enters_the_excerpt() {
     f.refuse_say = Some(SessionError::UnknownStream);
     say_with(&mut f, K, &own, "next step").unwrap();
     judge_safe(&mut f, "j2");
-    assert_eq!(f.calls("say-refused"), [format!("say-refused {claude} next step")]);
+    assert_eq!(
+        f.calls("say-refused"),
+        [format!("say-refused {claude} next step")]
+    );
     // The kernel learns at once: the own stream ends with the cause, so its turn does not hang.
-    assert_eq!(f.calls("close"), [format!("close {own} say: unknown-stream")]);
+    assert_eq!(
+        f.calls("close"),
+        [format!("close {own} say: unknown-stream")]
+    );
     assert!(f.log.contains(&format!("cancel {claude}")));
     assert!(f.kv.keys().all(|k| !k.starts_with("s/")));
 }
