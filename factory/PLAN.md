@@ -49,7 +49,7 @@ deputy compares: the stopped-turn transcript and footer, and the consent activit
 
 ### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
 (sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
-S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).) r1 answers at 07d910f (12:20 UTC; F1.1 to F1.3 fixed; F1.ci needs a watane release with S136, the human's, asked 12:23 UTC by Deputy Rock); r2: Claude routine `trig_014PqYzP7y2xYu5EcKcccLX4`, 12:22 UTC.
+S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).) r1 answers at 07d910f (12:20 UTC; F1.1 to F1.3 fixed; F1.ci needs a watane release with S136, the human's, asked 12:23 UTC by Deputy Rock); r2: Claude routine `trig_014PqYzP7y2xYu5EcKcccLX4`, 12:22 UTC. r2: 0/4, VERDICT: approve on 07d910f (12:30 UTC); **approved, held**: merges once a watane release with S136 turns `installed-agent` green (Waiting on the human). Friction: the reviewer found no `.claude/factory/review-lead.md` in this repository and used the README's review-team row.
 Why: the guard in Upkeep (the human's (b) on S40 F6.1): a timer firing of an OpenAI session whose owner mod was disabled
 during a timed pause may send one more model request under the kernel's origin. watane now gives a mod's own top-level
 `timer-sink.fired` the read `timers.firing-origin() -> option<string>` (the resolved origin identity, the timer owner's
@@ -134,6 +134,8 @@ reviewer claude. Cloud.
 
 
 ### Upkeep
+
+- **(guard, S138 r2 P2.1)** no test pins `run_client`'s `me() == "page"` guard on arming `page-origin` (a non-page chain arming it would give page firings that mod's authority), nor "every successful client call drains what is owed": add a Harness step in `kernel/wasm/tests/harness/run.sh`. **(S138 r2 polish)** P2.2 `design/LOG.md:9` attributes D001 to the human while it is `human: pending`; P2.3 drain owed work in one layer (`Kernel::read` and `run_client`); P2.4 `harness/run.sh` and `production/run.sh` into CI `installed-agent` once the watane release exists; S138 r1 P1.1 to P1.8, P1.10 of https://github.com/civic-tech-pioneer/agentic-harness/pull/61.
 
 - **(S139 r1 polish)** P1.1 to P1.7 of https://github.com/civic-tech-pioneer/agentic-harness/pull/62 (review r1): tests for `cannotInterrupt` on the taken-row retry and the control-ack fold; the older `workspace:/abs` consent form; `stage_c.mjs:316` asserts `q.what`; P1.5 spec drift in `design/`; the 240-char preview as a slice; a folder with a newline.
 
