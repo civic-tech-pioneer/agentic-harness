@@ -48,6 +48,10 @@ describe("S140", () => {
     ["exactly 240 characters", "a".repeat(240), "a".repeat(240)],
     ["241 characters", "b".repeat(241), `${"b".repeat(240)}…`],
     ["a pair of code units at the cut", `${"c".repeat(239)}😀tail`, `${"c".repeat(239)}😀…`],
+    // the limit counts code points, not UTF-16 units (S140 r1 F1.1): supplementary characters before the cut
+    ["exactly 240 emoji", "😀".repeat(240), "😀".repeat(240)],
+    ["241 emoji", "😀".repeat(241), `${"😀".repeat(240)}…`],
+    ["emoji then letters past the limit", `${"😀".repeat(200)}${"d".repeat(41)}`, `${"😀".repeat(200)}${"d".repeat(40)}…`],
   ])("p1_6_queue_preview_of_%s", async (_name, input, shown) => {
     const f = fakeKernel([...story, queue(input)]);
     for (let n = 0; n <= story.length; n++) f.play(n);
