@@ -44,7 +44,7 @@ Constraints: design only, through the `spec-change` skill; no code, no VISION ch
 
 ### S131 (upkeep) the host tests check what they skip: stage C on a participant home, stage B and D test polish
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S130 codex, S129 codex; the upkeep
-lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC; PR #58 opened ~07:20 at 495975c (+6524/-60, 5.3k of it the test home's Cargo.lock; shares only AGENTS.md with S127); r1: Codex review https://chatgpt.com/local/6b07deda-2b30-83ed-ae72-c1ec08020061, 07:27 UTC; r1: 8/2 `changes (8)` (boundary HELD; outcome check could not run, no watane-dev in Codex), posted ~07:40 with Deputy Rock's ruling (F1.1/P1.1 sketch amended, F1.2 a named known gap with the console fix to Upkeep, F1.7/F1.8 narrowed); answer by the build session itself (idle at 07:24; a new answer routine only if no push by ~08:05). Size: an upkeep slice.)
+lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched; routine `trig_012rpGShQDeh3hBe4E8XsmGc`, fires 06:31 UTC; PR #58 opened ~07:20 at 495975c (+6524/-60, 5.3k of it the test home's Cargo.lock; shares only AGENTS.md with S127); r1: Codex review https://chatgpt.com/local/6b07deda-2b30-83ed-ae72-c1ec08020061, 07:27 UTC; r1: 8/2 `changes (8)` (boundary HELD; outcome check could not run, no watane-dev in Codex), posted ~07:40 with Deputy Rock's ruling (F1.1/P1.1 sketch amended, F1.2 a named known gap with the console fix to Upkeep, F1.7/F1.8 narrowed); answer by the build session itself (idle at 07:24; a new answer routine only if no push by ~08:05); answered by the build session at 461bb74 (~08:21, all 8, main merged in: squash at merge); r2: Codex review https://chatgpt.com/local/6b07ec6b-3124-83ed-8204-bae83a42b053, 08:24 UTC. Size: an upkeep slice.)
 Outcomes, each item's check (re-check each against main first; drop the ones already true and say so):
 1. S38 after watane S103: S38 outcomes 1 to 3 run on a participant home with a fake `Confirm` (host 19.7), outcomes 2 and 4
    on `watane-dev serve`, and the stage C budgets of TECHNICAL 17 are measured and recorded in the Suite time table.
@@ -120,6 +120,7 @@ reviewer claude. Cloud.
 
 ### Upkeep
 
+- **(from S131 F1.8)** a stage D load run lost 1 item and 4 tool calls of one OpenAI session at the page (1 of 3 runs, undiagnosed; maybe its last step cut by Stop). Diagnose before the stage D Budget row can close.
 - **(after S127)** `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (watane S129 has merged).
 - **(S127 polish)** P4.1 `kernel/tests/it/s127_judge.rs:333`: assert that the replacement launch carries the original follow-up.
 - **(from S131 F1.2)** the console's consent activity does not name the folder the app asks for (`console/src`); S131's `stage_c.mjs` keeps it as a named known gap.
