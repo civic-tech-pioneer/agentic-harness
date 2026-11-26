@@ -731,7 +731,9 @@ async function main() {
       return page;
     }
 
-    await check("page: the ask card shows the tool's input and the time left; past the deadline the page reads zero left (the host's own expiry takes 10 minutes)", async () => {
+    // S131 r1 F1.4: expiry through the host. The host's ask deadline is fixed at 10 minutes (watane host 19.3, `ASK_TTL`, no test
+    // hook), so this check waits for it: the page's own clock only counts down; the host's deny at `expires-at` is what closes the ask.
+    await check("page: the ask card shows the tool's input and the time left; once the host's 10-minute deadline passes the card offers no answer and the turn ends denied", async () => {
       await tidy();
       writeScript([{ do: "expect-user" }, { do: "sleep", ms: 6000 }, ...askTurn("shown.txt").slice(1)]);
       const s = await startMine("read shown");
@@ -746,14 +748,17 @@ async function main() {
         ensure(shown.endsWith("shown.txt"), `the card shows the input ${JSON.stringify(shown)}, the ask's path is ${a.body.path}`);
         const left = async () => (await page.locator(".wa-status-clock").textContent().catch(() => "")) ?? "";
         await until(async () => /denied in (9:[0-5]\d|10:00) if unanswered/.test(await left()), 10_000, "the status line to count the ten minutes down");
-        // the page's clock past `expires-at`: the status line has nothing left to count
-        await page.clock.fastForward(11 * 60 * 1000);
-        await until(async () => /denied in 0:00 if unanswered/.test(await left()), 10_000, "the status line to read 0:00 left");
-        // the card still offers an answer here: the page waits for the host's deny to mark the ask decided (reported, not asserted)
-        const offers = await page.getByRole("button", { name: "Allow once" }).count();
-        notes.push(`page past the ask's deadline: the card ${offers ? "still offers" : "no longer offers"} Allow once (only the host's deny at 10 minutes closes it)`);
-        if (offers) await page.getByRole("button", { name: "Allow once" }).click();
-        await until(async () => lastTurn(await transcript(s))?.state === "idle", 20_000, "the turn to end");
+        const answers = () => card.getByRole("button", { name: /^(Allow|Deny)/ }).count();
+        ensure(await answers() > 0, "the open card offers no answer");
+        // the host's deadline, in real time: the ask's own `expires-at` plus a margin for the deny to reach the page
+        const due = Number(a.body["expires-at"] ?? a.body.expiresAt ?? (Date.now() + 600_000));
+        say(`  waiting ${Math.round((due - Date.now()) / 1000)} s for the host's ask deadline`);
+        await page.clock.fastForward(Math.max(0, due - Date.now()));
+        const es = await until(async () => { const es = await transcript(s); return decisionsOf(es, a.body.id).length && lastTurn(es)?.state === "idle" ? es : null; }, Math.max(0, due - Date.now()) + 60_000, "the host to close the ask at its deadline and the turn to end");
+        const d = decisionsOf(es, a.body.id);
+        ensure(d.length === 1 && d[0].body.decision.outcome === "deny", `the expired ask's decisions: ${JSON.stringify(d.map((x) => x.body.decision))}`);
+        await until(async () => (await answers()) === 0, 10_000, "the expired card to offer no answer").catch(async (e) => { throw new Error(`${e.message}: the card reads ${JSON.stringify((await card.textContent())?.slice(0, 200))}`); });
+        say(`  the host closed the ask: ${JSON.stringify(d[0].body.decision)}; the card reads ${JSON.stringify((await card.textContent())?.replace(/\s+/g, " ").slice(0, 120))}`);
       } finally { await page.close(); }
     });
 
@@ -826,10 +831,19 @@ async function main() {
         ensure(words.indexOf("Stopping…") >= 0 && words.lastIndexOf("Idle") > words.indexOf("Stopping…"), `the status words were ${JSON.stringify(words)}`);
         const es = await transcript(s);
         ensure(es.some((e) => e.kind === "turn" && e.body?.stop?.kind === "interrupted"), "no turn ended interrupted");
-        // the queued row's fate: the page agrees with the kernel's queue (it ran, or it is still listed)
-        const backend = (await ok("sessions.queued", { session: s })).length;
-        await until(async () => (await page.locator(".wa-queue li").count()) === backend, 10_000, `the page's queue to show ${backend} rows as the kernel's`);
-        notes.push(`page Stop with one queued input: Stopping… then Idle; the queue then listed ${backend} row(s) in page and kernel`);
+        // the queued row's fate (S131 r1 F1.5): Stop keeps her text. It is still queued, its row in the page and its input in the kernel's
+        // queue, or it ran as the next turn's message; Stop dropping it from both fails
+        const QUEUED = "queued while running";
+        const fate = await until(async () => {
+          const queued = await ok("sessions.queued", { session: s });
+          if (queued.some((q) => JSON.stringify(q.input).includes(QUEUED))) return "queued";
+          const es = await transcript(s);
+          if (es.some((e) => e.kind === "message" && e.body?.role === "user" && textOf(e) === QUEUED)) return "ran";
+          return null;
+        }, 10_000, `her queued text ${JSON.stringify(QUEUED)} in the kernel's queue or as a later message`);
+        if (fate === "queued") await until(async () => (await page.locator(".wa-queue li", { hasText: QUEUED }).count()) === 1, 10_000, "the page's queue to keep her row");
+        else await page.getByText(QUEUED, { exact: true }).first().waitFor({ timeout: 10_000 });
+        notes.push(`page Stop with one queued input: Stopping… then Idle; her queued text ${fate === "queued" ? "stays queued, in page and kernel" : "ran as the next message"}`);
       } finally { await page.close(); }
     });
 
