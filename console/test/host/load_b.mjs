@@ -29,6 +29,7 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
 import { isInterrupted, loadWindow } from "./load_check.mjs";
+import { writerBusy } from "./stage-d-tools/metrics.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -189,8 +190,16 @@ function homeHarness() {
 }
 /** Starts the home; resolves with its ready line's pages; `stop()` ends it and waits until it exited. */
 async function startHome(bin, home, claude, folders) {
-  const child = spawn(bin, ["--home", home, "--fake-claude", claude, "--grant-all", ...folders], { stdio: ["pipe", "pipe", "inherit"] });
-  const asked = [];
+  // S131 r1 F1.7: a host built with home/commit-clock.patch logs each state commit as `S128_COMMIT <start ns> <end ns>` on stderr
+  // while S128_LOAD_CLOCK is set; a stock host logs none, and the writer's share is then not measured
+  const child = spawn(bin, ["--home", home, "--fake-claude", claude, "--grant-all", ...folders],
+    { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, S128_LOAD_CLOCK: join(tmp, "commit-clock") } });
+  const asked = [], commits = [];
+  createInterface({ input: child.stderr }).on("line", (l) => {
+    const m = /^S128_COMMIT (\d+) (\d+)$/.exec(l);
+    if (m) commits.push([Number(BigInt(m[1]) / 1000n) / 1000, Number(BigInt(m[2]) / 1000n) / 1000]);
+    else process.stderr.write(l + "\n");
+  });
   const ready = await new Promise((ok, no) => {
     child.on("exit", (c) => no(new Error(`stage-c-home exited ${c}`)));
     createInterface({ input: child.stdout }).on("line", (l) => {
@@ -201,7 +210,7 @@ async function startHome(bin, home, claude, folders) {
     });
   });
   const pageOf = (local) => ready.mods.find((m) => m.local === local)?.page;
-  return { home, agent: pageOf("agent"), client: pageOf("loadclient"), asked,
+  return { home, agent: pageOf("agent"), client: pageOf("loadclient"), asked, commits,
     stop: async () => { child.stdin.end('{"op":"quit"}\n'); for (let k = 0; k < 150 && child.exitCode === null; k++) await sleep(100); if (child.exitCode === null) child.kill("SIGKILL"); } };
 }
 
@@ -324,14 +333,19 @@ async function main() {
     say(`item delay, the fake's write to the Chromium page: p95 ${dp95.toFixed(1)} ms over ${delays.length} items (budget ${BUDGET.delay}); max ${Math.max(...delays).toFixed(1)} ms`);
     say(`Stop in the page to idle {interrupted} in the page: p95 ${sp95.toFixed(1)} ms (budget ${BUDGET.stop}); each ${stops.map((x) => x.toFixed(1)).join(", ")} ms`);
     say(`machine: ${process.platform} ${cpus().length} cpus, load average ${loadavg().map((x) => x.toFixed(2)).join(" ")}`);
+    let busy = null;
     if (HOME) {
+      if (homeRun.commits.length) {
+        busy = writerBusy(homeRun.commits, win.from, win.to);
+        say(`writer busy share over the common window: ${busy.toFixed(1)}% (${homeRun.commits.filter(([a, b]) => b > win.from && a < win.to).length} commits; budget 50)`);
+      } else say("writer busy share: not measured (a stock host logs no commits; build stage-c-home against a watane checkout with console/test/host/home/commit-clock.patch)");
       const consented = new Set(homeRun.asked.map((q) => q.what));
       say(`stage C: ${homeRun.asked.length} consent questions granted by the fake app, for ${consented.size} folders`);
       if (consented.size < 2 * SESSIONS) faults.push(`only ${consented.size} of the ${2 * SESSIONS} folders were asked for`);
     }
     if (faults.length) throw new Error(`${faults.length} load, completeness or identity faults`);
     if (!delays.length) throw new Error("no item was measured");
-    return dp95 <= BUDGET.delay && sp95 <= BUDGET.stop;
+    return dp95 <= BUDGET.delay && sp95 <= BUDGET.stop && (busy === null || busy <= 50);
   } finally { await browser.close(); await homeRun?.stop(); }
 }
 
