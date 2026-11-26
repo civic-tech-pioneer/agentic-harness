@@ -734,6 +734,7 @@ S2 writes each into the document that owns it.
 ## Friction
 
 - (2026-11-26, Deputy Scissors, S134) CI `gate` was cancelled at its 15-min limit on 5535d7f (runs before took ~7 min); green on rerun. Watch for a second sighting.
+- (2026-11-26, Deputy Paper, S144) third sighting: CI `gate` cancelled at its 15-min limit on 30df2491 (S134, S140 r1, S144 r1); rerun once. A factory proposal to the human (README "Keep it lean"): raise the gate job's `timeout-minutes` to 25 or split the slow browser suite into its own job, after measuring where the 15 min go.
 
 - 2026-11-24 (S38 r2) `RemoteTrigger` update then run fired the routine's old brief in a new session (second time after S35 r2): for a later round, create a new routine instead of update+run. (deputy-3)
 
