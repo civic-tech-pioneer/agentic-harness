@@ -8,7 +8,7 @@
 use crate::adapters::responses;
 use crate::error::KernelError;
 use crate::openai::run::{Cx, LoopState, Pending, Phase};
-use crate::record::{Deadline, OpenAsk, Record, Turn, DEADLINES, OPEN_ASKS};
+use crate::record::{Deadline, OpenAsk, Record, Stop, Turn, DEADLINES, OPEN_ASKS};
 use crate::rules::{glob, Rules, Verdict};
 use crate::sessions::{wire_update, Host, Kernel, Push, StreamKey, Tool};
 use crate::state::State;
@@ -35,6 +35,13 @@ pub struct Policy {
     pub mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ask_expiry: Option<u64>,
+    /// The turn's limits, compiled from the profile and overlay (9.7 "Limits").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_turns: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tool_errors: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
 }
 
 impl Policy {
@@ -145,6 +152,12 @@ fn expand(rules: &[String], names: &[&str]) -> Vec<String> {
     out
 }
 
+fn errors_reached(ls: &LoopState) -> bool {
+    ls.policy
+        .max_tool_errors
+        .is_some_and(|m| ls.tool_errors_in_a_row >= m)
+}
+
 fn error_text(why: &str) -> String {
     json!({ "error": why }).to_string()
 }
@@ -245,6 +258,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             &expand(&ls.policy.deny, &names),
         );
         for item in calls {
+            if errors_reached(ls) {
+                // The cap was reached by an earlier call of this step: the rest is cleanup.
+                self.put_aborted(rec, ls, cx, &item)?;
+                continue;
+            }
             let name = item["name"].as_str().unwrap_or_default().to_string();
             if ls.tools.as_ref().and_then(|t| t.info(&name)).is_none() {
                 // A session with no toolsets has nothing to run: its call is `aborted` (S40-3).
@@ -277,6 +295,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 },
             }
         }
+        if rec.turn.is_active() && self.stop_on_errors(rec, ls, cx)? {
+            return Ok(());
+        }
         let info = ls.tools.clone().unwrap_or_default();
         ls.serial = !ls.calls.iter().all(|c| {
             info.info(c.item["name"].as_str().unwrap_or_default())
@@ -296,6 +317,43 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// Stores a call's one output: in the wire, and shown to the owner as the Responses adapter
     /// maps a job output (the tool call entry completes or fails).
     pub(crate) fn put_output(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        call: &Value,
+        output: String,
+        ok: bool,
+    ) -> Result<(), KernelError> {
+        self.count_output(ls, ok);
+        self.store_output(rec, ls, cx, call, output, ok)
+    }
+
+    /// Counts one output of a call for `max-tool-errors` (9.7 "Limits"): a success resets the
+    /// streak, any other output adds to it. True when the streak has reached the cap. Cleanup
+    /// aborts (`put_aborted`) never come here.
+    pub(crate) fn count_output(&mut self, ls: &mut LoopState, ok: bool) -> bool {
+        if ok {
+            ls.tool_errors_in_a_row = 0;
+        } else {
+            ls.tool_errors_in_a_row = ls.tool_errors_in_a_row.saturating_add(1);
+        }
+        errors_reached(ls)
+    }
+
+    /// The `aborted` output of an interrupt cleanup or a limit stop (9.5, 9.7): stored like any
+    /// output but not counted toward `max-tool-errors`.
+    pub(crate) fn put_aborted(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+        call: &Value,
+    ) -> Result<(), KernelError> {
+        self.store_output(rec, ls, cx, call, "aborted".into(), false)
+    }
+
+    fn store_output(
         &mut self,
         rec: &mut Record,
         ls: &mut LoopState,
@@ -453,7 +511,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         ls: &mut LoopState,
         cx: &mut Cx,
     ) -> Result<(), KernelError> {
-        if !rec.turn.is_active() {
+        if !rec.turn.is_active() || self.stop_on_errors(rec, ls, cx)? {
             return Ok(());
         }
         if ls.phase == Phase::Waiting && !ls.calls.iter().any(|c| c.st == CallState::Ask) {
@@ -494,6 +552,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Ok(());
         };
         let blocked = self.start_jobs(rec, ls, cx)?;
+        if rec.turn.is_active() && self.stop_on_errors(rec, ls, cx)? {
+            return Ok(());
+        }
         if ls.calls.is_empty() {
             ls.phase = Phase::Ready {
                 wait: None,
@@ -567,6 +628,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 Err(e) => {
                     let call = ls.calls.remove(i);
                     self.put_output(rec, ls, cx, &call.item, error_text(&e), false)?;
+                    if errors_reached(ls) {
+                        return Ok(Blocked::No);
+                    }
                 }
             }
         }
@@ -672,6 +736,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             return Ok(());
         }
+        if self.stop_on_errors(rec, ls, cx)? {
+            return Ok(());
+        }
         self.settle_calls(rec, ls, cx, false)
     }
 
@@ -701,9 +768,33 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         ls.jobs = 0;
         for call in std::mem::take(&mut ls.calls) {
-            self.put_output(rec, ls, cx, &call.item, "aborted".into(), false)?;
+            self.put_aborted(rec, ls, cx, &call.item)?;
         }
         Ok(())
+    }
+
+    /// 9.7 "Limits": when the failure streak reached `max-tool-errors`, the turn stops
+    /// `stopped {limit: max-tool-errors}` with the other open and pending calls aborted by the
+    /// interrupt cleanup (those aborts do not count). True when it stopped.
+    fn stop_on_errors(
+        &mut self,
+        rec: &mut Record,
+        ls: &mut LoopState,
+        cx: &mut Cx,
+    ) -> Result<bool, KernelError> {
+        if !errors_reached(ls) {
+            return Ok(false);
+        }
+        self.abort_calls(rec, ls, cx)?;
+        if rec.turn.is_active() {
+            let stop = Stop::Stopped {
+                limit: "max-tool-errors".into(),
+            };
+            self.end_turn(rec, ls, cx, stop)?;
+        } else {
+            self.openai_stop(rec, ls, cx)?;
+        }
+        Ok(true)
     }
 }
 

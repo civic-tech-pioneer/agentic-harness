@@ -320,6 +320,7 @@ fn ac4_the_fake_default_turn_as_a_batch_and_as_single_lines() {
             [
                 "agent_message_chunk",
                 "agent_message_chunk",
+                "usage",
                 "entry",
                 "turn"
             ],
@@ -339,7 +340,7 @@ fn ac4_the_fake_default_turn_as_a_batch_and_as_single_lines() {
         // the update that finishes the entry carries its index
         assert_eq!(live[1]["_meta"]["watane"]["i"], messages[0]["i"]);
         assert_eq!(
-            live[3]["_meta"]["watane"]["state"],
+            live[4]["_meta"]["watane"]["state"],
             json!({"state":"idle","stop":{"kind":"completed"},"seconds":0})
         );
         let turns: Vec<&Value> = read.iter().filter(|e| e["kind"] == "turn").collect();
@@ -909,6 +910,7 @@ fn ac2_an_entry_without_an_acp_form_is_an_entry_item_and_the_turn_item_follows_i
             "entry:\"unknown\"",
             "agent_message_chunk",
             "agent_message_chunk",
+            "usage",
             "entry:\"turn\"",
             "turn"
         ]

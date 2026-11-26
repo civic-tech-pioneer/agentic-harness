@@ -701,6 +701,7 @@ pub(crate) fn delta_only(out: &adapters::Out) -> Option<Value> {
         && out.resolved.is_none()
         && out.watane.is_none()
         && out.usage.is_none()
+        && out.meter.is_none()
         && !out.idle;
     out.update.clone().filter(|_| bare)
 }
@@ -3494,6 +3495,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         items.push(json!({"_meta": {"watane": turn_push(&turn)}}));
         items.push(json!({"_meta": {"watane": queue}}));
+        if let Some(u) = &rec.usage {
+            items.push(json!({"_meta": {"watane": u}}));
+        }
         for v in items {
             if let Err(e) = self.host.push(&o, v) {
                 self.drop_failed(&rec.id, &o, e);
@@ -3733,11 +3737,20 @@ impl<S: State, H: Host> Kernel<S, H> {
                 if let Some(r) = out.resolved {
                     self.resolve(&mut rec, past, r, now, &mut work)?;
                 }
+                // A late `result` of an interrupted turn (its idle is still owed) says nothing
+                // about the replacement turn's context (9.3, 9.7).
+                if let (Some(m), 0) = (out.meter, rec.owed_idles) {
+                    rec.usage = m["context-used"].is_u64().then(|| m.clone());
+                    work.pushes.push(Push::of(&rec.id, m));
+                }
                 if out.idle && rec.owed_idles > 0 {
                     rec.owed_idles -= 1;
                 } else if out.idle {
                     let idle = Turn::Idle {
-                        stop: Stop::Completed,
+                        stop: match out.limit {
+                            Some(limit) => Stop::Stopped { limit },
+                            None => Stop::Completed,
+                        },
                         seconds: None,
                         tools: None,
                         tokens: None,

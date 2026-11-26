@@ -236,6 +236,10 @@ pub struct Record {
     /// such line ends nothing more. Zeroed when the provider stream is released or opened.
     #[serde(skip_serializing_if = "is_zero")]
     pub owed_idles: u32,
+    /// The Claude context sample the last `result` gave, as pushed (9.7 "Usage"); `attach`
+    /// replays it. Absent after a clear.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<serde_json::Value>,
     pub next_index: u64,
     pub created: u64,
     pub updated: u64,
@@ -273,6 +277,7 @@ impl Default for Record {
             open: Vec::new(),
             pending_answers: BTreeMap::new(),
             owed_idles: 0,
+            usage: None,
             next_index: 1,
             created: 0,
             updated: 0,

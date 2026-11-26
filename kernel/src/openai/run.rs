@@ -98,6 +98,16 @@ pub struct LoopState {
     pub turn_tokens: u64,
     #[serde(skip_serializing_if = "is_zero")]
     pub turn_calls: u64,
+    /// Completed model steps of the turn, for `max-turns` (9.7 "Limits").
+    #[serde(skip_serializing_if = "is_zero32")]
+    pub turn_steps: u32,
+    /// Failed or denied calls in a row, for `max-tool-errors`; a success resets it.
+    #[serde(skip_serializing_if = "is_zero32")]
+    pub tool_errors_in_a_row: u32,
+    /// The request under way (or next) is the one tool-free summary step of `max-turns`: a retry
+    /// or a pause keeps it tool-free, and its response ends the turn.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub summary: bool,
     /// What the loop reads of the profile, compiled once at `start` (9.6).
     #[serde(skip_serializing_if = "Policy::is_empty")]
     pub policy: Policy,
@@ -122,6 +132,17 @@ pub struct LoopState {
     pub consent: Option<String>,
     #[serde(flatten)]
     pub wire: Wire,
+}
+
+impl LoopState {
+    /// The counters of a turn (9.7 "Limits"), zero at each input that begins a turn.
+    fn reset_turn(&mut self) {
+        self.turn_tokens = 0;
+        self.turn_calls = 0;
+        self.turn_steps = 0;
+        self.tool_errors_in_a_row = 0;
+        self.summary = false;
+    }
 }
 
 fn is_zero32(n: &u32) -> bool {
@@ -226,6 +247,10 @@ fn running_push(rec: &Record, activity: Option<Activity>) -> Option<Push> {
     }
 }
 
+fn limit(name: &str) -> Stop {
+    Stop::Stopped { limit: name.into() }
+}
+
 fn failed(error: impl Into<String>) -> Stop {
     Stop::Failed {
         error: error.into(),
@@ -267,6 +292,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 deny: compiled.deny.clone(),
                 mode: compiled.mode.clone(),
                 ask_expiry: compiled.ask_expiry,
+                max_turns: compiled.max_turns,
+                max_tool_errors: compiled.max_tool_errors,
+                max_tokens: compiled.max_tokens,
             },
             instructions: match compiled.system_prompt {
                 Some(SystemPrompt::Replace(s) | SystemPrompt::Append(s)) => s,
@@ -401,7 +429,10 @@ impl<S: State, H: Host> Kernel<S, H> {
             session: &rec.id,
             model: &ls.model,
             instructions: &ls.instructions,
-            tools: ls.tools.as_ref().map_or(&[], |t| &t.defs),
+            tools: match &ls.tools {
+                Some(t) if !ls.summary => &t.defs,
+                _ => &[],
+            },
             reasoning: reasoning.as_ref(),
             compact_threshold: COMPACT_THRESHOLD,
         };
@@ -466,8 +497,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     ) -> Result<(), KernelError> {
         let Prelaunch { mut ls, go } = p;
         if let Some((pending, launch)) = go {
-            ls.turn_tokens = 0;
-            ls.turn_calls = 0;
+            ls.reset_turn();
             self.go(rec, &mut ls, cx, pending, Some(launch), 0)?;
         }
         self.loop_save(&rec.id, &ls)
@@ -609,7 +639,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     // ---- the end of a turn, errors, pauses
 
     /// The turn ends `idle {stop}`; the oldest queued input then starts the next turn.
-    fn end_turn(
+    pub(crate) fn end_turn(
         &mut self,
         rec: &mut Record,
         ls: &mut LoopState,
@@ -619,8 +649,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let tokens = (ls.turn_tokens > 0).then_some(ls.turn_tokens);
         let tools = (ls.turn_calls > 0).then_some(ls.turn_calls);
         ls.phase = Phase::Idle;
-        ls.turn_tokens = 0;
-        ls.turn_calls = 0;
+        ls.reset_turn();
         ls.consent = None;
         rec.deadlines
             .retain(|d| d.what != RETRY && d.what != RESUME);
@@ -772,6 +801,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         ls: &mut LoopState,
         cx: &mut Cx,
         usage: answer::Usage,
+        reported: bool,
         output: Vec<Value>,
     ) -> Result<(), KernelError> {
         // dev 18.3: a stream may carry the items only as `output_item.done` events.
@@ -786,6 +816,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let model = ls.model.clone();
         ls.wire
             .append(&mut self.state, &rec.id, step, Some(&model), output.clone())?;
+        ls.turn_steps += 1;
         ls.turn_tokens += usage.input_tokens + usage.output_tokens;
         ls.last_error = None;
         cx.work.pushes.push(Push::of(
@@ -818,8 +849,20 @@ impl<S: State, H: Host> Kernel<S, H> {
             .into_iter()
             .filter(|i| i["type"] == "function_call")
             .collect();
+        // 9.7 "Limits", in this order: a token cap that cannot be checked, the token cap, the
+        // one summary step, then the step cap with calls.
+        let policy = &ls.policy;
+        let stop = match policy.max_tokens {
+            Some(_) if !reported => Some(failed("usage-unavailable")),
+            Some(max) if ls.turn_tokens >= max => Some(limit("max-tokens")),
+            _ if ls.summary => Some(limit("max-turns")),
+            _ => None,
+        };
+        let summarize = stop.is_none()
+            && !calls.is_empty()
+            && policy.max_turns.is_some_and(|m| ls.turn_steps >= m);
         if calls.is_empty() {
-            return self.end_turn(rec, ls, cx, Stop::Completed);
+            return self.end_turn(rec, ls, cx, stop.unwrap_or(Stop::Completed));
         }
         ls.turn_calls += calls.len() as u64;
         if streamed.is_empty() {
@@ -833,6 +876,24 @@ impl<S: State, H: Host> Kernel<S, H> {
                     }
                 }
             }
+        }
+        if stop.is_some() || summarize {
+            // No job starts: the calls are closed as the interrupt cleanup does (9.5).
+            for c in &calls {
+                self.put_aborted(rec, ls, cx, c)?;
+            }
+            if !rec.turn.is_active() {
+                return self.openai_stop(rec, ls, cx);
+            }
+            if let Some(stop) = stop {
+                return self.end_turn(rec, ls, cx, stop);
+            }
+            ls.summary = true;
+            ls.phase = Phase::Ready {
+                wait: None,
+                attempt: 0,
+            };
+            return self.enqueue(rec, ls, cx, 0);
         }
         self.openai_calls(rec, ls, calls, cx)?;
         if !rec.turn.is_active() && matches!(ls.phase, Phase::Waiting | Phase::Tools { .. }) {
@@ -1205,7 +1266,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             Ev::Data { bytes, .. } => {
                 match answer::sse(&bytes, cx.now) {
                     Sse::Completed { usage, output } => {
-                        self.on_completed(rec, ls, cx, usage, output)?;
+                        let reported = answer::usage_reported(&bytes);
+                        self.on_completed(rec, ls, cx, usage, reported, output)?;
                     }
                     Sse::Failed(f) => {
                         self.release_request(rec, stream, cx, true);
@@ -1342,8 +1404,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             self.abort_calls(rec, ls, cx)?;
         }
         ls.phase = Phase::Idle;
-        ls.turn_tokens = 0;
-        ls.turn_calls = 0;
+        ls.reset_turn();
         ls.consent = None;
         ls.items.clear();
         rec.deadlines

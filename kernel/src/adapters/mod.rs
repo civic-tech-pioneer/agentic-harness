@@ -33,6 +33,14 @@ pub struct Out {
     /// `idle {completed}`.
     #[serde(skip_serializing_if = "is_false")]
     pub idle: bool,
+    /// With `idle`: the turn's provider reported its own step limit, so the idle ends it
+    /// `stopped {limit}` with this limit (9.7 "Limits").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<String>,
+    /// A `result`'s context meter push, `{"type":"usage",...}`: a sample, or the clear (9.7
+    /// "Usage"). Live; the kernel also keeps the current sample for `attach`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meter: Option<Value>,
     /// An `ask-resolved` the adapter checked; the kernel writes the decision (9.8 rule 4).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved: Option<Resolved>,

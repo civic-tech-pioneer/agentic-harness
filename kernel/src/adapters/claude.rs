@@ -22,6 +22,9 @@ pub struct ClaudeAdapter {
     tools: BTreeMap<String, (String, Value)>,
     result_seen: bool,
     idle_seen: bool,
+    /// The last `result` ended with `subtype: "error_max_turns"` (9.7 "Limits").
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    max_turns_hit: bool,
     /// Asks and checks the host has not resolved yet, by id, as their entry body.
     open: BTreeMap<String, Value>,
     /// Whether the stream is the host's own (`true`) or a checked provider's (10); the stream's
@@ -86,6 +89,33 @@ fn only(update: Option<Value>) -> Out {
     }
 }
 
+/// The meter push of a `result` (9.7 "Usage"): the context sample when the turn was one step
+/// of one model with a positive window, else the clear.
+fn meter(raw: &Value) -> Value {
+    let sample = || {
+        if raw.get("num_turns").and_then(Value::as_u64) != Some(1) {
+            return None;
+        }
+        let models = raw.get("model_usage_since_last_result")?.as_object()?;
+        let mut it = models.values();
+        let (m, None) = (it.next()?, it.next()) else {
+            return None;
+        };
+        let n = |k: &str| m.get(k).and_then(Value::as_u64);
+        let window = n("contextWindow").filter(|w| *w > 0)?;
+        let used = n("inputTokens")?
+            .saturating_add(n("cacheReadInputTokens").unwrap_or(0))
+            .saturating_add(n("cacheCreationInputTokens").unwrap_or(0));
+        Some((used, window))
+    };
+    match sample() {
+        Some((used, window)) => {
+            json!({"type": "usage", "context-used": used, "context-window": window})
+        }
+        None => json!({"type": "usage", "context-used": null, "context-window": null}),
+    }
+}
+
 fn str_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v.get(key).and_then(Value::as_str)
 }
@@ -120,6 +150,7 @@ impl ClaudeAdapter {
                 .collect(),
             result_seen: self.result_seen,
             idle_seen: self.idle_seen,
+            max_turns_hit: self.max_turns_hit,
             open: self.open.clone(),
             direct: self.direct,
             thinking: Thinking::default(),
@@ -346,6 +377,7 @@ impl ClaudeAdapter {
                     if self.take_idle() {
                         vec![Out {
                             idle: true,
+                            limit: self.limit_at(true),
                             ..Out::default()
                         }]
                     } else {
@@ -354,6 +386,7 @@ impl ClaudeAdapter {
                 } else {
                     self.result_seen = false;
                     self.idle_seen = false;
+                    self.max_turns_hit = false;
                     vec![]
                 }
             }
@@ -373,12 +406,24 @@ impl ClaudeAdapter {
 
     fn result(&mut self, raw: &Value) -> Vec<Out> {
         self.result_seen = true;
+        self.max_turns_hit = str_of(raw, "subtype") == Some("error_max_turns");
         self.thinking = Thinking::default();
+        let idle = self.take_idle();
         vec![Out {
             usage: raw.get("usage").cloned(),
-            idle: self.take_idle(),
+            meter: Some(meter(raw)),
+            idle,
+            limit: self.limit_at(idle),
             ..Out::default()
         }]
+    }
+
+    /// The limit an idle that ends the turn reports: `max-turns` after `error_max_turns`.
+    fn limit_at(&mut self, idle: bool) -> Option<String> {
+        if !idle {
+            return None;
+        }
+        std::mem::take(&mut self.max_turns_hit).then(|| "max-turns".to_string())
     }
 
     fn ask(&mut self, v: &Value, kind: &str) -> Vec<Out> {
