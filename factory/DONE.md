@@ -265,3 +265,20 @@ Touches: `console/`, `provider/BOUNDARIES.md` (S39 P1.4). Not kernel/ or design/
 Constraints: no new interface, no spec text change: an item whose fix needs a rule change in design/ or a kernel change
 stays in Upkeep with a line in the PR body; a guard never weakens; `installed-agent` must not be made weaker to pass.
 deputy compares: the stopped-turn transcript and footer, and the consent activity, against the console design (TECHNICAL 18).
+
+### S142 (upkeep) the console's Stop and question fixes, stage E on a real host, and stage D's lost item, console/ only
+(sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder codex by rule 3 (last two S141 codex, S140 claude: Claude
+built one of them, so Codex); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b08428a-6b20-83eb-aadb-b832d92ba039, 14:33 UTC; spec-check not run: no spec text changes (below). Upkeep is exempt from the size rule. PR #64 opened 15:02 UTC on 6a0f917; r1 review routine `trig_01Jx5kk2Jp9kcU8432F6ELQ3`, 15:05 UTC. r1: 1/5 findings, review 15:18; answer to Codex (same task) 15:21 UTC, rulings: F1.1 hide Stop and send in a folder wait; A1 to A4 accepted (Deputy Paper: a stale-view race needing a grant and a click in one update window, closed later by a kernel rule, Upkeep). Answers ca2ae278 15:25; r2 review routine `trig_018HybQkC8vsYCgbHdxnQx5H` 15:26 UTC.)
+Why: Upkeep's console items, while S138 (approved, held on a watane release) keeps kernel/ and design/.
+Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
+(1) *guard* Stop before `initialized`, while a folder consent waits, cancels the stream instead of sending `interrupt`,
+so no later yes answers into an idle session (watane S103 r1): a test that fails today, where the fix is in the console;
+(2) S131 F1.8 diagnosed: why one stage D load run lost 1 item and 4 tool calls of an OpenAI session at the page, shown
+by a run or a test, then fixed if the cause is in console/, else written as a kernel Upkeep line with the evidence;
+(3) `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (after S127);
+(4) S38 P2.6 'Open the question' opens it and the wait shows the folder (States-2); S36 user-sim: Edit and Undo keep a
+queued row's place, and Stop and send is not offered on a queued row while the session reads Not running.
+Touches: `console/` (src, kit, test/host), `ui/` (the built console). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface and no spec text change: an item that needs a rule change in design/ or a kernel change
+stays in Upkeep with a line in the PR body; a guard never weakens; a flake is never fixed by a retry alone.
+deputy compares: the consent wait and the queue rows against the console design (TECHNICAL 18).
