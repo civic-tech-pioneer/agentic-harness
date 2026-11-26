@@ -27,9 +27,24 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S127 (main line, claude, PR #56); watane S129, S130.
+S127 (main line, claude, PR #56); S131 (upkeep, claude); watane S130. (watane S129 merged 2026-11-26.)
 
 ## Sketched
+### S131 (upkeep) the host tests check what they skip: stage C on a participant home, stage B and D test polish
+(in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S130 codex, S129 codex; the upkeep
+lane, sketched 2026-11-26 by deputy-7 from Upkeep; no spec-check: tests only, no spec document touched. Size: an upkeep slice.)
+Outcomes, each item's check (re-check each against main first; drop the ones already true and say so):
+1. S38 after watane S103: S38 outcomes 1 to 3 run on a participant home with a fake `Confirm` (host 19.7), outcomes 2 and 4
+   on `watane-dev serve`, and the stage C budgets of TECHNICAL 17 are measured and recorded in the Suite time table.
+2. S128 polish P1.4, P1.5, P1.9, P2.1 to P2.5 (`console/test/host/`, `stage_d.mjs`, `metrics.test.ts`, `AGENTS.md` exit
+   codes, the stage D Budget row); P2.6 only if `watane.patch` still exists.
+3. S36 r1 polish P1.1 (`kernel/tests/it/s36_firing.rs`), P1.3 (`console/test/host/stage_b.mjs` browser assertions);
+   S38 P1.2 (`kernel/tests/it/s38.rs`).
+Touches: `console/test/host/`, `kernel/tests/it/s36_firing.rs`, `kernel/tests/it/s38.rs`, `console/kit/metrics.test.ts`,
+`AGENTS.md`, this plan's Suite time rows. Not: `kernel/src/`, `console/kit/` sources, `console/src/`, `ui/`, `provider-checked/`,
+`design/` (S127's files). A product bug found on the way is reported in the PR, not fixed here. No test calls an external
+provider. Protects: *guard* (tests that skip hide regressions).
+
 ### S127: stage E: Alice's Claude session runs through the checked provider, with Jev as its judge
 (in flight, cloud, builder claude, reviewer codex; rule 3: last two handed out watane S126 codex, S125 codex; the main
 line, sketched 2026-11-25 by deputy-6; routine `trig_01E1Ngk3t7NCGXJnEjBgEjHR`, fires 18:39 UTC; spec-check 382f793 (deputy-6, stage E scope: 14 points, folded in below).)
@@ -129,7 +144,7 @@ reviewer claude. Cloud.
 
 ### Upkeep
 
-- **S128 polish left (r1, r2):** P1.4 the preview's pause length is not asserted against `resets_in_s`; P1.5 the redirect target is plain http (an https one makes the zero count mean something); P1.9 reads counted only through `kind`/`key`; P2.1 `stage_d.mjs:~300` cadence can fault a healthy run at the first delayed request (start the window at each session's second step); P2.2 `stage_d.mjs:149-151` unescaped-quote search; P2.3 `metrics.test.ts` nested intervals; P2.4 `AGENTS.md:61` exit codes of `test:load:d`; P2.5 the stage D Budget row lacks the opt-level, cadence result and three passes; P2.6 `watane.patch` moves `env_clear()` first and `chunks.insert(1, ..)` can panic.
+- **(in S131)** **S128 polish left (r1, r2):** P1.4 the preview's pause length is not asserted against `resets_in_s`; P1.5 the redirect target is plain http (an https one makes the zero count mean something); P1.9 reads counted only through `kind`/`key`; P2.1 `stage_d.mjs:~300` cadence can fault a healthy run at the first delayed request (start the window at each session's second step); P2.2 `stage_d.mjs:149-151` unescaped-quote search; P2.3 `metrics.test.ts` nested intervals; P2.4 `AGENTS.md:61` exit codes of `test:load:d`; P2.5 the stage D Budget row lacks the opt-level, cadence result and three passes; P2.6 `watane.patch` moves `env_clear()` first and `chunks.insert(1, ..)` can panic.
 - **(guard, the human's (b) on S40 F6.1)** a timer firing of an OpenAI session whose owner mod was disabled during a timed pause may send one more model request under the kernel's origin. Fix: read the host-resolved origin of a timer firing through the production adapter (watane reports the caller of a timer callback as `host` and keeps the resolved origin apart), stop only foreign firings, and test it through the real adapter: an enabled owner's pause resumes by itself, a disabled owner's stops with no work.
 
 - **(guard, second sighting) `installed-agent` CI flake:** `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code settings' after AC1 passes; on S40 at 890caad and 10ed0a3, green on rerun. Find the race or give the wait a bound that measures it.
@@ -144,7 +159,7 @@ reviewer claude. Cloud.
 
 - **Polish from S38 (merged 2026-11-24):** P1.2 (assistant line without `session_id` in `kernel/tests/it/s38.rs`), P2.2 (TECHNICAL 18.5 words 'Workspace access was refused for …', 'Connection to Claude Code ended'), P2.3 (picked folders get no file write key at all: say so in 9.6 and 14), P2.5 (`start-in-folder` shares `start`'s key kind; its own refusals in 2.3/4.6), P2.6 ('Open the question' does nothing; show the folder in the wait, per `States-2`); stale half-streamed message after `gone` until reload (stage B carry).
 
-- **S38 after watane S103 merges:** run S38 outcomes 1-3 on a participant home with a fake `Confirm` (a preview refuses every consent, host 19.7), outcome 2 and 4 on `watane-dev serve`, and measure the stage C budgets (case 31 host part is S103's A3).
+- **(in S131)** **S38 after watane S103 merges:** run S38 outcomes 1-3 on a participant home with a fake `Confirm` (a preview refuses every consent, host 19.7), outcome 2 and 4 on `watane-dev serve`, and measure the stage C budgets (case 31 host part is S103's A3).
 
 - **S36 accepted limits (r7, the human merged it as it stood, 2026-11-24):** F7.1 and F7.2 are the S35 Send limit (TECHNICAL 18.6): an Edit send refused after leaving the session keeps only the original text, and a reload while an accepted take's reply is in flight can offer it once more. F7.3: the load check's 2x spacing failed once on timer jitter (40.585 ms delta gap); widen to 3x (60/600 ms) if it fails again. Also P7.1: exact just-over-limit fixtures in `console/test/host/load_check.test.ts`.
 
