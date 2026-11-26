@@ -27,9 +27,26 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S138 (consumer half of watane S133/S136, Codex build); S139 merged.
+S138 (consumer half of watane S133/S136, Codex build); S140 (upkeep, console, Claude build); S139 merged.
 
 ## Sketched
+### S140 (upkeep, guard first) the console's known gaps and test polish, console/ only
+(sketched 2026-11-26 by Deputy Rock, the upkeep lane; builder claude by rule 3 (last two S138 codex, S139 codex),
+reviewer codex; spec-check not run: the slice changes no spec text (below). Upkeep is exempt from the size rule.)
+Why: Upkeep holds console work that no slice in flight touches; S138 edits only kernel/, design/ and the wit/deps folders.
+Outcomes (each item's check, re-checked against main first; an item already fixed is dropped with a line):
+(1) *guard* the `installed-agent` flake: `console/test/host/installed.mjs:216` 'Timed out waiting for Claude Code
+settings' after AC1 passes (S40, twice): the race found and fixed, or the wait bounded and measured, with the reason in the
+test; (2) the console's consent activity names the folder the app asks for (S131 F1.2), and `stage_c.mjs` drops its
+known-gap line for it; (3) after Stop the transcript shows no 'An event this console does not know' for claude's
+`control_response` to the interrupt, and a stopped turn's footer does not read 'Completed'; with no Claude Code binary
+chosen the error points to Settings → Claude Code (S39 review); (4) S39 polish P1.2 to P1.5 and S139 r1 polish P1.1 to P1.4,
+P1.6, P1.7 (PR #62), each where its fix lands outside kernel/ and design/; (5) S36 r1 polish P1.2 and P1.3 (console tests).
+Touches: `console/`, `provider/BOUNDARIES.md` (S39 P1.4). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface, no spec text change: an item whose fix needs a rule change in design/ or a kernel change
+stays in Upkeep with a line in the PR body; a guard never weakens; `installed-agent` must not be made weaker to pass.
+deputy compares: the stopped-turn transcript and footer, and the consent activity, against the console design (TECHNICAL 18).
+
 ### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
 (sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
 S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).)
