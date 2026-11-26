@@ -27,9 +27,21 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane release); S142 merged.
+S138 (consumer half of watane S133/S136, Codex build; approved, held on a watane release); S144 (upkeep, console, Codex build); S142 merged.
 
 ## Sketched
+### S144 (upkeep) the console's queue rows and disabled controls match the design, and its flakes and stage D race, console/ only
+(sketched 2026-11-26 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: watane S143 claude, S142 codex); reviewer claude; spec-check not run: no spec text changes. Upkeep is exempt from the size rule.)
+Why: the console's Upkeep items, while S138 (approved, held on a watane release) keeps kernel/ and design/.
+Outcomes, each its Upkeep item's check:
+(1) the queue rows look as `Main-2` draws them: the "QUEUED · n of 32 · sent when this turn ends" label, a dashed row per item, quiet buttons, the × with aria "Remove from queue", and the "Removed … from the queue [Undo]" line; a row shows a long message cut to a few lines, not all 255 KiB (S36 user-sim); Stop and send is not offered while the session reads Not running (S36 user-sim);
+(2) every disabled control says why, visibly and to a screen reader (S142 P2.1, with the r2 review's red test `regress_S142_r2_disabled_stop_and_send_says_why` committed unchanged; "Try again", "Resume now"); the consent wait shows "Esc to stop" (P2.2); one spelling of watane (P2.3);
+(3) the `parts_S15` replay flake is a fixed cause, not a longer timeout; S36 F7.3's load check spacing widened to 3x;
+(4) stage D's Stop race against the runner's window is diagnosed: the runner counts by the stored interrupted turn, or the Upkeep line names the owner with its trace; the 40 ms source-spacing gaps explained or the check corrected with a reason.
+Touches: `console/` (src, kit, test/host), `ui/` (the built console). Not kernel/ or design/ (S138), not the wit/deps folders.
+Constraints: no new interface, no spec text change: an item that needs one stays in Upkeep with a line in the PR body; a guard never weakens; `installed-agent` must not be made weaker to pass.
+deputy compares: the queue rows and the consent wait against `Main-2` and `States-2` (TECHNICAL 18).
+
 ### S138 the kernel acts on a timer firing only under its session owner's authority (consumer half of watane S133/S136; F6.1)
 (sketched 2026-11-26 by Deputy Scissors, the main line; builder codex, reviewer claude by rule 3 (last two S137 claude,
 S136 codex); in flight, cloud, Codex task https://chatgpt.com/local/6b08156b-80bc-83eb-94e0-70035ce5604a, 11:22 UTC; DELIVERED as PR #61 at 590c639 (+546/-12); r1: Claude routine `trig_017eS5rRjpFSfNeaRv74NHJN`, 11:51 UTC; spec-check not run: the contract is merged in watane (PR #48 design, PR #50 build, host 19.1, 19.6).) r1 answers at 07d910f (12:20 UTC; F1.1 to F1.3 fixed; F1.ci needs a watane release with S136, the human's, asked 12:23 UTC by Deputy Rock); r2: Claude routine `trig_014PqYzP7y2xYu5EcKcccLX4`, 12:22 UTC. r2: 0/4, VERDICT: approve on 07d910f (12:30 UTC); **approved, held**: merges once a watane release with S136 turns `installed-agent` green (Waiting on the human). Friction: the reviewer found no `.claude/factory/review-lead.md` in this repository and used the README's review-team row.
