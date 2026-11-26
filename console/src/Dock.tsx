@@ -1,6 +1,6 @@
 // TECHNICAL 18.5, 18.6: the dock: Needs you, plan, queue, status line, input.
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
-import { epochOf, errorWords, type Actions, type SessionView } from "../kit";
+import { epochOf, errorWords, isFolderConsent, type Actions, type SessionView } from "../kit";
 import { drop, heldOf, hold, refused, release, send as claim, take, undoShown, useTaken, type Taken } from "./taken";
 
 export const QUEUE_MAX = 32;
@@ -122,7 +122,7 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   session?: { model?: string; mode?: string }; stopping?: boolean; sessionId?: string; replaced?: boolean; onUseHere?: () => void }) {
   const { view } = props;
   const notRunning = view.turn?.state === "unknown";
-  const cannotInterrupt = notRunning || view.turn?.state === "resume-lost";
+  const cannotInterrupt = notRunning || view.turn?.state === "resume-lost" || isFolderConsent(view.turn);
   const [opened, setOpened] = useState<boolean | null>(null);
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
   const { actions } = props;

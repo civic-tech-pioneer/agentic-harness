@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.6: the console's shell: sidebar, header, transcript column, dock.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, MEASURE, openAsk, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
+import { decisionJson, emptyView, FOCUS_END, focusInOpenAsk, isAskRefusal, isFolderConsent, MEASURE, openAsk, releaseOpenAsk, openSession, ThreadProvider, Transcript, StatusLine, type Actions, type Ask, type Kernel, type SessionView } from "../kit";
 import { Sidebar, type SidebarSession } from "./Sidebar";
 import { Header, titleOf, type SessionInfo } from "./Header";
 import { Dock } from "./Dock";
@@ -105,13 +105,14 @@ export function App({ kernel, info, sessions, onNew, onOpen }: { kernel: Kernel;
       const turn = viewRef.current.turn;
       setStopping(true);
       // During launch consent, cancelling the provider stream also dismisses Watane's question.
-      const stop = turn?.state === "running" && turn.activity?.kind === "consent" && turn.activity.what.startsWith("workspace:")
+      const stop = isFolderConsent(turn)
         ? kernel.cancel(info.id)
         : kernel.interrupt(info.id);
       void stop.catch(() => setStopping(false));
     },
     unqueue: (n) => kernel.unqueue(info.id, n),
     interrupt: (replacement) => {
+      if (isFolderConsent(viewRef.current.turn)) return Promise.reject(new Error("Stop and send is unavailable while Watane waits for folder consent."));
       setStopping(true);
       return kernel.interrupt(info.id, replacement).catch((e) => { setStopping(false); throw e; });
     },

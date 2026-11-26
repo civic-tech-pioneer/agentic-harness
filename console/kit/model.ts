@@ -24,6 +24,10 @@ export function cardName(call: ToolCall, ask?: Ask): string {
   return path ? `${call.kind.charAt(0).toUpperCase() + call.kind.slice(1)} ${path}` : call.title;
 }
 export type Activity = { kind: "checking"; on?: string } | { kind: "compacting" } | { kind: "consent"; what: string };
+export function isFolderConsent(turn: TurnState | null | undefined): boolean {
+  return turn?.state === "running" && turn.activity?.kind === "consent" && turn.activity.what.startsWith("workspace:");
+}
+
 export type TurnState =
   | { state: "running"; activity?: Activity; since: number }
   | { state: "waiting"; asks: string[]; expiresAt: number }
