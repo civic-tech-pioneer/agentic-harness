@@ -670,6 +670,9 @@ pub(crate) struct StreamKey {
     // Kept with the live stream cursor so an attaching page can see the pending question.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) consent: Option<String>,
+    /// This provider stream has started but has yet to report its host initialization.
+    #[serde(default, skip_serializing_if = "is_false")]
+    launching: bool,
     /// A request stream's head: the status, and whether the body is an event stream (9.5).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) head: Option<u16>,
@@ -697,6 +700,7 @@ impl StreamKey {
             last: 0,
             checked: false,
             consent: None,
+            launching: false,
             head: None,
             sse: false,
             done: false,
@@ -1129,6 +1133,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             last: 0,
             checked: !started.direct,
             consent: None,
+            launching: true,
             head: None,
             sse: false,
             done: false,
@@ -1325,11 +1330,14 @@ impl<S: State, H: Host> Kernel<S, H> {
             rec.stream_room()?;
             self.check_provider(slots, a)?;
         }
-        let resume = rec.turn != Turn::ResumeLost
+        Ok((open, self.may_resume_provider(rec)))
+    }
+
+    fn may_resume_provider(&mut self, rec: &Record) -> bool {
+        rec.turn != Turn::ResumeLost
             && self
                 .profile_json(&rec.profile)
-                .is_none_or(|j| parse_profile(&j).0.persist != Some(false));
-        Ok((open, resume))
+                .is_none_or(|j| parse_profile(&j).0.persist != Some(false))
     }
 
     /// The end of a call that writes: the record (when given) takes the change in its session keys,
@@ -2719,13 +2727,24 @@ impl<S: State, H: Host> Kernel<S, H> {
                 pushes: self.flush(work, rec.live.as_deref()),
             });
         }
+        let live = self.target(&rec);
+        let launching = was
+            && live
+                .as_ref()
+                .and_then(|(stream, _)| self.provider_key(stream))
+                .is_some_and(|key| key.launching || key.consent.is_some());
         let mut plan = (false, false);
         if replacement.is_some() {
             Self::room(&rec)?;
             if !was {
                 active::check_room(&slots)?;
             }
-            plan = self.plan_turn(&rec, &slots, &acct)?;
+            plan = if launching {
+                // The replacement takes the same provider slot and stream entry.
+                (true, self.may_resume_provider(&rec))
+            } else {
+                self.plan_turn(&rec, &slots, &acct)?
+            };
         }
         let started = match (plan.0, replacement) {
             (true, Some(input)) => {
@@ -2740,10 +2759,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             "openai" => Some(self.openai_prelaunch(&rec, replacement, &slots, &acct, true)?),
             _ => None,
         };
-        // The stream the turn ran on, before a new one is registered.
-        let live = self.target(&rec);
         let now = self.host.now();
         let mut sent = false;
+        let mut released = false;
         if was {
             // The calls and asks of an OpenAI loop end before its turn does (9.5).
             if let Some(p) = openai.as_mut() {
@@ -2775,13 +2793,21 @@ impl<S: State, H: Host> Kernel<S, H> {
                 sent |= cx.dirty;
             }
             if let Some((stream, direct)) = live.clone() {
-                // `claude` ends the interrupted turn with an `idle` of its own, later (S36).
-                rec.owed_idles = rec.owed_idles.saturating_add(1);
-                work.requests.push(Request::Interrupt {
-                    session: rec.id.clone(),
-                    stream,
-                    direct,
-                });
+                if launching {
+                    released = self.release_provider(&mut rec, &stream, &mut slots, &mut acct);
+                    work.requests.push(Request::Cancel {
+                        session: rec.id.clone(),
+                        stream,
+                    });
+                } else {
+                    // `claude` ends the interrupted turn with an `idle` of its own, later (S36).
+                    rec.owed_idles = rec.owed_idles.saturating_add(1);
+                    work.requests.push(Request::Interrupt {
+                        session: rec.id.clone(),
+                        stream,
+                        direct,
+                    });
+                }
             }
         }
         let (open, resume) = plan;
@@ -2816,7 +2842,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             sent |= cx.dirty;
         }
         let timed = self.idle_after(&mut rec, &mut slots, &mut acct, was, &before, now);
-        if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed || sent) {
+        if !self.sync_active(&mut rec, &mut slots, was)? && (open || timed || sent || released) {
             slots.save(&mut self.state)?;
         }
         rec.updated = now;
@@ -3317,7 +3343,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 other => return self.finish_items(other),
             }
         }
-        let kept = self.take_seq(stream, last, None, key.consent);
+        let kept = self.take_seq(stream, last, None, key.consent, key.launching);
         let (pushes, requests, gone) = done;
         self.finish_items(kept.map(|()| Step::Done {
             pushes,
@@ -3361,6 +3387,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut adapter = ClaudeAdapter::from_state(kept.as_deref(), !key.checked);
         let before = adapter.to_state();
         let mut consent = key.consent;
+        let mut launching = key.launching;
         let mut done = (Vec::new(), Vec::new(), Vec::new());
         let mut prev = key.last;
         for (seq, body) in fresh {
@@ -3386,6 +3413,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                             vec![ProviderEvent::Consent(Some(what))]
                         }
                         Fact::Workspace(id) => {
+                            launching = false;
                             let clear = consent.take().map(|_| ProviderEvent::Consent(None));
                             [Some(ProviderEvent::Workspace(id)), clear]
                                 .into_iter()
@@ -3415,7 +3443,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let after = adapter.to_state();
         let state = (after != before).then_some(after);
-        let kept = self.take_seq(stream, last, state, consent);
+        let kept = self.take_seq(stream, last, state, consent, launching);
         let (pushes, requests, gone) = done;
         self.finish_items(kept.map(|()| Step::Done {
             pushes,
@@ -3478,6 +3506,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         last: u64,
         adapter: Option<Vec<u8>>,
         consent: Option<String>,
+        launching: bool,
     ) -> Result<(), KernelError> {
         let Some(mut key) = self
             .state
@@ -3489,6 +3518,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.open_meter();
         key.last = last;
         key.consent = consent;
+        key.launching = launching;
         let bytes = serde_json::to_vec(&key).expect("a stream key serializes");
         self.state
             .put(&stream_key(stream), bytes)
@@ -3685,6 +3715,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             last: 0,
             checked: false,
             consent: None,
+            launching: false,
             head: None,
             sse: false,
             done: false,

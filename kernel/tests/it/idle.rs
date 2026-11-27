@@ -171,6 +171,8 @@ fn ac1_out_idle_and_interrupt_and_a_quota_stop_set_it_too() {
     .unwrap();
     assert_eq!(idle_at(&rec(&mut k, &a)), vec![1000 + TEN]);
     let b = start(&mut k, "alice", "k2");
+    let stream = rec(&mut k, &b).streams[0].clone();
+    super::initialized(&mut k, &stream);
     k.host.now = 2000;
     k.interrupt("alice", &b, None).unwrap();
     assert_eq!(idle_at(&rec(&mut k, &b)), vec![2000 + TEN]);

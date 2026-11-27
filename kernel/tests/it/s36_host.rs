@@ -44,6 +44,7 @@ mod owed_idle {
             .value;
         k.attach("page", &id, 0).unwrap();
         let t = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+        super::super::initialized(&mut k, &t);
         (k, id, t)
     }
 
@@ -65,7 +66,7 @@ mod owed_idle {
         let (mut k, id, t) = started();
         k.interrupt("page", &id, None).unwrap();
         let n = turns(&mut k, &id).len();
-        k.provider_lines(&t, vec![(1, RESULT.into()), (2, IDLE.into())])
+        k.provider_lines(&t, vec![(2, RESULT.into()), (3, IDLE.into())])
             .unwrap();
         let after = turns(&mut k, &id);
         assert_eq!(after.len(), n, "a turn entry after Stop: {after:?}");
@@ -73,7 +74,7 @@ mod owed_idle {
         // the next turn still ends at its own idle
         k.say("page", &id, "k2", r#"[{"type":"text","text":"again"}]"#)
             .unwrap();
-        k.provider_lines(&t, vec![(3, RESULT.into()), (4, IDLE.into())])
+        k.provider_lines(&t, vec![(4, RESULT.into()), (5, IDLE.into())])
             .unwrap();
         let last = turns(&mut k, &id);
         assert!(last.last().unwrap().contains("completed"), "{last:?}");
@@ -85,7 +86,7 @@ mod owed_idle {
         let (mut k, id, t) = started();
         k.interrupt("page", &id, Some(r#"[{"type":"text","text":"instead"}]"#))
             .unwrap();
-        k.provider_lines(&t, vec![(1, RESULT.into()), (2, IDLE.into())])
+        k.provider_lines(&t, vec![(2, RESULT.into()), (3, IDLE.into())])
             .unwrap();
         let rec = Record::load(&mut k.state, &id).unwrap();
         assert!(
@@ -93,7 +94,7 @@ mod owed_idle {
             "the replacement's turn ended: {:?}",
             rec.turn
         );
-        k.provider_lines(&t, vec![(3, RESULT.into()), (4, IDLE.into())])
+        k.provider_lines(&t, vec![(4, RESULT.into()), (5, IDLE.into())])
             .unwrap();
         let rec = Record::load(&mut k.state, &id).unwrap();
         assert!(!rec.turn.is_active());

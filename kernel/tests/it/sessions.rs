@@ -1038,6 +1038,7 @@ fn ac1_interrupt_without_a_replacement_ends_an_active_turn() {
     ] {
         let mut k = kernel();
         let id = started(&mut k, "alice", "k");
+        super::initialized(&mut k, "t1");
         k.provider(&id, ask("a1", "ask", 0)).unwrap();
         k.say("alice", &id, "q", "later").unwrap();
         if let Some(t) = t {
@@ -1096,6 +1097,7 @@ fn ac1_interrupt_on_an_inactive_session_changes_nothing() {
 fn ac1_interrupt_with_a_replacement_starts_it_and_the_session_stays_active() {
     let mut k = kernel();
     let id = started(&mut k, "alice", "k");
+    super::initialized(&mut k, "t1");
     k.say("alice", &id, "q", "later").unwrap();
     let sent = requests(&k).len();
     let c = k.interrupt("alice", &id, Some("instead")).unwrap();
