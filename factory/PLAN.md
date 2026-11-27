@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S153 (upkeep, kernel guards and tests, Codex build; Codex task https://chatgpt.com/local/6b094528-7d2c-83ed-880b-02018fb1104a 08:55 UTC); S151 (design, stage F, factory profiles; builder claude by rule 3 (S152 and watane S150 were Codex), reviewer codex; routine `trig_0164LvFYR5dyVp5mpv4rc8Tm` 08:31 UTC); S138, S142, S144, S145, S148, S152 merged.
+S153 (upkeep, kernel guards and tests, Codex build; Codex task https://chatgpt.com/local/6b094528-7d2c-83ed-880b-02018fb1104a 08:55 UTC); S151 (design, stage F, factory profiles; builder claude by rule 3 (S152 and watane S150 were Codex), reviewer codex; routine `trig_0164LvFYR5dyVp5mpv4rc8Tm` 08:31 UTC; DELIVERED as PR #69 at 6d7f621c 08:54 UTC (+507/-33, design/ and AGENTS.md; adversary BREACHED 5, all fixed in the design); r1 Codex review https://chatgpt.com/local/6b094570-3600-83eb-a43b-8f2aace5404d 08:57 UTC; merge waits on the human for S151-H, Waiting on the human); S138, S142, S144, S145, S148, S152 merged.
 
 ## Sketched
 ### S153 (upkeep) the kernel's guards and tests, kernel/ only
@@ -679,6 +679,8 @@ S2 writes each into the document that owns it.
   few features perfect".
 
 ## Waiting on the human
+
+- **S151-H (2026-11-27, Deputy Scissors): the consent-boundary changes of S151 (PR #69, "Consent-boundary changes, for the human"), Door H because H3 widens a boundary row.** H1 a new kind of consent, profile access: the app asks (a new host request `agent-access.ask`), the kernel keeps the answer, Alice sees and withdraws it in the kernel's page, not the app's manager. H2 three new watane Needs rows in TECHNICAL 15 (host `agent-access` with dev's fake, app words, pkg row), proposed, not yet accepted; open: should pkg limit the import to `mods:agent`? H3 the row "The console has no power a client lacks" changes: the kernel's page gains `manage`, but every widening still waits for Alice's answer in the app, so a page script can ask but never grant. H4 a new row: "Only the participant gives a client a profile." H5 new Not-protected lines: a running turn finishes on the profile it compiled; withdrawal ends at most 16 turns per call; a reused `local/<slug>` identity or an update under the same identity keeps its entries; a page script or a loopback agent can ask, adopt, edit, withdraw but never grant; Alice's own answer to a wide profile. Rec: accept H1 to H5 as written (each widening still needs Alice's answer; the alternatives let a page script grant, or give withdrawal no hook), and on H2 limit the import to `mods:agent`. Codex reviews r1 meanwhile; S151 merges only on your word.
 
 
 
