@@ -31,7 +31,7 @@ S152 (upkeep, console, Codex build); S148 (stage F, `skill` on OpenAI, Codex bui
 
 ## Sketched
 ### S152 (upkeep) the console's guards and tests after S145, console/ only
-(sketched 2026-11-27 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: watane S150 codex, watane S149 claude); reviewer claude; in flight, cloud)
+(sketched 2026-11-27 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: watane S150 codex, watane S149 claude); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b092968-e6e4-83ed-822d-9837a9f94063, 06:54 UTC)
 Why: the console-side Upkeep items, while S148 holds kernel/ and design/. Re-check every item on main first (S145 closed several S144/S142 lines): drop what is fixed and say so in the PR, and remove those Upkeep lines in the PR body's list for the deputy.
 Outcomes, each its Upkeep item's check: (1) (flake, guard) `console/kit/parts_S15.test.ts:42` passes in the full console run: cause named and fixed; (2) S145 P1.3 to P1.8, P1.11 (tests and guards); (3) S144 r1 P1.6 (queue label and Stop and send after a failed or paused turn); (4) S142 r1 A2 (Escape while the console reads Loading) as a console test against today's kernel behaviour; (5) S36 user-sim's "felt wrong" items where still true.
 Touches: `console/` (src, kit, test), `ui/` (rebuilt and committed). Not kernel/ or design/ (S148), no interface change, no spec text change (spec-side lines stay in Upkeep). A guard never weakens; `installed-agent` never weakened to pass.
