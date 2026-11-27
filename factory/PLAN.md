@@ -92,6 +92,14 @@ reviewer claude. Cloud.
   line reads Idle while probe items arrive; `probe.start` with two fields out of range names one.
 
 
+- **S157 (upkeep) kernel and console guards and polish from Upkeep.** In flight (cloud, builder codex by rule 3: the last two handed out were S156 claude and watane S155 codex; reviewer claude). Sketched 2026-11-27 by Deputy Paper.
+  Re-check each item on main first and drop what is already fixed; say so in the PR. Guards first:
+  1. (guard, S138 r2 P2.1) a Harness step in `kernel/wasm/tests/harness/run.sh` that pins `run_client`'s `me() == "page"` guard on arming `page-origin`, and that every successful client call drains what is owed.
+  2. (guard, the human's (b) on S40 F6.1) a timer firing of an OpenAI session whose owner mod was disabled during a timed pause sends no model request: stop only foreign firings, read the host-resolved origin through the production adapter, test through the real adapter (an enabled owner's pause resumes by itself, a disabled owner's stops with no work). If watane's adapter does not expose the resolved origin of a timer firing today, say so in the PR with the line that shows it and leave this item; do not change watane.
+  3. tests: S152 P1.1 (pin each Escape-while-Loading guard alone), P1.3; S156 P2.1 (the attach-format replay); S127 P4.1; S36 P1.1 and P7.1; S38 P1.2.
+  4. console: S142 r2 P2.1 to P2.3 (the disabled Stop and send says why, with the user-sim's `regress_S142_r2_disabled_stop_and_send_says_why`; "Esc to stop" on the consent wait; "watane" spelling).
+  5. AGENTS.md: S153 P1.2 (`harness/run.sh` needs a watane checkout and writes into its `target`).
+  Each outcome is its item's check, run by the real tests. Touches: `kernel/`, `console/`, `AGENTS.md`; never `design/` (S151 holds it; spec-side items wait for the design lane). No boundary moves, so no adversary, unless item 2 changes what the kernel refuses: then the Claude review runs it. Protects: *guard* (1, 2), *polish* (3 to 5). Size: an upkeep slice.
 ### Upkeep
 
 - **(S156 polish)** P2.1 the committed F1.2 test covers the live update only; add the attach-format replay (it passed by hand). The frame shows "Thinking" at a turn's start where TECHNICAL 18.5 says "Working" (S35): a design-lane call. S38 P2.2 words are spec-side only.
