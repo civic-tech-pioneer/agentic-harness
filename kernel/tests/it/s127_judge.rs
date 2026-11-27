@@ -326,6 +326,15 @@ fn f3_1_a_say_between_the_launch_verdict_and_ended_sends_nothing_to_that_stream(
     let sent_before = k.host.calls.len();
     k.say("alice", &id, "k3", r#"[{"type":"text","text":"later"}]"#)
         .unwrap();
+    let launches: Vec<_> = k.host.calls[sent_before..]
+        .iter()
+        .filter_map(|call| match call {
+            HostCall::StartProvider { input, .. } => Some(input.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(launches.len(), 1);
+    assert_eq!(input_text(launches[0]), "follow up");
     let to_old = k.host.calls[sent_before..]
         .iter()
         .filter(|c| matches!(c, HostCall::Request(Request::Turn { stream, .. }) if *stream == t))
