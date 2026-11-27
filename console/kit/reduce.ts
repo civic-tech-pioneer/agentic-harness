@@ -220,9 +220,29 @@ function markEnded(v: SessionView, x: Internal) {
   }
 }
 
+function dropProvisionalOutput(v: SessionView, x: Internal) {
+  const rows = v.rows.filter((r) => {
+    if (r.kind === "thought") return r.i !== undefined;
+    // ~p rows already have a finished entry and are waiting for its readback.
+    if (r.kind === "agent") return !r.writing || r.key.startsWith("~p");
+    return true;
+  });
+  if (rows.length !== v.rows.length) {
+    v.rows = rows;
+    I = build(rows);
+    I.changed = true;
+  }
+  x.skip = false;
+  x.thoughtAt = undefined;
+  x.thoughtLast = undefined;
+}
+
 function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra) {
   const prev = v.turn;
   v.turn = state;
+  if (state.state === "idle" && state.stop.kind === "failed" && state.stop.error === "provider-ended" && state.stop.cause === "gone") {
+    dropProvisionalOutput(v, x);
+  }
   if (state.state === "unknown" || state.state === "resume-lost" || state.state === "idle") markEnded(v, x);
   if (state.state !== "idle" || !prev || prev.state === "idle") return;
   const key = `f:${v.rows[v.rows.length - 1]?.key ?? ""}`;
