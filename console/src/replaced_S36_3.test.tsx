@@ -1,5 +1,5 @@
 // S36-3: a tab whose stream another tab took says so and offers "Use here" (TECHNICAL 18.6 "Another tab", 9.4 `replaced`).
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fakeKernel } from "../fake/kernel";
@@ -7,6 +7,12 @@ import { story } from "../fake/story";
 import { storyInfo as INFO } from "../fake/page";
 import { entry } from "../kit/watane_fake";
 import { App } from "./App";
+import { Dock } from "./Dock";
+
+vi.mock("./Dock", async (importOriginal) => {
+  const { Dock } = await importOriginal<typeof import("./Dock")>();
+  return { Dock: vi.fn(Dock) };
+});
 
 afterEach(cleanup);
 const S = story.length;
@@ -115,6 +121,38 @@ describe("S36-3", () => {
     expect(answers).toHaveLength(1);
     expect(answers[0]!.args).toEqual([INFO.id, expect.any(String), "a8", JSON.stringify({ allow: true })]);
   });
+  it("S152_a_stale_Stop_callback_cannot_interrupt_after_takeover", async () => {
+    const { f, ends } = await open();
+    expect(stop()).toBeEnabled();
+    const { actions } = vi.mocked(Dock).mock.lastCall![0];
+    act(() => {
+      ends[0]!("replaced");
+      // A callback from before React painted the disabled controls.
+      actions.stop();
+    });
+    expect(stop()).toBeDisabled();
+    expect(f.calls.filter(({ name }) => name === "interrupt" || name === "cancel")).toEqual([]);
+  });
+
+  it("S152_keeps_a_taken_input_if_the_view_changes_during_unqueue", async () => {
+    const { f, extra, rerender } = await open();
+    extra.push([JSON.stringify({ _meta: { watane: { type: "queue", inputs: [{ n: 1, input: "old draft" }] } } })]);
+    act(() => f.play(extra.length - 1));
+    let finishTake!: () => void;
+    f.unqueue = () => new Promise<void>((resolve) => { finishTake = resolve; });
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Stop and send queued message 1" }));
+
+    const next = fakeKernel(story);
+    for (let i = 0; i < story.length; i++) next.play(i);
+    rerender(<App kernel={next} info={INFO} />);
+    await screen.findByRole("button", { name: "Needs you (1)" });
+    await act(async () => { finishTake(); });
+
+    expect([...f.calls, ...next.calls].filter(({ name }) => name === "interrupt")).toEqual([]);
+    expect(screen.getByRole("alert")).toHaveTextContent("The view is no longer this session's.");
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("old draft");
+  });
+
   it("s145_keeps_a_taken_input_if_the_tab_is_replaced_during_unqueue", async () => {
     const { f, ends, extra } = await open();
     extra.push([JSON.stringify({ _meta: { watane: { type: "queue", inputs: [{ n: 1, input: "saved draft" }] } } })]);
