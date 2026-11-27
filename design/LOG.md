@@ -20,6 +20,11 @@ provisions itself. N5 answered (a) by the human (PLAN, Human answers, 2026-11-27
   index; offers by collect with no source, adoption and stale). 2.1, 2.3, 8, 9.1, 9.3, 9.7
   "Revoking", 12, 14 (new row, the console row and "Not protected"), 15 (three watane rows,
   proposed, not accepted), 16 cases 78–85, 17 (stage F row, slices F-P1 to F-P3), 18.1.
+- The adversary on the design (BREACHED 5, all spec gaps) fixed in the same slice: every read
+  of a session's profile compares its digest, so no session runs an unallowed version; the
+  reach names who answers asks, the programs' network, the changed fields, shows everything
+  or asks nothing (4 KiB), escapes non-ASCII; `withdraw` ends children's owner-given turns;
+  the host's page-chain rule tightened; the loopback route and the pkg import named.
 - N5 recorded as answered in VISION, FUNCTIONAL, TECHNICAL and AGENTS.md.
 - Open for the human: the consent-boundary changes and the proposed watane rows (the PR body
   lists them, with the Door C choices for the deputy).

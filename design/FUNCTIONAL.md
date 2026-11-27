@@ -113,8 +113,8 @@ where it belongs.
 
 - **AGT-F-28** The host shall ask the participant in the app before an origin client's agents first use a folder, the ChatGPT plan or a toolset. The question shall name the origin client, and for a folder the profile and the provider. No call shall wait for the answer. Traces: F-AGENT-7, F-AGENT-4, F-RUN-7.
 - **AGT-F-29** The app shall show these consents with the grants, and the participant shall withdraw each one. When one is withdrawn, the host shall end every session stream that depends on it. Traces: F-AGENT-7.
-- **AGT-F-56** A client shall start a session with a profile only after the participant has allowed that client that profile. The participant allows it in the kernel's own page, and the app then asks them. The question shall name the client as watane knows it, the profile, and what the profile can reach: its backend, its tools, whether it can run programs and use the web, what it may do without asking, and its toolsets and delegates. The permission shall hold for that client and that version of the profile only. If the profile changes, then the kernel shall not start that client's sessions with it until the participant allows the new version. No call shall wait for the answer. A client shall never give itself or another client a profile, and a client the participant never allowed shall be refused, its first-run console default (`scratch`) aside. Traces: F-AGENT-8, F-AGENT-4, F-AGENT-7.
-- **AGT-F-57** The kernel's own page shall show, for each client, the profiles it may use and the questions still open, and the participant shall withdraw each permission there. When one is withdrawn, the kernel shall refuse that client new work with that profile and end its running turns with it. Traces: F-AGENT-7, AGT-F-29.
+- **AGT-F-56** A client shall start a session with a profile only after the participant has allowed that client that profile. The participant allows it in the kernel's own page, and the app then asks them. The question shall name the client as watane knows it, the profile, and what the profile can reach: its backend, its tools, whether it can run programs and use the web and which hosts they may reach, what it may do without asking, who answers its other asks (the client, when it is not the console), and its toolsets and delegates; and, for a new version, which fields changed. If that cannot be shown whole, the kernel shall not ask. The permission shall hold for that client and that version of the profile only. If the profile changes, then the kernel shall give no session of that client with it new work, and start none, until the participant allows the new version; no session shall run a version the participant did not allow. No call shall wait for the answer. A client shall never give itself or another client a profile, and a client the participant never allowed shall be refused, its first-run console default (`scratch`) aside. Traces: F-AGENT-8, F-AGENT-4, F-AGENT-7.
+- **AGT-F-57** The kernel's own page shall show, for each client, the profiles it may use and the questions still open, and the participant shall withdraw each permission there. When one is withdrawn, the kernel shall refuse that client new work with that profile and end its running turns with it, those of its child sessions included. Traces: F-AGENT-7, AGT-F-29.
 - **AGT-F-30** The plan of a mod whose calls reach a Claude Code grant shall say "Uses Claude Code through {provider}". Traces: F-INST-1, F-AGENT-7.
 - **AGT-F-31** A preview shall refuse the Claude Code grants and the ChatGPT plan; the maker tools shall offer a fake `claude` and a scripted OpenAI stream instead. Traces: F-MAKE-4.
 
@@ -221,11 +221,11 @@ factory use "implementer"; the app asks "Let Factory start agents with the
 profile "implementer"?" and lists what it can reach, and she agrees. She
 refuses "reviewer" for now. The factory lists "implementer" alone and starts
 the implementer in her checkout; its start of "reviewer" is refused. She
-edits "implementer" to add a deny rule. The running implementer keeps the
-version she allowed; the factory's next start with it is refused until she
-allows the new version. She allows it, and the app asks again; from then on
-the implementer started before gets no more work, and the factory starts a
-new one. The factory updates and
+edits "implementer" to add a deny rule. The implementer's running turn
+finishes on the version she allowed, but it gets no more work, and the
+factory's next start is refused, until she allows the new version. She
+allows it: the app asks again and names the changed field. The implementer
+started before stays refused, and the factory starts a new one. The factory updates and
 changes its offer; the kernel's page shows the change, and new sessions of
 the adopted profile are refused until she adopts it again. She withdraws the
 factory's "implementer" in the kernel's page; the implementer's turn stops
