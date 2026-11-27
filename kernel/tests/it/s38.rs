@@ -449,11 +449,15 @@ fn ac1_native_initialization_advances_the_cursor_and_stop_interrupts() {
         agent_kernel::ProviderEvent::Consent(Some(WHAT.into())),
     )
     .unwrap();
-    k.provider_item(
-        &stream,
-        agent_kernel::ProviderEvent::Workspace(FOLDER.into()),
-    )
-    .unwrap();
+    let init = k
+        .provider_item(
+            &stream,
+            agent_kernel::ProviderEvent::Workspace(FOLDER.into()),
+        )
+        .unwrap();
+    // Initialization clears the consent wait the page shows.
+    assert!(init.pushes.iter().any(|p| p.value["type"] == "turn"
+        && p.value["state"].get("activity").is_none_or(|a| a.is_null())));
 
     let stored: serde_json::Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
     assert_eq!(stored["last"], 2);
@@ -496,6 +500,42 @@ fn ac2_stale_consent_does_not_cancel_an_initialized_or_legacy_stream() {
             .unwrap()
             .streams
             .contains(&stream));
+    }
+}
+
+#[test]
+fn legacy_keys_without_consent_cancel_only_when_pristine() {
+    for last in [0, 1] {
+        let mut k = Kernel::new(MemState::default(), FakeHost::default());
+        let id = k
+            .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+            .unwrap()
+            .value;
+        let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+        let stored = json!({"session": id, "kind": "provider", "last": last});
+        k.state
+            .put(
+                &format!("stream/{stream}"),
+                serde_json::to_vec(&stored).unwrap(),
+            )
+            .unwrap();
+        k.host.calls.clear();
+
+        k.interrupt("page", &id, None).unwrap();
+
+        let pristine = last == 0;
+        assert!(k.host.calls.iter().any(|call| match call {
+            HostCall::Request(agent_kernel::Request::Cancel { stream: sent, .. }) =>
+                pristine && *sent == stream,
+            HostCall::Request(agent_kernel::Request::Interrupt { stream: sent, .. }) =>
+                !pristine && *sent == stream,
+            _ => false,
+        }));
+        let kept = Record::load(&mut k.state, &id)
+            .unwrap()
+            .streams
+            .contains(&stream);
+        assert_eq!(kept, !pristine);
     }
 }
 
