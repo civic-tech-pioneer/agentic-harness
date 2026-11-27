@@ -2732,7 +2732,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             && live
                 .as_ref()
                 .and_then(|(stream, _)| self.provider_key(stream))
-                .is_some_and(|key| key.launching || key.consent.is_some());
+                // Older stream keys have no launching marker. A zero cursor or
+                // an outstanding consent still identifies their pending launch.
+                .is_some_and(|key| key.launching || key.last == 0 || key.consent.is_some());
         let mut plan = (false, false);
         if replacement.is_some() {
             Self::room(&rec)?;
@@ -3324,11 +3326,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.hold();
         let mut done = (Vec::new(), Vec::new(), Vec::new());
         let mut prev = key.last;
+        let mut launching = key.launching;
         for (seq, event) in fresh {
             if seq == prev {
                 continue;
             }
             prev = seq;
+            launching &= !matches!(&event, ProviderEvent::Workspace(_));
             self.open_meter();
             match self.item_step(stream, &key.session, event) {
                 Ok(Step::Done {
@@ -3343,7 +3347,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 other => return self.finish_items(other),
             }
         }
-        let kept = self.take_seq(stream, last, None, key.consent, key.launching);
+        let kept = self.take_seq(stream, last, None, key.consent, launching);
         let (pushes, requests, gone) = done;
         self.finish_items(kept.map(|()| Step::Done {
             pushes,
