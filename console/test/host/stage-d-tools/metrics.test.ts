@@ -3,7 +3,12 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
 // @ts-expect-error: a plain ES module of the host runner
-import { claudeGaps, clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./metrics.mjs";
+import { claudeGaps, claudeSpacingReport, clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./metrics.mjs";
+
+it("ac1_runs_the_existing_controlled_cut_scenario_from_npm", async () => {
+  const { default: pkg } = await import("../../../package.json");
+  expect(pkg.scripts["test:load:d:cut"]).toBe("node test/host/stage_d.mjs --load --controlled-cut");
+});
 
 it("charges only commit time in the common window", () => {
   expect(writerBusy([[13, 15], [5, 12], [11, 14], [19, 22]], 10, 20)).toBe(60);
@@ -223,6 +228,19 @@ it("ac2_compares_the_same_Claude_gap_at_both_ends_of_the_pipe", () => {
   expect(claudeGaps(wrapper, source, 10, 90).delta).toEqual({
     ms: 57, otherMs: 20, before: "cl-a-delta-1", after: "cl-a-delta-2",
   });
+});
+
+it("ac2_names_the_pipe_end_and_kind_of_each_over_limit_Claude_gap", () => {
+  const fake = new Map([["cl-a-delta-1", 20], ["cl-a-delta-2", 80],
+    ["cl-a-entry-1", 30], ["cl-a-entry-2", 631]]);
+  const wrapper = new Map([["cl-a-delta-1", 21], ["cl-a-delta-2", 82],
+    ["cl-a-entry-1", 31], ["cl-a-entry-2", 631]]);
+  const report = claudeSpacingReport(fake, wrapper, 0, 700, { deltas: 50, entries: 5 }, 3);
+  expect(report).toContain("fake stdout delta 60 ms (limit 60 ms)");
+  expect(report).toContain("fake stdout entry 601 ms (over limit 600 ms)");
+  expect(report).toContain("wrapper stdout delta 61 ms (over limit 60 ms)");
+  expect(report).toContain("wrapper stdout entry 600 ms (limit 600 ms)");
+  expect(report).toContain("cl-a-delta-1 to cl-a-delta-2, 60 ms at fake stdout");
 });
 
 it("ac1_keeps_a_Stop_cut_when_the_sink_answered_after_the_stored_interrupt", () => {

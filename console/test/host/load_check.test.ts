@@ -97,8 +97,13 @@ describe("S36 r6 load checks", () => {
       const xs: { at: number; kind: string; n: number }[] = [];
       for (const [kind, every] of [["delta", d], ["entry", e]] as const) {
         for (let t = 0; t < to; t += every) {
-          if (gap?.kind === kind && t > 3000 && t < 3000 + gap.ms) continue;
-          xs.push({ at: t, kind, n: xs.length });
+          const gapEnd = gap?.kind === kind ? 3000 + gap.ms : 3000;
+          if (t > 3000 && t < gapEnd) {
+            // Move the last skipped stamp to the exact gap end.
+            if (t + every >= gapEnd) xs.push({ at: gapEnd, kind, n: xs.length });
+          } else {
+            xs.push({ at: t, kind, n: xs.length });
+          }
         }
       }
       xs.sort((a, b) => a.at - b.at);
@@ -110,10 +115,16 @@ describe("S36 r6 load checks", () => {
     // the real stage B run's worst gaps: 28.5 ms between deltas, 205 ms between entries, window edges included
     expect(loadWindow(run(28.5, 205, 8000), 8000, RATE, 6).faults).toEqual([]);
   });
-  it("regress_S36_r6_an_explicit_two_times_limit_still_fails (F6.3)", () => {
-    expect(loadWindow(run(20, 200, 8000, { kind: "delta", ms: 41 }), 8000, RATE, 6, 2).faults.length).toBeGreaterThan(0);
-    expect(loadWindow(run(20, 200, 8000, { kind: "entry", ms: 401 }), 8000, RATE, 6, 2).faults.length).toBeGreaterThan(0);
-    expect(loadWindow(run(20, 200, 8000), 7980 + 41, RATE, 6, 2).faults.length).toBeGreaterThan(0); // the window's right edge
+  it("ac3_reports_gaps_exactly_one_ms_over_the_S36_r6_limit (F6.3)", () => {
+    const deltas = loadWindow(run(20, 200, 8000, { kind: "delta", ms: 41 }), 8000, RATE, 6, 2);
+    const entries = loadWindow(run(20, 200, 8000, { kind: "entry", ms: 401 }), 8000, RATE, 6, 2);
+    const edge = loadWindow(run(20, 200, 8000), 7980 + 41, RATE, 6, 2);
+    expect(deltas.faults).toEqual(Array.from({ length: 8 }, (_, s) =>
+      `source ${s} wrote no deltas for 41.0 ms at 3.000 s of the common 8.0 s, over 40.0 ms (2 times the spacing of 50/s)`));
+    expect(entries.faults).toEqual(Array.from({ length: 8 }, (_, s) =>
+      `source ${s} wrote no entries for 401.0 ms at 3.000 s of the common 8.0 s, over 400.0 ms (2 times the spacing of 5/s)`));
+    expect(edge.faults).toEqual(Array.from({ length: 8 }, (_, s) =>
+      `source ${s} wrote no deltas for 41.0 ms at 7.980 s of the common 8.0 s, over 40.0 ms (2 times the spacing of 50/s)`));
   });
 });
 

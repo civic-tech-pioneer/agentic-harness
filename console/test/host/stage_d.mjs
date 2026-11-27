@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
 import { NotRun, outcomeOf } from "./outcome.mjs";
 import { isInterrupted, loadWindow } from "./load_check.mjs";
-import { ITEM_DELAY_MS, claudeGaps, clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
+import { ITEM_DELAY_MS, claudeSpacingReport, clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -25,7 +25,7 @@ const providerDir = join(tmp, "claude-code");
 const tool = "loadclient_api_note";
 const load = process.argv.includes("--load");
 const controlledCut = load && process.argv.includes("--controlled-cut");
-const command = load ? "test:load:d" : "test:host:d";
+const command = controlledCut ? "test:load:d:cut" : load ? "test:load:d" : "test:host:d";
 const clock = join(tmp, "load-clock");
 const env = { ...process.env, WATANE_HOME: join(tmp, "home"), WATANE_DEV_CACHE: join(tmp, "cache") };
 if (load) env.S128_LOAD_CLOCK = clock;
@@ -254,14 +254,15 @@ async function mixedLoad(browser) {
     // The fake ticks every 20 ms, but these are Python pipe-forwarding timestamps on the
     // busy mixed preview. Allow three ticks (60 ms, covering the observed 57.2 ms gap).
     // The same bound is checked at both window edges and for every source and kind.
-    const window = loadWindow(claudeByProcess, to, rate, 6, 3);
+    const spacingTimes = 3;
+    const window = loadWindow(claudeByProcess, to, rate, 6, spacingTimes);
     const from = Math.max(window.from, start + 1000);
     const faults = [...window.faults];
     ensure(receipts.length > 0, "missing request sink telemetry; rebuild the instrumented preview");
     const claudeSource = stampTimes(readStamps(join(tmp, "claude-source.stamps")));
     const unmatched = [...claudeStamps].filter(([marker, at]) => at >= from && at < to && !claudeSource.has(marker));
     ensure(!unmatched.length, `missing fake Claude source stamps for ${unmatched.length} forwarded items`);
-    say(`Claude spacing maxima (ms, otherMs for the same marks at the other end of the pipe) | fake stdout ${JSON.stringify(claudeGaps(claudeSource, claudeStamps, from, to))} | wrapper stdout ${JSON.stringify(claudeGaps(claudeStamps, claudeSource, from, to))}`);
+    say(claudeSpacingReport(claudeSource, claudeStamps, window.from, to, rate, spacingTimes));
     const delays = [], stops = [];
     const claudeSeen = new Set();
     const aiDelays = [], claudeDelays = [];
