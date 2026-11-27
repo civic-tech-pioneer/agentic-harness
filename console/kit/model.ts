@@ -50,7 +50,7 @@ export type Row =
   /** 9.4 `child` entry whose call has no tool row (or whose row already links another child): shown on its own, never dropped. */
   | { kind: "child"; key: string; i?: number; session: string; toolCallId: string }
   | { kind: "decision"; key: string; i?: number; who: string; what: string; reason?: string }
-  | { kind: "footer"; key: string; seconds: number; tools: number; tokens?: number; stopped?: string; interrupted?: true }
+  | { kind: "footer"; key: string; seconds: number; tools: number; tokens?: number; stopped?: string; interrupted?: true; failed?: true }
   | { kind: "unknown"; key: string; i?: number; raw: unknown };
 export interface PlanItem { content: string; status: "pending"|"in_progress"|"completed" }
 /** The reducer's own bookkeeping; a reader of the view ignores it. */

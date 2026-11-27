@@ -247,7 +247,13 @@ function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra
   if (state.state !== "idle" || !prev || prev.state === "idle") return;
   const key = `f:${v.rows[v.rows.length - 1]?.key ?? ""}`;
   if (hasKey(key)) return;
-  push(v, { kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows), ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}), ...(state.stop.kind === "stopped" ? { stopped: state.stop.limit } : {}), ...(state.stop.kind === "interrupted" ? { interrupted: true as const } : {}) });
+  push(v, {
+    kind: "footer", key, seconds: extra.seconds ?? 0, tools: extra.tools ?? toolCount(v.rows),
+    ...(extra.tokens !== undefined ? { tokens: extra.tokens } : {}),
+    ...(state.stop.kind === "stopped" ? { stopped: state.stop.limit } : {}),
+    ...(state.stop.kind === "interrupted" ? { interrupted: true as const } : {}),
+    ...(state.stop.kind === "failed" ? { failed: true as const } : {}),
+  });
 }
 
 /** Folds the thought that is streaming, if any: its seconds run from its first to its last chunk's `at` (9.4 `message` row), as its entry's do. */

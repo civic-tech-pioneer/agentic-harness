@@ -95,6 +95,25 @@ it.each(["live text and thought", "an attach placeholder"])("ac1_discards_%s_whe
   expect(await screen.findByText("Next live message")).toBeVisible();
 });
 
+it("ac1_reports_a_failed_turn_in_words_and_moves_the_session_to_Recent", async () => {
+  const host = fakeWatane({
+    "sessions.list": () => ({ ok: [{ id: "n1", title: "Notes", profile: "scratch", backend: "claude", workspace: folder }] }),
+    "sessions.attach": () => ({ ok: "st1" }),
+  });
+  const { container } = render(<Console served={await served(host.w)} />);
+  await waitFor(() => expect(host.calls.some((call) => call.fn === "sessions.attach")).toBe(true));
+  const group = () => container.querySelector('[aria-current="true"]')?.closest(".wa-group")?.querySelector(".wa-glabel");
+  const push = (...messages: [number, string][]) => act(() => host.push({ ...items(...messages), stream: "st1" }));
+
+  push([1, synced(0)], [2, turn({ state: "running", since: 1 })]);
+  await waitFor(() => expect(group()).toHaveTextContent("Running"));
+  push([3, turn({ state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "failed" } })]);
+
+  expect(await screen.findByText("Failed: Connection to Claude Code ended")).toBeVisible();
+  expect(container.querySelector(".wa-footer")).toHaveTextContent("Turn failed · 0 tools");
+  expect(group()).toHaveTextContent("Recent");
+});
+
 it("ac1_keeps_the_folder_and_message_when_the_host_rejects_the_path", async () => {
   const host = fakeWatane({
     "sessions.profiles": () => ({ ok: [{ name: "scratch", backend: "claude", model: null }] }),

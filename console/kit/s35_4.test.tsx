@@ -99,11 +99,12 @@ describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
     expect(word()).toBe("Failed: Choose a Claude Code binary in Settings → Claude Code");
     expect(shape()).toBe("triangle");
   });
-  it("ac3_failed_with_another_cause_shows_its_text_and_the_wire_keeps_it", () => {
+  it("ac3_failed_with_an_incompatible_version_explains_the_required_version", () => {
     const raw = JSON.stringify({ _meta: { watane: { type: "turn", state: { state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "version 2.1.200 < 2.1.295" } } } } });
     const v = reduce(emptyView, raw);
     status(v);
-    expect(word()).toBe("Failed: version 2.1.200 < 2.1.295");
+    expect(word()).toBe("Failed: Claude Code 2.1.200 is too old. Version 2.1.295 or later is required.");
+    expect(v.turn).toMatchObject({ stop: { cause: "version 2.1.200 < 2.1.295" } });
   });
 });
 

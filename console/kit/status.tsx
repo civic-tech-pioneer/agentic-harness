@@ -46,15 +46,17 @@ function workspaceFolder(what: string): string | undefined {
     ?.replace(/[\u0000-\u001f\u007f]/g, (c) => String.fromCharCode(c === "\u007f" ? 0x2421 : 0x2400 + c.charCodeAt(0)));
 }
 
-/** 18.5: the cause of a failed turn in words: `no-binary` is Claude Code missing; another cause is its own text; none, the error's name. */
+/** 18.5: put known provider outcomes in participant-facing words. */
 function failedWords(stop: { error: string; cause?: string }): string {
   if (stop.cause === "no-binary") return "Choose a Claude Code binary in Settings → Claude Code";
-  if (stop.error === "provider-ended" && stop.cause === "gone") return "Connection to Claude Code ended";
   if (stop.error === "judge" && stop.cause === undefined) return "your judge denied it";
   const refused = stop.cause?.match(/^consent-refused\((.*)\)$/s);
   const folder = refused ? workspaceFolder(refused[1]!) : undefined;
   if (folder) return `Workspace access was refused for ${folder}`;
-  return stop.cause ?? stop.error;
+  const version = stop.cause?.match(/^version (\S+) < (\S+)$/);
+  if (version) return `Claude Code ${version[1]} is too old. Version ${version[2]} or later is required.`;
+  if (stop.error === "provider-ended") return "Connection to Claude Code ended";
+  return stop.error;
 }
 
 function spec(view: SessionView, now: number, answered: number, actions: Actions): Spec {
