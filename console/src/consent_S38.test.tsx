@@ -10,6 +10,9 @@ const folder = "/home/alice/Notes";
 const what = `workspace:${folder}`;
 const tick = () => act(async () => { await new Promise((r) => setTimeout(r, 60)); }); // the view lists the kernel's profiles first (S40 r1)
 const turn = (state: object) => JSON.stringify({ _meta: { watane: { type: "turn", state } } });
+const chunk = (part: "message" | "thought", text: string, i?: number) => JSON.stringify({
+  sessionUpdate: `agent_${part}_chunk`, content: { type: "text", text }, _meta: { watane: { at: 1000, i } },
+});
 
 // the consent wait in host 19.7's form (with the provider identity) and in the older one (the folder alone, S140 P1.3)
 const current = `workspace:local/claude-code:${folder}`;
@@ -48,6 +51,48 @@ it.each([
   render(<Console served={await served(host.w)} />);
   await tick();
   expect(screen.getByTitle("Workspace")).toHaveTextContent(folder);
+});
+
+it.each(["live text and thought", "an attach placeholder"])("ac1_discards_%s_when_the_provider_connection_ends", async (scenario) => {
+  const host = fakeWatane({
+    "sessions.list": () => ({ ok: [{ id: "n1", title: "Notes", profile: "scratch", backend: "claude", workspace: folder }] }),
+    "sessions.attach": () => ({ ok: "st1" }),
+  });
+  render(<Console served={await served(host.w)} />);
+  await waitFor(() => expect(host.calls.some((call) => call.fn === "sessions.attach")).toBe(true));
+  let seq = 0;
+  const push = (...messages: string[]) => act(() => host.push({ ...items(...messages.map((body): [number, string] => [++seq, body])), stream: "st1" }));
+  const running = turn({ state: "running", since: 1 });
+  if (scenario === "live text and thought") {
+    push(synced(0), running, chunk("thought", "Finished thought"), chunk("message", "Finished message", 1));
+  } else {
+    const finished = JSON.stringify({ v: 1, i: 1, kind: "message", at: 1000, body: {
+      role: "agent", content: [{ type: "text", text: "Finished message" }], thought: { text: "Finished thought", seconds: 0 },
+    } });
+    push(finished, JSON.stringify({ _meta: { watane: { type: "synced", through: 1, writing: true } } }), running);
+  }
+  fireEvent.click(await screen.findByRole("button", { name: "Thought for 0 s" }));
+  expect(screen.getByText("Finished thought")).toBeVisible();
+  if (scenario === "live text and thought") {
+    push(chunk("thought", "Folded unfinished thought"), chunk("message", "Unfinished message"), chunk("thought", "Streaming unfinished thought"));
+    expect(await screen.findByText("Streaming unfinished thought")).toBeVisible();
+    expect(screen.getAllByRole("button", { name: "Thought for 0 s" })).toHaveLength(2);
+    expect(screen.getByText("Unfinished message")).toBeVisible();
+  } else {
+    expect(screen.getByText("Writing…")).toBeVisible();
+  }
+
+  push(turn({ state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "gone" } }));
+  expect(await screen.findByText("Failed: Connection to Claude Code ended")).toBeVisible();
+  expect(screen.getByText("Finished message")).toBeVisible();
+  expect(screen.getByText("Finished thought")).toBeVisible();
+  expect(screen.getAllByRole("button", { name: "Thought for 0 s" })).toHaveLength(1);
+  expect(screen.queryByText("Unfinished message")).not.toBeInTheDocument();
+  expect(screen.queryByText("Streaming unfinished thought")).not.toBeInTheDocument();
+  expect(screen.queryByText("Writing…")).not.toBeInTheDocument();
+
+  push(turn({ state: "running", since: 2 }), chunk("message", "Next live message"));
+  expect(await screen.findByText("Next live message")).toBeVisible();
 });
 
 it("ac1_keeps_the_folder_and_message_when_the_host_rejects_the_path", async () => {
