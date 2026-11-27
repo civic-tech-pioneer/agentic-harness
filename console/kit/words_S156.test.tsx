@@ -116,6 +116,29 @@ describe("S156 r1 F1.2 Claude's result after Stop", () => {
     expect(badge("a1")).toBe("Done");
     expect(screen.getByText("Stopped after 3 s · 1 tool")).toBeInTheDocument();
   });
+
+  it("ac1_attach_replays_the_late_completed_result_into_the_stopped_turn", () => {
+    const stored = [
+      entry(1, "message", { role: "user", content: [{ type: "text", text: "Edit" }] }),
+      entry(2, "turn", { state: "running", since: 1 }),
+      ask(3, "a1", "notes.md"),
+      short(4, 3, "a1", { outcome: "allow", by: "owner" }),
+      interrupted(5),
+      entry(6, "tool", {
+        toolCallId: "t-a1", title: "Edit", status: "completed", rawInput: { file_path: "notes.md" },
+        content: [{ type: "content", content: { type: "text", text: "File updated" } }],
+      }),
+    ].map((line) => w({ type: "entry", entry: JSON.parse(line) }));
+    const v = run(...stored,
+      w({ type: "synced", through: 6 }),
+      w({ type: "turn", state: { state: "idle", stop: { kind: "interrupted" } } }),
+      w({ type: "queue", inputs: [] }));
+    expect(v.loading).toBe(false);
+    expect(rows(v, "footer")).toEqual([expect.objectContaining({ tools: 1, interrupted: true })]);
+    show(v);
+    expect(badge("a1")).toBe("Done");
+    expect(screen.getByText("Stopped after 3 s · 1 tool")).toBeInTheDocument();
+  });
 });
 
 describe("S156-1 Thinking", () => {
