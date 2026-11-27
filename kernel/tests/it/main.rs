@@ -79,3 +79,19 @@ pub fn parse(json: &str) -> (Profile, Vec<Problem>) {
 pub fn fields(ps: &[Problem]) -> Vec<&str> {
     ps.iter().map(|p| p.field.as_str()).collect()
 }
+
+/// Delivers the host's first item to fixtures exercising a running Claude turn.
+fn initialized<S: agent_kernel::State>(
+    kernel: &mut agent_kernel::Kernel<S, agent_kernel::FakeHost>,
+    stream: &str,
+) {
+    kernel
+        .provider_lines(
+            stream,
+            vec![(
+                1,
+                br#"{"type":"initialized","workspace":"scratch"}"#.to_vec(),
+            )],
+        )
+        .unwrap();
+}

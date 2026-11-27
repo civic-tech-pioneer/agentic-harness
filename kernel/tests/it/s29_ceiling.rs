@@ -246,6 +246,7 @@ fn ac1_cancel_at_the_ceiling_frees_the_timer() {
 fn ac2_interrupt_without_replacement_at_the_ceiling() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    super::initialized(&mut k, "t1");
     k.attach("alice", &id, 0).unwrap();
     ceiling(&mut k);
     let b = before(&mut k, "alice", &id);
@@ -405,6 +406,7 @@ fn ac7_an_item_below_the_ceiling_cannot_cross_it() {
 fn fix1_an_early_timer_firing_after_a_restart_at_the_ceiling() {
     let mut k = kernel();
     let id = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
+    super::initialized(&mut k, "t1");
     k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a1")).unwrap();
     let mut r = rec(&mut k, &id);

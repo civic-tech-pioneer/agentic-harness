@@ -608,9 +608,10 @@ fn ac7_interrupt_answer_and_cancel_carry_the_stream() {
         let mut k = kernel();
         k.host.not_direct = !direct;
         let (id, t, _) = session(&mut k);
+        super::initialized(&mut k, &t);
         k.host.calls.clear();
         let ask = r#"{"type":"ask","id":"a1","tool_use_id":"tu1","tool":"Read","input":{"file_path":"/x"},"expires-at":9999}"#;
-        k.provider_lines(&t, lines(&[ask], 1)).unwrap();
+        k.provider_lines(&t, lines(&[ask], 2)).unwrap();
         k.answer("alice", &id, "ka", "a1", r#"{"deny":true}"#)
             .unwrap();
         k.interrupt("alice", &id, None).unwrap();

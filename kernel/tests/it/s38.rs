@@ -360,3 +360,77 @@ fn relaunched_stream_shows_a_new_consent_wait() {
         .iter()
         .any(|p| p.value["state"]["activity"]["what"] == WHAT));
 }
+
+#[test]
+fn interrupt_uses_the_current_launch_state() {
+    for initialized in [false, true] {
+        let mut k = Kernel::new(MemState::default(), FakeHost::default());
+        let id = k
+            .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+            .unwrap()
+            .value;
+        let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+        if initialized {
+            let item = json!({"type": "initialized", "workspace": FOLDER});
+            k.provider_lines(&stream, vec![(1, item.to_string().into_bytes())])
+                .unwrap();
+        }
+
+        k.host.calls.clear();
+        k.interrupt("page", &id, None).unwrap();
+        let record = Record::load(&mut k.state, &id).unwrap();
+        assert_eq!(record.streams.contains(&stream), initialized);
+        assert!(matches!(
+            record.turn,
+            Turn::Idle {
+                stop: Stop::Interrupted,
+                ..
+            }
+        ));
+        assert!(k.host.calls.iter().any(|call| match call {
+            HostCall::Request(agent_kernel::Request::Interrupt { stream: sent, .. }) => {
+                initialized && *sent == stream
+            }
+            HostCall::Request(agent_kernel::Request::Cancel { stream: sent, .. }) => {
+                !initialized && *sent == stream
+            }
+            _ => false,
+        }));
+    }
+}
+
+#[test]
+fn interrupt_with_replacement_relaunches_while_waiting_for_consent() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+        .unwrap()
+        .value;
+    let original = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    let pending = json!({"type": "consent-pending", "what": WHAT});
+    k.provider_lines(&original, vec![(1, pending.to_string().into_bytes())])
+        .unwrap();
+
+    k.host.calls.clear();
+    k.interrupt("page", &id, Some("instead")).unwrap();
+    let rec = Record::load(&mut k.state, &id).unwrap();
+    assert_eq!(rec.streams.len(), 1);
+    assert_ne!(rec.streams[0], original);
+    assert!(rec.turn.is_active());
+    assert!(k.host.calls.iter().any(|call| matches!(call,
+        HostCall::StartProvider { input, .. } if input == "instead"
+    )));
+    assert!(k.host.calls.iter().any(|call| matches!(call,
+        HostCall::Request(agent_kernel::Request::Cancel { stream, .. }) if *stream == original
+    )));
+    assert!(!k.host.calls.iter().any(|call| matches!(
+        call,
+        HostCall::Request(
+            agent_kernel::Request::Interrupt { .. } | agent_kernel::Request::Turn { .. }
+        )
+    )));
+    assert_eq!(agent_kernel::active::Slots::load(&mut k.state).provider, 1);
+
+    k.provider_ended(&original).unwrap();
+    assert_eq!(Record::load(&mut k.state, &id).unwrap(), rec);
+}

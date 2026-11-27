@@ -537,11 +537,12 @@ fn ac7_a_success_result_still_completes() {
 #[test]
 fn ac7_the_late_result_of_an_interrupted_turn_does_not_end_the_replacement() {
     let (mut k, id, t, o) = claude();
+    super::initialized(&mut k, &t);
     k.interrupt("alice", &id, Some(MORE)).unwrap();
     feed(
         &mut k,
         &t,
-        1,
+        2,
         &[&result("error_max_turns", ONE_MODEL), IDLE],
     );
     assert!(
@@ -550,7 +551,7 @@ fn ac7_the_late_result_of_an_interrupted_turn_does_not_end_the_replacement() {
         rec(&mut k, &id).turn
     );
     assert!(pushes(&k, &o).is_empty(), "a late result gives no meter");
-    feed(&mut k, &t, 3, &[&result("success", ""), IDLE]);
+    feed(&mut k, &t, 4, &[&result("success", ""), IDLE]);
     assert_eq!(stop_of(&mut k, &id), Stop::Completed);
 }
 

@@ -155,7 +155,10 @@ fn ac1_start_opens_a_provider_stream_and_records_it() {
     let id = start(&mut k, "alice", "k1");
     assert_eq!(opens(&k), ["t1"]);
     let v: Value = serde_json::from_slice(&k.state.get("stream/t1").unwrap()).unwrap();
-    assert_eq!(v, json!({"session": id, "kind": "provider"}));
+    assert_eq!(
+        v,
+        json!({"session": id, "kind": "provider", "launching": true})
+    );
     assert_eq!(rec(&mut k, &id).streams, ["t1"]);
     let slots = Slots::load(&mut k.state);
     assert_eq!(slots.provider, 1);
@@ -424,6 +427,17 @@ fn ac6_an_interrupt_replacement_without_a_stream_opens_one_and_resumes() {
     assert!(last_resume(&k));
     assert_eq!(rec(&mut k, &id).streams, ["t2"]);
     check(&mut k, &["alice"]);
+    let workspace = rec(&mut k, &id)
+        .workspace
+        .unwrap_or_else(|| "scratch".into());
+    k.provider_lines(
+        "t2",
+        vec![(
+            1,
+            serde_json::to_vec(&json!({"type": "initialized", "workspace": workspace})).unwrap(),
+        )],
+    )
+    .unwrap();
     // on a live stream: no open, no resume
     k.interrupt("alice", &id, Some("again")).unwrap();
     assert!(!last_resume(&k));
