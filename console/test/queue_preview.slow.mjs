@@ -47,9 +47,10 @@ try {
   }
   await page.setViewportSize({ width: 390, height: 800 });
   await page.getByRole("button", { name: "Stop and send queued message 1" }).click();
-  const error = page.getByRole("alert").filter({ hasText: "The kernel could not do that: boom" });
-  await error.waitFor();
-  assert.equal(await page.getByText("The kernel could not do that: boom", { exact: true }).count(), 1);
+  const taken = page.getByRole("list", { name: "Taken from the queue" });
+  const error = taken.getByRole("alert").filter({ hasText: "The kernel could not do that: boom" });
+  await error.waitFor({ state: "visible" });
+  assert.equal(await page.locator(".wa-composer").getByRole("alert").count(), 0);
   const errorBounds = await error.evaluate((node) => ({
     width: node.getBoundingClientRect().width,
     rowWidth: node.closest("li")?.getBoundingClientRect().width,
