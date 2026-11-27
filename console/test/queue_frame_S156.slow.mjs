@@ -71,9 +71,12 @@ try {
     const t = await taken.locator("li").first().evaluate((li) => {
       const err = li.querySelector(".wa-taken-error"), text = li.querySelector(".wa-taken-text"), cs = getComputedStyle(err);
       const line = parseFloat(cs.lineHeight) || 1.5 * parseFloat(cs.fontSize);
-      return { li: li.getBoundingClientRect().height, err: err.getBoundingClientRect().height, text: text.getBoundingClientRect().height, line };
+      const ctl = li.querySelector(".wa-taken-ctl"), top = err.getBoundingClientRect().top;
+      return { li: li.getBoundingClientRect().height, err: err.getBoundingClientRect().height, text: text.getBoundingClientRect().height, line,
+        below: top >= text.getBoundingClientRect().bottom - 1 && top >= ctl.getBoundingClientRect().bottom - 1 };
     });
     assert.ok(t.err <= 2 * t.line + 1, `at ${width}px the error is at most two lines: ${JSON.stringify(t)}`);
+    assert.ok(t.below, `at ${width}px the error is below the text and its buttons (r1 P1.1): ${JSON.stringify(t)}`);
     assert.ok(t.text <= t.line + 1, `at ${width}px the taken text is one line: ${JSON.stringify(t)}`);
     assert.ok(t.li <= 3 * t.line + 36 + 1, `at ${width}px the taken item is at most two error lines, a text line and a button line: ${JSON.stringify(t)}`);
     // AC5: a Removed line offers Undo and no Discard
