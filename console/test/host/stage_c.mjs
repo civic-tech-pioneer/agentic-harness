@@ -257,7 +257,7 @@ async function main() {
     const folder = realpathSync(notesDir);
     const pendingFolder = `workspace:local/claude-code:${folder}`; // `via` is the provider's identity (host 19.7)
     fake.script([{ do: "expect-user", contains: "read my notes" }, { do: "delta", text: "I read the notes." }, { do: "message", text: "I read the notes." }, { do: "result" }, { do: "idle" },
-      { do: "expect-user" }, { do: "delta", text: "Working through them" }, { do: "message", text: "Working through them." }, { do: "sleep", ms: 60_000 }, { do: "message", text: "never sent" }]);
+      { do: "expect-user" }, { do: "delta", text: "Working through them" }, { do: "message", text: "Working through them." }, { do: "delta", text: "Unfinished when consent ends" }, { do: "sleep", ms: 60_000 }, { do: "message", text: "never sent" }]);
     let first, withdrawn, refusedAgain, refusedOther, otherFolder;
     const page = await openPage(browser, url);
     try {
@@ -304,10 +304,14 @@ async function main() {
         await page.getByRole("textbox", { name: "Message" }).fill("go on");
         await page.keyboard.press("Enter");
         await page.getByText("Working through them.", { exact: true }).first().waitFor({ timeout: 20_000 });
+        const unfinished = page.getByText("Unfinished when consent ends", { exact: true });
+        await unfinished.waitFor({ timeout: 20_000 });
         await home.send({ op: "withdraw", local: "agent", what: pendingFolder });
         const at = Date.now();
         await page.waitForFunction(() => document.querySelector(".wa-status-word")?.textContent === "Failed: Connection to Claude Code ended", null, { timeout: 15_000 });
         say(`  withdrawal to the page's words: ${Date.now() - at} ms`);
+        await unfinished.waitFor({ state: "detached", timeout: 5_000 });
+        ensure(await page.getByText("Working through them.", { exact: true }).first().isVisible(), "the last finished message disappeared from the live page");
         const es = await transcript(url, first.id);
         const t = lastTurn(es);
         ensure(t?.state === "idle" && t.stop?.kind === "failed" && t.stop.cause === "gone", `the turn: ${JSON.stringify(t)}`);
