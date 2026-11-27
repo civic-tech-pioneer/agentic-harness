@@ -348,3 +348,43 @@ fn check_budget(with_skills: bool) {
         );
     }
 }
+
+#[test]
+fn s148_delegate_skill_admission_state_bytes_at_limit() {
+    let mut k = kernel(false);
+    let md = "a".repeat((1 << 20) - "SKILL.md".len());
+    let mut profile_bytes = 0;
+    for profile in ["root", "worker"] {
+        let key = format!("profile/{profile}");
+        let mut doc: Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
+        doc["skills"] = json!([{"name":"reference","files":{"SKILL.md":md}}]);
+        let bytes = serde_json::to_vec(&doc).unwrap();
+        profile_bytes = bytes.len() as u64;
+        k.state.put(&key, bytes).unwrap();
+    }
+    let root = k.start("alice", "load", "root", "{}", IN).unwrap().value;
+    let before = k.state.counts();
+    reply(
+        &mut k,
+        &root,
+        &[call_of(
+            "one",
+            "task",
+            r#"{"profile":"worker","input":"A"}"#,
+        )],
+    );
+    let after = k.state.counts();
+    let read = after.bytes_read - before.bytes_read;
+    let written = after.bytes_written - before.bytes_written;
+
+    let kids = children(&mut k, &root);
+    assert_eq!(kids.len(), 1);
+    let child = &kids[0];
+    assert_eq!(
+        k.state.get(&format!("skills/{child}/reference")).unwrap(),
+        md.as_bytes()
+    );
+    assert!(read >= profile_bytes);
+    assert!(written >= md.len() as u64);
+    println!("stage F one admitted child at the 1 MiB skill limit: {read} read + {written} written = {} bytes", read + written);
+}

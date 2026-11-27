@@ -83,3 +83,29 @@ fn ac6_a_broken_profile_still_has_its_overlay_checked() {
     f.sort();
     assert_eq!(f, ["overlay.tools+", "profile"]);
 }
+
+#[test]
+fn s148_check_skill_description_length_before_escaping() {
+    for backend in [Backend::Openai, Backend::Claude] {
+        for (description, too_long) in [
+            ("a".repeat(1000 * 1024), true),
+            ("&".repeat(1000 * 1024), true),
+            ("&".repeat(1024), false),
+            (format!("{}\n b", "a".repeat(1022)), false),
+            (format!("{}\n b", "a".repeat(1023)), true),
+        ] {
+            let profile = json!({"skills": [{"name":"one", "files": {
+                "SKILL.md": format!("---\ndescription: {description}\n---\nbody"),
+            }}]});
+            let refusals = check(&profile.to_string(), "{}", backend, "m", None);
+            if too_long {
+                assert_eq!(refusals.len(), 1, "{refusals:?}");
+                assert_eq!(refusals[0].field, "skills[0].files");
+                assert!(refusals[0].reason.contains("description"));
+                assert!(refusals[0].reason.contains("1024"));
+            } else {
+                assert!(refusals.is_empty(), "{refusals:?}");
+            }
+        }
+    }
+}

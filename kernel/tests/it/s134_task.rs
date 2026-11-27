@@ -1621,9 +1621,23 @@ fn regress_s148_description_bytes_per_step() {
     let mut k = kernel(r#","allow":["task","skill"]"#);
     let md = format!("---\ndescription: {}\n---\nbody", "a".repeat(1000 * 1024));
     set_skills(&mut k, "root", &[skill_profile("one", &md)]);
+    let err = k.start("alice", "k", "root", "{}", IN).unwrap_err();
+    let KernelError::Refused(refusals) = err else {
+        panic!("{err:?}")
+    };
+    assert_eq!(refusals[0].field, "skills[0].files");
+    assert!(refusals[0].reason.contains("description"));
+    assert!(bodies(&k).is_empty());
+
+    let md = format!("---\ndescription: {}\n---\nbody", "a".repeat(1024));
+    set_skills(&mut k, "root", &[skill_profile("one", &md)]);
     let id = k.start("alice", "k", "root", "{}", IN).unwrap().value;
     let c0 = k.state.counts();
-    reply(&mut k, &id, &[json!({"type":"function_call","id":"t","call_id":"t","name":"nothing","arguments":"{}"})]);
+    reply(
+        &mut k,
+        &id,
+        &[json!({"type":"function_call","id":"t","call_id":"t","name":"nothing","arguments":"{}"})],
+    );
     let c1 = k.state.counts();
     let step = (c1.bytes_read - c0.bytes_read) + (c1.bytes_written - c0.bytes_written);
     assert!(step < 4 * 1024 * 1024, "{step} bytes in one step");
