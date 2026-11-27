@@ -2780,6 +2780,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 self.openai_stop(&mut rec, &mut p.ls, &mut cx)?;
                 sent = cx.dirty;
             }
+            if launching {
+                self.close_all_with(&mut rec, past, "cancel", now, &mut work, false)?;
+            }
             self.end_interrupted(&mut rec, past, now, &mut work)?;
             // 9.7: the owner interrupting a child's first turn resolves the root's call.
             if rec.task_call.is_some() {
