@@ -140,6 +140,8 @@ describe("S36-3", () => {
     act(() => f.play(extra.length - 1));
     let finishTake!: () => void;
     f.unqueue = () => new Promise<void>((resolve) => { finishTake = resolve; });
+    // The story's original row has the same button label until the new view arrives.
+    await screen.findByText("old draft", { selector: ".wa-queue-text" });
     await userEvent.setup().click(await screen.findByRole("button", { name: "Stop and send queued message 1" }));
 
     const next = fakeKernel(story);
