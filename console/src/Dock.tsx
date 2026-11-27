@@ -100,7 +100,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
         onChange={(e) => { edited.current++; setRefused(null); setText(e.target.value); if (!e.target.value.trim()) holdIt(undefined); }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
-          else if (e.key === "Escape" && busy && !off) actions.stop();
+          else if (e.key === "Escape" && busy && !off && !e.nativeEvent.isComposing && !e.repeat) actions.stop();
         }} />
       <div className="wa-irow">
         {tags.map((t, n) => <span key={n} className="wa-tag">{n > 0 ? <span aria-hidden="true">· </span> : null}{t}</span>)}
