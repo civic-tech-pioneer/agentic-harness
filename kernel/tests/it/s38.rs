@@ -500,7 +500,7 @@ fn ac2_stale_consent_does_not_cancel_an_initialized_or_legacy_stream() {
 }
 
 #[test]
-fn ac3_native_read_leaves_owed_work_for_the_client_wrapper() {
+fn ac3_read_drains_owed_work_only_after_success() {
     let mut k = Kernel::new(MemState::default(), FakeHost::default());
     let id = k
         .start("page", "first", "scratch", "{}", "hello")
@@ -511,8 +511,7 @@ fn ac3_native_read_leaves_owed_work_for_the_client_wrapper() {
     slots.save(&mut k.state).unwrap();
 
     assert!(k.read("outsider", &id, 0, None, 1).is_err());
-    k.read("page", &id, 0, None, 1).unwrap();
     assert!(agent_kernel::active::Slots::load(&mut k.state).drain_owed);
-    k.drain_owed();
+    k.read("page", &id, 0, None, 1).unwrap();
     assert!(!agent_kernel::active::Slots::load(&mut k.state).drain_owed);
 }

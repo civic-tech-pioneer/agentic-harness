@@ -184,9 +184,18 @@ fn me() -> String {
 fn run_client<T>(
     f: impl FnOnce(&mut CallKernel<WitState, WitHost>) -> Result<T, KernelError>,
 ) -> Result<T, KernelError> {
-    run(|k| {
+    run_client_with_page_origin(|k| {
         let value = f(k)?;
         k.drain_owed();
+        Ok(value)
+    })
+}
+
+fn run_client_with_page_origin<T>(
+    f: impl FnOnce(&mut CallKernel<WitState, WitHost>) -> Result<T, KernelError>,
+) -> Result<T, KernelError> {
+    run(|k| {
+        let value = f(k)?;
         if me() == "page" {
             k.arm_page_origin();
         }
@@ -256,7 +265,8 @@ impl sessions::Guest for Export {
         before: Option<u64>,
         max: u32,
     ) -> Result<sessions::Page, sessions::Error> {
-        run_client(|k| k.read(&me(), &session, after, before, max))
+        // Kernel::read already drains owed work, including for native clients.
+        run_client_with_page_origin(|k| k.read(&me(), &session, after, before, max))
             .map(|p| sessions::Page {
                 entries: p.entries,
                 last: p.last,
