@@ -92,7 +92,7 @@ reviewer claude. Cloud.
   line reads Idle while probe items arrive; `probe.start` with two fields out of range names one.
 
 
-- **S159 (upkeep) stage D and E checks on `watane-dev serve`, and the Stop budget on main.** In flight (cloud, Codex task https://chatgpt.com/local/6b097c13-3d20-83ed-ae82-b1ec9afa606a ~12:50 UTC). Sketched 2026-11-27 by Deputy Paper; builder codex by rule 3 (the last two handed out were watane S158 claude and S157 codex), reviewer claude.
+- **S159 (upkeep) stage D and E checks on `watane-dev serve`, and the Stop budget on main.** In flight (cloud, Codex task https://chatgpt.com/local/6b097c13-3d20-83ed-ae82-b1ec9afa606a ~12:50 UTC; DELIVERED as PR #74 at e1fc1f05 ~13:15 UTC (+280/-25; Stop measure changed, not the budget; user-sim ACCEPTED by the builder); r1 Claude review routine `trig_01H4iNEniGe3u5toYCDT9rB9` 13:20 UTC, checks the new Stop measure). Sketched 2026-11-27 by Deputy Paper; builder codex by rule 3 (the last two handed out were watane S158 claude and S157 codex), reviewer claude.
   Re-check each item on main first and drop what is already done; say so in the PR. Guards first:
   1. (guard) the long-session Stop p95 budget fails on main (158 ms against 100, seen by Deputy Rock 2026-11-27): find why and fix the cause, or show that the budget measures something else and fix the measure. Widening the budget is a spec change: name it in the PR, do not make it.
   2. (diagnose, from S131 F1.8 and S142 r1 P1.2) the Stop race against the stage D runner's window: write the trace that tells a cut from a loss (a receipt log at the source or kernel, S144 r2 P2.3), reproduce with the controlled delay, and fix it if the cause is in the kernel or the runner.
