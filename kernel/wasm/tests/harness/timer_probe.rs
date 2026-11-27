@@ -22,4 +22,21 @@ impl crate::exports::mods::agent::timer_probe::Guest for Export {
         agent_kernel::Record::load(&mut state, id)
             .is_some_and(|rec| matches!(rec.turn, agent_kernel::Turn::Paused { .. }))
     }
+
+    fn seed_drain_owed() {
+        let mut state = WitState;
+        let mut slots = agent_kernel::active::Slots::load(&mut state);
+        slots.drain_owed = true;
+        slots.save(&mut state).expect("seed owed drain");
+    }
+
+    fn drain_owed() -> bool {
+        agent_kernel::active::Slots::load(&mut WitState).drain_owed
+    }
+}
+
+impl crate::exports::mods::s153_client::events::Guest for Export {
+    fn client_profiles() {
+        <Export as sessions::Guest>::profiles();
+    }
 }
