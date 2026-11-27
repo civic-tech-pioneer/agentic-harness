@@ -92,7 +92,7 @@ reviewer claude. Cloud.
   line reads Idle while probe items arrive; `probe.start` with two fields out of range names one.
 
 
-- **S157 (upkeep) kernel and console guards and polish from Upkeep.** In flight (cloud, builder codex by rule 3: the last two handed out were S156 claude and watane S155 codex; reviewer claude). Sketched 2026-11-27 by Deputy Paper.
+- **S157 (upkeep) kernel and console guards and polish from Upkeep.** In flight (cloud, builder codex by rule 3: the last two handed out were S156 claude and watane S155 codex; reviewer claude; Codex task https://chatgpt.com/local/6b096f2f-9f30-83ed-b4dc-5952ebae6079 11:53 UTC). Sketched 2026-11-27 by Deputy Paper.
   Re-check each item on main first and drop what is already fixed; say so in the PR. Guards first:
   1. (guard, S138 r2 P2.1) a Harness step in `kernel/wasm/tests/harness/run.sh` that pins `run_client`'s `me() == "page"` guard on arming `page-origin`, and that every successful client call drains what is owed.
   2. (guard, the human's (b) on S40 F6.1) a timer firing of an OpenAI session whose owner mod was disabled during a timed pause sends no model request: stop only foreign firings, read the host-resolved origin through the production adapter, test through the real adapter (an enabled owner's pause resumes by itself, a disabled owner's stops with no work). If watane's adapter does not expose the resolved origin of a timer firing today, say so in the PR with the line that shows it and leave this item; do not change watane.
