@@ -92,6 +92,14 @@ reviewer claude. Cloud.
   line reads Idle while probe items arrive; `probe.start` with two fields out of range names one.
 
 
+- **S159 (upkeep) stage D and E checks on `watane-dev serve`, and the Stop budget on main.** Sketched 2026-11-27 by Deputy Paper; builder codex by rule 3 (the last two handed out were watane S158 claude and S157 codex), reviewer claude.
+  Re-check each item on main first and drop what is already done; say so in the PR. Guards first:
+  1. (guard) the long-session Stop p95 budget fails on main (158 ms against 100, seen by Deputy Rock 2026-11-27): find why and fix the cause, or show that the budget measures something else and fix the measure. Widening the budget is a spec change: name it in the PR, do not make it.
+  2. (diagnose, from S131 F1.8 and S142 r1 P1.2) the Stop race against the stage D runner's window: write the trace that tells a cut from a loss (a receipt log at the source or kernel, S144 r2 P2.3), reproduce with the controlled delay, and fix it if the cause is in the kernel or the runner.
+  3. (S142 r1 P1.3) the stage D Claude source-spacing gaps (up to 57.2 ms against 40 ms): measure on the instrumented run and say whether the source, the runner or the check is off.
+  4. `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge; S40 on `watane-dev serve`: turn the SKIP lines of `test:host:d` into checks and run S40 outcomes 2 to 4 with a scripted OpenAI stream.
+  5. S144 r2 P2.1 and P2.2 (`metrics.mjs`: the Stop-cut excuse tied to the stored interrupt, one clock for click and wire).
+  Each outcome is its item's check, run on the real programs. Touches: `kernel/`, `console/test/`, `package.json` scripts; never `design/` (S151 holds it), never watane. A budget or spec number that should change is a finding for the deputy, not an edit. No boundary moves: no adversary. Protects: *guard* (1), *core* (2 to 4), *polish* (5). Size: an upkeep slice.
 ### Upkeep
 
 - **(S157 r1 polish)** P1.1 AGENTS.md: `production/run.sh` also writes its client build into `$watane/target` unless `CARGO_TARGET_DIR` is set; say "both client builds".
