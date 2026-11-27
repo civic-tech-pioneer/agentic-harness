@@ -92,15 +92,9 @@ reviewer claude. Cloud.
   line reads Idle while probe items arrive; `probe.start` with two fields out of range names one.
 
 
-- **S159 (upkeep) stage D and E checks on `watane-dev serve`, and the Stop budget on main.** In flight (cloud, Codex task https://chatgpt.com/local/6b097c13-3d20-83ed-ae82-b1ec9afa606a ~12:50 UTC; DELIVERED as PR #74 at e1fc1f05 ~13:15 UTC (+280/-25; Stop measure changed, not the budget; user-sim ACCEPTED by the builder); r1 Claude review routine `trig_01H4iNEniGe3u5toYCDT9rB9` 13:20 UTC, checks the new Stop measure). Sketched 2026-11-27 by Deputy Paper; builder codex by rule 3 (the last two handed out were watane S158 claude and S157 codex), reviewer claude.
-  Re-check each item on main first and drop what is already done; say so in the PR. Guards first:
-  1. (guard) the long-session Stop p95 budget fails on main (158 ms against 100, seen by Deputy Rock 2026-11-27): find why and fix the cause, or show that the budget measures something else and fix the measure. Widening the budget is a spec change: name it in the PR, do not make it.
-  2. (diagnose, from S131 F1.8 and S142 r1 P1.2) the Stop race against the stage D runner's window: write the trace that tells a cut from a loss (a receipt log at the source or kernel, S144 r2 P2.3), reproduce with the controlled delay, and fix it if the cause is in the kernel or the runner.
-  3. (S142 r1 P1.3) the stage D Claude source-spacing gaps (up to 57.2 ms against 40 ms): measure on the instrumented run and say whether the source, the runner or the check is off.
-  4. `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge; S40 on `watane-dev serve`: turn the SKIP lines of `test:host:d` into checks and run S40 outcomes 2 to 4 with a scripted OpenAI stream.
-  5. S144 r2 P2.1 and P2.2 (`metrics.mjs`: the Stop-cut excuse tied to the stored interrupt, one clock for click and wire).
-  Each outcome is its item's check, run on the real programs. Touches: `kernel/`, `console/test/`, `package.json` scripts; never `design/` (S151 holds it), never watane. A budget or spec number that should change is a finding for the deputy, not an edit. No boundary moves: no adversary. Protects: *guard* (1), *core* (2 to 4), *polish* (5). Size: an upkeep slice.
 ### Upkeep
+
+- **(S159 r1 polish)** P1.1 the controlled cut proves the trace classifies a cut, not that the original S131 F1.8 miss was one (one ordinary load passed); P1.2 say which part is off in the Claude spacing (the wrapper's 48.1 ms after the fake's write; the fake's own 40.5 ms against 40); P1.3 (spec-side, design lane) TECHNICAL 18.6's 100 ms Stop does not count input queueing behind a busy render: say whether it means the click as felt; P1.4 a `test:load:d:cut` script or an AGENTS.md line for `--controlled-cut`.
 
 - **(S157 r1 polish)** P1.1 AGENTS.md: `production/run.sh` also writes its client build into `$watane/target` unless `CARGO_TARGET_DIR` is set; say "both client builds".
 
@@ -127,14 +121,9 @@ reviewer claude. Cloud.
 
 - **(S139 r1 polish, left by S140)** P1.5 spec drift in `design/` (PR #62 review r1).
 
-- **(from S131 F1.8, S142 r1 P1.2)** Stop race against the stage D runner's window, owner undecided. A controlled delay reproduced one missing item and four missing tool calls: the origin wrote them 64 ms before the click and the interrupted turn was stored before the batch reached the request sink. The original run lacks that trace. Diagnose before the stage D Budget row can close.
-- **(S142 r1 P1.3)** Investigate stage D Claude source-spacing gaps. The instrumented run saw gaps up to 57.2 ms against the existing 40 ms check.
-- **(after S127)** `test:host:e`: stage E's outcomes on `watane-dev serve` with dev's scripted judge (watane S129 has merged).
 
 
 - **Case 22's idempotent half (from S40 r2):** after a restart, reissue an idempotent job under its key, with the toolset reopened under the session owner's origin and the job sent only once the handle is usable.
-
-- **S40 on `watane-dev serve` (after watane S114 merges):** turn the SKIP lines of `test:host:d` into checks, run S40 outcomes 2 to 4 on a preview with a scripted OpenAI stream, and add the stage D load test.
 
 - **From S39's review, for watane (left by S140):** the consent window's Call line reads as an interface name, not words.
 
@@ -155,6 +144,7 @@ reviewer claude. Cloud.
 
 ## Done
 
+- **S159** (upkeep) Stop in a long session is measured from the click to the visible "Stopping…" with the interrupt sent, under the unchanged 100 ms (main's 158 ms was the test's own lookups); stage D can tell a Stop cut from a lost batch by sink receipts; Claude spacing is stamped at both ends. PR #74 rebase-merged by Deputy Paper as 0eedee04; builder codex, reviewer claude, 1 round (0/4); user-sim ACCEPTED, no boundary; ~1 h in flight.
 - **S157** (upkeep) a stopped session's replay is pinned (Done card, one tool in the footer) and AGENTS.md says where the Harness checkout and build go; the other sketched guards and tests were already on main, each checked by the review and struck from Upkeep. PR #73 rebase-merged by Deputy Paper as 7f154bff; builder codex, reviewer claude, 1 round (0/2); user-sim ACCEPTED, no boundary; ~1 h in flight.
 - **S153** (upkeep) the kernel's guards: the page-origin arming guard and the drain of owed work are pinned on the Harness, an interrupt before `initialized` cancels the launch (decided from the current stream key), and S127 P4.1 asserts the follow-up; S40 F6.1, S38 P1.2 and S36 P1.1 were already closed on main. PR #70 rebase-merged 2026-11-27 09:31 UTC at 79e560bd by Deputy Scissors, no bypass; builder codex (BLOCKED once: declined the adversary's exploit step, see Deputy decisions), reviewer claude, 1 round (0/3); adversary HELD (run by the Claude review); ~40 min in flight.
 - **S152** (upkeep) the console's guards after S145: three Stop races and Escape while Loading pinned, empty Send says why, the Removed live region no longer repeats Undo, the `parts_S15` flake fixed (on main as 140fc3a, S144 r1 F1.2). PR #68 rebase-merged 2026-11-27 08:53 UTC at 857842fd by Deputy Scissors, no bypass; builder codex, reviewer claude, 1 round (0/3) after one CI answer (F0.ci: its own test raced CI, fixed with a wait); adversary not run (no kernel call, reviewer checked); ~1.6 h in flight.
