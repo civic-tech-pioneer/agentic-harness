@@ -47,6 +47,16 @@ provisions itself. N5 answered (a) by the human (PLAN, Human answers, 2026-11-27
   closed in the text: connection ids made and bound by the host, R1 and `ended` deletions
   named in "One writer", delegates and skills, duplicate keys, offer order and crowding, the
   same-origin console in "Not protected".
+- Review r2 (Codex, 7 blocking), under the deputy's narrowed rulings: `manage.open()` returns
+  the pairing code, which the host derives for the app from the same connection (2.1, 9.10);
+  while a `withdrawing` item exists, its pre-cutoff roots and their children take no new
+  work, launches and delegation included, and "The batch" states the bound once (16, or 21
+  for a first cascade); defaults stand in only for absent top-level fields; a superseding
+  `allow` reuses the old question's reservation in the same call; any change needs a new
+  allow (AGT-F-56's words): entries pin the index's `rev` beside the digest, and the
+  byte-identical restore no longer revives; stale persists through later gone and unchanged
+  collects; "Bounds" lists each call's reads, `offers` is paged and offer names are profile
+  names; 2.1 says dev's fake answers override the preview refusal.
 
 ## 2026-11-26: page timer origin under D001
 
