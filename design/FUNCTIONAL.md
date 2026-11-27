@@ -61,7 +61,7 @@ where it belongs.
 
 ### 3.1 Profiles and offers
 
-- **AGT-F-1** The kernel shall let only the participant, in the kernel's own page, create, change and delete profiles, and say which client may start a root session with which profile (AGT-F-56). No client shall write a profile or a profile access, its own or another's. The participant sets the profiles an OpenAI root may delegate to (AGT-F-37). Traces: F-AGENT-8, F-RUN-5.
+- **AGT-F-1** The kernel shall let only the participant, in the kernel's own page, create, change and delete profiles, and say which client may start a root session with which profile (AGT-F-56). No client shall write a profile or a profile access, its own or another's. The kernel's own page shall gain no power over profiles by itself: the app shall ask the participant before that page shows the profiles and permissions, and before each profile is created, changed or deleted, and the page shall propose only what the participant then confirms. The participant sets the profiles an OpenAI root may delegate to (AGT-F-37). Traces: F-AGENT-8, F-RUN-5.
 - **AGT-F-2** When a mod offers a skill or a profile, the kernel shall show its content to the participant and use it only after the participant adopts it. If the offered content changes, then the kernel shall stop using it until the participant adopts it again. The kernel shall not name a mod as an offer's source, since watane does not say which mod answered. Adopting a profile gives no client access to it (AGT-F-56). Traces: F-AGENT-8, F-AGENT-4.
 - **AGT-F-3** When a client starts a session with an overlay, the kernel shall accept an overlay that appends to the instructions, adds skills, removes tools, adds deny rules or lowers a limit enabled for overlays, and shall refuse one that adds tools, allow rules, workspaces, subagent profiles or a weaker permission mode. Traces: F-AGENT-8.
 - **AGT-F-4** If a backend or a model cannot honour a field that a profile sets, then the kernel shall refuse the profile for that backend and model, and name every such field at once. It shall never drop a field. Traces: F-AGENT-8, F-QUAL-3.
@@ -160,9 +160,10 @@ by nothing else.
 Alice installs Notes and the agent kernel. The plan of Notes says it uses
 agents; the plan of the Claude Code provider says it starts Claude Code with
 her account, unchecked. In the kernel's page she makes a profile "Tidy":
-Sonnet, file tools, no shell, her own instructions, and lets Notes use it;
-the app asks her once whether Notes may start agents with "Tidy", and names
-what "Tidy" can reach.
+Sonnet, file tools, no shell, her own instructions (the app asks her to
+confirm opening the profile manager, then saving "Tidy"), and lets Notes use
+it; the app asks her once whether Notes may start agents with "Tidy", and
+names what "Tidy" can reach.
 She asks Notes to tidy her notes folder. The app asks whether Notes may have
 agents work in that folder with "Tidy" through the provider; she agrees. The
 agent's text streams into Notes as it works. The agent asks to delete a file;
@@ -212,25 +213,31 @@ product owner's session while the children are live, and both stop.
 ### AGT-J7: The factory gets its profiles
 
 Alice installs the factory mod. Its page lists no profile it may use, says
-that she gives it profiles in the agent kernel's page, and links there. The
+that she gives it profiles in the agent kernel's page, and links there. She
+opens the profile manager there; the app asks her to confirm it. The
 factory offers two profiles, "implementer" (Claude, file tools, shell and
 web in Claude's sandbox) and "reviewer" (ChatGPT, no tools). In the
-kernel's page she reads both offers, which name no source, and adopts them.
-Nothing changes for the factory: it still lists no profile. She lets the
-factory use "implementer"; the app asks "Let Factory start agents with the
-profile "implementer"?" and lists what it can reach, and she agrees. She
-refuses "reviewer" for now. The factory lists "implementer" alone and starts
-the implementer in her checkout; its start of "reviewer" is refused. She
-edits "implementer" to add a deny rule. The implementer's running turn
-finishes on the version she allowed, but it gets no more work, and the
-factory's next start is refused, until she allows the new version. She
-allows it: the app asks again and names the changed field. The implementer
-started before stays refused, and the factory starts a new one. The factory updates and
-changes its offer; the kernel's page shows the change, and new sessions of
-the adopted profile are refused until she adopts it again. She withdraws the
-factory's "implementer" in the kernel's page; the implementer's turn stops
-and its next input is refused. At no step did the factory, or an agent,
-write a profile or a permission.
+manager she reads both offers, which name no source, and adopts them; the
+app asks her to save each, says it was adopted from an offer, and lists what
+it can reach. Nothing changes for the factory: it still lists no profile.
+She lets the factory use "implementer"; the app asks "Let Factory start
+agents with the profile "implementer"?" and lists what it can reach, and she
+agrees. She refuses "reviewer" for now. The factory lists "implementer"
+alone and starts the implementer in her checkout; its start of "reviewer" is
+refused. The factory updates and changes its "implementer" offer; when the
+manager collects the offers it shows the change, and the factory's
+implementer gets no more work and its next start is refused, until she
+adopts the offer again and allows the new version; the app asks again and
+names the changed fields. The implementer started before stays refused, and
+the factory starts a new one. She then edits "implementer" to add a deny
+rule; the app asks her to save it and names the changed field, and the
+profile is hers now, no longer linked to the offer. The implementer's
+running turn finishes on the version she allowed, but it gets no more work,
+and the factory's next start is refused, until she allows the edited
+version. She withdraws the factory's "implementer" in the manager and closes
+the page; the implementer's turn stops anyway and its next input is refused.
+At no step did the factory, an agent, or a script in the kernel's page write
+a profile or a permission without her answer in the app.
 
 ### AGT-J6: Watching a session in the console
 

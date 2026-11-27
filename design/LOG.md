@@ -28,6 +28,18 @@ provisions itself. N5 answered (a) by the human (PLAN, Human answers, 2026-11-27
 - N5 recorded as answered in VISION, FUNCTIONAL, TECHNICAL and AGENTS.md.
 - Open for the human: the consent-boundary changes and the proposed watane rows (the PR body
   lists them, with the Door C choices for the deputy).
+- Review r1 (Codex, 9 blocking): the page identity holds no power over profiles. `manage`
+  works only on a lease the participant opens in the app (`agent-access.ask(manage)`), bound
+  to the page connection (`caller.connection()`, proposed), and each create, edit, restore,
+  adoption and deletion is a `store` or `remove` question applied on the host's answer; no
+  VISION change (the deputy's ruling). Also: the host ends an open `allow` question when the
+  client's installation changes, and identity reuse after the answer is a stated limit;
+  withdrawal completes on the kernel's own timer; per-version field digests for the changed
+  fields; capacity counts open questions and questions end at a restart; three kinds of
+  work after a change (new input, launches and reads, compiled work) and byte-identical
+  restore revives on purpose; offers: changed, gone, unchanged, and AGT-J7 reordered; manager
+  responses metadata only, 256 KiB; 17 separates AGT-J7 on the fakes from JF1-2's real start
+  and its waits (shell provider path and grant, V27).
 
 ## 2026-11-26: page timer origin under D001
 
