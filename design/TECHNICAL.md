@@ -223,8 +223,16 @@ while `manage` stays open until the participant ends it in the app, its
 page connection closes, or 30 minutes after the answer, then `closed`.
 Refused, or no answer in 600 s: `consent-refused("profile:<client>:<profile>")`,
 `("manage")`, `("store:<profile>")` or `("remove:<profile>")`. A preview or a
-home with no app: `consent-refused` at once. The caller's `streams.cancel`
-withdraws the question or ends the lease. The host keeps nothing.
+home with no app: `consent-refused` at once, unless dev's configured fake
+answer (dev 19.9: granted or refused, per kind) is set, which then answers in
+place of the app; case 85 checks the refusal with none set, case 86 runs on
+the fake answers. The caller's `streams.cancel`
+withdraws the question or ends the lease. The host keeps nothing. The app's
+`manage` question shows the pairing code of its page connection: the first 6
+characters of the base32 (RFC 4648, upper case, no padding) SHA-256 of the
+connection id, which the host derives from the connection it bound the
+question to, never from the caller's words; `caller.connection()` gives the
+kernel the same id, so `manage.open` returns the same code (9.10).
 
 `caller.connection()` (proposed, S151, 15) returns the id of the page
 connection the chain carries (watane host 8.2) when the caller is `page`,
@@ -371,12 +379,12 @@ record offered-profile { name: string, description: string, profile: string }   
 
 interface manage {                                   // the kernel's page, on the participant's lease only (9.10): else `not-owner`
   use sessions.{error};
-  record stored-profile { name: string, digest: string, bytes: u32, offer: option<string>, stale: bool }   // metadata; the text is `profile`
-  enum standing { current, changed, stale }          // the entry's digest is the stored one; differs; the profile's offer changed
+  record stored-profile { name: string, digest: string, rev: u32, bytes: u32, offer: option<string>, stale: bool }   // metadata; the text is `profile`
+  enum standing { current, changed, stale }          // the entry pins the stored version (digest and rev); does not; the profile's offer changed
   record allowed { profile: string, digest: string, standing: standing }
   record client-info { identity: string, allowed: list<allowed>, asking: list<string> }   // `page` first
   record offer-info { name: string, description: string, digest: string, bytes: u32, adopted-as: list<string> }   // the text is `offer-text`
-  open: func() -> result<_, error>;                                              // asks the app for the lease; the one call without it
+  open: func() -> result<string, error>;                                         // asks the app for the lease; the one call without it; the pairing code (9.10)
   close: func() -> result<_, error>;                                             // ends the caller's lease
   profiles: func(after: option<string>, max: u32) -> result<list<stored-profile>, error>;   // max at most 64
   profile: func(name: string) -> result<string, error>;                          // one stored text
@@ -386,7 +394,7 @@ interface manage {                                   // the kernel's page, on th
   forget: func(client: string) -> result<_, error>;
   allow: func(client: string, profile: string) -> result<_, error>;              // asks the app (`allow`); returns at once
   withdraw: func(client: string, profile: string) -> result<u32, error>;         // the turns not yet ended; the kernel ends them (9.10)
-  offers: func() -> result<list<offer-info>, error>;
+  offers: func(after: u32, max: u32) -> result<list<offer-info>, error>;         // collects; skips `after` kept offers; max at most 16
   offer-text: func(offer: string, digest: string) -> result<string, error>;      // one offered text
   adopt: func(offer: string, digest: string, as: string) -> result<string, error>;   // asks the app (`store`); writes no access
 }
@@ -830,15 +838,15 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | Key | Value |
 |---|---|
 | `profile/<name>` | a profile (9.2) |
-| `access/<identity>` | since S151, a JSON array of pinned entries `{"profile", "digest"}`, at most 64, written only as 9.10 says; a name is allowed only while its entry's digest is the stored profile's and the profile is not stale (9.10), and any other value, an array of names included, is unreadable. The rest of this cell names an entry's profile as "the profile names". Before S151: a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (since S151: not a JSON array of pinned entries, 9.10) allows none: fail closed, with one exception, the console's first run (S35): for the identity `page` only, an absent `access/page` allows the built-in profile `scratch` and nothing else (an unreadable one still allows none). `profile/scratch` absent reads as the built-in `{"backend":"claude","partial":true,"ask":true}`: Claude's default model, no built-in tools, mode `manual` with its asks sent to the owner (`ask: true`, 4.1: without it the host denies every `can_use_tool` at once and pushes no ask, host 19.3; S36), no allow rule, in a scratch workspace by default (4.6), which is less than any profile the participant can make: with no built-in tool and no `agent-handle`, `claude` has no tool to ask about, and every allow is the owner's own answer to one call. The first-run allowance covers only that built-in: a stored `profile/scratch` is a profile like any other and needs `access/page` to list it (S35 adversary), and a stored `access/page` replaces the allowance `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile is refused `{field: "profile", reason: "no such profile"}`; `check` takes the profile by name, and an OpenAI profile without a model is refused `{field: "model"}`). `profiles()` lists the names the caller may use in this key's order, at most 64, each with the `backend` (default `claude`) and `model` of its stored profile, a name with no stored profile left out; it reads this key and at most 64 `profile/` keys, and for `page` with no `access/page` it lists the built-in `scratch`. A child session's profile needs no separate entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
+| `access/<identity>` | since S151, a JSON array of pinned entries `{"profile", "digest", "rev"}`, at most 64, written only as 9.10 says; a name is allowed only while its entry holds: its digest and `rev` are the stored profile's and the profile is not stale (9.10), and any other value, an array of names included, is unreadable. The rest of this cell names an entry's profile as "the profile names". Before S151: a JSON array of the profile names this client may use. `<identity>` is the caller's identity as `caller.identity()` gives it (2.1). An absent or unreadable value (since S151: not a JSON array of pinned entries, 9.10) allows none: fail closed, with one exception, the console's first run (S35): for the identity `page` only, an absent `access/page` allows the built-in profile `scratch` and nothing else (an unreadable one still allows none). `profile/scratch` absent reads as the built-in `{"backend":"claude","partial":true,"ask":true}`: Claude's default model, no built-in tools, mode `manual` with its asks sent to the owner (`ask: true`, 4.1: without it the host denies every `can_use_tool` at once and pushes no ask, host 19.3; S36), no allow rule, in a scratch workspace by default (4.6), which is less than any profile the participant can make: with no built-in tool and no `agent-handle`, `claude` has no tool to ask about, and every allow is the owner's own answer to one call. The first-run allowance covers only that built-in: a stored `profile/scratch` is a profile like any other and needs `access/page` to list it (S35 adversary), and a stored `access/page` replaces the allowance `start` and `check` (2.3) check it before they read `profile/<name>` and refuse a name not listed with one refusal `{field: "profile"}` and one reason, whether or not the profile exists, so a client learns nothing about profiles it may not use (a listed name with no profile is refused `{field: "profile", reason: "no such profile"}`; `check` takes the profile by name, and an OpenAI profile without a model is refused `{field: "model"}`). `profiles()` lists the names the caller may use in this key's order, at most 64, each with the `backend` (default `claude`) and `model` of its stored profile, a name with no stored profile left out; it reads this key and at most 64 `profile/` keys, and for `page` with no `access/page` it lists the built-in `scratch`. A child session's profile needs no separate entry (9.7). Each call that gives a session more work reads it again (9.7, "Revoking") |
 | `adopted/<offer id>` | `{content hash, content}`: an adopted skill offer (9.2). An adopted profile offer is a `profile/<name>` with a link in `profiles` (9.10) |
-| `profiles` | the profile manager's index (9.10): a JSON array of at most 256 `{name, digest, bytes, offer?: {name, digest}, stale?, gone?}` of at most 384 bytes each, in the order stored; `digest` and `bytes` are the stored profile's; written only by the answer to a `store` or `remove` question and by `manage.offers` (the stale and gone flags) |
+| `profiles` | the profile manager's index (9.10): a JSON array of at most 256 `{name, digest, rev, bytes, offer?: {name, digest}, stale?, gone?}` of at most 448 bytes each, in the order stored; `digest` and `bytes` are the stored profile's, `rev` the count of granted `store` answers for the name; written only by the answer to a `store` or `remove` question and by `manage.offers` (the stale and gone flags) |
 | `clients` | the identities the participant may allow (9.10): a JSON array of at most 64, in the order of their first `profiles` or `check` call; `page` and `agent:` identities never in it |
-| `access-ask/<stream>` | an open question to the app (9.10): `{kind: "allow", client, profile, digest}`, `{kind: "store", profile, digest, base, text, offer?}` (`base` the stored digest the change was proposed on, or none for a new name; `text` the proposed bytes, at most 1 MiB) or `{kind: "remove", profile, base}`; deleted at its stream's `ended` and at a restart (9.10) |
+| `access-ask/<stream>` | an open question to the app (9.10): `{kind: "allow", client, profile, digest, rev}`, `{kind: "store", profile, digest, base, text, offer?}` (`base` the stored digest the change was proposed on, or none for a new name; `text` the proposed bytes, at most 1 MiB) or `{kind: "remove", profile, base}`; deleted at its stream's `ended` and at a restart (9.10) |
 | `access-asks` | the stream ids of the open questions, at most 2 (9.10; the host's 4 less the `manage` question and lease) |
 | `access-fields/<identity>/<profile>` | the field digests of the version an entry of `access/<identity>` allows (9.10, "Field digests"): at most 32 `{field: digest}`, written and deleted with that entry |
 | `manage-ask`, `manage-lease` | `{stream, connection}`: the open `manage` question and the profile manager's lease (9.10); the lease is written on the host's granted `manage` item; both are deleted at their stream's `ended` and at a restart |
-| `withdrawing` | `[{client, profiles: [{name, below}]}]`: the withdrawals whose running turns the kernel still ends, `below` the session-id cutoff (9.10, "Withdrawing"), at most 65 clients of at most 256 names; with it the kernel's own timer `withdraw` |
+| `withdrawing` | `[{client, profiles: [{name, below}]}]`: the withdrawals whose running turns the kernel still ends, `below` the session-id cutoff (9.10, "Withdrawing"), at most 65 clients of at most 256 names; with it the kernel's own timer `withdraw`; while an item is here, the sessions below its cutoff and their children take no new work |
 | `key/<owner>/<key>` | `<owner>` is written percent-encoded as one path segment (`%` to `%25`, then `/` to `%2F`), because identities contain `/` (2.1) and the raw form is not one key per (owner, key). The value is `{call, owner, session?, value}`: `call` is `start`, `say` or `answer`; `session` the session a `say` or `answer` acted on; `value` the result returned. The result of the first call with that key that changed something; kept after a delete. A call that fails and changes nothing (any error of 2.3: `busy`, `queue-full`, `quota`, `too-large`, `refused`, `paused`, ...) is not kept, so a retry with the same key can succeed. The same key with another call kind, owner or session is refused, one refusal `{field: "key"}`; a kept result is never overwritten |
 | `session/<id>` | the session record (9.3) |
 | `page-origin` | the installed mod identity reported by the reserved page-origin timer (9.5); absent until the host supplies it |
@@ -1886,8 +1894,10 @@ profile; a separate client grant to start that profile is unnecessary.
   OpenAI `task` that starts a child (checked against the root session's
   profile and owner). When `access/<owner>` no longer names the session's
   profile with the record's `profile-digest`, the `profiles` index no
-  longer holds that digest for the profile, or the profile is stale (9.10,
-  "Pinned entries"; a record with none counts as not named, the first-run
+  longer holds that digest and the entry's `rev` for the profile, the
+  profile is stale, or a `withdrawing` item for the owner and the root's
+  profile has a cutoff above the root's id number (9.10, "Pinned entries",
+  "Withdrawing"; a record with none counts as not named, the first-run
   allowance of 9.1 aside), or is absent or unreadable, such a call is
   refused `refused`,
   `{field: "profile"}` (a `task` call gets that refusal as its output), and a
@@ -2254,7 +2264,7 @@ app, which the host alone produces (2.1):
    `agent-access.ask(manage)` (2.1), writes `manage-ask {stream,
    connection}` (the caller's `caller.connection()`; `none` is
    `not-owner`) and `stream/<stream>` `{kind: "access"}`, and returns at
-   once; it reads nothing else. The latest caller wins: a `manage` question
+   once the pairing code of that connection (below); it reads nothing else. The latest caller wins: a `manage` question
    open for the same connection asks nothing; one open for another
    connection is cancelled (`streams.cancel`, its keys deleted) and the
    caller's is asked instead; a lease held by another connection stays until
@@ -2263,8 +2273,13 @@ app, which the host alone produces (2.1):
    participant: her own `open` always reaches the app, and the kernel holds
    at most two `manage` streams (one question, one lease). The question
    carries a pairing code, the first 6 characters of the base32 SHA-256 of
-   the connection id, which the manager shows beside its Open button and the
-   app shows in its words, so she grants only her own window's question.
+   the connection id (2.1): the host derives it for the app from the
+   connection it bound the question to, and `open` returns the one the
+   kernel derives from `caller.connection()`, the same id; the manager shows
+   beside its Open button the code `open` returned and the app shows the
+   host's in its words, so she grants only the question whose code her own
+   window shows. An `open` that asks nothing (its connection's question is
+   already open) returns the same code.
    On the host's granted item the kernel moves `manage-ask` to
    `manage-lease {stream, connection}`; its `ended` without a grant deletes
    `manage-ask`. `manage.close()` (lease held, same connection) cancels the
@@ -2303,7 +2318,7 @@ carries its answer, and a capacity it held is free again.
 **Clients.** `clients` lists the identities the participant may allow,
 besides `page`, which is always allowable and never stored. `sessions.profiles`
 and `sessions.check` add the caller's `caller.identity()` when it is not
-listed, is not `page`, does not start with `agent:`, and the list holds
+listed, is not `page`, does not start with `agent:`, is at most 128 bytes, and the list holds
 fewer than 64; both calls return no error, so their write commits. So a
 client is listed only by its own call: the participant never types an
 identity, and an offer names none. At 64 the page says the list is full;
@@ -2317,15 +2332,18 @@ removed, replaced or updated (2.1). What a later mod under a reused
 `local/<slug>` identity inherits is a stated limit (14).
 
 **Pinned entries.** `access/<identity>` is a JSON array of at most 64
-objects `{"profile": <name>, "digest": <64 lowercase hex>}`, one per
-profile name, where `digest` is the SHA-256 of the exact bytes of the
-`profile/<name>` value the participant allowed; `access-fields/<identity>/<name>`
+objects `{"profile": <name>, "digest": <64 lowercase hex>, "rev": <u32>}`,
+one per profile name, where `digest` is the SHA-256 of the exact bytes of
+the `profile/<name>` value the participant allowed and `rev` the index's
+`rev` of that stored version: the count of granted `store` answers for the
+name, from 1, raised by each (**The answers**), so a version is the pair,
+and a restore of earlier bytes is a new version though its digest recurs; `access-fields/<identity>/<name>`
 keeps that version's field digests (**Field digests**). Any other value is unreadable
 and allows none, an array of names (the format before S151) included; the
-first-run allowance for `page` (9.1) is unchanged. A name is allowed for a
-caller only while its entry's digest equals the stored profile's digest (the
-`profiles` index holds it, so the check reads no profile text) and the
-profile is not stale (**Offers**). `start`, `start-in-folder` and `check`
+first-run allowance for `page` (9.1) is unchanged. An entry **holds** while
+its digest and `rev` equal the stored profile's in the `profiles` index (so
+the check reads no profile text) and the profile is not stale (**Offers**);
+a name is allowed for a caller only while its entry holds. `start`, `start-in-folder` and `check`
 compare; a mismatch is refused `{field: "profile", reason: "changed since the
 participant allowed it"}`, a stale profile `{field: "profile", reason: "its
 offer changed"}`, and `profiles()` leaves both out. `start` keeps the digest
@@ -2335,9 +2353,11 @@ it checked as the record's `profile-digest` (9.3); a session of the built-in
 What a session may still do, after a change, falls in three kinds:
 - **New input** (`say`, a replacement, R5's continuation, a queued input
   taking its turn, 9.7 "Revoking") is allowed only while the owner's entry
-  for the session's profile holds the record's `profile-digest`, the stored
-  profile still has that digest, and the profile is not stale. The call
-  reads `access/<owner>` and the `profiles` index and compares.
+  for the session's profile holds and its digest is the record's
+  `profile-digest`, and no `withdrawing` item for the owner and that
+  profile has a cutoff above the id number of the session's root
+  (**Withdrawing**). The call reads `access/<owner>`, the `profiles` index
+  and `withdrawing`, and compares.
 - **A launch or a read of the profile for work already accepted** compares
   the same way: a later launch (9.3, the kept overlay: a new provider stream
   after the idle release, an ended stream or a restart), each OpenAI step
@@ -2363,20 +2383,20 @@ What a session may still do, after a change, falls in three kinds:
   goes on to its end with what it compiled. Only `withdraw` ends it.
 
 Hence:
-- an edit (an answered `store`) changes the stored digest: no session of
-  that profile, old or new, gets new input or a new launch until the
-  participant allows the new version; a running turn finishes on what it
-  compiled;
-- allowing the new version replaces the entry's digest: new sessions start
-  with it; sessions of the earlier version stay refused new input (their
-  `profile-digest` names a version neither stored nor allowed), and the
-  client starts new ones;
-- a restore of byte-identical text (an answered `store` whose digest equals
-  the entry's) makes the entry hold again, and sessions with that
-  `profile-digest` take new input again. This is meant: they run exactly the
-  bytes the participant allowed, and the restore was itself answered in the
-  app; the freeze lasts until the participant allows the stored version, or
-  stores one she already allowed;
+- any change (an answered `store`: an edit, a restore, an adoption) raises
+  the stored `rev`, so no entry of that profile holds: no session of it, old
+  or new, gets new input or a new launch, and none starts, until the
+  participant allows the stored version (AGT-F-56); a running turn finishes
+  on what it compiled;
+- allowing the new version replaces the entry's digest and `rev`: new
+  sessions start with it; sessions of an earlier version stay refused new
+  input (their `profile-digest` is not the entry's), and the client starts
+  new ones;
+- a restore of byte-identical text is a change like any other: the entry
+  that pinned those bytes no longer holds (its `rev` is older), and nothing
+  revives until the participant allows the restored version; then sessions
+  whose `profile-digest` is that digest take new input again, since the
+  bytes they run are the ones she has just allowed;
 - a session with no `profile-digest` (one started before S151, or of the
   built-in `scratch` once `access/page` is stored) gets no new input through
   an entry.
@@ -2386,7 +2406,10 @@ allowed version, one SHA-256 per top-level field of 9.2's grammar (a fixed
 list, under 32 names), over the field's value serialized as RFC 8785 JSON;
 an absent field is digested as the default 9.2 gives it, so writing a
 default out changes nothing, and a field 9.2 gives no default is digested as
-`null` when absent. A field is "changed" when its digests differ.
+`null` when absent. Defaults stand in only for an absent top-level field:
+inside a field's value nothing is normalized, so a nested key written out
+at what 9.2 would take for it (`subagent-limits` gaining `"depth": 1`)
+changes that field's digest, and the field is named. A field is "changed" when its digests differ.
 `access-fields/<client>/<profile>` holds the allowed version's digests (at
 most 32, under 4 KiB), written with the entry and deleted with it, and read
 only by `allow`. The question for a new version compares the entry's
@@ -2401,20 +2424,23 @@ call waits):
    in `profiles`, else `refused {field: "profile", reason: "no such
    profile"}`; a stale profile is refused `{field: "profile", reason: "its
    offer changed"}`.
-2. If the entry already holds the stored digest, or an open question asks
-   for the same client, profile and digest, it writes nothing. An open
-   `allow` question for an earlier digest of the same client and profile is
-   cancelled first (step 3), so it frees its slot; with 2 other open
-   questions it is `busy`. Capacity counts what is held and what is asked:
-   the entries of `access/<client>` plus its open `allow` questions for
-   names it has no entry for; at 64 a question for a new name is `refused
-   {field: "client", reason: "64 profiles"}`, while one that replaces an
-   existing entry's digest is always allowed.
+2. If the entry already holds, or an open question asks for the same
+   client, profile, digest and `rev`, it writes nothing. An open `allow`
+   question for an earlier version of the same client and profile is
+   **superseded**: the new question takes its place in this same call, its
+   question slot and its capacity reservation both, so neither check below
+   counts it; with 2 other open questions it is `busy`. Capacity counts what
+   is held and what is asked: the entries of `access/<client>` plus its open
+   `allow` questions, the superseded one left out, for names it has no entry
+   for; at 64 a question for a new name is `refused {field: "client",
+   reason: "64 profiles"}`, while one that replaces an existing entry's
+   version, or supersedes a question for the same name, is always allowed.
 3. It renders the reach (below), raises `agent-access.ask(allow(client,
    profile, reach))` (2.1) and writes the question's keys with
-   `{kind: "allow", client, profile, digest}`. An open `allow` question for
-   an earlier digest of the same client and profile is cancelled
-   (`streams.cancel`) and its keys deleted in the same call.
+   `{kind: "allow", client, profile, digest, rev}`. A superseded question is
+   cancelled (`streams.cancel`) and its keys deleted in the same call, so
+   the call commits one question for the name, never two, and never none
+   with the old one's reservation given to another.
 
 **Profiles.** The manager proposes; the app's answer stores (AGT-F-1).
 - `manage.put-profile(name, profile)` checks a profile that parses under 9.2
@@ -2443,15 +2469,16 @@ call waits):
 dropped and the question ends without effect. On it the kernel reads the
 question's `access-ask/<stream>` (none, after a `withdraw` or a cancel:
 nothing happens) and acts once:
-- `allow`: when the index's digest for the profile still equals the
-  question's and the profile is not stale, it writes the entry (replacing
+- `allow`: when the index's digest and `rev` for the profile still equal
+  the question's and the profile is not stale, it writes the entry (replacing
   that profile's entry in place, or appending one only while the array holds
   fewer than 64; at 64 it writes nothing) and its `access-fields/` key
   (a `withdrawing` item for the pair goes on, **Withdrawing**); otherwise it writes nothing, and the
   page shows that the question ended without effect.
 - `store`: when the index's digest for the name is still `base` (absent for
   a new name, and still fewer than 256 names), it writes `profile/<name>`
-  with `text` and the name's index entry (digest, bytes; the link
+  with `text` and the name's index entry (digest, bytes, `rev` one above the
+  name's earlier one, 1 for a new name; the link
   `{offer, digest}` for an adoption, none for the participant's own text,
   which drops an earlier link and its stale flag); else nothing.
 - `remove`: when the digest is still `base` and no entry, other question or
@@ -2508,11 +2535,13 @@ and that its owner gave more work, whether or not its root's turn runs. For
 each it does what `cancel` does (9.3: the turn ends, open asks are denied,
 live children are cancelled), with no model request, toolset call or
 consent request (2.1, the timer rule).
-- **The batch.** One call or firing ends at most 16 turns, counting every
-  turn it ends, the children a cancel cascades to included; a root whose
-  cascade would pass what is left of the 16 waits for the next batch, unless
-  it is the batch's first (so a batch ends at most 1 + 20 turns, 20 being
-  the live cap of `subagent-limits`, 9.2).
+- **The batch.** A batch is one call or one firing. It ends whole
+  cascades (a session and the live children its cancel ends), in id order,
+  while its count of ended turns stays at most 16; the first cascade of a
+  batch is always ended whole, so a batch ends at most 16 turns, or 21
+  (one root and the 20 live children `subagent-limits` allows, 9.2) when
+  its first cascade alone passes 16. This is the one statement of the
+  bound; case 82 and 14 cite it.
 - **Completion without the page.** When turns remain, the call adds the pair
   to `withdrawing` with the cutoff `below` (the `next-id` at the call, 9.1)
   and sets the kernel's own timer `withdraw` (one of the 16
@@ -2530,19 +2559,32 @@ consent request (2.1, the timer rule).
   "stopping". A later `allow` granted for the pair leaves the withdrawal
   running: the cutoff ends every session that existed at the withdrawal,
   even one whose version is allowed again, and never a session started
-  after it. A second withdrawal of a pair raises its cutoff.
+  after it. While the pair's item is in `withdrawing`, a session whose
+  root's id number is below its cutoff, and every child of such a root,
+  takes no new work, whatever `access/` holds: no new input, no launch, no
+  `task` admission (**Pinned entries**, 9.7 "Revoking"), so a re-allow of
+  the same version admits nothing old between batches; a root started
+  after the cutoff runs on the re-allowed entry. A second withdrawal of a
+  pair raises its cutoff.
 
 Taking power away asks nothing: `withdraw` and `forget` need the lease and
 no question.
 
 **Offers.** The kernel imports `mods:agent/offers` as a collect (watane W34,
-2.3). `manage.offers()` calls `offers.profiles()` once. It keeps each
-answer whose `profile` is at most 64 KiB and parses under 9.2, at most 64 in
-all, in the order the collect returns them (W34: the subscribers' local-name
-order), and drops the answers past those 64 (the collect itself the host
-bounds by the chain's fuel and time, W34), and returns each one's metadata (name, description of at most 256
-bytes, digest: the SHA-256 of `profile`, bytes) and the names of the profiles
-adopted from an offer of that name and digest; `manage.offer-text(offer,
+2.3). `manage.offers(after, max)` calls `offers.profiles()` once. It keeps
+each answer whose `name` is a profile name (`[A-Za-z0-9._-]{1,64}`, so at
+most 64 bytes), whose `description` is at most 256 bytes and whose
+`profile` is at most 64 KiB and parses under 9.2, one per name and digest
+(a second answer with both equal is the same offer), at most 64 in all, in
+the order the collect returns them (W34: the subscribers' local-name
+order), and drops the rest (the collect itself the host bounds by the
+chain's fuel and time, W34). It returns the kept offers from the one at
+`after` (counted from 0), at most `max` (1 to 16): each one's metadata
+(name, description, digest: the SHA-256 of `profile`, bytes) and the names
+of the profiles adopted from an offer of that name and digest. Each page
+collects again, so a page shows the offers of its own collect; the stale
+marks of **What a collect shows** come from every kept offer, not only the
+page's; `manage.offer-text(offer,
 digest)` collects again and returns that one text. A collect's answers carry
 no source (W34), so neither the kernel nor the page names the offering mod,
 and two offers may share a name.
@@ -2559,19 +2601,22 @@ a client (**Allowing**).
 What a collect shows about an adoption, linked as `{offer, digest}`:
 - **changed**: an answer with the adoption's `offer` name and another digest,
   and none with its digest. The kernel marks the adoption `stale` in the
-  index in that `offers()` call. From that call on a stale profile is
+  index in that `offers` call. From that call on a stale profile is
   refused for new sessions (`start`, `check`, `allow`; 9.7 admission step 3
   reads it as unadopted) and its sessions get no new input or launch
   (**Pinned entries**, AGT-F-2: the kernel stops using it); a running turn
-  finishes on what it compiled. It ends when the participant adopts again,
-  which stores a new digest and so needs each client's new answer, or edits
-  the text (her own text, the link dropped).
-- **gone**: no answer with the adoption's name. Nothing stops: the adopted
-  text is the participant's, already answered for; the index marks it
-  `gone` and the manager shows "no longer offered".
-- **unchanged**: an answer with the adoption's digest. Nothing changes; a
-  same-name answer with another digest beside it (two mods offering one
-  name) does not mark it stale.
+  finishes on what it compiled. It ends only when the participant adopts again, which
+  stores a new version and so needs each client's new answer, or edits the
+  text (her own text, the link dropped): a later **gone** or **unchanged**
+  observation leaves the flag set, and new work stays refused.
+- **gone**: no answer with the adoption's name. The index marks it `gone`
+  and the manager shows "no longer offered"; a stale flag stays. For an
+  adoption that is not stale nothing stops: the adopted text is the
+  participant's, already answered for.
+- **unchanged**: an answer with the adoption's digest. A same-name answer
+  with another digest beside it (two mods offering one name) does not mark
+  it stale; an earlier `gone` mark is cleared, and a stale flag stays (the
+  offer that changed once is not trusted again until she adopts).
 A collect reports no failed or missing answerer (W34), so the kernel never
 reads an absence as a change: staleness comes only from an answer it saw.
 It learns of a changed offer only when the page collects; until then the
@@ -2579,24 +2624,50 @@ adopted text runs, never the offering mod's new text (14). An edit of an
 adopted profile drops its link, so a later offer change no longer touches
 it. Skill offers keep the rule of 9.2 and `adopted/`.
 
-**Bounds.** One `manage` call reads `manage-lease` and at most one of: the
-`profiles` index (256 entries of at most 384 bytes, 96 KiB), `clients` with
-at most 16 clients' `access/` values (each at most 64 entries of at most
-160 bytes, 160 KiB in all), one profile (1 MiB), or one collect (64 offers of 64
-KiB); `allow`, `put-profile`, `adopt` and the answers also read the one
-profile or text they render (and `allow` one `access-fields/` key). Responses: `profiles` at most 64 entries,
-`clients` at most 16 clients with their entries (`standing` from the index,
-no profile read) and questions, `offers` metadata only; each at most 256
-KiB, the two text calls at most 1 MiB and 64 KiB. A `store` question keeps
-its text (at most 1 MiB) in `access-ask/` until it ends, at most 3 MiB in
-all. `withdraw` and each `withdraw` firing read one owner's pages and the
-records they end, bounded by the per-owner session cap (9.3 Quota), and end
-one batch. `start`, `start-in-folder` and `check` read `profiles` once more
-than before, for the digest and stale flag, and each call that gives a
-session new input reads `access/<owner>` and the index; a launch, an OpenAI
-step and an admission read `profile/<name>` as before (at most 1 MiB) and
-hash it. None of these keys is charged to an owner (9.3 Quota): they are the
-kernel's own, bounded by these caps.
+**Bounds.** The sizes: the `profiles` index, 256 entries of at most 448
+bytes (112 KiB); `clients`, 64 identities; an `access/` value, 64 entries
+of at most 192 bytes (12 KiB) and its `access-fields/` key (4 KiB);
+**the questions**, `access-asks` with the at most 2 `access-ask/` values it
+lists (each at most 1 MiB of `store` text and 1 KiB besides, 2 MiB 2 KiB in
+all); one profile, 1 MiB; one collect, 64 kept offers of at most 64 KiB
+(the host bounds the rest, W34); `withdrawing`, 2 MiB. A `manage` call
+reads `manage-lease` (`open`: `manage-ask` and `manage-lease`), then only
+what its row names, each at most once:
+
+| Call | Reads besides the lease |
+|---|---|
+| `open`, `close` | nothing |
+| `profiles` | the index |
+| `profile` | the index, one `profile/` |
+| `put-profile` | the index, the questions, the stored `profile/<name>` (for the changed fields) |
+| `delete-profile`, the answer to `remove` | the index, `clients` and each listed client's `access/` (65 values with `page`, 780 KiB), the questions, `withdrawing` |
+| `clients` | `clients`, the index, the questions, the `access/` of the at most 16 clients of the page |
+| `forget` | `clients`, that client's `access/`, the questions, `withdrawing` |
+| `allow` | `clients`, the index, `access/<client>` and its `access-fields/<client>/<profile>`, the questions, the stored `profile/<profile>` (for the reach and the field digests) |
+| `withdraw` and each `withdraw` firing | `access/<client>`, the questions, `withdrawing`, one owner's `owner/<client>/<n>` pages and the records of the one batch it ends (bounded by the per-owner session cap, 9.3 Quota) |
+| `offers` | one collect, the index |
+| `offer-text` | one collect |
+| `adopt` | one collect, the index, the questions, the stored `profile/<as>` when there is one |
+| the answer to `allow` | its `access-ask/`, the index, `access/<client>` |
+| the answer to `store` | its `access-ask/`, the index |
+
+The responses, serialized as the WIT values, are bounded by those sizes,
+each at most 256 KiB: `profiles`, at most 64 entries of at most 448 bytes
+(28 KiB); `clients`, at most 16 clients, each an identity of at most 128
+bytes (**Clients**), its at most 64 entries (a name of 64 bytes, a digest of
+64, a standing) and its at most 2 open question ids (16 times under 11 KiB, under
+176 KiB); `offers`, at most 16 offers of a name of 64 bytes, a description of
+256, a digest and a size (under 7 KiB), plus their `adopted-as` names,
+which together list each stored profile at most once, as an adoption links
+one offer and the kept offers are one per name and digest (256 names of 64
+bytes, 16 KiB); `profile` at most 1 MiB and `offer-text` at most 64 KiB,
+one text each. `start`, `start-in-folder` and `check` read `profiles` once
+more than before, for the digest, `rev` and stale flag, and each call that
+gives a session new input reads `access/<owner>`, the index and
+`withdrawing`; a launch, an OpenAI step and an admission read
+`profile/<name>` as before (at most 1 MiB) and hash it. None of these keys
+is charged to an owner (9.3 Quota): they are the kernel's own, bounded by
+these caps.
 
 ## 10. The providers (M1)
 
@@ -2870,10 +2941,10 @@ stage E).
 | A session allow can be taken back | the kernel holds it, `claude` never gets it as a rule (9.6) | `kernel/src/broker.rs` |
 | A session allow covers only what the participant saw | each tool's scope function (9.6): a later call is allowed only when its key, computed afresh from the input that will run, equals a stored (tool, key) exactly; a tool with no scope function (`Task`, `WebSearch`, `mcp__watane__<tool>` until that tool names its key) and an input with a key the function does not know get no key and always ask; file keys rely on the host resolving symlinks first (the kernel reads only the item's resolved `path`, under the record's `folder` from the first `system/init`'s `cwd`, never the input's path; no `folder` or no `path`, no key); a session allow is refused unless its key renders to the `reach` its ask was opened with (S36 r1) and an `mcp__watane__` key on `--strict-mcp-config` (15) | `kernel/src/broker.rs`, `kernel/src/sessions.rs`, `kernel/src/record.rs`; watane `host/src/agent/claude/control.rs`, `run.rs` |
 | The console has no power a client lacks | its code calls only `sessions` of 2.3, as the kernel's page identity (18.1); that identity holds no power over profiles or access: the profile manager in the same page reads and proposes only on a lease the participant opened in the app, bound to its page connection, and each change and each allowance takes effect only on the host's answer to a question about exactly it (9.10, "The manager's authority"), so a script in the page or a loopback client acting as it can raise questions, never answer one; its one first-run default, the built-in `scratch` profile for `page` while `access/page` is absent (9.1), grants less than any profile a participant makes (PLAN R-B4) | `wit/world.wit` (staged as `kernel/wasm/wit/world.wit`, 1), `mod.toml`, `kernel/src/lib.rs`, `kernel/src/manage.rs` (planned, 1: the lease check), `kernel/wasm/src/lib.rs` (`caller.connection()`), `console/`, `manager/` (planned, 1), `ui/` |
-| Only the participant gives a client a profile (S151) | one writer: `manage`, callable only by `page` on the participant's lease (9.10); a profile is stored, edited, restored, adopted or deleted only on the host's granted item of a `store` or `remove` question about that exact text, and an access entry only on a granted `allow` question whose words the app owns and which names the client and the installation as watane knows them, the profile and its reach (the host ends the question if that installation changes); a client is listed only by its own call; an entry pins the profile's digest, and a changed or stale profile allows no new input or launch; capacity counts open questions, and a write past 64 entries writes nothing; absent or unreadable entries allow none; adopting an offer writes no entry; `withdraw` refuses new input at once and the kernel's own timer ends the running turns, children included, without the page (9.10, 9.7 "Revoking") | `kernel/src/manage.rs` (planned, 1), `kernel/src/named.rs` (the pinned entries read by `start`, `check`, `profiles`), `kernel/src/sessions.rs` (`may_work`: the record's `profile-digest`; the `withdraw` timer), `kernel/wasm/src/lib.rs` (`manage`'s owner and lease check by `caller.identity()` and `caller.connection()`, the access stream's routing), `kernel/wasm/wit/world.wit`; watane `host/` (`agent-access`, `caller.connection`, planned), `app/` (its consent words) |
+| Only the participant gives a client a profile (S151) | one writer: `manage`, callable only by `page` on the participant's lease (9.10); a profile is stored, edited, restored, adopted or deleted only on the host's granted item of a `store` or `remove` question about that exact text, and an access entry only on a granted `allow` question whose words the app owns and which names the client and the installation as watane knows them, the profile and its reach (the host ends the question if that installation changes); a client is listed only by its own call; an entry pins the profile's version (its digest and the index's `rev`), and a changed, restored or stale profile allows no new input or launch until a new allow; capacity counts open questions, and a write past 64 entries writes nothing; absent or unreadable entries allow none; adopting an offer writes no entry; `withdraw` refuses new input at once, the kernel's own timer ends the running turns, children included, without the page, and until it completes no session it will end takes new work, a re-allow of the same version included (9.10, 9.7 "Revoking") | `kernel/src/manage.rs` (planned, 1), `kernel/src/named.rs` (the pinned entries read by `start`, `check`, `profiles`), `kernel/src/sessions.rs` (`may_work`: the record's `profile-digest`; the `withdraw` timer), `kernel/wasm/src/lib.rs` (`manage`'s owner and lease check by `caller.identity()` and `caller.connection()`, the access stream's routing), `kernel/wasm/wit/world.wit`; watane `host/` (`agent-access`, `caller.connection`, planned), `app/` (its consent words) |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs` (also the OpenAI rule names, 9.6), `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/named.rs` (`check` and `profiles` read `access/` first, 9.1), `kernel/src/error.rs` |
 
-Not protected: work already compiled when its profile is edited, goes stale or is withdrawn: a Claude turn running on its start's launch flags and an OpenAI tool job already dispatched go on to their end (no new input or launch follows, 9.10), except that `withdraw` ends them, in batches of at most 16 turns that the kernel's own timer completes, so ending them all can take several firings; a script in the kernel's page, or a loopback client acting as it (V27), can at any time ask the app to open the profile manager, and the participant may grant it believing the manager asked; while the participant holds the profile manager open, a script running in its page or a client on the same page connection can read what the manager shows (profiles, clients, entries, offers) and raise questions, so the participant may be asked a question she did not start (the pairing code shows which window asks; a `store` question names the changed fields, not their values, which the manager shows); the manager and the console are documents of one origin, so a script in the console can open or script the manager's window and call through its connection: the connection binding stops a second client (a loopback agent), not a script of the kernel's own origin; such an agent can keep raising `manage` questions, and each of the participant's own `open` calls cancels its question and asks hers, so a loop costs her only refusals, and disabling the client's mod in the app ends it; a script in the page can end the lease or take access away (`withdraw`, `forget`) while the lease is open, never widen anything; a client is its watane identity: an update of the mod under the same identity keeps its entries (as watane keeps its own consents across an update, 8), and a mod that later takes a `local/<slug>` identity a removed mod held inherits that identity's entries, since the kernel hears of no removal (an open question ends at the host; a granted entry stays until withdrawn; install-generation binding, S133 P1.12, later); the participant's own answer to a wide profile, shown whole; a changed offer is seen only when the page collects, and until then the adopted text she answered for runs (9.10); a same-name offer from another mod can mark an adoption stale, failing closed, or, by offering the old text again, keep a changed offer looking unchanged, since a collect names no source (AGT-F-2 holds per offered text: the adopted text never changes without her answer); a hostile offering mod can crowd the 64 offers a collect keeps; the judge account reaches any `POST` path of the origin the
+Not protected: work already compiled when its profile is edited, goes stale or is withdrawn: a Claude turn running on its start's launch flags and an OpenAI tool job already dispatched go on to their end (no new input or launch follows, 9.10), except that `withdraw` ends them, in batches (9.10 "The batch": at most 16 turns, or 21 when a batch's first cascade alone passes 16) that the kernel's own timer completes, so ending them all can take several firings; a script in the kernel's page, or a loopback client acting as it (V27), can at any time ask the app to open the profile manager, and the participant may grant it believing the manager asked; while the participant holds the profile manager open, a script running in its page or a client on the same page connection can read what the manager shows (profiles, clients, entries, offers) and raise questions, so the participant may be asked a question she did not start (the pairing code shows which window asks; a `store` question names the changed fields, not their values, which the manager shows); the manager and the console are documents of one origin, so a script in the console can open or script the manager's window and call through its connection: the connection binding stops a second client (a loopback agent), not a script of the kernel's own origin; such an agent can keep raising `manage` questions, and each of the participant's own `open` calls cancels its question and asks hers, so a loop costs her only refusals, and disabling the client's mod in the app ends it; a script in the page can end the lease or take access away (`withdraw`, `forget`) while the lease is open, never widen anything; a client is its watane identity: an update of the mod under the same identity keeps its entries (as watane keeps its own consents across an update, 8), and a mod that later takes a `local/<slug>` identity a removed mod held inherits that identity's entries, since the kernel hears of no removal (an open question ends at the host; a granted entry stays until withdrawn; install-generation binding, S133 P1.12, later); the participant's own answer to a wide profile, shown whole; a changed offer is seen only when the page collects, and until then the adopted text she answered for runs (9.10); a same-name offer from another mod can mark an adoption stale, failing closed, or, by offering the old text again, keep a changed offer looking unchanged, since a collect names no source (AGT-F-2 holds per offered text: the adopted text never changes without her answer); a hostile offering mod can crowd the 64 offers a collect keeps; the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose allowlisted names can reach loopback, LAN and link-local addresses (V27, breached; the shell grant waits on the human), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
 (spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6). The subagent slash-prompt probe V26 held and the shell network probe V27 breached (16).
@@ -3344,7 +3415,13 @@ of `spec/VISION.md`.
     are `not-owner` again. An `open` from `k2` while `k1`'s question is
     open cancels it and asks for `k2`; `k1`'s `open` then asks for `k1`
     again, each question with its connection's pairing code; a granted `k2`
-    question replaces `k1`'s lease; `close` ends the lease. Across every `sessions` call, `offers` collect,
+    question replaces `k1`'s lease; `close` ends the lease. Pairing, on a
+    fresh connection `k3` with no question or lease: `open` returns a code
+    of 6 base32 characters, the fake host's `manage` question for `k3`
+    shows a code, and the two are equal to each other and to the first 6
+    characters of the base32 SHA-256 of `k3`'s id, while `k1`'s code
+    differs; a second `open` from `k3` asks nothing and returns the same
+    code. Across every `sessions` call, `offers` collect,
     timer firing and stream item but a question's answer, no write touches
     `profile/`, `profiles`, `access/`, `access-fields/`, `access-ask/` or
     `manage-lease`; `profiles` and `check` by `local/c` add it to `clients`
@@ -3369,11 +3446,17 @@ of `spec/VISION.md`.
     refused; its running Claude turn and a dispatched OpenAI tool job go on
     to their end; a later launch after an idle release, an OpenAI step that
     reads the profile and a `task` admission on it are refused or end the
-    turn with that reason, and none launches the edited bytes. After the
-    answer for the new digest that old session's new input stays refused and
-    a new `start` passes. An answered `store` of the earlier bytes again
-    (byte-identical restore) lets the old entry and that old session take
-    `say` again.
+    turn with that reason, and none launches the edited bytes. After the answer for the new digest that old session's new input stays refused and
+    a new `start` passes. Restore (AGT-F-56: any change needs a new
+    allow): with the entry pinning version (d1, rev 1), an answered `store`
+    of d2 and then an answered `store` of the d1 bytes again (rev 3): the
+    entry does not hold, `say` on a d1 session, `start`, `check` and a
+    launch are refused "changed since the participant allowed it",
+    `profiles()` leaves the name out, the manager shows the entry
+    `changed`, and `allow` asks (its question names no changed field);
+    only after its granted answer do `start` and that d1 session's `say`
+    pass. The same holds when the entry was first moved to d2 by an allow:
+    the restore of d1 is refused until a new allow.
 81. (9.10 "Allowing", "The answers", "Questions", "Field digests") Kernel
     crate: `allow` writes no entry and makes one `ask(allow)` request after
     its writes; the fake host's `{"type":"granted"}` writes the entry and
@@ -3385,18 +3468,26 @@ of `spec/VISION.md`.
     the older question. Capacity: with 63 entries, two `allow` questions for
     new names: the second is refused "64 profiles"; with 64 entries an
     `allow` that replaces an entry's digest asks and its answer replaces in
-    place; a granted append found at 64 writes nothing. The second question
-    for a profile whose `model` changed and whose `limits` gained a field
-    equal to 9.2's default names `model` alone, computed from
+    place; a granted append found at 64 writes nothing. Supersede at the
+    cap: with 63 entries and an open `allow` question for a new name `n` at
+    (d1, rev 1), an answered `store` of `n` (rev 2) and then `allow(c, n)`
+    asks, is not refused "64 profiles" and is not `busy`; in the one call
+    the d1 question is cancelled and its keys deleted, and `access-asks`
+    holds one question for `n`; its granted answer appends the 64th entry,
+    and a further `allow` for another new name is refused "64 profiles".
+    The second question for a profile whose `model` changed and which wrote
+    out `"backend": "claude"` (9.2's default for an absent top-level
+    `backend`) names `model` alone; for one whose `subagent-limits` changed
+    from `{"live": 2}` to `{"live": 2, "depth": 1}` it names
+    `subagent-limits` (no nested default); both computed from
     `access-fields/` and the stored profile with no earlier text kept.
     Restart: with two open questions, a `manage` question and a lease, a new generation's first
     call deletes their keys, `access-asks` and `manage-lease`, and a new
     `allow` asks again.
 82. (9.10 "Withdrawing") Kernel crate: `local/c` has 20 running roots of `p`
     (two with 3 live children each) and 2 of `q`; `withdraw(local/c, p)`
-    refuses `say` on every `p` session at once, ends 16 turns counting the
-    children of its cascades (no root's cascade split across batches but the
-    first's), returns the rest and sets `withdraw`; the page makes no other
+    refuses `say` on every `p` session at once, ends its first batch as 9.10 "The batch" states (16 turns,
+    the children of its cascades counted, no cascade split), returns the rest and sets `withdraw`; the page makes no other
     call (closed); the timer's firings end the rest, the total ended equals
     the `p` roots and their live children, `withdrawing` is empty and
     `withdraw` not set again; the `q` sessions run on; a child of an idle
@@ -3404,7 +3495,16 @@ of `spec/VISION.md`.
     turn is ended too. A restart between firings: the pass and the next
     firing finish it. A granted `allow` for the pair while it is in
     `withdrawing` leaves it: every session that existed at the withdrawal
-    still ends, and a session started after it is not ended.
+    still ends, and a session started after it is not ended. Same-digest
+    re-allow between batches: after the first batch, a granted `allow` of
+    the version `p` had; then an old `p` root not yet ended is refused
+    `say`, a launch after an idle release and an OpenAI `task` admission,
+    and its resolved child is refused `say`; a new `p` root started after
+    the allow takes `say` and `task`; the firings still end every old
+    session, and once `withdrawing` is empty the new root runs on. The
+    batch counts follow 9.10 "The batch" exactly: every batch but one whose
+    first cascade alone passes 16 ends at most 16 turns, and a root with 20
+    live children first in its batch ends with all 21 in that batch.
     `delete-profile(p)` is refused while an entry, a question or a
     `withdrawing` item names it and asks after.
 83. (9.10 "Offers") Kernel crate with two fake offering mods: both offer
@@ -3419,6 +3519,14 @@ of `spec/VISION.md`.
     entry must be answered for. An offer that disappears marks `gone` and
     stops nothing; a same-name offer beside the adopted digest marks nothing;
     an adoption the participant edited is not marked by a later change.
+    Stale persists: after the change marks it stale, a collect where the
+    offer is gone and then one where it offers the adopted digest again
+    leave it stale, and after each `start`, `check`, `allow` and `say` on
+    its sessions stay refused; only an `adopt` again or an edit clears it.
+    Bounds: an answer with a name over 64 bytes or outside the profile name
+    form, or a description over 256 bytes, is dropped; two answers with the
+    same name and digest are one offer; `offers(0, 16)`, `offers(16, 16)`
+    page through 64 kept offers in the collect's order.
 84. (9.10 "Reach") Kernel crate, golden: the reach text of a Claude profile
     with file and shell tools and three allow rules, of the factory's
     reviewer (OpenAI, no tools), the ask line for a client, for `page`, for
@@ -3426,8 +3534,11 @@ of `spec/VISION.md`.
     domains, the "Changed since" and "Changed" lines, a rule with a bidi
     control (shown escaped); a profile whose reach passes 4 KiB makes
     `allow` and `put-profile` refuse "too wide to show" and ask nothing;
-    plain text, the same bytes each run. Bounds: `profiles`, `clients` and
-    `offers` at their caps answer at most 256 KiB; `profile` and
+    plain text, the same bytes each run. Bounds: `profiles`, `clients` (16 clients of 128-byte identities with
+    64 entries each) and `offers` (16 offers, 256 stored profiles adopted
+    from them) at their caps answer at most 256 KiB, serialized; each call
+    reads only the keys of its row in 9.10 "Bounds" (the fake host counts
+    the keys read); `profile` and
     `offer-text` one text.
 85. (2.1 "Access questions", 15; the watane slice) Host, fake `Confirm`:
     `agent-access.ask` from a timer firing, another mod's call and an agent
