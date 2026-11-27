@@ -63,13 +63,58 @@ describe("S156-1 words after Stop", () => {
     expect(lines).toEqual(["kernel · Denied: Edit x.md — odd", "alice · Denied: Edit y.md — cancel"]);
   });
 
-  it("ac3_an_allowed_call_that_never_ran_reads_did_not_run_after_the_turn", () => {
+  it("ac3_an_allowed_call_with_no_result_reads_no_result_after_the_turn", () => {
     const before = run(running, ask(2, "a3", "to-read.md"), short(3, 2, "a3", { outcome: "allow", by: "alice" }));
     show(before);
     expect(document.querySelector('[data-ask="a3"] .wa-tool-status')!.textContent).toBe("Allowed");
     cleanup();
     show(cancelledLaunch());
-    expect(document.querySelector('[data-ask="a3"] .wa-tool-status')!.textContent).toBe("Did not run");
+    expect(document.querySelector('[data-ask="a3"] .wa-tool-status')!.textContent).toBe("No result");
+  });
+});
+
+/** OpenAI's cleanup of 9.5: after the kernel denies the open ask, the call gets the `aborted` output, a `tool` entry with status `failed`. */
+const aborted = (i: number, id: string, file: string) => entry(i, "tool", { toolCallId: `t-${id}`, title: "edit", rawInput: { file_path: file },
+  status: "failed", content: [{ type: "content", content: { type: "text", text: "aborted" } }] });
+const badge = (id: string) => document.querySelector(`[data-ask="${id}"] .wa-tool-status`)!.textContent;
+
+describe("S156 r1 F1.1 a kernel cleanup result after a cancelled ask", () => {
+  it.each(["cancel", "restart"])("f1_1_%s_then_failed_abort_keeps_cancelled_and_counts_0_tools", (reason) => {
+    const v = run(entry(1, "message", { role: "user", content: [{ type: "text", text: "Merge" }] }), running,
+      ask(2, "a1", "reading-list.md"), short(3, 2, "a1", { outcome: "deny", by: "kernel", reason }),
+      aborted(4, "a1", "reading-list.md"), interrupted(5));
+    expect(rows(v, "footer")[0]).toMatchObject({ tools: 0, interrupted: true });
+    show(v);
+    expect(badge("a1")).toBe("Cancelled");
+    expect(screen.getByText("Stopped after 3 s · 0 tools")).toBeInTheDocument();
+  });
+
+  it("f1_1_her_own_deny_then_a_failed_result_still_reads_failed", () => {
+    show(run(running, ask(2, "a1", "x.md"), short(3, 2, "a1", { outcome: "deny", by: "alice" }), aborted(4, "a1", "x.md")));
+    expect(badge("a1")).toBe("Failed");
+  });
+});
+
+describe("S156 r1 F1.2 Claude's result after Stop", () => {
+  const done = J({ sessionUpdate: "tool_call_update", toolCallId: "t-a1", status: "completed" });
+  const stopped = () => run(entry(1, "message", { role: "user", content: [{ type: "text", text: "Edit" }] }), running,
+    ask(2, "a1", "notes.md"), short(3, 2, "a1", { outcome: "allow", by: "alice" }),
+    J({ sessionUpdate: "tool_call_update", toolCallId: "t-a1", status: "pending" }), interrupted(4));
+
+  it("f1_2_allow_tool_use_stop_reads_no_result_and_0_tools", () => {
+    const v = stopped();
+    expect(rows(v, "footer")[0]!.tools).toBe(0);
+    show(v);
+    expect(badge("a1")).toBe("No result");
+    expect(document.body.textContent).not.toMatch(/Did not run/);
+  });
+
+  it("f1_2_the_late_completed_result_updates_the_card_and_the_footer", () => {
+    const v = reduce(stopped(), done);
+    expect(rows(v, "footer")[0]).toMatchObject({ tools: 1, interrupted: true });
+    show(v);
+    expect(badge("a1")).toBe("Done");
+    expect(screen.getByText("Stopped after 3 s · 1 tool")).toBeInTheDocument();
   });
 });
 
