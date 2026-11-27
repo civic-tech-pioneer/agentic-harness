@@ -121,6 +121,7 @@ describe("S36-3", () => {
     act(() => f.play(extra.length - 1));
     let finishTake!: () => void;
     f.unqueue = () => new Promise<void>((resolve) => { finishTake = resolve; });
+    await screen.findByText("saved draft", { selector: ".wa-queue-text" });
     await userEvent.setup().click(await screen.findByRole("button", { name: "Stop and send queued message 1" }));
     await act(async () => {
       ends[0]!("replaced");
