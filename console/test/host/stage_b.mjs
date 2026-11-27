@@ -687,7 +687,14 @@ async function main() {
       await ok("sessions.say", { session: s, key: `k-${Date.now()}`, input: "queued one" });
       const pid = Number(JSON.parse(readFileSync(join(preview.home, "run.json"), "utf8")).pid);
       process.kill(pid, "SIGTERM");
-      await until(async () => { try { process.kill(pid, 0); return false; } catch { return true; } }, 15_000, "the host to stop");
+      await until(() => {
+        try {
+          process.kill(pid, 0);
+          return process.platform === "linux" && /^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
+        } catch {
+          return true;
+        }
+      }, 15_000, "the host to stop");
       writeScript([{ do: "expect-user" }, { do: "message", text: "resumed one" }, { do: "result" }, { do: "idle" }, { do: "expect-user" }, { do: "message", text: "resumed two" }, { do: "result" }, { do: "idle" }], UUID);
       const mark = fakeLog().length;
       serve();
