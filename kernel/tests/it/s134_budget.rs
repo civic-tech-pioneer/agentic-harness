@@ -29,23 +29,36 @@ fn openai(extra: &str) -> String {
 /// Two owners on the root profile `root` (the `notes` tools, which a child may not exceed, and `task`; two live children) whose children run the
 /// profile `worker` with the `notes` tools.
 fn kernel(with_skills: bool) -> K {
-    let skill = if with_skills {
-        r#","skills":[{"name":"notes","files":{"SKILL.md":"---\ndescription: Summarize notes\n---\nGroup the notes by topic."}}]"#
+    let mut skills = vec![json!({
+        "name": "notes",
+        "files": {"SKILL.md": "---\ndescription: Summarize notes\n---\nGroup the notes by topic."},
+    })];
+    let child_skills = if with_skills {
+        format!(r#","skills":{}"#, json!(skills))
     } else {
-        ""
+        String::new()
+    };
+    skills.push(json!({
+        "name": "reference",
+        "files": {"SKILL.md": format!("---\ndescription: Reference\n---\n{}", "a".repeat(1000 * 1024))},
+    }));
+    let root_skills = if with_skills {
+        format!(r#","skills":{}"#, json!(skills))
+    } else {
+        String::new()
     };
     let allow_skill = if with_skills { r#","skill""# } else { "" };
     let mut st = MemState::new();
     st.put(
         "profile/root",
-        openai(&format!(r#","toolsets":["notes"],"delegates":["worker"],"allow":["task","notes_*"{allow_skill}],"subagent-limits":{{"live":2}}{skill}"#))
+        openai(&format!(r#","toolsets":["notes"],"delegates":["worker"],"allow":["task","notes_*"{allow_skill}],"subagent-limits":{{"live":2}}{root_skills}"#))
             .into_bytes(),
     )
     .unwrap();
     st.put(
         "profile/worker",
         openai(&format!(
-            r#","toolsets":["notes"],"allow":["notes_*"{allow_skill}]{skill}"#
+            r#","toolsets":["notes"],"allow":["notes_*"{allow_skill}]{child_skills}"#
         ))
         .into_bytes(),
     )

@@ -15,7 +15,7 @@ use crate::openai::tools::{Call, Policy, SetupError, ToolSet, JOB};
 use crate::openai::wire::{user_message, BodyArgs, Wire, WireItem, COMPACT_THRESHOLD};
 use crate::openai::{skill, task};
 use crate::overlay::apply_overlay;
-use crate::profile::{parse_profile, Profile, SystemPrompt};
+use crate::profile::{parse_profile, Profile, Skill, SystemPrompt};
 use crate::queue::Queue;
 use crate::quota::Past;
 use crate::record::{Activity, Deadline, Record, Stop, Turn};
@@ -116,6 +116,9 @@ pub struct LoopState {
     /// What the loop reads of the profile, compiled once at `start` (9.6).
     #[serde(skip_serializing_if = "Policy::is_empty")]
     pub policy: Policy,
+    /// Rendered rows only. Skill files and revision digests are stored separately.
+    #[serde(skip_serializing_if = "skill::Listing::is_empty")]
+    pub skill_listing: skill::Listing,
     /// The session's handle on `agent-tools` and its described tools (9.5).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<ToolSet>,
@@ -205,6 +208,7 @@ pub(crate) enum Launch {
 pub(crate) struct Prelaunch {
     pub ls: LoopState,
     go: Option<(Pending, Launch)>,
+    skills: Vec<Skill>,
 }
 
 /// One item of a request stream, as the loop reads it.
@@ -236,8 +240,8 @@ fn request_tools(rec: &Record, ls: &LoopState) -> Vec<Value> {
     if rec.parent.is_none() && !ls.policy.delegates.is_empty() {
         tools.push(task::definition(&ls.policy.delegates));
     }
-    if !ls.policy.skills.is_empty() {
-        tools.push(skill::definition(&ls.policy.skills));
+    if !ls.skill_listing.is_empty() {
+        tools.push(skill::definition(&ls.skill_listing));
     }
     tools
 }
@@ -347,20 +351,19 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(ls) = self.loop_load(&rec.id) {
             return ls;
         }
-        let json = self.profile_json(&rec.profile).unwrap_or_default();
-        let base = parse_profile(&json).0;
-        let compiled = apply_overlay(&base, &rec.overlay.clone().unwrap_or_default()).0;
-        Self::loop_from_profile(compiled)
+        let compiled = self.compiled_of(rec);
+        // Recovery from a missing loop has no trusted listing to advertise.
+        Self::loop_from_profile(compiled, &[])
     }
 
-    pub(crate) fn loop_from_profile(compiled: Profile) -> LoopState {
+    pub(crate) fn loop_from_profile(compiled: Profile, skills: &[Skill]) -> LoopState {
         LoopState {
             limits_compiled: true,
             model: compiled.model.unwrap_or_default(),
             effort: compiled.effort,
+            skill_listing: skill::listing(skills),
             policy: Policy {
                 toolsets: compiled.toolsets,
-                skills: compiled.skills,
                 allow: compiled.allow,
                 deny: compiled.deny,
                 mode: compiled.mode,
@@ -538,9 +541,40 @@ impl<S: State, H: Host> Kernel<S, H> {
         a: &Acct,
         interrupting: bool,
     ) -> Result<Prelaunch, KernelError> {
-        let mut ls = self.loop_for(rec);
+        let ls = self.loop_for(rec);
+        self.prelaunch(rec, input, slots, a, interrupting, ls)
+    }
+
+    pub(crate) fn openai_start(
+        &mut self,
+        rec: &Record,
+        input: &str,
+        slots: &Slots,
+        a: &Acct,
+        mut compiled: Profile,
+    ) -> Result<Prelaunch, KernelError> {
+        let skills = std::mem::take(&mut compiled.skills);
+        let ls = Self::loop_from_profile(compiled, &skills);
+        let mut p = self.prelaunch(rec, Some(input), slots, a, false, ls)?;
+        p.skills = skills;
+        Ok(p)
+    }
+
+    fn prelaunch(
+        &mut self,
+        rec: &Record,
+        input: Option<&str>,
+        slots: &Slots,
+        a: &Acct,
+        interrupting: bool,
+        mut ls: LoopState,
+    ) -> Result<Prelaunch, KernelError> {
         let Some(input) = input else {
-            return Ok(Prelaunch { ls, go: None });
+            return Ok(Prelaunch {
+                ls,
+                go: None,
+                skills: Vec::new(),
+            });
         };
         let pending = self.pending_for(rec, &ls, input);
         let freeing = u32::from(interrupting && matches!(ls.phase, Phase::Requesting { .. }));
@@ -561,6 +595,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(Prelaunch {
             ls,
             go: Some((pending, launch)),
+            skills: Vec::new(),
         })
     }
 
@@ -572,7 +607,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         p: Prelaunch,
         cx: &mut Cx,
     ) -> Result<(), KernelError> {
-        let Prelaunch { mut ls, go } = p;
+        let Prelaunch { mut ls, go, skills } = p;
+        skill::save(&mut self.state, &rec.id, skills)?;
         if let Some((pending, launch)) = go {
             ls.reset_turn();
             self.go(rec, &mut ls, cx, pending, Some(launch), 0)?;
@@ -1980,6 +2016,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 self.state.delete_uncharged(&format!("wire/{id}/{first}"));
             }
         }
+        skill::delete(&mut self.state, id);
         self.state.delete_uncharged(&format!("loop/{id}"));
     }
 }

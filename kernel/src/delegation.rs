@@ -3,7 +3,7 @@
 //! refused.
 
 use crate::error::{Problem, Refusal};
-use crate::profile::{grammar_problems, parse_profile, Backend, Profile};
+use crate::profile::{grammar_problems, parse_profile, Backend, Profile, Skill};
 use crate::refuse::refuse;
 
 const DEFAULT_LIVE: u32 = 4;
@@ -37,6 +37,26 @@ pub fn admit(
     live: u32,
     name: &str,
     load: impl FnOnce(&str) -> Option<String>,
+) -> Result<Profile, Vec<Refusal>> {
+    admit_with_skills(
+        root,
+        root_model,
+        caller_is_child,
+        live,
+        name,
+        load,
+        |skill| root.skills.contains(skill),
+    )
+}
+
+pub(crate) fn admit_with_skills(
+    root: &Profile,
+    root_model: &str,
+    caller_is_child: bool,
+    live: u32,
+    name: &str,
+    load: impl FnOnce(&str) -> Option<String>,
+    matches_skill: impl FnMut(&Skill) -> bool,
 ) -> Result<Profile, Vec<Refusal>> {
     let one = |field: &str, reason: &str| {
         Err(vec![
@@ -76,7 +96,7 @@ pub fn admit(
     if !c.toolsets.iter().all(|t| root.toolsets.contains(t)) {
         bad.push(("toolsets", "a toolset the calling profile lacks"));
     }
-    if !c.skills.iter().all(|s| root.skills.contains(s)) {
+    if !c.skills.iter().all(matches_skill) {
         bad.push(("skills", "a skill or revision the calling profile lacks"));
     }
     if c.mode != root.mode {

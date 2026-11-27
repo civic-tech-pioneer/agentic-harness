@@ -42,9 +42,10 @@
 //! child it ends and their streams; the root's pushes go on the root's own owner stream
 //! (`Work::peer`), and the bytes each record owns are attributed to it (`peer_bytes`).
 
-use crate::delegation::admit;
+use crate::delegation::admit_with_skills;
 use crate::error::{KernelError, Problem, Refusal};
 use crate::openai::run::{Cx, Launch, LoopState};
+use crate::openai::skill;
 use crate::openai::tools::CallState;
 use crate::profile::{Backend, Profile};
 use crate::queue::check_input;
@@ -91,7 +92,6 @@ fn root_profile(ls: &LoopState) -> Profile {
         backend: Some("openai".into()),
         model: Some(ls.model.clone()),
         toolsets: p.toolsets.clone(),
-        skills: p.skills.clone(),
         delegates: p.delegates.clone(),
         allow: p.allow.clone(),
         deny: p.deny.clone(),
@@ -176,9 +176,24 @@ impl<S: State, H: Host> Kernel<S, H> {
             .filter(|c| matches!(c.st, CallState::Child { .. }))
             .count() as u32;
         let root = root_profile(ls);
-        let admitted = admit(&root, &model, rec.parent.is_some(), live, &name, |n| {
-            self.profile_json(n)
-        });
+        let revisions = if ls.skill_listing.is_empty() || rec.parent.is_some() {
+            skill::Revisions::new()
+        } else {
+            skill::revisions(&mut self.state, &rec.id)
+        };
+        let admitted = admit_with_skills(
+            &root,
+            &model,
+            rec.parent.is_some(),
+            live,
+            &name,
+            |n| self.profile_json(n),
+            |s| {
+                skill::revision(s)
+                    .as_ref()
+                    .is_some_and(|r| revisions.get(&s.name) == Some(r))
+            },
+        );
         let admitted = match admitted {
             Ok(profile) => profile,
             Err(rs) => return self.end_call(rec, ls, cx, at, refused_out(&rs)),
@@ -227,8 +242,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         {
             return Ok(());
         }
-        let child_loop = Self::loop_from_profile(admitted);
-        self.create_child(rec, cx, &id, &name, &call_id, input, child_loop)?;
+        self.create_child(rec, cx, &id, &name, &call_id, input, admitted)?;
         rec.children.push(id.clone());
         ls.calls[at].st = CallState::Child { session: id };
         Ok(())
@@ -245,7 +259,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         profile: &str,
         call_id: &str,
         input: &str,
-        mut cls: LoopState,
+        mut admitted: Profile,
     ) -> Result<(), KernelError> {
         let (n, page_key, mut page) = self.owner_page(&root.owner, cx.a);
         let blocks = json!([{"type": "text", "text": input}]).to_string();
@@ -263,6 +277,9 @@ impl<S: State, H: Host> Kernel<S, H> {
             ..Record::default()
         };
         let before = self.state.change().session;
+        let skills = std::mem::take(&mut admitted.skills);
+        let mut cls = Self::loop_from_profile(admitted, &skills);
+        skill::save(&mut self.state, id, skills)?;
         let mut work = Work::default();
         self.start_turn(
             &mut child,

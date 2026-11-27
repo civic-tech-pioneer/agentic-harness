@@ -2138,6 +2138,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let parsed = parse_profile(&json).0;
         let backend = parsed
             .backend
+            .as_deref()
             .and_then(|b| b.parse::<Backend>().ok())
             .unwrap_or(Backend::Claude);
         // A Claude profile without a model runs the default one; an OpenAI one must name it (9.2).
@@ -2162,8 +2163,8 @@ impl<S: State, H: Host> Kernel<S, H> {
                 return Err(KernelError::TooLarge(MAX_FOLDER_BYTES as u64));
             }
         }
-        let model = parsed.model.unwrap_or_else(|| "default".to_string());
-        let refusals = check(&json, overlay, backend, &model, None);
+        let model = parsed.model.as_deref().unwrap_or("default");
+        let refusals = check(&json, overlay, backend, model, None);
         if !refusals.is_empty() {
             return Err(KernelError::Refused(refusals));
         }
@@ -2221,7 +2222,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         // An OpenAI session's first request is sent, too, before the first write (9.5).
         let openai = match backend {
             Backend::Openai => {
-                Some(self.openai_prelaunch(&rec, Some(input), &slots, &acct, false)?)
+                let compiled = apply_overlay(&parsed, &narrowing).0;
+                Some(self.openai_start(&rec, input, &slots, &acct, compiled)?)
             }
             Backend::Claude => None,
         };

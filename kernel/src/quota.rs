@@ -250,7 +250,8 @@ pub fn scope(key: &str) -> Scope {
     };
     match head {
         "session" => Scope::Record,
-        "queue" | "entries" | "wire" | "loop" | "stream" | "adapter" | "live" => Scope::Session,
+        "queue" | "entries" | "wire" | "loop" | "skills" | "skill-revisions" | "stream"
+        | "adapter" | "live" => Scope::Session,
         "key" | "owner" => Scope::Owner,
         _ => Scope::Kernel,
     }
