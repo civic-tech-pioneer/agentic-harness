@@ -240,7 +240,7 @@ function dropProvisionalOutput(v: SessionView, x: Internal) {
 function setTurn(v: SessionView, x: Internal, state: TurnState, extra: TurnExtra) {
   const prev = v.turn;
   v.turn = state;
-  if (state.state === "idle" && state.stop.kind === "failed" && state.stop.error === "provider-ended" && state.stop.cause === "gone") {
+  if (state.state === "idle" && state.stop.kind === "failed" && state.stop.error === "provider-ended") {
     dropProvisionalOutput(v, x);
   }
   if (state.state === "unknown" || state.state === "resume-lost" || state.state === "idle") markEnded(v, x);
