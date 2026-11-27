@@ -27,9 +27,16 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S148 (stage F, `skill` on OpenAI, Codex build; r1 Claude routine `trig_01PLJdyL1p91vuV9bhofPZ2V` 06:41 UTC); S138, S142, S144, S145 merged.
+S152 (upkeep, console, Codex build); S148 (stage F, `skill` on OpenAI, Codex build; r1 Claude routine `trig_01PLJdyL1p91vuV9bhofPZ2V` 06:41 UTC); S138, S142, S144, S145 merged.
 
 ## Sketched
+### S152 (upkeep) the console's guards and tests after S145, console/ only
+(sketched 2026-11-27 by Deputy Paper, the upkeep lane; builder codex by rule 3 (last two: watane S150 codex, watane S149 claude); reviewer claude; in flight, cloud)
+Why: the console-side Upkeep items, while S148 holds kernel/ and design/. Re-check every item on main first (S145 closed several S144/S142 lines): drop what is fixed and say so in the PR, and remove those Upkeep lines in the PR body's list for the deputy.
+Outcomes, each its Upkeep item's check: (1) (flake, guard) `console/kit/parts_S15.test.ts:42` passes in the full console run: cause named and fixed; (2) S145 P1.3 to P1.8, P1.11 (tests and guards); (3) S144 r1 P1.6 (queue label and Stop and send after a failed or paused turn); (4) S142 r1 A2 (Escape while the console reads Loading) as a console test against today's kernel behaviour; (5) S36 user-sim's "felt wrong" items where still true.
+Touches: `console/` (src, kit, test), `ui/` (rebuilt and committed). Not kernel/ or design/ (S148), no interface change, no spec text change (spec-side lines stay in Upkeep). A guard never weakens; `installed-agent` never weakened to pass.
+Boundary: the console (TECHNICAL 14, "The console has no power a client lacks"): the adversary runs if a change adds a kernel call. Protects: *guard* (1), *polish* (the rest). Size: an upkeep slice.
+
 - **S151 (design, stage F) factory profiles: who writes a client's role profiles and `access/<identity>`, with whose consent** (sketched 2026-11-27 by Deputy Paper; hand out when S148 merges, since both edit `design/TECHNICAL.md`). watane step 6's JF1 cannot start a session until this exists (watane `spec/design/factory/TECHNICAL.md` 5, "Factory profiles at F"; watane evidence civic-tech-pioneer/watane#56). Settle in the design files: the writer of `profile/<name>` and `access/<identity>` for a client mod, Alice's consent for a specific profile for a specific mod identity (words she reads), its scope and withdrawal, and how a profile offer is adopted; absent entries stay denied, and a requesting mod never provisions itself. Outcomes: a reviewer can build it from the documents; each Door C choice is listed for the deputy, a consent-boundary change for the human; the build rows for it sized for slices. Touches: `design/` only. Boundary: consent (TECHNICAL 14), so the review runs the adversary on the design. Size: a design slice (it settles a Door C row before code depends on it).
 ### S148 stage F: an OpenAI session uses the skills its profile names, through the `skill` function (TECHNICAL 11, 9.7)
 (sketched 2026-11-26 by Deputy Scissors, the main line; builder codex by rule 3 (last two: watane S147 codex, watane S146 claude); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b08ad95-8eb0-83ed-bcee-2e4bc0c8706b, 22:15 UTC; DELIVERED as PR #67 at 580b8cba, CI green; r1 Claude routine `trig_01PLJdyL1p91vuV9bhofPZ2V` 06:41 UTC, adversary asked for (14).)
