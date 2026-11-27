@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
 // @ts-expect-error: a plain ES module of the host runner
-import { clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./metrics.mjs";
+import { claudeGaps, clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./metrics.mjs";
 
 it("charges only commit time in the common window", () => {
   expect(writerBusy([[13, 15], [5, 12], [11, 14], [19, 22]], 10, 20)).toBe(60);
@@ -203,4 +203,32 @@ it("ac3_stamps_receipt_on_the_wall_clock_before_dispatch", () => {
     vi.unstubAllGlobals();
     clock.mockRestore();
   }
+});
+
+it("ac1_reports_missing_live_markers_taken_by_the_request_sink_before_Stop", () => {
+  const tail = step(3, 3000);
+  const receipt = { at: 3010, marker: "call_3_0" };
+  const coverage = openaiPageCoverage(tail, new Set(), [interrupted], 1000, 3064, 3064, [receipt]);
+  expect(coverage.cut).toEqual([]);
+  expect(coverage.faults).toContain("missing page marker call_3_0");
+});
+
+
+it("ac2_compares_the_same_Claude_gap_at_both_ends_of_the_pipe", () => {
+  const source = new Map([["cl-a-delta-1", 20], ["cl-a-delta-2", 40], ["cl-a-delta-3", 60],
+    ["cl-b-delta-1", 30], ["cl-b-delta-2", 50]]);
+  const wrapper = new Map(source);
+  wrapper.set("cl-a-delta-2", 77);
+  wrapper.set("cl-a-delta-3", 80);
+  expect(claudeGaps(wrapper, source, 10, 90).delta).toEqual({
+    ms: 57, otherMs: 20, before: "cl-a-delta-1", after: "cl-a-delta-2",
+  });
+});
+
+it("ac1_keeps_a_Stop_cut_when_the_sink_answered_after_the_stored_interrupt", () => {
+  const tail = step(3, 3000);
+  const receipt = { at: 3070, marker: tail[0].marker };
+  const coverage = openaiPageCoverage(tail, new Set(), [interrupted], 1000, 3064, 3064, [receipt]);
+  expect(coverage.cut).toEqual(tail);
+  expect(coverage.faults).toEqual([]);
 });

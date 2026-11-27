@@ -10,8 +10,49 @@ index f6892bda..816c7081 100644
 +[profile.dev.package.watane-dev]
 +opt-level = 2
 +
+diff --git a/dev/src/bin/fake-claude.rs b/dev/src/bin/fake-claude.rs
+index 453a395c..899c5869 100644
+--- a/dev/src/bin/fake-claude.rs
++++ b/dev/src/bin/fake-claude.rs
+@@ -241,0 +242,20 @@ impl Fake {
++    fn emit_load(value: &Value, kind: &str, index: u64) {
++        let body = value.to_string();
++        let at = std::time::SystemTime::now()
++            .duration_since(std::time::UNIX_EPOCH)
++            .expect("epoch")
++            .as_nanos();
++        emit_bytes(body.as_bytes());
++        if let (Some(path), Ok(id)) = (
++            std::env::var_os("S159_CLAUDE_STAMPS"),
++            std::env::var("S159_CLAUDE_ID"),
++        ) {
++            let mut log = OpenOptions::new()
++                .create(true)
++                .append(true)
++                .open(path)
++                .expect("stamp log");
++            let line = format!("{at} cl-{id}-{kind}-{index}\n");
++            log.write_all(line.as_bytes()).expect("source stamp");
++        }
++    }
+@@ -264,2 +284 @@ impl Fake {
+-                sent_deltas += 1;
+-                emit(
++                Self::emit_load(
+@@ -268,0 +288,2 @@ impl Fake {
++                    "delta",
++                    sent_deltas,
+@@ -269,0 +291 @@ impl Fake {
++                sent_deltas += 1;
+@@ -277 +299,5 @@ impl Fake {
+-                assistant(&[json!({"type":"text","text":text})]);
++                Self::emit_load(
++                    &assistant_line(&[json!({"type":"text","text":text})]),
++                    "entry",
++                    sent_entries,
++                );
 diff --git a/dev/src/scripted.rs b/dev/src/scripted.rs
-index e065d556..1f44701a 100644
+index e065d556..5bf6fb92 100644
 --- a/dev/src/scripted.rs
 +++ b/dev/src/scripted.rs
 @@ -37,0 +38 @@ enum Out {
@@ -116,8 +157,59 @@ index e065d556..1f44701a 100644
 +        .expect("timestamp")
 +}
 +
+diff --git a/host/src/agent/https_stream.rs b/host/src/agent/https_stream.rs
+index 5e65311e..65ec174c 100644
+--- a/host/src/agent/https_stream.rs
++++ b/host/src/agent/https_stream.rs
+@@ -829,0 +830,15 @@ impl Job {
++            if let Some(held) = std::env::var_os("S159_CUT_MARKER")
++                && let Ok(marker) = std::fs::read_to_string(held)
++                && let Ok(event) = serde_json::from_slice::<Value>(&item)
++                && event["type"] == "response.output_text.delta"
++                && event["delta"].as_str() == Some(marker.as_str())
++            {
++                eprintln!("S159_HOLD {marker}");
++                tokio::select! {
++                    () = tokio::time::sleep(Duration::from_secs(3)) => {}
++                    () = self.ctl.stopped() => {
++                        eprintln!("S159_CANCEL {marker}");
++                        return Err(End::Stop);
++                    }
++                }
++            }
+diff --git a/host/src/agent/streams.rs b/host/src/agent/streams.rs
+index 67679afb..d98b34c2 100644
+--- a/host/src/agent/streams.rs
++++ b/host/src/agent/streams.rs
+@@ -778,0 +779,26 @@ impl Hub {
++        if taken
++            && matches!(producer, Producer::Host)
++            && std::env::var_os("S128_LOAD_CLOCK").is_some()
++        {
++            for item in &items {
++                let Ok(event) = serde_json::from_slice::<Value>(&item.body) else {
++                    continue;
++                };
++                let marker = match event["type"].as_str() {
++                    Some("response.output_text.delta") => {
++                        event["delta"].as_str().filter(|s| s.starts_with("oa-"))
++                    }
++                    Some("response.output_item.done") => event["item"]["call_id"]
++                        .as_str()
++                        .filter(|s| s.starts_with("call_")),
++                    _ => None,
++                };
++                if let Some(marker) = marker {
++                    let at = std::time::SystemTime::now()
++                        .duration_since(std::time::UNIX_EPOCH)
++                        .expect("epoch")
++                        .as_nanos();
++                    eprintln!("S159_SINK {at} {marker}");
++                }
++            }
++        }
 diff --git a/host/src/bin/watane/scripted_openai.rs b/host/src/bin/watane/scripted_openai.rs
-index 36e67e48..d4c59dce 100644
+index 3c42b173..21751e36 100644
 --- a/host/src/bin/watane/scripted_openai.rs
 +++ b/host/src/bin/watane/scripted_openai.rs
 @@ -57,0 +58,4 @@ impl Options {
@@ -128,10 +220,10 @@ index 36e67e48..d4c59dce 100644
 @@ -60 +63,0 @@ impl Options {
 -                .env_clear()
 diff --git a/host/src/state.rs b/host/src/state.rs
-index 38ffb200..7db8b64c 100644
+index 56823361..182baf2f 100644
 --- a/host/src/state.rs
 +++ b/host/src/state.rs
-@@ -506,0 +507,8 @@ impl Stats {
+@@ -528,0 +529,8 @@ impl Stats {
 +        if std::env::var_os("S128_LOAD_CLOCK").is_some() {
 +            let elapsed = started.elapsed().as_nanos();
 +            let end = std::time::SystemTime::now()

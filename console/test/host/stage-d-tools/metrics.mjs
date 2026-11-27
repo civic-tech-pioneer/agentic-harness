@@ -40,16 +40,40 @@ export function openaiCadence(stamps, from, to) {
     && gaps.every((gap) => gap >= STEP_INTERVAL_MS - STEP_SLACK_MS && gap <= MAX_STEP_GAP_MS);
 }
 
+// The same consecutive marker pair at each end locates a spacing gap.
+export function claudeGaps(stamps, other, from, to) {
+  const bySourceAndKind = new Map();
+  for (const [marker, at] of stamps) {
+    if (at < from || at >= to) continue;
+    const group = marker.slice(0, marker.lastIndexOf("-"));
+    if (!bySourceAndKind.has(group)) bySourceAndKind.set(group, []);
+    bySourceAndKind.get(group).push({ marker, at });
+  }
+  const maxima = {};
+  for (const [group, items] of bySourceAndKind) {
+    const kind = group.slice(group.lastIndexOf("-") + 1);
+    items.sort((a, b) => a.at - b.at);
+    for (let i = 1; i < items.length; i++) {
+      const before = items[i - 1], after = items[i];
+      const ms = after.at - before.at;
+      if (ms <= (maxima[kind]?.ms ?? 0)) continue;
+      const otherMs = other.get(after.marker) - other.get(before.marker);
+      maxima[kind] = { ms, otherMs: Number.isFinite(otherMs) ? otherMs : null, before: before.marker, after: after.marker };
+    }
+  }
+  return maxima;
+}
+
 export const ITEM_DELAY_MS = 100;
 // Only the final paced step can be cut. Allow one grid interval plus the same
 // scheduling slack as the cadence check between its first write and durable Stop.
 const INTERRUPT_WINDOW_MS = MAX_STEP_GAP_MS;
 const sourceMarker = (text) => /^(oa-s\d+-\d+|cl-[a-f\d]+-(?:delta|entry)-\d+)(?: |$)/.exec(text)?.[1];
 
-// The TLS log marks writes, not batches accepted by the kernel. Stop may cancel the final
-// in-flight batch before it creates any durable message or tool outcome. An earlier gap still fails,
-// as does a missing page item for any batch with a tool outcome before the interrupted turn.
-export function openaiPageCoverage(wire, seen, stored, from, to, stopAt) {
+// TLS writes, request sink receipts and stored entries cover successive points in the path.
+// Stop may cut the final in-flight batch before its missing markers reach the sink. An earlier
+// gap still fails, as does a missing marker backed by a sink receipt or durable admission.
+export function openaiPageCoverage(wire, seen, stored, from, to, stopAt, receipts = []) {
   const faults = [];
   const interrupted = stored.findLast(({ kind }) => kind === "turn");
   const confirmed = isInterrupted(interrupted?.body);
@@ -66,6 +90,11 @@ export function openaiPageCoverage(wire, seen, stored, from, to, stopAt) {
     .map(({ body }) => sourceMarker(body.content?.[0]?.text ?? "")));
   const steps = wire.filter(({ marker, step }) => marker === step).sort((a, b) => a.at - b.at);
   const tail = confirmed ? steps.findLast(({ at }) => at <= interrupted.at) : undefined;
+  // A cancelled stream can still answer taken for a batch it discarded. The
+  // stored turn uses whole milliseconds, so count receipts in its millisecond.
+  const taken = new Set(receipts
+    .filter(({ at }) => !confirmed || Math.floor(at) <= interrupted.at)
+    .map(({ marker }) => marker));
   let cut = [];
   for (const start of steps.filter(({ at }) => at >= from && at < to)) {
     const writes = wire.filter(({ step }) => step === start.marker);
@@ -85,6 +114,7 @@ export function openaiPageCoverage(wire, seen, stored, from, to, stopAt) {
       && missing.every(({ at }) => at >= stopAt - ITEM_DELAY_MS);
     const nearInterrupt = interrupted?.at - start.at <= INTERRUPT_WINDOW_MS;
     if (start === tail && nearClick && validCalls && ((complete && nearInterrupt) || overlaps)
+        && !missing.some(({ marker }) => taken.has(marker))
         && !acceptedMessages.has(start.marker) && !calls.some(({ marker }) => acceptedTools.has(marker))) {
       if (missing.length) cut = writes;
       continue;
