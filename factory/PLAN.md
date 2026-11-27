@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S152 (upkeep, console, Codex build; PR #68 at fa7784b3 07:17 UTC, CI gate red on replaced_S36_3 (passed in its own gate), rerun once 07:52 UTC, red again in its own new test `S152_keeps_a_taken_input_if_the_view_changes_during_unqueue` (:153); F0.ci into the Codex task 08:28 UTC); S151 (design, stage F, factory profiles; builder claude by rule 3 (S152 and watane S150 were Codex), reviewer codex; routine `trig_0164LvFYR5dyVp5mpv4rc8Tm` 08:31 UTC); S138, S142, S144, S145, S148 merged.
+S152 (upkeep, console, Codex build; PR #68 at fa7784b3 07:17 UTC, CI gate red on replaced_S36_3 (passed in its own gate), rerun once 07:52 UTC, red again in its own new test `S152_keeps_a_taken_input_if_the_view_changes_during_unqueue` (:153); F0.ci into the Codex task 08:28 UTC; fixed at 35eb2f42, CI green; r1 Claude review routine `trig_013AEfVyiYsAAM2k2Zztgj7J` 08:46 UTC); S151 (design, stage F, factory profiles; builder claude by rule 3 (S152 and watane S150 were Codex), reviewer codex; routine `trig_0164LvFYR5dyVp5mpv4rc8Tm` 08:31 UTC); S138, S142, S144, S145, S148 merged.
 
 ## Sketched
 ### S152 (upkeep) the console's guards and tests after S145, console/ only
