@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { launch } from "../slow-kit.mjs";
 import { NotRun, outcomeOf } from "./outcome.mjs";
 import { isInterrupted, loadWindow } from "./load_check.mjs";
-import { ITEM_DELAY_MS, clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
+import { ITEM_DELAY_MS, claudeGaps, clickStop, openaiCadence, openaiPageCoverage, p95, pageItem, pageProbe, writerBusy } from "./stage-d-tools/metrics.mjs";
 
 const consoleDir = fileURLToPath(new URL("../..", import.meta.url));
 const root = join(consoleDir, "..");
@@ -24,11 +24,14 @@ const clientDir = join(tmp, "loadclient");
 const providerDir = join(tmp, "claude-code");
 const tool = "loadclient_api_note";
 const load = process.argv.includes("--load");
+const controlledCut = load && process.argv.includes("--controlled-cut");
 const command = load ? "test:load:d" : "test:host:d";
 const clock = join(tmp, "load-clock");
 const env = { ...process.env, WATANE_HOME: join(tmp, "home"), WATANE_DEV_CACHE: join(tmp, "cache") };
 if (load) env.S128_LOAD_CLOCK = clock;
 else delete env.S128_LOAD_CLOCK;
+if (controlledCut) env.S159_CUT_MARKER = join(tmp, "cut-marker");
+else delete env.S159_CUT_MARKER;
 const vendor = join(process.env.WATANE_DEV_CACHE ?? join(process.env.HOME ?? "", ".cache", "watane-dev"), "vendor");
 if (existsSync(vendor)) cpSync(vendor, join(tmp, "cache", "vendor"), { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -130,6 +133,7 @@ function wrapLoadClaude(folder) {
   renameSync(link, real);
   // the rewrite is stage-d-tools/stamp_claude.py's, which metrics.test.ts checks (S131 P2.2)
   writeFileSync(link, `#!/usr/bin/env python3
+import os
 import subprocess
 import sys
 import time
@@ -139,8 +143,9 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, ${JSON.stringify(join(consoleDir, "test", "host", "stage-d-tools"))})
 from stamp_claude import rewrite
 
-child = subprocess.Popen([sys.argv[0], *sys.argv[1:]], executable=${JSON.stringify(real)}, stdout=subprocess.PIPE)
 identity = uuid.uuid4().hex.encode()
+env = dict(os.environ, S159_CLAUDE_ID=identity.decode(), S159_CLAUDE_STAMPS=${JSON.stringify(join(tmp, "claude-source.stamps"))})
+child = subprocess.Popen([sys.argv[0], *sys.argv[1:]], executable=${JSON.stringify(real)}, stdout=subprocess.PIPE, env=env)
 with open(${JSON.stringify(join(tmp, "claude.stamps"))}, "ab", buffering=0) as stamps:
     for line in child.stdout:
         line, marker = rewrite(line, identity)
@@ -212,18 +217,31 @@ async function mixedLoad(browser) {
     const openai = sessions.slice(claude.length);
     const schedule = Object.fromEntries(openai.map(({ id }, index) =>
       [id, start + index % 4 * 250 + Math.floor(index / 4) * 125]));
+    const held = controlledCut ? `oa-${openai[0].id}-${schedule[openai[0].id] + 8000}` : null;
+    if (held) writeFileSync(env.S159_CUT_MARKER, held);
     writeFileSync(clock, JSON.stringify(schedule));
     await Promise.all(claude.map(async ({ id, own }, index) => {
       await sleep(index * 2);
       const args = { session: id, key: keyOf(), input: "begin load" };
       return own ? ok("sessions.say", args) : ok("api.say", args, preview.clientUrl);
     }));
-    await sleep(Math.max(0, start + 8050 - Date.now()));
+    if (held) {
+      const stampFile = join(tmp, "load-clock.sse");
+      await until(() => readFileSync(preview.log, "utf8").includes(`S159_HOLD ${held}\n`)
+        && existsSync(stampFile) && readFileSync(stampFile, "utf8").includes(` ${held}/completed ${held}\n`),
+      12_000, `complete source write held before the sink for ${held}`);
+    } else {
+      await sleep(Math.max(0, start + 8050 - Date.now()));
+    }
     const pages = sessions.filter((session) => session.page);
     const stopAt = await Promise.all(pages.map(({ page }) => page.evaluate(clickStop)));
     const to = Math.min(...stopAt.map((at) => at ?? Infinity), Date.now());
     await sleep(1250);
     const wire = readStamps(join(tmp, "load-clock.sse"));
+    const hostLog = readFileSync(preview.log, "utf8");
+    const receipts = [...hostLog.matchAll(/^S159_SINK (\d+) (\S+)$/gm)]
+      .map(([, at, marker]) => ({ at: Number(at) / 1e6, marker }));
+    const received = stampTimes(receipts);
     const scripted = stampTimes(wire.filter(({ marker }) => !marker.endsWith("/completed")));
     const claudeStamps = stampTimes(readStamps(join(tmp, "claude.stamps")));
     const claudeByProcess = new Map();
@@ -239,6 +257,11 @@ async function mixedLoad(browser) {
     const window = loadWindow(claudeByProcess, to, rate, 6, 3);
     const from = Math.max(window.from, start + 1000);
     const faults = [...window.faults];
+    ensure(receipts.length > 0, "missing request sink telemetry; rebuild the instrumented preview");
+    const claudeSource = stampTimes(readStamps(join(tmp, "claude-source.stamps")));
+    const unmatched = [...claudeStamps].filter(([marker, at]) => at >= from && at < to && !claudeSource.has(marker));
+    ensure(!unmatched.length, `missing fake Claude source stamps for ${unmatched.length} forwarded items`);
+    say(`Claude spacing maxima (ms, otherMs for the same marks at the other end of the pipe) | fake stdout ${JSON.stringify(claudeGaps(claudeSource, claudeStamps, from, to))} | wrapper stdout ${JSON.stringify(claudeGaps(claudeStamps, claudeSource, from, to))}`);
     const delays = [], stops = [];
     const claudeSeen = new Set();
     const aiDelays = [], claudeDelays = [];
@@ -277,7 +300,19 @@ async function mixedLoad(browser) {
       } else {
         const responseWire = wire.filter(({ step }) => step.startsWith(`oa-${id}-`));
         const stored = await entriesOf(session);
-        const coverage = openaiPageCoverage(responseWire, markers, stored, from, to, end);
+        const sink = responseWire.filter(({ marker }) => received.has(marker))
+          .map(({ marker }) => ({ marker, at: received.get(marker) }));
+        const coverage = openaiPageCoverage(responseWire, markers, stored, from, to, end, sink);
+        if (held && id === openai[0].id) {
+          const writes = responseWire.filter(({ step }) => step === held);
+          const heldReceipts = sink.filter(({ marker }) => writes.some((write) => write.marker === marker));
+          const heldOnPage = writes.filter(({ marker }) => markers.has(marker));
+          const cancelled = hostLog.includes(`S159_CANCEL ${held}\n`);
+          say(`controlled Stop ${JSON.stringify({ held, writes, sink: heldReceipts, page: heldOnPage, stopAt: end, storedInterrupt: coverage.interrupted, cancelled })}`);
+          if (!cancelled || heldReceipts.length || heldOnPage.length || !coverage.cut.some(({ step }) => step === held)) {
+            faults.push(`${id}: controlled batch was not cut before the request sink`);
+          }
+        }
         if (!coverage.hasStoredMarker) faults.push(`${id}: no tracked OpenAI step had a durable message marker in the load window`);
         for (const fault of coverage.faults) faults.push(`${id}: ${fault}`);
         if (coverage.cut.length || coverage.faults.length) {
@@ -287,6 +322,7 @@ async function mixedLoad(browser) {
             interruptedAt: idle?.at,
             lastStoredTurn: coverage.interrupted,
             cutWrites: coverage.cut,
+            recentSinkReceipts: sink.slice(-12),
             faults: coverage.faults,
             streams: [...new Set(captured.items.map(({ stream }) => stream))],
             measuredStream: captured.stream,
@@ -311,7 +347,7 @@ async function mixedLoad(browser) {
       const fullSteps = stamps.filter((at) => at >= from && at < to - 1000).length;
       if (completed < 4 * fullSteps) faults.push(`${session.id}: only ${completed} tools completed across ${fullSteps} measured steps`);
     }
-    const commits = [...readFileSync(preview.log, "utf8").matchAll(/^S128_COMMIT (\d+) (\d+)$/gm)]
+    const commits = [...hostLog.matchAll(/^S128_COMMIT (\d+) (\d+)$/gm)]
       .map(([, start, end]) => [Number(start) / 1e6, Number(end) / 1e6]);
     const busy = writerBusy(commits, from, to);
     const delay = p95(delays), stop = p95(stops);
