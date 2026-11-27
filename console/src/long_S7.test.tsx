@@ -154,11 +154,15 @@ describe("a session of 5 000 entries with the stream running", () => {
     const interrupts = () => fake.calls.filter((c) => c.name === "interrupt").length;
     for (let k = 0; k < 20; k++) {
       await settled();
+      // Role discovery scans the transcript in jsdom. A participant already has
+      // the control at the point where the interaction budget starts.
+      const stop = screen.getByRole("button", { name: "Stop" });
+      const target = k % 2 ? stop : screen.getByRole("textbox", { name: "Message" });
       const before = interrupts();
       const t = now();
-      if (k % 2) fireEvent.click(screen.getByRole("button", { name: "Stop" }));
-      else fireEvent.keyDown(screen.getByRole("textbox", { name: "Message" }), { key: "Escape" });
-      await until(() => interrupts() > before && screen.queryAllByText("Stopping…").length > 0);
+      if (k % 2) fireEvent.click(target);
+      else fireEvent.keyDown(target, { key: "Escape" });
+      await until(() => interrupts() > before && stop.textContent === "Stopping…");
       ms.push(now() - t);
       fake.play(IDLE); // the turn ends, then a new one runs, so the next Stop shows
       await until(() => !hasButton("Stopping…") && !document.body.textContent!.includes("Stopping…")); // reset steps poll the DOM cheaply: role queries cost more than the page
