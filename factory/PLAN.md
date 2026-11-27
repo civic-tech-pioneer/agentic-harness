@@ -27,11 +27,11 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S153 (upkeep, kernel guards and tests, Codex build; Codex task TASK_URL 08:55 UTC); S151 (design, stage F, factory profiles; builder claude by rule 3 (S152 and watane S150 were Codex), reviewer codex; routine `trig_0164LvFYR5dyVp5mpv4rc8Tm` 08:31 UTC); S138, S142, S144, S145, S148, S152 merged.
+S153 (upkeep, kernel guards and tests, Codex build; Codex task https://chatgpt.com/local/6b094528-7d2c-83ed-880b-02018fb1104a 08:55 UTC); S151 (design, stage F, factory profiles; builder claude by rule 3 (S152 and watane S150 were Codex), reviewer codex; routine `trig_0164LvFYR5dyVp5mpv4rc8Tm` 08:31 UTC); S138, S142, S144, S145, S148, S152 merged.
 
 ## Sketched
 ### S153 (upkeep) the kernel's guards and tests, kernel/ only
-(sketched 2026-11-27 by Deputy Scissors, the upkeep lane after S152; builder codex by rule 3 (last two: S151 claude, S152 codex); reviewer claude; in flight, cloud, Codex task TASK_URL, 08:55 UTC)
+(sketched 2026-11-27 by Deputy Scissors, the upkeep lane after S152; builder codex by rule 3 (last two: S151 claude, S152 codex); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b094528-7d2c-83ed-880b-02018fb1104a, 08:55 UTC)
 Why: the kernel-side Upkeep items, while S151 holds design/. Re-check every item on main first (S138 and S148 changed the timer and skill paths): drop what is fixed and say so in the PR, item by item.
 Outcomes, each its Upkeep item's check: (1) (guard, S138 r2 P2.1) a Harness step pins `run_client`'s `me() == "page"` guard on arming `page-origin` and that every successful client call drains what is owed; (2) (guard, S40 F6.1, the human's (b)) a timer firing of an OpenAI session whose owner mod was disabled during a timed pause sends no model request: through the real adapter, an enabled owner's pause resumes by itself, a disabled owner's stops with no work (check first whether S138's firing-origin work already closed it); (3) (S142 r1 A1) an interrupt before `initialized` cancels the launch, decided from the kernel's current state; (4) test polish: S127 P4.1 (`s127_judge.rs:333` asserts the replacement launch carries the original follow-up), S38 P1.2 (`s38.rs` assistant line without `session_id`), S36 r1 P1.1 (`s36_firing.rs:49, :96`).
 Touches: `kernel/` (src, tests, wasm/tests/harness). Not design/ (S151) or console/; no interface change; spec-side lines stay in Upkeep. A guard never weakens; `installed-agent` never weakened to pass.
