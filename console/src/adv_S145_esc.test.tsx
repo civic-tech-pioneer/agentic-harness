@@ -17,6 +17,15 @@ async function runningApp() {
 }
 
 describe("adversary S145 Esc", () => {
+  it("S152_Escape_while_loading_makes_no_Stop_call", async () => {
+    const fake = fakeKernel([]);
+    fake.attach = () => new Promise(() => {}); // the kernel has sent no turn state yet
+    render(<App kernel={fake} info={INFO} />);
+    expect(screen.getByText("Loading", { exact: true })).toBeVisible();
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message" }), { key: "Escape" });
+    expect(stops(fake)).toEqual([]);
+  });
+
   it("adv_S145_esc_that_cancels_an_ime_composition_does_not_stop_the_turn", async () => {
     const { fake, box } = await runningApp();
     // Escape pressed to dismiss an IME candidate window: the browser reports it as composing.

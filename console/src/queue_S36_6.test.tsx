@@ -1,6 +1,6 @@
 // S36-6: Alice manages what she queued: Edit, Remove with Undo, Stop and send (TECHNICAL 18.6 "Queue").
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fakeKernel } from "../fake/kernel";
 import { story } from "../fake/story";
@@ -94,11 +94,18 @@ describe("S36-6", () => {
     await settle();
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Discard" })).not.toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "Taken from the queue" });
+    const announcement = within(list).getByRole("status");
+    expect(announcement).toHaveTextContent(/^Removed “first one” from the queue$/);
+    expect(within(announcement).queryByRole("button")).not.toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(5900); });
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
     act(() => { vi.advanceTimersByTime(200); });
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     expect(screen.getByRole("button", { name: "Discard" })).toBeEnabled();
+    expect(within(list).getByRole("status")).toBe(announcement);
+    expect(announcement).toHaveTextContent(/^Removed “first one” from the queue$/);
+    expect(within(announcement).queryByRole("button")).not.toBeInTheDocument();
     expect(calls("say")).toHaveLength(0);
   });
   it("ac4_stop_and_send_unqueues_then_interrupts_with_the_input", async () => {

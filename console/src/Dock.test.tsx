@@ -63,6 +63,7 @@ describe("Dock", () => {
     dock(V({}));
     const s = screen.getByRole("button", { name: "Send message" });
     expect(s).toBeDisabled();
+    expect(s).toHaveAccessibleDescription("Enter a message first.");
     expect(screen.queryByText("Enter a message first.")).not.toBeInTheDocument();
     await userEvent.setup().type(box(), " {Enter}");
     expect(s).toHaveAccessibleDescription("Enter a message first.");

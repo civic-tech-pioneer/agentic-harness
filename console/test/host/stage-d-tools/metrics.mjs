@@ -22,6 +22,11 @@ export function writerBusy(intervals, from, to) {
   return 100 * busy / (to - from);
 }
 
+// Keep the one-second grid in sync with the paced source in watane.patch.
+const STEP_INTERVAL_MS = 1000;
+const STEP_SLACK_MS = 200;
+const MAX_STEP_GAP_MS = STEP_INTERVAL_MS + STEP_SLACK_MS;
+
 // One step a second through the window. The window starts no earlier than the session's second
 // step: its first request may wait for the toolset to commit (the ~1 s describe retry, TECHNICAL 9.5),
 // so a late first step is not a missed beat (S131 P2.1); a late later step still is.
@@ -31,12 +36,14 @@ export function openaiCadence(stamps, from, to) {
   const begin = Math.max(from, all[1]);
   const inside = all.filter((at) => at >= begin && at < to);
   const gaps = inside.slice(1).map((at, i) => at - inside[i]);
-  return inside.length >= 5 && inside[0] - begin <= 1200 && to - inside.at(-1) <= 1200
-    && gaps.every((gap) => gap >= 800 && gap <= 1200);
+  return inside.length >= 5 && inside[0] - begin <= MAX_STEP_GAP_MS && to - inside.at(-1) <= MAX_STEP_GAP_MS
+    && gaps.every((gap) => gap >= STEP_INTERVAL_MS - STEP_SLACK_MS && gap <= MAX_STEP_GAP_MS);
 }
 
 export const ITEM_DELAY_MS = 100;
-const INTERRUPT_WINDOW_MS = 1200;
+// Only the final paced step can be cut. Allow one grid interval plus the same
+// scheduling slack as the cadence check between its first write and durable Stop.
+const INTERRUPT_WINDOW_MS = MAX_STEP_GAP_MS;
 const sourceMarker = (text) => /^(oa-s\d+-\d+|cl-[a-f\d]+-(?:delta|entry)-\d+)(?: |$)/.exec(text)?.[1];
 
 // The TLS log marks writes, not batches accepted by the kernel. Stop may cancel the final

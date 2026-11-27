@@ -89,7 +89,8 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
     : "Message the agent  ·  Enter to send, Shift+Enter for a new line");
   const reasonId = useId();
   const fullReasonId = useId();
-  const sendReason = off ? SESSION_IN_ANOTHER_TAB : blocked ?? why ?? (emptyAttempt ? "Enter a message first." : null);
+  const emptyReason = "Enter a message first.";
+  const sendReason = off ? SESSION_IN_ANOTHER_TAB : blocked ?? why ?? (emptyAttempt ? emptyReason : null);
   const fullReason = off || blocked ? null : why;
   const sendDescription = off && offReasonId ? offReasonId : fullReason ? fullReasonId : reasonId;
   const tags = [session?.model, session?.mode].filter((x): x is string => !!x);
@@ -112,7 +113,7 @@ export function Composer({ queued, actions, busy = false, stopping = false, sess
             {stopping ? "Stopping…" : "Stop"}
           </button>
         ) : null}
-        <button type="submit" className="wa-send" aria-label={sendLabel ?? (busy ? "Queue message" : "Send message")} disabled={!!sendReason || !text.trim()} aria-describedby={sendReason ? sendDescription : undefined}>
+        <button type="submit" className="wa-send" aria-label={sendLabel ?? (busy ? "Queue message" : "Send message")} disabled={!!sendReason || !text.trim()} aria-describedby={sendReason ? sendDescription : undefined} title={!sendReason && !text.trim() ? emptyReason : undefined}>
           <svg width="16" height="16" strokeWidth="2.4" {...svg}><path d="M12 19V5M6 11l6-6 6 6" /></svg>
         </button>
       </div>
@@ -256,10 +257,10 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
         <ul className="wa-taken" role="list" aria-label="Taken from the queue">{taken.map((x) => {
           const ordinaryUndo = x.tried === "undo" && x.error === undefined && x.until !== undefined && undoShown(x);
           return (
-            <li key={x.id} className="wa-queue-note" role={x.error === undefined ? "status" : undefined}>
+            <li key={x.id} className="wa-queue-note" role={x.error === undefined && x.tried !== "undo" ? "status" : undefined}>
               {x.error !== undefined ? <p className="wa-taken-error" role="alert">{x.error}</p> : null}
               {x.error === undefined && x.tried === "undo"
-                ? <span className="wa-taken-text">Removed “<bdi>{preview(x.text, 40)}</bdi>” from the queue</span>
+                ? <span className="wa-taken-text" role="status">Removed “<bdi>{preview(x.text, 40)}</bdi>” from the queue</span>
                 : <>{x.error === undefined && (x.tried === "edit" ? "Taken out to edit." : "Taken out to send.")} <q className="wa-taken-text"><bdi>{preview(x.text)}</bdi></q></>}
               {!x.held && undoShown(x) ? <button type="button" className="wa-queue-action" disabled={off || !!x.out} aria-describedby={x.out ? pendingId : off ? offId : undefined} onClick={() => void again(x, "say")}>Undo</button> : null}
               {!x.held && showStopAndSend && x.tried === "stop"

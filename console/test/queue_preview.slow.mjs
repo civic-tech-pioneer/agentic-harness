@@ -33,19 +33,23 @@ try {
   const preview = page.locator(".wa-queue-text");
   await preview.waitFor();
   await page.evaluate(() => document.fonts.ready);
-  const bounds = await preview.evaluate((node) => ({
-    height: node.getBoundingClientRect().height,
-    scrollHeight: node.scrollHeight,
-    lineHeight: parseFloat(getComputedStyle(node).lineHeight),
-    length: node.textContent.length,
-  }));
-  assert.equal(bounds.length, 241);
-  assert.ok(bounds.height <= 3 * bounds.lineHeight + 1 && bounds.scrollHeight > bounds.height,
-    `the preview is longer than three lines but displays at most three: ${JSON.stringify(bounds)}`);
+  for (const width of [390, 700]) {
+    await page.setViewportSize({ width, height: 800 });
+    const bounds = await preview.evaluate((node) => ({
+      height: node.getBoundingClientRect().height,
+      scrollHeight: node.scrollHeight,
+      lineHeight: parseFloat(getComputedStyle(node).lineHeight),
+      length: node.textContent.length,
+    }));
+    assert.equal(bounds.length, 241);
+    assert.ok(bounds.height <= 3 * bounds.lineHeight + 1 && bounds.scrollHeight > bounds.height,
+      `at ${width}px the overflowing preview displays at most three lines: ${JSON.stringify(bounds)}`);
+  }
+  await page.setViewportSize({ width: 390, height: 800 });
   await page.getByRole("button", { name: "Stop and send queued message 1" }).click();
-  const error = page.getByText("The kernel could not do that: boom", { exact: true });
+  const error = page.getByRole("alert").filter({ hasText: "The kernel could not do that: boom" });
   await error.waitFor();
-  assert.equal(await error.count(), 1, "the refusal appears only once");
+  assert.equal(await page.getByText("The kernel could not do that: boom", { exact: true }).count(), 1);
   const errorBounds = await error.evaluate((node) => ({
     width: node.getBoundingClientRect().width,
     rowWidth: node.closest("li")?.getBoundingClientRect().width,

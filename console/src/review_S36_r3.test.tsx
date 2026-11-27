@@ -4,7 +4,7 @@
 // queue-full refusal applies only while the capacity it describes holds (F3.3). Undo is one `say` in flight, and a
 // refused Undo keeps its line and button (F3.4).
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fakeKernel, type FakeKernel } from "../fake/kernel";
 import { story } from "../fake/story";
@@ -70,12 +70,30 @@ describe("S36 r3", () => {
     expect(alert.closest(".wa-taken")).not.toBeNull();
     expect(screen.getAllByText(alert.textContent!)).toHaveLength(1);
 
-    f.say = async () => { throw refusal("quota"); };
-    await userEvent.setup().type(box(), "{Enter}");
+    f.say = vi.fn().mockRejectedValueOnce(refusal("quota")).mockResolvedValueOnce(0);
+    const u = userEvent.setup();
+    await u.type(box(), "{Enter}");
     await settle();
     expect(box()).toHaveValue("second one");
     expect(screen.getAllByRole("alert")).toEqual([alert]);
     expect(screen.getAllByText(alert.textContent!)).toHaveLength(1);
+    expect(alert).toHaveTextContent(/used up its quota/);
+    await u.type(box(), "{Enter}");
+    expect(f.say).toHaveBeenNthCalledWith(1, "s1", expect.any(String), "second one");
+    expect(f.say).toHaveBeenNthCalledWith(2, "s1", expect.any(String), "second one");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("S152_keeps_a_taken_input_if_the_turn_ends_during_unqueue", async () => {
+    const f = await open(["save me"], [[queueOf([]), idle]]);
+    let finishTake!: () => void;
+    f.unqueue = () => new Promise<void>((resolve) => { finishTake = resolve; });
+    fireEvent.click(screen.getByRole("button", { name: "Stop and send queued message 1" }));
+    await act(async () => { f.play(story.length + 1); });
+    await screen.findByRole("button", { name: "Send message" });
+    await act(async () => { finishTake(); });
+    expect(f.calls.some(({ name }) => name === "interrupt")).toBe(false);
+    expect(screen.getByRole("alert")).toHaveTextContent("There is no active turn to stop.");
+    expect(box()).toHaveValue("save me");
   });
   it("regress_s36_edit_can_replace_an_item_at_the_count_limit (F3.2)", async () => {
     await open(Array.from({ length: 32 }, (_, k) => `item ${k}`));
