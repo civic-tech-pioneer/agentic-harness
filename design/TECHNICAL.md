@@ -2440,7 +2440,10 @@ call waits):
    `{kind: "allow", client, profile, digest, rev}`. A superseded question is
    cancelled (`streams.cancel`) and its keys deleted in the same call, so
    the call commits one question for the name, never two, and never none
-   with the old one's reservation given to another.
+   with the old one's reservation given to another. An accepted limit: the
+   `ask` goes before the cancel, so at the host's 4 streams it is
+   `too-many` (`backend`), the call writes nothing and the old question stays
+   open, which fails closed (14).
 
 **Profiles.** The manager proposes; the app's answer stores (AGT-F-1).
 - `manage.put-profile(name, profile)` checks a profile that parses under 9.2
@@ -2473,7 +2476,9 @@ nothing happens) and acts once:
   the question's and the profile is not stale, it writes the entry (replacing
   that profile's entry in place, or appending one only while the array holds
   fewer than 64; at 64 it writes nothing) and its `access-fields/` key
-  (a `withdrawing` item for the pair goes on, **Withdrawing**); otherwise it writes nothing, and the
+  (a `withdrawing` item for the pair goes on, **Withdrawing**); it derives the
+  field digests by reading the pinned `profile/<profile>` once, at most the
+  1 MiB profile cap; otherwise it writes nothing, and the
   page shows that the question ended without effect.
 - `store`: when the index's digest for the name is still `base` (absent for
   a new name, and still fewer than 256 names), it writes `profile/<name>`
@@ -2547,7 +2552,10 @@ consent request (2.1, the timer rule).
   and sets the kernel's own timer `withdraw` (one of the 16
   kept for the kernel, 7) with delay 0. Each firing takes the first item of
   `withdrawing`, reads that owner's `owner/<client>/<n>` pages and the
-  records it needs, ends the next batch of that pair's sessions whose id
+  records it needs (to learn a session's root profile and turn state it may
+  inspect the records of that owner's sessions, at most the per-owner
+  session cap, 9.3 Quota, while the 16/21 bound of **The batch** on ended
+  turns stays), ends the next batch of that pair's sessions whose id
   number is below its cutoff, drops a pair with none left, and
   sets `withdraw` again while `withdrawing` is not empty. Timers are kept
   across restarts (7), so the withdrawal completes whether or not the page
@@ -2594,7 +2602,10 @@ that name and digest (none: `refused {field: "offer", reason: "no longer
 offered"}`); an existing profile `as` that is not adopted from an offer of
 that name is refused `{field: "as"}`. It proposes the text as
 `put-profile` does, as a `store` question that says "Adopted from an offer"
-and carries the link `{offer, digest}`. Adopting writes no entry: the mod
+and carries the link `{offer, digest}`. Re-adopting a stale profile always
+asks the app, even when the offered bytes equal the stored ones; its granted
+answer clears the stale flag and raises `rev`, so each client needs a new
+`allow`. Adopting writes no entry: the mod
 that offered it, whichever it is, gains nothing until the participant allows
 a client (**Allowing**).
 
@@ -2644,11 +2655,11 @@ what its row names, each at most once:
 | `clients` | `clients`, the index, the questions, the `access/` of the at most 16 clients of the page |
 | `forget` | `clients`, that client's `access/`, the questions, `withdrawing` |
 | `allow` | `clients`, the index, `access/<client>` and its `access-fields/<client>/<profile>`, the questions, the stored `profile/<profile>` (for the reach and the field digests) |
-| `withdraw` and each `withdraw` firing | `access/<client>`, the questions, `withdrawing`, one owner's `owner/<client>/<n>` pages and the records of the one batch it ends (bounded by the per-owner session cap, 9.3 Quota) |
+| `withdraw` and each `withdraw` firing | `access/<client>`, the questions, `withdrawing`, one owner's `owner/<client>/<n>` pages and the records of that owner's sessions it inspects to pick the batch, at most the per-owner session cap (9.3 Quota); the turns it ends stay within **The batch** |
 | `offers` | one collect, the index |
 | `offer-text` | one collect |
 | `adopt` | one collect, the index, the questions, the stored `profile/<as>` when there is one |
-| the answer to `allow` | its `access-ask/`, the index, `access/<client>` |
+| the answer to `allow` | its `access-ask/`, the index, `access/<client>`, on a grant the pinned `profile/<profile>` once (at most 1 MiB, for the field digests) |
 | the answer to `store` | its `access-ask/`, the index |
 
 The responses, serialized as the WIT values, are bounded by those sizes,
@@ -2944,7 +2955,7 @@ stage E).
 | Only the participant gives a client a profile (S151) | one writer: `manage`, callable only by `page` on the participant's lease (9.10); a profile is stored, edited, restored, adopted or deleted only on the host's granted item of a `store` or `remove` question about that exact text, and an access entry only on a granted `allow` question whose words the app owns and which names the client and the installation as watane knows them, the profile and its reach (the host ends the question if that installation changes); a client is listed only by its own call; an entry pins the profile's version (its digest and the index's `rev`), and a changed, restored or stale profile allows no new input or launch until a new allow; capacity counts open questions, and a write past 64 entries writes nothing; absent or unreadable entries allow none; adopting an offer writes no entry; `withdraw` refuses new input at once, the kernel's own timer ends the running turns, children included, without the page, and until it completes no session it will end takes new work, a re-allow of the same version included (9.10, 9.7 "Revoking") | `kernel/src/manage.rs` (planned, 1), `kernel/src/named.rs` (the pinned entries read by `start`, `check`, `profiles`), `kernel/src/sessions.rs` (`may_work`: the record's `profile-digest`; the `withdraw` timer), `kernel/wasm/src/lib.rs` (`manage`'s owner and lease check by `caller.identity()` and `caller.connection()`, the access stream's routing), `kernel/wasm/wit/world.wit`; watane `host/` (`agent-access`, `caller.connection`, planned), `app/` (its consent words) |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs` (also the OpenAI rule names, 9.6), `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/named.rs` (`check` and `profiles` read `access/` first, 9.1), `kernel/src/error.rs` |
 
-Not protected: work already compiled when its profile is edited, goes stale or is withdrawn: a Claude turn running on its start's launch flags and an OpenAI tool job already dispatched go on to their end (no new input or launch follows, 9.10), except that `withdraw` ends them, in batches (9.10 "The batch": at most 16 turns, or 21 when a batch's first cascade alone passes 16) that the kernel's own timer completes, so ending them all can take several firings; a script in the kernel's page, or a loopback client acting as it (V27), can at any time ask the app to open the profile manager, and the participant may grant it believing the manager asked; while the participant holds the profile manager open, a script running in its page or a client on the same page connection can read what the manager shows (profiles, clients, entries, offers) and raise questions, so the participant may be asked a question she did not start (the pairing code shows which window asks; a `store` question names the changed fields, not their values, which the manager shows); the manager and the console are documents of one origin, so a script in the console can open or script the manager's window and call through its connection: the connection binding stops a second client (a loopback agent), not a script of the kernel's own origin; such an agent can keep raising `manage` questions, and each of the participant's own `open` calls cancels its question and asks hers, so a loop costs her only refusals, and disabling the client's mod in the app ends it; a script in the page can end the lease or take access away (`withdraw`, `forget`) while the lease is open, never widen anything; a client is its watane identity: an update of the mod under the same identity keeps its entries (as watane keeps its own consents across an update, 8), and a mod that later takes a `local/<slug>` identity a removed mod held inherits that identity's entries, since the kernel hears of no removal (an open question ends at the host; a granted entry stays until withdrawn; install-generation binding, S133 P1.12, later); the participant's own answer to a wide profile, shown whole; a changed offer is seen only when the page collects, and until then the adopted text she answered for runs (9.10); a same-name offer from another mod can mark an adoption stale, failing closed, or, by offering the old text again, keep a changed offer looking unchanged, since a collect names no source (AGT-F-2 holds per offered text: the adopted text never changes without her answer); a hostile offering mod can crowd the 64 offers a collect keeps; the judge account reaches any `POST` path of the origin the
+Not protected: work already compiled when its profile is edited, goes stale or is withdrawn: a Claude turn running on its start's launch flags and an OpenAI tool job already dispatched go on to their end (no new input or launch follows, 9.10), except that `withdraw` ends them, in batches (9.10 "The batch": at most 16 turns, or 21 when a batch's first cascade alone passes 16) that the kernel's own timer completes, so ending them all can take several firings; a script in the kernel's page, or a loopback client acting as it (V27), can at any time ask the app to open the profile manager, and the participant may grant it believing the manager asked; while the participant holds the profile manager open, a script running in its page or a client on the same page connection can read what the manager shows (profiles, clients, entries, offers) and raise questions, so the participant may be asked a question she did not start (the pairing code shows which window asks; a `store` question names the changed fields, not their values, which the manager shows); the manager and the console are documents of one origin, so a script in the console can open or script the manager's window and call through its connection: the connection binding stops a second client (a loopback agent), not a script of the kernel's own origin; such an agent can keep raising `manage` questions, and each of the participant's own `open` calls cancels its question and asks hers, so a loop costs her only refusals, and disabling the client's mod in the app ends it; a script in the page can end the lease or take access away (`withdraw`, `forget`) while the lease is open, never widen anything; a client is its watane identity: an update of the mod under the same identity keeps its entries (as watane keeps its own consents across an update, 8), and a mod that later takes a `local/<slug>` identity a removed mod held inherits that identity's entries, since the kernel hears of no removal (an open question ends at the host; a granted entry stays until withdrawn; install-generation binding, S133 P1.12, later); a superseding `allow` at the host's stream cap is refused `too-many` and the old question stays open (9.10 "Allowing" step 3), failing closed; the participant's own answer to a wide profile, shown whole; a changed offer is seen only when the page collects, and until then the adopted text she answered for runs (9.10); a same-name offer from another mod can mark an adoption stale, failing closed, or, by offering the old text again, keep a changed offer looking unchanged, since a collect names no source (AGT-F-2 holds per offered text: the adopted text never changes without her answer); a hostile offering mod can crowd the 64 offers a collect keeps; the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose allowlisted names can reach loopback, LAN and link-local addresses (V27, breached; the shell grant waits on the human), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
 (spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6). The subagent slash-prompt probe V26 held and the shell network probe V27 breached (16).
@@ -3523,6 +3534,9 @@ of `spec/VISION.md`.
     offer is gone and then one where it offers the adopted digest again
     leave it stale, and after each `start`, `check`, `allow` and `say` on
     its sessions stay refused; only an `adopt` again or an edit clears it.
+    Re-adopting it at the identical digest asks a `store` question; its
+    granted answer clears stale and raises `rev`, and `start` stays refused
+    until a new `allow` is granted.
     Bounds: an answer with a name over 64 bytes or outside the profile name
     form, or a description over 256 bytes, is dropped; two answers with the
     same name and digest are one offer; `offers(0, 16)`, `offers(16, 16)`
