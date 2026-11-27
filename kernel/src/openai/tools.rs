@@ -10,7 +10,7 @@ use crate::error::KernelError;
 use crate::openai::run::{Cx, LoopState, Pending, Phase};
 use crate::openai::skill::{self, SKILL};
 use crate::openai::task::TASK;
-use crate::profile::{PreToolCheck, Skill};
+use crate::profile::PreToolCheck;
 use crate::record::{Deadline, OpenAsk, Record, Stop, Turn, DEADLINES, OPEN_ASKS};
 use crate::rules::{glob, Rules, Verdict};
 use crate::sessions::{wire_update, Host, Kernel, Push, StreamKey, Tool};
@@ -30,9 +30,6 @@ pub const ASK_EXPIRY_S: u64 = 600;
 pub struct Policy {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub toolsets: Vec<String>,
-    /// Effective skill files pinned at admission. Older OpenAI loops had no skills.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub skills: Vec<Skill>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub allow: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -260,7 +257,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         let Some(name) = [
             task_active.then_some(TASK),
-            (!ls.policy.skills.is_empty()).then_some(SKILL),
+            (!ls.skill_listing.is_empty()).then_some(SKILL),
         ]
         .into_iter()
         .flatten()
@@ -299,7 +296,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             .iter()
             .flat_map(|t| t.info.iter().map(|i| i.name.clone()))
             .chain(delegating(rec, ls).then(|| TASK.to_string()))
-            .chain((!ls.policy.skills.is_empty()).then(|| SKILL.to_string()))
+            .chain((!ls.skill_listing.is_empty()).then(|| SKILL.to_string()))
             .collect();
         let names: Vec<&str> = names.iter().map(String::as_str).collect();
         let (rules, _) = Rules::compile(
@@ -323,7 +320,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 continue;
             }
             let is_skill = builtin_skill(ls, &name);
-            if let Some(Err(reason)) = is_skill.then(|| skill::read(&ls.policy.skills, &item)) {
+            if let Some(Err(reason)) = is_skill.then(|| listed_skill(ls, &item)) {
                 self.put_output(rec, ls, cx, &item, error_text(reason), false)?;
                 continue;
             }
@@ -686,11 +683,14 @@ impl<S: State, H: Host> Kernel<S, H> {
             }
             if builtin_skill(ls, name) {
                 let call = ls.calls.remove(i);
-                let (output, ok) = match skill::read(&ls.policy.skills, &call.item) {
-                    Ok(md) => (md.to_string(), true),
-                    Err(reason) => (error_text(reason), false),
-                };
+                let md = listed_skill(ls, &call.item)
+                    .ok()
+                    .and_then(|name| skill::read(&mut self.state, &rec.id, &name));
+                let ok = md.is_some();
+                let output = md.unwrap_or_else(|| error_text("the pinned skill is unavailable"));
                 self.put_output(rec, ls, cx, &call.item, output, ok)?;
+                // A missing snapshot counts as a tool error. Even a successful output can
+                // end the turn when the transcript reaches its quota.
                 if !rec.turn.is_active() || errors_reached(ls) {
                     return Ok(Blocked::No);
                 }
@@ -925,8 +925,17 @@ pub(crate) fn builtin_task(rec: &Record, ls: &LoopState, name: &str) -> bool {
     name == TASK && (rec.parent.is_some() || delegating(rec, ls))
 }
 
+fn listed_skill(ls: &LoopState, call: &Value) -> Result<String, &'static str> {
+    let name = skill::name(call)?;
+    if ls.skill_listing.iter().any(|(listed, _)| listed == &name) {
+        Ok(name)
+    } else {
+        Err("the skill is not in the session's profile")
+    }
+}
+
 fn builtin_skill(ls: &LoopState, name: &str) -> bool {
-    name == SKILL && !ls.policy.skills.is_empty()
+    name == SKILL && !ls.skill_listing.is_empty()
 }
 
 /// One tool as the request lists it (AC1).

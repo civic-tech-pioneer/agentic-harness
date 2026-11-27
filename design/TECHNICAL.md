@@ -742,7 +742,9 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `queue/<id>` | `{next, inputs: [{n, input}]}`: the session's queued inputs (9.3), apart from the record; `input` is the input JSON as a string, `next` the number the next input takes. An emptied queue keeps `next`, so a number is never used twice in one session |
 | `entries/<id>/<n>` | chunk n of the transcript: at most 256 entries and at most 64 KiB, or exactly one entry when that entry is over 64 KiB (an entry is at most 256 KiB, 9.4); an append that would take the last chunk past 64 KiB starts a new chunk, so an append rewrites at most 64 KiB plus the entry and earlier chunks are never rewritten; the session record's `chunks` lists the first index of each, so a read starts at the right chunk without reading the ones before |
 | `wire/<id>/<n>` | chunk n of the OpenAI wire history; the loop state's `wire-chunks` (in `loop/<id>`) lists the first wire index of each, so a request finds the chunk holding `active` (9.5) and reads none before it |
-| `loop/<id>` | the OpenAI loop state (9.5), with `active` and `wire-chunks` |
+| `loop/<id>` | the OpenAI loop state (9.5), with `active`, `wire-chunks` and the rendered skill listing |
+| `skills/<id>/<name>` | raw `SKILL.md` bytes pinned at OpenAI root start or child admission, charged to the session and read only to execute an allowed skill call (11) |
+| `skill-revisions/<id>` | a session's skill names and SHA-256 file digests, pinned alongside the files for admission and deletion (9.7, 11) |
 | `quota/<owner>` | `{bytes, sessions, pages}`: the owner's bytes and live session count, the bytes counting every key the owner causes (9.3, Quota), and `pages` the entry count of each `owner/<owner>/<n>` page; later its live session timers (9.3) and its slot counts per kind (9.5), the slot counts tagged with the generation of `slots` (9.3): counts of an older boot read as zero, so the restart pass need not find every owner. Absent reads as all zero |
 | `quota` | `{bytes, sessions}`: the kernel-wide account, bytes and sessions of all owners (9.3); absent reads as zero |
 | `stream/<id>` | `{session, kind, last?}` (`kind`: `provider`, `request`, `job`, `owner`), written in the call that opens or receives the stream, deleted on its `ended` (9.4). `last` is the last item `seq` an items call took on a provider stream (2.1, case 7); absent is 0; one write per batch |
@@ -910,7 +912,7 @@ wire") are this JSON; the entry has no `activity`.
   deadline in the future, else after the idle delay) and charges what the step wrote, and a firing
   charges what it wrote past the reserve too; the next call on the session does its step.
 - **Quota.** An owner's bytes (`quota/<owner>`) count every key the owner
-  causes: session records, `queue/`, entries, wire chunks, loop state,
+  causes: session records, `queue/`, entries, wire chunks, loop state, skill snapshots,
   `stream/`, `live/` and its kept `key/<owner>/<key>` results (kept after a
   delete, so they stay charged). The kernel also keeps one account for all
   owners in `quota` (9.1): bytes and sessions. The kernel's state is at most
@@ -926,7 +928,7 @@ wire") are this JSON; the entry has no `activity`.
   taking the reserve. As built (S25):
   - *Bytes.* A key costs its name's bytes plus its value's. Charged to the
     owner of the session a call acts on (the caller for `start`): `session/`,
-    `queue/`, `entries/`, `wire/`, `loop/`, `stream/`, `live/` of its sessions,
+    `queue/`, `entries/`, `wire/`, `loop/`, `skills/`, `skill-revisions/`, `stream/`, `live/` of its sessions,
     its `key/<owner>/` results and its `owner/<owner>/` pages. Not charged
     (the kernel's own): `slots`, `slots/wait/`, `active/`, `quota`,
     `quota/<owner>`, `profile/`, `access/`, `adopted/`. A call adds the change
@@ -2283,7 +2285,14 @@ profile rules to the function name (9.6). A permitted call returns the exact
 regular tool row. An invalid argument or a name outside that snapshot gives
 a failed tool output with its reason. Children compile from the delegate
 profile checked at admission (9.7), including only the skill names and file
-contents that match the root's snapshot.
+contents whose name and SHA-256 digest match the root's snapshot. The
+kernel writes each file at session creation and deletes it with the session
+without reading the file. The rendered listing is part of the loop state.
+
+A skill accepted at check time can still exceed the Responses body budget
+(9.5). JSON escaping can expand the file contents, and the next request
+also carries the listing and wire history. An oversized request follows
+the loop's existing trimming and `too-large` rules.
 
 ## 12. Errors
 
@@ -2879,13 +2888,16 @@ machine. A stage is done only within its budgets.
   watane-dev), a known limit (the deputy's ruling on S134 r1 F1.9); no stage F page runner exists
   yet.
 
-- **Stage F skill lookup** (S148, fake host). The same Stage F fixture adds
-  one `skill` call beside the two tool jobs in each child's step.
+- **Stage F skill lookup** (S148 r1, 2026-11-27, Linux 6.18.57 x86-64,
+  AMD EPYC 9V74, five visible CPUs with a four-CPU quota, fake host).
+  Each root pins a 1,000 KiB reference body with a short description.
+  The root delegates without loading the reference. Each child calls its
+  smaller `skill` beside two tool jobs.
   `cargo test s148_stage_f_skill_state_bytes_per_step -- --ignored --nocapture`
-  in `kernel/` measures the means at 10 and 1,000 history steps. Root 147,352
-  and 160,386 bytes, child 169,476 and 185,005 bytes, and whole cycle 486,306
-  and 530,397 bytes. The p95 values were 234,621 and 248,940 bytes per root
-  step, and 274,575 and 285,519 bytes per child step. Both series stayed
+  in `kernel/` measures the means at 10 and 1,000 history steps. Root 148,058
+  and 161,071 bytes, child 169,651 and 185,134 bytes, and whole cycle 487,362
+  and 531,340 bytes. The p95 values were 235,316 and 249,625 bytes per root
+  step, and 274,851 and 285,769 bytes per child step. Both series stayed
   within the 4 MiB and 10% budgets. Page-level Stage F budgets have the same
   limit as the S134 measurement.
 

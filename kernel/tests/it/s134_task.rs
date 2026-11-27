@@ -1285,7 +1285,7 @@ fn skill_definition(req: &Value) -> Option<&Value> {
 
 #[test]
 fn s148_ac1_lists_escaped_skills_and_returns_the_pinned_file_in_a_tool_row() {
-    let md = "---\nname: one\ndescription: Read </description> <here> & there\n  next line\n---\nThe body.";
+    let md = "---\nname: one\n  more\ndescription: Read </description> <here> & there\n  next line\n---\nThe body.";
     let mut k = kernel(r#","allow":["task","skill"]"#);
     set_skills(
         &mut k,
@@ -1301,14 +1301,15 @@ fn s148_ac1_lists_escaped_skills_and_returns_the_pinned_file_in_a_tool_row() {
     assert_eq!(def["parameters"]["required"], json!(["name"]));
     let listing = def["description"].as_str().unwrap();
     for part in [
-        "one",
-        "two",
+        "<name>one</name>",
+        "<name>two</name>",
         "Second",
         "&lt;/description&gt; &lt;here&gt; &amp; there next line",
     ] {
         assert!(listing.contains(part), "{listing}");
     }
     assert!(!listing.contains("The body."));
+    assert!(!listing.contains("more"), "{listing}");
     set_skills(&mut k, "root", &[skill_profile("one", "New revision.")]);
     reply(&mut k, &root, &[skill_call("s1", json!({"name":"one"}))]);
     assert_eq!(output_of(&bodies(&k)[1], "s1"), json!(md));
@@ -1359,6 +1360,16 @@ fn s148_ac2_refuses_invalid_calls_and_extra_or_missing_files() {
     assert!(output_of(req, "unknown").to_string().contains("not in"));
     assert!(output_of(req, "extra").to_string().contains("name"));
     assert!(output_of(req, "array").to_string().contains("name"));
+    let rows = kind_entries(&mut k, &root, "tool");
+    assert_eq!(rows.len(), 3, "{rows:?}");
+    for id in ["unknown", "extra", "array"] {
+        assert!(
+            rows.iter().any(|row| {
+                row["body"]["toolCallId"] == id && row["body"]["status"] == "failed"
+            }),
+            "{rows:?}"
+        );
+    }
 }
 
 #[test]
@@ -1384,14 +1395,16 @@ fn s148_ac3_children_receive_only_their_exact_subset() {
             "skills"
         );
     }
-    set_skills(&mut k, "foreman", &[one]);
+    set_skills(&mut k, "foreman", std::slice::from_ref(&one));
     let key = "profile/foreman";
     let mut child: Value = serde_json::from_slice(&k.state.get(key).unwrap()).unwrap();
     child["allow"] = json!(["skill"]);
     k.state
         .put(key, serde_json::to_vec(&child).unwrap())
         .unwrap();
+    k.state.reset_counts();
     reply(&mut k, &root, &[task("good", "foreman", "x")]);
+    assert!(!k.state.get_keys().contains(&format!("skills/{root}/one")));
     let kids = children(&mut k, &root);
     assert_eq!(kids.len(), 1);
     let reqs = bodies(&k);
@@ -1405,12 +1418,23 @@ fn s148_ac3_children_receive_only_their_exact_subset() {
     reply(
         &mut k,
         &kids[0],
-        &[skill_call("outside", json!({"name":"two"}))],
+        &[
+            skill_call("outside", json!({"name":"two"})),
+            skill_call("inside", json!({"name":"one"})),
+        ],
     );
     let reqs = bodies(&k);
     assert!(output_of(reqs.last().unwrap(), "outside")
         .to_string()
         .contains("not in"));
+    assert_eq!(
+        output_of(reqs.last().unwrap(), "inside"),
+        one["files"]["SKILL.md"]
+    );
+    let child = &kids[0];
+    k.delete("alice", child).unwrap();
+    assert!(k.state.get(&format!("skills/{child}/one")).is_none());
+    assert!(k.state.get(&format!("skills/{root}/one")).is_some());
 }
 
 #[test]
@@ -1418,6 +1442,7 @@ fn s148_ac2_the_broker_can_deny_a_named_skill() {
     let mut k = kernel(r#","deny":["skill"],"allow":["task","skill"]"#);
     set_skills(&mut k, "root", &[skill_profile("one", "Body")]);
     let root = start_root(&mut k);
+    k.state.reset_counts();
     reply(
         &mut k,
         &root,
@@ -1427,6 +1452,7 @@ fn s148_ac2_the_broker_can_deny_a_named_skill() {
         output_of(&bodies(&k)[1], "denied"),
         json!({"error":"denied by the profile"})
     );
+    assert!(!k.state.get_keys().contains(&format!("skills/{root}/one")));
 }
 
 #[test]
@@ -1504,8 +1530,88 @@ fn regress_s148_skill_bytes_per_step() {
     set_skills(&mut k, "root", &[skill_profile("one", &md)]);
     let id = k.start("alice", "k", "root", "{}", IN).unwrap().value;
     let c0 = k.state.counts();
-    reply(&mut k, &id, &[json!({"type":"function_call","id":"t","call_id":"t","name":"nothing","arguments":"{}"})]);
+    reply(
+        &mut k,
+        &id,
+        &[json!({"type":"function_call","id":"t","call_id":"t","name":"nothing","arguments":"{}"})],
+    );
     let c1 = k.state.counts();
     let step = (c1.bytes_read - c0.bytes_read) + (c1.bytes_written - c0.bytes_written);
     assert!(step < 4 * 1024 * 1024, "{step} bytes in one step");
+}
+
+#[test]
+fn s148_skill_and_both_parallel_jobs_start_in_the_same_step() {
+    let mut k = kernel(r#","toolsets":["notes"],"allow":["task","skill","notes_a"]"#);
+    set_skills(&mut k, "root", &[skill_profile("one", "Pinned body")]);
+    let root = start_root(&mut k);
+    reply(
+        &mut k,
+        &root,
+        &[
+            skill_call("s", json!({"name":"one"})),
+            json!({"type":"function_call","id":"j1","call_id":"j1","name":"notes_a","arguments":"{}"}),
+            json!({"type":"function_call","id":"j2","call_id":"j2","name":"notes_a","arguments":"{}"}),
+        ],
+    );
+
+    let rows = kind_entries(&mut k, &root, "tool");
+    assert!(rows
+        .iter()
+        .any(|row| row["body"]["toolCallId"] == "s" && row["body"]["status"] == "completed"));
+    assert_eq!(
+        k.host
+            .calls
+            .iter()
+            .filter(|call| matches!(
+                call, HostCall::ToolsCall { tool, .. } if tool == "notes_a"
+            ))
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn s148_unavailable_snapshot_fails_closed_and_stops_at_the_error_limit() {
+    let mut k =
+        kernel(r#","toolsets":["notes"],"allow":["task","skill","notes_a"],"max-tool-errors":1"#);
+    set_skills(&mut k, "root", &[skill_profile("one", "Pinned body")]);
+    let root = start_root(&mut k);
+    k.state.delete(&format!("skills/{root}/one"));
+    reply(
+        &mut k,
+        &root,
+        &[
+            skill_call("s", json!({"name":"one"})),
+            json!({"type":"function_call","id":"j","call_id":"j","name":"notes_a","arguments":"{}"}),
+        ],
+    );
+    assert!(
+        matches!(stop_of(&mut k, &root), Stop::Stopped { limit } if limit == "max-tool-errors")
+    );
+    assert!(!k
+        .host
+        .calls
+        .iter()
+        .any(|call| matches!(call, HostCall::ToolsCall { .. })));
+}
+
+#[test]
+fn s148_snapshot_is_session_charged_and_removed_without_a_body_read() {
+    let mut k = kernel("");
+    let md = "a".repeat(1000 * 1024);
+    set_skills(&mut k, "root", &[skill_profile("one", &md)]);
+    let root = start_root(&mut k);
+    let index = format!("skill-revisions/{root}");
+    let file = format!("skills/{root}/one");
+    assert_eq!(k.state.get(&file).unwrap(), md.as_bytes());
+    assert!(k.state.get(&index).is_some());
+    assert!(rec(&mut k, &root).bytes >= md.len() as u64);
+    assert!(k.state.get(&format!("loop/{root}")).unwrap().len() < 4096);
+
+    k.state.reset_counts();
+    k.delete("alice", &root).unwrap();
+    assert!(!k.state.get_keys().contains(&file));
+    assert!(k.state.get(&file).is_none());
+    assert!(k.state.get(&index).is_none());
 }
