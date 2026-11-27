@@ -459,8 +459,16 @@ fn ac1_native_initialization_advances_the_cursor_and_stop_interrupts() {
     assert!(init.pushes.iter().any(|p| p.value["type"] == "turn"
         && p.value["state"].get("activity").is_none_or(|a| a.is_null())));
 
+    let late = k
+        .provider_item(
+            &stream,
+            agent_kernel::ProviderEvent::Consent(Some(WHAT.into())),
+        )
+        .unwrap();
+    assert!(late.pushes.is_empty());
+
     let stored: serde_json::Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
-    assert_eq!(stored["last"], 2);
+    assert_eq!(stored["last"], 3);
     assert_eq!(stored["launching"], false);
     assert!(stored.get("consent").is_none());
     k.interrupt("page", &id, None).unwrap();

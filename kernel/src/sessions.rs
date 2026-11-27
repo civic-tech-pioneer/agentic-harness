@@ -3361,6 +3361,8 @@ impl<S: State, H: Host> Kernel<S, H> {
                     launching = Some(false);
                     consent.take().map(|_| ProviderEvent::Consent(None))
                 }
+                // Initialization ends the launch; a late pending notice must not reopen it.
+                ProviderEvent::Consent(Some(_)) if launching == Some(false) => continue,
                 ProviderEvent::Consent(what) => {
                     consent.clone_from(what);
                     None
