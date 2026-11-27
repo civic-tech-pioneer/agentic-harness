@@ -1,5 +1,5 @@
 // TECHNICAL 18.3: turns one kernel stream message into the session view (rows and dock fields).
-import { askArg, type Decision, type Internal, type Row, type SessionView, type ToolCall, type TurnState, type Ask } from "./model";
+import { askArg, kernelClosed, type Decision, type Internal, type Row, type SessionView, type ToolCall, type TurnState, type Ask } from "./model";
 import { parse, type CallPatch, type TurnExtra } from "./wire";
 
 type ExploredRow = Extract<Row, { kind: "explored" }>;
@@ -158,6 +158,12 @@ function syncAsks(v: SessionView, x: Internal, toolCallId: string, decided?: { a
 /** The index of the entry each open ask came from (9.4: a short decision names its ask entry by it); kept apart from the view, which stays as it was. */
 const askAt = new WeakMap<Ask, number>();
 const decisionWord = (d: Decision) => `${d.outcome === "allow" ? "Allowed" : d.outcome === "deny" ? "Denied" : "No objection"}${d.for ? " for this session" : ""}`;
+/** The decision line of `d` on the call named `title` (18.3): who, what, the reason; an ask the kernel closed reads "Ask cancelled". */
+const decisionLine = (d: Decision, title: string): { who: string; what: string; reason?: string } => {
+  const closed = kernelClosed(d);
+  if (closed !== undefined) return { who: "Ask cancelled", what: title, reason: closed };
+  return { who: d.by, what: `${decisionWord(d)}: ${title}`, ...(d.reason !== undefined ? { reason: d.reason } : {}) };
+};
 
 /** A decision entry `i` of ask `a` (which carries its decision): closes the id, shows the card of the ask's call decided, and adds the decision line. */
 function decide(v: SessionView, x: Internal, i: number, a: Ask, call: CallPatch | undefined) {
@@ -172,7 +178,7 @@ function decide(v: SessionView, x: Internal, i: number, a: Ask, call: CallPatch 
   x.open = open.filter((o) => o.ask.id !== a.id);
   for (const o of open) if (o.ask.id === a.id && o.ask.toolCallId !== a.toolCallId) syncAsks(v, x, o.ask.toolCallId);
   syncAsks(v, x, a.toolCallId, { ask: a, call: own });
-  push(v, { kind: "decision", key: `e${i}`, i, who: d.by, what: `${decisionWord(d)}: ${title}`, ...(d.reason !== undefined ? { reason: d.reason } : {}) });
+  push(v, { kind: "decision", key: `e${i}`, i, ...decisionLine(d, title) });
 }
 
 /** The entry's own call, as the card draws it (9.8). */
@@ -187,7 +193,8 @@ function toolCount(rows: Row[]): number {
   for (let k = rows.length - 1; k >= 0; k--) {
     const r = rows[k]!;
     if (r.kind === "user") break;
-    if (r.kind === "explored") n += r.calls.length; else if (r.kind === "tool") n++;
+    // a call that only asked and never ran (S154 r1 P1.2: a launch cancelled by Stop) is not a tool the turn used
+    if (r.kind === "explored") n += r.calls.length; else if (r.kind === "tool" && !(r.ask && r.call.status === "pending")) n++;
   }
   return n;
 }
@@ -312,7 +319,7 @@ export function settleShort(view: SessionView, i: number, entry: string | null):
     if (!cur && at > k && k >= 0) { const row = v.rows[at]!; splice(v, at, 1); splice(v, k, 0, row); }
   }
   const k = keyAt(`e${i}`), row = v.rows[k];
-  if (row?.kind === "decision") put(v, k, { ...row, what: `${decisionWord(sh.decision)}: ${m.call?.title ?? askArg(a.input) ?? a.toolCallId}` });
+  if (row?.kind === "decision") put(v, k, { ...row, ...decisionLine(sh.decision, m.call?.title ?? askArg(a.input) ?? a.toolCallId) });
   if (I.dup) { v.rows = uniqueKeys(v.rows); I = build(v.rows); }
   indexes.set(v.rows, I);
   return v;
@@ -389,7 +396,7 @@ export function reduce(view: SessionView, message: string): SessionView {
       x.open = open.filter((o) => o.ask.id !== m.id);
       for (const o of open) if (o.ask.id === m.id) syncAsks(v, x, o.ask.toolCallId);
       x.shorts = [...(x.shorts ?? []), { i: m.i, askI: m.askI, id: m.id, kind: m.kind, decision: m.decision }];
-      push(v, { kind: "decision", key: `e${m.i}`, i: m.i, who: m.decision.by, what: `${decisionWord(m.decision)}: ${m.id}`, ...(m.decision.reason !== undefined ? { reason: m.decision.reason } : {}) });
+      push(v, { kind: "decision", key: `e${m.i}`, i: m.i, ...decisionLine(m.decision, m.id) });
       break;
     }
     case "ask": {
