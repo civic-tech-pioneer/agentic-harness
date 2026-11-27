@@ -1496,3 +1496,16 @@ fn s148_ac5_claude_launch_keeps_all_plugin_files() {
         json!({"name":"one","files":{"SKILL.md":"Body","extra.md":"Extra"}})
     );
 }
+
+#[test]
+fn regress_s148_skill_bytes_per_step() {
+    let mut k = kernel(r#","allow":["task","skill"]"#);
+    let md = format!("---\ndescription: big\n---\n{}", "a".repeat(1000 * 1024));
+    set_skills(&mut k, "root", &[skill_profile("one", &md)]);
+    let id = k.start("alice", "k", "root", "{}", IN).unwrap().value;
+    let c0 = k.state.counts();
+    reply(&mut k, &id, &[json!({"type":"function_call","id":"t","call_id":"t","name":"nothing","arguments":"{}"})]);
+    let c1 = k.state.counts();
+    let step = (c1.bytes_read - c0.bytes_read) + (c1.bytes_written - c0.bytes_written);
+    assert!(step < 4 * 1024 * 1024, "{step} bytes in one step");
+}
