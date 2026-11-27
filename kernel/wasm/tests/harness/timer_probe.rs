@@ -25,6 +25,14 @@ impl crate::exports::mods::agent::timer_probe::Guest for Export {
 
     fn seed_drain_owed() {
         let mut state = WitState;
+        agent_kernel::Record {
+            id: "read-probe".into(),
+            owner: caller::identity(),
+            boot: host_info::generation(),
+            ..Default::default()
+        }
+        .save(&mut state)
+        .expect("seed read probe");
         let mut slots = agent_kernel::active::Slots::load(&mut state);
         slots.drain_owed = true;
         slots.save(&mut state).expect("seed owed drain");

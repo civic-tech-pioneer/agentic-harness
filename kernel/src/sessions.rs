@@ -671,8 +671,8 @@ pub(crate) struct StreamKey {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) consent: Option<String>,
     /// This provider stream has started but has yet to report its host initialization.
-    #[serde(default, skip_serializing_if = "is_false")]
-    launching: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    launching: Option<bool>,
     /// A request stream's head: the status, and whether the body is an event stream (9.5).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) head: Option<u16>,
@@ -700,7 +700,7 @@ impl StreamKey {
             last: 0,
             checked: false,
             consent: None,
-            launching: false,
+            launching: None,
             head: None,
             sse: false,
             done: false,
@@ -1133,7 +1133,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             last: 0,
             checked: !started.direct,
             consent: None,
-            launching: true,
+            launching: Some(true),
             head: None,
             sse: false,
             done: false,
@@ -2732,9 +2732,12 @@ impl<S: State, H: Host> Kernel<S, H> {
             && live
                 .as_ref()
                 .and_then(|(stream, _)| self.provider_key(stream))
-                // Older stream keys have no launching marker. A zero cursor or
-                // an outstanding consent still identifies their pending launch.
-                .is_some_and(|key| key.launching || key.last == 0 || key.consent.is_some());
+                // For older keys, only a pristine stream implies launch. A stored
+                // consent can be stale, so it cannot make Stop close that stream.
+                .is_some_and(|key| {
+                    key.launching
+                        .unwrap_or_else(|| key.last == 0 && key.consent.is_none())
+                });
         let mut plan = (false, false);
         if replacement.is_some() {
             Self::room(&rec)?;
@@ -3005,11 +3008,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut slots = self.begin()?;
         let rec = self.read_session(caller, session, &mut slots)?;
         let mut meta = rec.meta();
-        let page = Transcript::new(&mut self.state, &rec.id, &mut meta).read(after, before, max)?;
-        if slots.drain_owed {
-            self.drain_owed();
-        }
-        Ok(page)
+        Transcript::new(&mut self.state, &rec.id, &mut meta).read(after, before, max)
     }
 
     pub fn rename(&mut self, caller: &str, session: &str, title: &str) -> Result<(), KernelError> {
@@ -3242,8 +3241,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// session (9.4). An id with no key (never opened or ended) changes nothing and sends
     /// nothing; an id of an older boot is no different to the code, and reaches it only if the
     /// host breaks R1 (items come on streams of this boot). When the session's live owner stream is full, the call is
-    /// dropped whole and answers `Defer` (3, "Deferred batch"). It does not keep a `seq`
-    /// (`provider_batch` does).
+    /// dropped whole and answers `Defer` (3, "Deferred batch"). This native entry point
+    /// assigns the next sequence number; the host supplies its own to `provider_batch`.
     pub fn provider_item(
         &mut self,
         stream: &str,
@@ -3263,9 +3262,8 @@ impl<S: State, H: Host> Kernel<S, H> {
                 pushes: Vec::new(),
             });
         };
-        self.hold();
-        let step = self.item_step(stream, &key.session, event);
-        self.finish_items(step)
+        let seq = key.last.saturating_add(1);
+        self.take_provider_events(stream, key, vec![(seq, event)])
     }
 
     /// `stream-sink.ended` of a provider stream: it cannot defer, so it is applied in full (asks
@@ -3318,9 +3316,18 @@ impl<S: State, H: Host> Kernel<S, H> {
                 pushes: Vec::new(),
             });
         };
-        let mut fresh: Vec<_> = items.into_iter().filter(|(n, _)| *n > key.last).collect();
-        fresh.sort_by_key(|(n, _)| *n);
-        let Some(last) = fresh.last().map(|(n, _)| *n) else {
+        self.take_provider_events(stream, key, items)
+    }
+
+    fn take_provider_events(
+        &mut self,
+        stream: &str,
+        key: StreamKey,
+        mut items: Vec<(u64, ProviderEvent)>,
+    ) -> Result<Called<SinkOutcome>, KernelError> {
+        items.retain(|(n, _)| *n > key.last);
+        items.sort_by_key(|(n, _)| *n);
+        let Some(last) = items.last().map(|(n, _)| *n) else {
             return Ok(Called {
                 value: SinkOutcome::Taken,
                 pushes: Vec::new(),
@@ -3330,27 +3337,40 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut done = (Vec::new(), Vec::new(), Vec::new());
         let mut prev = key.last;
         let mut launching = key.launching;
-        for (seq, event) in fresh {
+        let mut consent = key.consent;
+        for (seq, event) in items {
             if seq == prev {
                 continue;
             }
             prev = seq;
-            launching &= !matches!(&event, ProviderEvent::Workspace(_));
-            self.open_meter();
-            match self.item_step(stream, &key.session, event) {
-                Ok(Step::Done {
-                    mut pushes,
-                    mut requests,
-                    gone,
-                }) => {
-                    done.0.append(&mut pushes);
-                    done.1.append(&mut requests);
-                    done.2.extend(gone);
+            let clear = match &event {
+                ProviderEvent::Workspace(_) => {
+                    launching = Some(false);
+                    consent.take().map(|_| ProviderEvent::Consent(None))
                 }
-                other => return self.finish_items(other),
+                ProviderEvent::Consent(what) => {
+                    consent.clone_from(what);
+                    None
+                }
+                _ => None,
+            };
+            for event in std::iter::once(event).chain(clear) {
+                self.open_meter();
+                match self.item_step(stream, &key.session, event) {
+                    Ok(Step::Done {
+                        mut pushes,
+                        mut requests,
+                        gone,
+                    }) => {
+                        done.0.append(&mut pushes);
+                        done.1.append(&mut requests);
+                        done.2.extend(gone);
+                    }
+                    other => return self.finish_items(other),
+                }
             }
         }
-        let kept = self.take_seq(stream, last, None, key.consent, launching);
+        let kept = self.take_seq(stream, last, None, consent, launching);
         let (pushes, requests, gone) = done;
         self.finish_items(kept.map(|()| Step::Done {
             pushes,
@@ -3420,7 +3440,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                             vec![ProviderEvent::Consent(Some(what))]
                         }
                         Fact::Workspace(id) => {
-                            launching = false;
+                            launching = Some(false);
                             let clear = consent.take().map(|_| ProviderEvent::Consent(None));
                             [Some(ProviderEvent::Workspace(id)), clear]
                                 .into_iter()
@@ -3513,7 +3533,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         last: u64,
         adapter: Option<Vec<u8>>,
         consent: Option<String>,
-        launching: bool,
+        launching: Option<bool>,
     ) -> Result<(), KernelError> {
         let Some(mut key) = self
             .state
@@ -3722,7 +3742,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             last: 0,
             checked: false,
             consent: None,
-            launching: false,
+            launching: None,
             head: None,
             sse: false,
             done: false,
