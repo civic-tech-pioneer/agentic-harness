@@ -257,7 +257,6 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
           const ordinaryUndo = x.tried === "undo" && x.error === undefined && x.until !== undefined && undoShown(x);
           return (
             <li key={x.id} className="wa-queue-note" role={x.error === undefined && x.tried !== "undo" ? "status" : undefined}>
-              {x.error !== undefined ? <p className="wa-taken-error" role="alert">{x.error}</p> : null}
               {x.error === undefined && x.tried === "undo"
                 ? <span className="wa-taken-text" role="status">Removed “<bdi>{preview(x.text, 40)}</bdi>” from the queue</span>
                 : <span className="wa-taken-text">{x.error === undefined && (x.tried === "edit" ? "Taken out to edit. " : "Taken out to send. ")}<q><bdi>{preview(x.text)}</bdi></q></span>}
@@ -267,6 +266,8 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
                 ? <button type="button" className="wa-queue-action" disabled={!!stopReasonId || !!x.out} aria-describedby={x.out ? pendingId : stopReasonId} onClick={() => void again(x, "interrupt")}>Stop and send</button> : null}
               {!ordinaryUndo ? <button type="button" className="wa-queue-action" disabled={!!x.out} aria-describedby={x.out ? pendingId : undefined} onClick={() => drop(sid, x.id)}>Discard</button> : null}
               </span>
+              {/* S156-2 AC3 (r1 P1.1): the error goes under the text and its buttons */}
+              {x.error !== undefined ? <p className="wa-taken-error" role="alert">{x.error}</p> : null}
             </li>
           );
         })}</ul>
