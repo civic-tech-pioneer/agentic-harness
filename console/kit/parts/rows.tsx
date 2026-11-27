@@ -95,9 +95,10 @@ export function ToolRow({ row, actions }: { row: Of<"tool">; actions: Actions })
   const name = cardName(call, ask);
   const diffs = call.content.filter((c) => c.type === "diff").length;
   const [tag, tagCls] = answered ? ["Answered", "b-off"] : asking ? ["Waiting for you", "b-wait"] : checking ? ["Checking", "b-off"]
-    // an ask the kernel closed was cancelled; an allowed call still pending when its turn ended never ran (S154 r1 P1.2)
-    : ask?.decision && call.status === "pending" ? (kernelClosed(ask.decision) !== undefined ? ["Cancelled", "b-off"]
-      : row.ended && ask.decision.outcome !== "deny" ? ["Did not run", "b-off"] : DECIDED[ask.decision.outcome])
+    // an ask the kernel closed was cancelled, whatever cleanup result follows (S156 r1 F1.1); an allowed call still pending when its
+    // turn ended has no result yet, which is not knowing it never ran: Claude may still report it (S156 r1 F1.2)
+    : ask?.decision && kernelClosed(ask.decision) !== undefined ? ["Cancelled", "b-off"]
+    : ask?.decision && call.status === "pending" ? (row.ended && ask.decision.outcome !== "deny" ? ["No result", "b-off"] : DECIDED[ask.decision.outcome])
     : row.ended ? ["Ended", "b-off"] : STATUS[call.status];
   const main = (
     <>
