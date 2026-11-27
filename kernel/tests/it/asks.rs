@@ -415,6 +415,34 @@ fn case73_g_cancel_closes_the_same_two_asks_in_every_state() {
 }
 
 #[test]
+fn ac1_interrupt_during_launch_closes_asks_even_with_a_replacement() {
+    for replacement in [None, Some("instead")] {
+        let mut k = kernel();
+        let id = started(&mut k);
+        let stream = rec(&mut k, &id).streams[0].clone();
+        for (seq, ask) in [(1, "a1"), (2, "a2")] {
+            let line = ask_line("ask", ask).to_string().into_bytes();
+            k.provider_lines(&stream, vec![(seq, line)]).unwrap();
+        }
+        owner(&mut k, &id, "answer", "a2", r#"{"allow":true}"#);
+
+        k.host.calls.clear();
+        k.interrupt("alice", &id, replacement).unwrap();
+
+        assert_two(&mut k, &id, "cancel");
+        let r = rec(&mut k, &id);
+        assert!(r.deadlines.iter().all(|d| !d.what.starts_with("ask ")));
+        assert!(!r.streams.contains(&stream));
+        assert_eq!(r.turn.is_active(), replacement.is_some());
+        assert!(k.host.calls.iter().any(|call| matches!(call,
+            HostCall::Request(Request::Cancel { stream: sent, .. }) if *sent == stream
+        )));
+        k.provider_ended(&stream).unwrap();
+        assert_two(&mut k, &id, "cancel");
+    }
+}
+
+#[test]
 fn case73_g_the_restart_step_leaves_an_openai_sessions_asks() {
     let mut k = kernel();
     let id = two_asks(&mut k);
