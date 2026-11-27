@@ -114,7 +114,15 @@ function upsertCall(v: SessionView, p: CallPatch, i?: number, fromAsk = false) {
     put(v, f.at, { ...explored(calls), key: r.key });
     if (!isExplored(call)) toToolRow(v, p.id);
   } else if (r.kind === "tool") {
-    { const { ended: _e, ...rest } = r; put(v, f.at, { ...rest, call, ...(i !== undefined ? { i } : {}) }); }
+    const { ended: _e, ...rest } = r, next = { ...rest, call, ...(i !== undefined ? { i } : {}) };
+    put(v, f.at, next);
+    // a result that comes after its turn's footer (Claude's pending call answered after Stop) updates the footer's count (S156 r1 F1.2)
+    const d = Number(counts(next)) - Number(counts(r));
+    if (d !== 0) for (let k = f.at + 1; k < v.rows.length; k++) {
+      const n = v.rows[k]!;
+      if (n.kind === "user") break;
+      if (n.kind === "footer") { put(v, k, { ...n, tools: Math.max(0, n.tools + d) }); break; }
+    }
   }
 }
 
@@ -188,13 +196,16 @@ function ownCall(p: CallPatch | undefined, a: Ask, kept?: ToolCall): ToolCall {
   return { ...normalize(q), title: q.title ?? q.kind ?? "other" };
 }
 
+/** A tool row the footer counts: not a call that only asked and never ran (S154 r1 P1.2: a launch cancelled by Stop), nor one whose ask
+ * the kernel closed, whatever cleanup result it got after (S156 r1 F1.1: OpenAI's `aborted` output, status `failed`). */
+const counts = (r: Extract<Row, { kind: "tool" }>) => !(r.ask && (r.call.status === "pending" || (r.ask.decision && kernelClosed(r.ask.decision) !== undefined)));
+
 function toolCount(rows: Row[]): number {
   let n = 0;
   for (let k = rows.length - 1; k >= 0; k--) {
     const r = rows[k]!;
     if (r.kind === "user") break;
-    // a call that only asked and never ran (S154 r1 P1.2: a launch cancelled by Stop) is not a tool the turn used
-    if (r.kind === "explored") n += r.calls.length; else if (r.kind === "tool" && !(r.ask && r.call.status === "pending")) n++;
+    if (r.kind === "explored") n += r.calls.length; else if (r.kind === "tool" && counts(r)) n++;
   }
   return n;
 }
