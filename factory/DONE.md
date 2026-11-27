@@ -351,3 +351,11 @@ Outcomes, each its Upkeep item's check: (1) (flake, guard) `console/kit/parts_S1
 Touches: `console/` (src, kit, test), `ui/` (rebuilt and committed). Not kernel/ or design/ (S148), no interface change, no spec text change (spec-side lines stay in Upkeep). A guard never weakens; `installed-agent` never weakened to pass.
 Boundary: the console (TECHNICAL 14, "The console has no power a client lacks"): the adversary runs if a change adds a kernel call. Protects: *guard* (1), *polish* (the rest). Size: an upkeep slice.
 
+
+### S153 (upkeep) the kernel's guards and tests, kernel/ only
+(sketched 2026-11-27 by Deputy Scissors, the upkeep lane after S152; builder codex by rule 3 (last two: S151 claude, S152 codex); reviewer claude; in flight, cloud, Codex task https://chatgpt.com/local/6b094528-7d2c-83ed-880b-02018fb1104a, 08:55 UTC)
+Why: the kernel-side Upkeep items, while S151 holds design/. Re-check every item on main first (S138 and S148 changed the timer and skill paths): drop what is fixed and say so in the PR, item by item.
+Outcomes, each its Upkeep item's check: (1) (guard, S138 r2 P2.1) a Harness step pins `run_client`'s `me() == "page"` guard on arming `page-origin` and that every successful client call drains what is owed; (2) (guard, S40 F6.1, the human's (b)) a timer firing of an OpenAI session whose owner mod was disabled during a timed pause sends no model request: through the real adapter, an enabled owner's pause resumes by itself, a disabled owner's stops with no work (check first whether S138's firing-origin work already closed it); (3) (S142 r1 A1) an interrupt before `initialized` cancels the launch, decided from the kernel's current state; (4) test polish: S127 P4.1 (`s127_judge.rs:333` asserts the replacement launch carries the original follow-up), S38 P1.2 (`s38.rs` assistant line without `session_id`), S36 r1 P1.1 (`s36_firing.rs:49, :96`).
+Touches: `kernel/` (src, tests, wasm/tests/harness). Not design/ (S151) or console/; no interface change; spec-side lines stay in Upkeep. A guard never weakens; `installed-agent` never weakened to pass.
+Boundary: the session owner's authority and the console (TECHNICAL 14): outcomes (1) to (3) touch the kernel's boundary files, so the adversary runs. Protects: *guard* (1) to (3), *polish* (4). Size: an upkeep slice.
+
