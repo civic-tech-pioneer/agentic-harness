@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S152 (upkeep, console, Codex build); S148 (stage F, `skill` on OpenAI, Codex build; r1 Claude routine `trig_01PLJdyL1p91vuV9bhofPZ2V` 06:41 UTC); S138, S142, S144, S145 merged.
+S152 (upkeep, console, Codex build); S148 (stage F, `skill` on OpenAI, Codex build; r1 Claude routine `trig_01PLJdyL1p91vuV9bhofPZ2V` 06:41 UTC; r1: 1/8, adversary HELD, F1.1 stands (fix (a), skill snapshot out of loop/<id>), P1.2 to Upkeep, three risks accepted; answer r1 into the Codex task 07:03 UTC); S138, S142, S144, S145 merged.
 
 ## Sketched
 ### S152 (upkeep) the console's guards and tests after S145, console/ only
@@ -112,6 +112,8 @@ reviewer claude. Cloud.
 
 
 ### Upkeep
+
+- **(S148 r1 P1.2, spec decision)** `Name(arg)` rules on `skill` are accepted on OpenAI and never match (9.6: an OpenAI call matches by name alone), while Claude keys skill rules by name (`Skill(pdf)`): refuse such rules at check, or match `skill(name)` by its argument. Accepted risks from S148 r1 (one line each in TECHNICAL where not protected is recorded): skill outputs have no budget of their own (owner byte quota and BODY_MAX bound them); the listing is never trimmed (the owner's own profile); a malformed `skill` call is answered before the broker rules.
 
 - **Polish from S145 (merged 2026-11-27), reviews r1/r2 on PR #66:** P1.2 (adversary, accepted: an unreadable wire stamp hides a lost batch in Stage D metrics), P1.3 to P1.8, P1.11 (console tests and guards); P1.9, P1.10, P1.12 are spec-side (the consent wait's Esc and wording against States-2, TECHNICAL 18.6): the next design lane slice. Accepted risks A1.1, A1.2 need one line each where TECHNICAL records what is not protected.
 
