@@ -108,15 +108,6 @@ describe("the page", () => {
     expect(fake.calls.filter(({ name }) => name === "interrupt" || name === "cancel")).toEqual([]);
   });
 
-  it("ac2_displays_a_reported_thinking_activity_without_a_thought_chunk", async () => {
-    const thinking = JSON.stringify({ _meta: { watane: { type: "turn",
-      state: { state: "running", since: 1, activity: { kind: "thinking" } } } } });
-    const fake = fakeKernel([[thinking]]);
-    fake.play(0);
-    render(<App kernel={fake} info={INFO} />);
-    expect(await screen.findByText("Thinking")).toHaveAttribute("role", "status");
-  });
-
   it("answers_reach_the_kernel_as_the_decision_json_of_technical_2_3", async () => {
     const fake = played();
     render(<App kernel={fake} info={INFO} />);

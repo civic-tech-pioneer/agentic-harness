@@ -23,7 +23,7 @@ export function cardName(call: ToolCall, ask?: Ask): string {
   const path = ask ? askArg(ask.input) : call.locations[0]?.path;
   return path ? `${call.kind.charAt(0).toUpperCase() + call.kind.slice(1)} ${path}` : call.title;
 }
-export type Activity = { kind: "checking"; on?: string } | { kind: "compacting" } | { kind: "thinking" } | { kind: "consent"; what: string };
+export type Activity = { kind: "checking"; on?: string } | { kind: "compacting" } | { kind: "consent"; what: string };
 export function isActiveTurn(turn: TurnState | null | undefined): boolean {
   return turn?.state === "running" || turn?.state === "waiting";
 }

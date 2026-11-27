@@ -71,7 +71,7 @@ function spec(view: SessionView, now: number, answered: number, actions: Actions
         const word = folder ? `Waiting for your answer in watane for ${folder}` : "Waiting for your answer in watane";
         return { word, shape: "diamond", esc: true, act: { label: "Open the question" } };
       }
-      return { word: a?.kind === "thinking" ? "Thinking" : runningWord(view.rows), shape: "dot", clock: clk, esc: true };
+      return { word: runningWord(view.rows), shape: "dot", clock: clk, esc: true };
     }
     case "waiting": {
       // every open ask answered by this console: the cards' own words, no countdown; else the next ask's own `expires-at`
