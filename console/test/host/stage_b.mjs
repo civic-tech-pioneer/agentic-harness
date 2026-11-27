@@ -631,7 +631,11 @@ async function main() {
       await ok("sessions.interrupt", { session: s, replacement: null });
       let es = await idleAfter(s, a.i, "the asked turn to end on Stop");
       ensure(lastTurn(es)?.stop?.kind === "interrupted", `the turn ended ${JSON.stringify(lastTurn(es))}`);
-      const d = decisionsOf(es, a.body.id);
+      // The turn ends in the client call. The host reports the decision after that call commits.
+      const d = await until(async () => {
+        const decided = decisionsOf(await transcript(s), a.body.id);
+        return decided.length ? decided : null;
+      }, 10_000, "the host to close the interrupted ask");
       ensure(d.length === 1 && d[0].body.decision.outcome === "deny", `decisions of the interrupted ask: ${JSON.stringify(d.map((x) => x.body.decision))}`);
       await ok("sessions.say", { session: s, key: `k-${Date.now()}`, input: "long" });
       await until(async () => (await transcript(s)).some((e) => /^entry 2 /.test(textOf(e) ?? "")), 15_000, "the long turn's second entry");
