@@ -1,5 +1,6 @@
 // S140 (upkeep): S139 review r1 polish P1.1 and P1.6 (PR #62). A taken-out message's "Stop and send" retry is
-// unavailable while the session cannot be interrupted, as the queue row's is; the queue preview keeps 240 characters.
+// unavailable while the session cannot be interrupted, as the queue row's is (S156: absent while Not running); the queue preview
+// keeps 240 characters.
 // TECHNICAL 18.5, 18.6 "Queue".
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -40,11 +41,10 @@ describe("S140", () => {
       expect(retry()).toBeEnabled();
       act(() => f.play(story.length + 1));
       await settle();
-      if (state === "unknown") expect(retry()).toBeUndefined();
-      else {
-        expect(retry()).toBeDisabled();
-        expect(retry()).toHaveAccessibleDescription("Claude no longer has this session.");
-      }
+      // S156: Not running offers no Stop and send at all, `resume-lost` as `unknown` (frame Main-2; was disabled with a reason)
+      expect(retry()).toBeUndefined();
+      expect(screen.queryByRole("button", { name: "Stop and send queued message 1" })).toBeNull();
+      expect(screen.queryByText("Claude no longer has this session.", { selector: ".wa-control-reason" })).toBeNull();
       expect([...note().querySelectorAll("button")].find((b) => b.textContent === "Discard")).toBeEnabled();
     });
 

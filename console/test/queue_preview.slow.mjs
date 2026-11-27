@@ -37,13 +37,16 @@ try {
     await page.setViewportSize({ width, height: 800 });
     const bounds = await preview.evaluate((node) => ({
       height: node.getBoundingClientRect().height,
-      scrollHeight: node.scrollHeight,
-      lineHeight: parseFloat(getComputedStyle(node).lineHeight),
+      scrollWidth: node.scrollWidth,
+      clientWidth: node.clientWidth,
+      ellipsis: getComputedStyle(node).textOverflow,
+      lineHeight: parseFloat(getComputedStyle(node).lineHeight) || 1.5 * parseFloat(getComputedStyle(node).fontSize),
       length: node.textContent.length,
     }));
     assert.equal(bounds.length, 241);
-    assert.ok(bounds.height <= 3 * bounds.lineHeight + 1 && bounds.scrollHeight > bounds.height,
-      `at ${width}px the overflowing preview displays at most three lines: ${JSON.stringify(bounds)}`);
+    // S156: one line cut with an ellipsis, as Main-2's `.qitem` (was: at most three lines)
+    assert.ok(bounds.height <= bounds.lineHeight + 1 && bounds.scrollWidth > bounds.clientWidth && bounds.ellipsis === "ellipsis",
+      `at ${width}px the overflowing preview displays one line with an ellipsis: ${JSON.stringify(bounds)}`);
   }
   await page.setViewportSize({ width: 390, height: 800 });
   await page.getByRole("button", { name: "Stop and send queued message 1" }).click();

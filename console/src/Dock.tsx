@@ -133,15 +133,14 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
   session?: { model?: string; mode?: string }; stopping?: boolean; sessionId?: string; replaced?: boolean; onUseHere?: () => void }) {
   const { view } = props;
   const active = isActiveTurn(view.turn);
-  const resumeLost = view.turn?.state === "resume-lost";
-  const showStopAndSend = active || resumeLost;
+  // Stop and send only while a turn runs (Main-2): never while Not running (`unknown`, `resume-lost`; the S36 felt-wrong list)
+  const showStopAndSend = active;
   const queueTiming = active ? "sent when this turn ends"
     : view.turn?.state === "paused" ? (view.turn.until === undefined ? "send a message to resume" : "sent after the session resumes")
     : view.turn?.state === "idle" && view.turn.stop.kind === "failed" ? "sent when you send another message"
     : "waiting for a new turn";
   const consentWait = isFolderConsent(view.turn);
-  const interruptReason = consentWait ? "Stop and send is unavailable while watane waits for folder consent."
-    : resumeLost ? "Claude no longer has this session." : null;
+  const interruptReason = consentWait ? "Stop and send is unavailable while watane waits for folder consent." : null;
   const [opened, setOpened] = useState<boolean | null>(null);
   const done = view.plan?.filter((p) => p.status === "completed").length ?? 0;
   const { actions } = props;
@@ -261,11 +260,13 @@ export function Dock(props: { view: SessionView; actions: Actions; onNeedsYou: (
               {x.error !== undefined ? <p className="wa-taken-error" role="alert">{x.error}</p> : null}
               {x.error === undefined && x.tried === "undo"
                 ? <span className="wa-taken-text" role="status">Removed “<bdi>{preview(x.text, 40)}</bdi>” from the queue</span>
-                : <>{x.error === undefined && (x.tried === "edit" ? "Taken out to edit." : "Taken out to send.")} <q className="wa-taken-text"><bdi>{preview(x.text)}</bdi></q></>}
+                : <span className="wa-taken-text">{x.error === undefined && (x.tried === "edit" ? "Taken out to edit. " : "Taken out to send. ")}<q><bdi>{preview(x.text)}</bdi></q></span>}
+              <span className="wa-taken-ctl">
               {!x.held && undoShown(x) ? <button type="button" className="wa-queue-action" disabled={off || !!x.out} aria-describedby={x.out ? pendingId : off ? offId : undefined} onClick={() => void again(x, "say")}>Undo</button> : null}
               {!x.held && showStopAndSend && x.tried === "stop"
                 ? <button type="button" className="wa-queue-action" disabled={!!stopReasonId || !!x.out} aria-describedby={x.out ? pendingId : stopReasonId} onClick={() => void again(x, "interrupt")}>Stop and send</button> : null}
               {!ordinaryUndo ? <button type="button" className="wa-queue-action" disabled={!!x.out} aria-describedby={x.out ? pendingId : undefined} onClick={() => drop(sid, x.id)}>Discard</button> : null}
+              </span>
             </li>
           );
         })}</ul>
