@@ -8,6 +8,10 @@ export type ToolContent =
 export interface ToolCall { id: string; title: string; kind: ToolKind; status: ToolStatus;
   content: ToolContent[]; locations: { path: string; line?: number }[]; rawInput?: unknown; rawOutput?: unknown }
 export interface Decision { outcome: "allow"|"deny"|"none"; for?: "session"; reason?: string; by: string }
+/** 9.8: the kernel's own deny reasons in words (S156; frame Main-2 "Ask cancelled · when you stopped the turn"); undefined for any other decision. */
+const KERNEL_CLOSED: Record<string, string> = { cancel: "the turn was stopped", restart: "watane restarted", ended: "the connection to Claude Code ended", busy: "too many open asks" };
+export const kernelClosed = (d: Decision): string | undefined =>
+  d.by === "kernel" && d.outcome === "deny" && d.reason !== undefined && Object.hasOwn(KERNEL_CLOSED, d.reason) ? KERNEL_CLOSED[d.reason] : undefined;
 export interface Ask { id: string; kind: "ask"|"check"; toolCallId: string; input: unknown; expiresAt: number; reach?: string; decision?: Decision }
 /** The one argument of an ask's input the card names (9.4): `file_path`, `path`, `command`, `url`, `pattern`, in that order. */
 export function askArg(input: unknown): string | undefined {

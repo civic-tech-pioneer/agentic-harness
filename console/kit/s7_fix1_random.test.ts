@@ -76,6 +76,15 @@ function unstale(a: SessionView, b: SessionView): SessionView {
   return { ...b, rows };
 }
 
+/** S156 (S154 r1 P1.2): the footer no longer counts a call that only asked and never ran; the frozen reducer's footer takes the new count
+ * when its row is the same footer at the same place. Nothing else is taken. */
+let toolsFixed = 0;
+function sameTools(a: SessionView, b: SessionView): SessionView {
+  if (!b.rows.some((r, k) => r.kind === "footer" && a.rows[k]?.kind === "footer" && a.rows[k]!.key === r.key && (a.rows[k] as typeof r).tools !== r.tools)) return b;
+  toolsFixed++;
+  return { ...b, rows: b.rows.map((r, k) => { const n = a.rows[k]; return r.kind === "footer" && n?.kind === "footer" && n.key === r.key ? { ...r, tools: n.tools } : r; }) };
+}
+
 it("random message sequences give the same view as the reducer of 5882c51 after every step", () => {
   const SEQS = 1000, LEN = 40;
   let steps = 0, moved = 0;
@@ -95,8 +104,8 @@ it("random message sequences give the same view as the reducer of 5882c51 after 
       }
       steps++;
       if (!apart && JSON.stringify(a) !== JSON.stringify(b)) {
-        const c = unstale(a, b);
-        if (c.rows.some((r, k) => r !== b.rows[k])) { moved++; apart = true; }
+        const t = sameTools(a, b), c = unstale(a, t);
+        if (c.rows.some((r, k) => r !== t.rows[k])) { moved++; apart = true; }
         expect({ seed: s + 1, step: k, view: a }).toEqual({ seed: s + 1, step: k, view: c });
       }
       seen.push([a, b]);
@@ -105,4 +114,5 @@ it("random message sequences give the same view as the reducer of 5882c51 after 
   expect(steps).toBe(SEQS * LEN);
   expect(moved).toBeGreaterThan(0); // moved-ask sequences stay in the run
   expect(decidedFixed).toBeGreaterThan(0); // the decided-card excuse fires
+  expect(toolsFixed).toBeGreaterThan(0); // the S156 footer count differs somewhere, and only there
 });

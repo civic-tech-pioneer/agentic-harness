@@ -71,7 +71,7 @@ describe("AC4 not held: closes at once, a placeholder stands", () => {
   const pre = [entry(1, "message", { role: "user", content: [{ type: "text", text: "hi" }] })];
   it("ac4_page_lacks_the_ask_a_placeholder_row_names_the_id", () => {
     const v = run(...pre, short(41, 40, "a20", { outcome: "deny", by: "kernel", reason: "cancel" }));
-    expect(v.rows[1]).toEqual({ kind: "decision", key: "e41", i: 41, who: "kernel", what: "Denied: a20", reason: "cancel" });
+    expect(v.rows[1]).toEqual({ kind: "decision", key: "e41", i: 41, who: "Ask cancelled", what: "a20", reason: "the turn was stopped" }); // S156
     expect(v.x!.shorts).toEqual([{ i: 41, askI: 40, id: "a20", kind: "ask", decision: { outcome: "deny", by: "kernel", reason: "cancel" } }]);
     expect(v.openAsks).toEqual([]);
   });
@@ -139,7 +139,7 @@ describe("AC5 fail closed", () => {
   const closed = (v: SessionView) => {
     expect(v.rows.filter((r) => r.kind === "tool")).toEqual([]);
     expect(v.openAsks).toEqual([]);
-    expect(line(v, 6)).toEqual({ kind: "decision", key: "e6", i: 6, who: "kernel", what: "Denied: a1", reason: "cancel" });
+    expect(line(v, 6)).toEqual({ kind: "decision", key: "e6", i: 6, who: "Ask cancelled", what: "a1", reason: "the turn was stopped" }); // S156
     expect(v.x!.shorts).toEqual([]);
   };
   const cases: [string, string | null][] = [
@@ -217,7 +217,7 @@ describe("AC4 the read", () => {
     expect(reads(k).some((r) => r[0] === 40 - parts && r[1] === parts)).toBe(true); // the whole group
     expect(tool(v, "e20")!.ask).toMatchObject({ id: "a20", decision: { outcome: "deny", by: "kernel" } });
     expect(v.rows.findIndex((r) => r.kind === "tool")).toBeLessThan(v.rows.findIndex((r) => r.key === "e41"));
-    expect(line(v, 41)).toMatchObject({ what: "Denied: Edit src/e20.ts", reason: "cancel" });
+    expect(line(v, 41)).toMatchObject({ who: "Ask cancelled", what: "Edit src/e20.ts", reason: "the turn was stopped" }); // S156
     expect(v.openAsks).toEqual([]);
   });
   it("ac4_a_failed_read_retries_three_times_then_fails_closed", async () => {
