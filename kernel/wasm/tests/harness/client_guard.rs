@@ -37,6 +37,22 @@ fn main() {
     assert_eq!(arming_requests(&failure), 0);
     assert_eq!(call("timer-probe.drain-owed").value, json!(true));
 
+    let read = |session| {
+        harness
+            .call(
+                "sessions.read",
+                json!({"session":session,"after":0,"before":null,"max":1}),
+            )
+            .unwrap()
+    };
+    assert!(read("missing").value.get("err").is_some());
+    assert_eq!(call("timer-probe.drain-owed").value, json!(true));
+    let success = read("read-probe");
+    assert!(success.value.get("ok").is_some());
+    assert_eq!(arming_requests(&success), 1);
+    assert_eq!(call("timer-probe.drain-owed").value, json!(false));
+
+    call("timer-probe.seed-drain-owed");
     // Profiles itself is read-only, so its drain and timer request come from run_client.
     assert_eq!(arming_requests(&call("sessions.profiles")), 1);
     assert_eq!(call("timer-probe.drain-owed").value, json!(false));

@@ -434,3 +434,85 @@ fn interrupt_with_replacement_relaunches_while_waiting_for_consent() {
     k.provider_ended(&original).unwrap();
     assert_eq!(Record::load(&mut k.state, &id).unwrap(), rec);
 }
+
+#[test]
+fn ac1_native_initialization_advances_the_cursor_and_stop_interrupts() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+        .unwrap()
+        .value;
+    let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    let key = format!("stream/{stream}");
+    k.provider_item(
+        &stream,
+        agent_kernel::ProviderEvent::Consent(Some(WHAT.into())),
+    )
+    .unwrap();
+    k.provider_item(
+        &stream,
+        agent_kernel::ProviderEvent::Workspace(FOLDER.into()),
+    )
+    .unwrap();
+
+    let stored: serde_json::Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
+    assert_eq!(stored["last"], 2);
+    assert_eq!(stored["launching"], false);
+    assert!(stored.get("consent").is_none());
+    k.interrupt("page", &id, None).unwrap();
+    assert!(Record::load(&mut k.state, &id)
+        .unwrap()
+        .streams
+        .contains(&stream));
+}
+
+#[test]
+fn ac2_stale_consent_does_not_cancel_an_initialized_or_legacy_stream() {
+    for (marker, last) in [(None, 0), (None, 1), (Some(false), 0), (Some(false), 1)] {
+        let mut k = Kernel::new(MemState::default(), FakeHost::default());
+        let id = k
+            .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+            .unwrap()
+            .value;
+        let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+        let mut stored = json!({"session": id, "kind": "provider", "last": last, "consent": WHAT});
+        if let Some(marker) = marker {
+            stored["launching"] = json!(marker);
+        }
+        k.state
+            .put(
+                &format!("stream/{stream}"),
+                serde_json::to_vec(&stored).unwrap(),
+            )
+            .unwrap();
+        k.host.calls.clear();
+
+        k.interrupt("page", &id, None).unwrap();
+
+        assert!(k.host.calls.iter().any(|call| matches!(call,
+            HostCall::Request(agent_kernel::Request::Interrupt { stream: sent, .. }) if sent == &stream
+        )));
+        assert!(Record::load(&mut k.state, &id)
+            .unwrap()
+            .streams
+            .contains(&stream));
+    }
+}
+
+#[test]
+fn ac3_native_read_leaves_owed_work_for_the_client_wrapper() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start("page", "first", "scratch", "{}", "hello")
+        .unwrap()
+        .value;
+    let mut slots = agent_kernel::active::Slots::load(&mut k.state);
+    slots.drain_owed = true;
+    slots.save(&mut k.state).unwrap();
+
+    assert!(k.read("outsider", &id, 0, None, 1).is_err());
+    k.read("page", &id, 0, None, 1).unwrap();
+    assert!(agent_kernel::active::Slots::load(&mut k.state).drain_owed);
+    k.drain_owed();
+    assert!(!agent_kernel::active::Slots::load(&mut k.state).drain_owed);
+}
