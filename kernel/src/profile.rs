@@ -753,7 +753,9 @@ fn frontmatter_problem(text: &str) -> Option<String> {
     else {
         return Some("frontmatter must start with --- and a newline at byte 0".into());
     };
+    const MAX_DESCRIPTION: usize = 1024;
     let mut seen: Vec<&str> = Vec::new();
+    let mut description_len = 0;
     for raw in body.split('\n') {
         let line = raw.strip_suffix('\r').unwrap_or(raw);
         if line == "---" {
@@ -768,19 +770,33 @@ fn frontmatter_problem(text: &str) -> Option<String> {
             if line.contains(':') {
                 return Some(format!("frontmatter continuation line {line:?} has a ':'"));
             }
-            continue;
-        }
-        let key = ["name", "description"]
-            .into_iter()
-            .find(|k| line.strip_prefix(k).is_some_and(|r| r.starts_with(':')));
-        match key {
-            Some(k) if !seen.contains(&k) => seen.push(k),
-            Some(k) => return Some(format!("frontmatter key {k:?} appears twice")),
-            None => {
-                return Some(format!(
-                    "frontmatter line {line:?}: only name and description are allowed"
-                ))
+            if seen.last() == Some(&"description") {
+                description_len += 1 + line.trim().len();
             }
+        } else {
+            let key = ["name", "description"]
+                .into_iter()
+                .find(|k| line.strip_prefix(k).is_some_and(|r| r.starts_with(':')));
+            match key {
+                Some(k) if !seen.contains(&k) => {
+                    seen.push(k);
+                    if let Some(value) = line.strip_prefix("description:") {
+                        description_len = value.trim().len();
+                    }
+                }
+                Some(k) => return Some(format!("frontmatter key {k:?} appears twice")),
+                None => {
+                    return Some(format!(
+                        "frontmatter line {line:?}: only name and description are allowed"
+                    ))
+                }
+            }
+        }
+        // The grammar allows only printable ASCII, so bytes count characters here.
+        if description_len > MAX_DESCRIPTION {
+            return Some(format!(
+                "frontmatter description exceeds {MAX_DESCRIPTION} characters"
+            ));
         }
     }
     None

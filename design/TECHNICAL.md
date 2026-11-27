@@ -429,7 +429,9 @@ any case and any folder. Frontmatter starts with `---` and a newline at
 byte 0 (leading white space or a byte order mark before `---` is refused). It
 ends at a line `---`. Its keys are `name` and `description`, each once; an
 indented line continues the key above it and may not contain `:`; any other line is refused. Every
-character is printable ASCII (space to `~`). Each refusal names its reason.
+character is printable ASCII (space to `~`). A description has at most
+1,024 characters before escaping. Trim the value and each continuation
+and count one space between them. Each refusal names its reason.
 
 ### 4.2 Grants and tools
 
@@ -2292,7 +2294,8 @@ without reading the file. The rendered listing is part of the loop state.
 A skill accepted at check time can still exceed the Responses body budget
 (9.5). JSON escaping can expand the file contents, and the next request
 also carries the listing and wire history. An oversized request follows
-the loop's existing trimming and `too-large` rules.
+the loop's existing trimming rules. A skill whose escaped body alone
+exceeds the budget cannot be loaded. Its call ends the turn `too-large`.
 
 ## 12. Errors
 
@@ -2328,6 +2331,7 @@ Each error also carries a message that names the cause (F-QUAL-3).
 | SSE parsing | `sse-stream` | host (H3) |
 | MCP types in a mod | `tower-mcp-types` | kernel, if it reads MCP shapes |
 | URL parsing (WHATWG) | `url` | kernel: the `WebFetch` scope key (9.6) |
+| SHA-256 digest | `sha2` | kernel: skill revisions (9.7, 11) |
 | JSON Schema check | to choose at build time, must build for wasm32-wasip2 | kernel |
 
 Ported, not depended on (each with its licence noted in the file): the
@@ -2900,6 +2904,19 @@ machine. A stage is done only within its budgets.
   step, and 274,851 and 285,769 bytes per child step. Both series stayed
   within the 4 MiB and 10% budgets. Page-level Stage F budgets have the same
   limit as the S134 measurement.
+
+- **Stage F near-limit child admission** (S148 r2, 2026-11-27,
+  Linux 6.18.57 x86-64, AMD EPYC 9V74, five visible CPUs with a four-CPU
+  quota, fake host). On a fresh root, dispatching one `task` to a delegate
+  with an ASCII `SKILL.md` at the 1 MiB skill limit (file name plus body)
+  read 1,056,376 bytes and wrote 1,053,759 bytes, or 2,110,135 bytes per
+  admitted child for that step.
+  `cargo test s148_delegate_skill_admission_state_bytes_at_limit -- --nocapture`
+  in `kernel/` records this cost. Each admission reads the delegate
+  profile and writes the child's own snapshot. Multiple near-limit
+  admissions in one root step can exceed 4 MiB. The deputy accepted this
+  admission cost as a known limit. The skill lookup series above measures
+  admissions whose child snapshots are small.
 
 - **Stage D** (S128 r1, 2026-11-25, Linux 6.18.57 x86-64, 5 visible CPUs
   with a 4-CPU quota, load average 4.20/2.81/2.24, Watane `548b4e1b` with the

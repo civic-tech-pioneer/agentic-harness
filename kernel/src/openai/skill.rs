@@ -144,13 +144,12 @@ pub(crate) fn save(
     }
     let mut index = Vec::new();
     let too_large = |err: crate::state::TooLarge| KernelError::TooLarge(err.0 as u64);
-    for skill in skills {
-        let digest = revision(&skill).expect("compiled OpenAI skill has SKILL.md");
+    for mut skill in skills {
         let md = skill
             .files
-            .into_values()
-            .next()
-            .expect("compiled OpenAI skill has one file");
+            .remove("SKILL.md")
+            .expect("compiled OpenAI skill has SKILL.md");
+        let digest = Sha256::digest(md.as_bytes());
         state
             .put(&file_key(id, &skill.name), md.into_bytes())
             .map_err(too_large)?;
