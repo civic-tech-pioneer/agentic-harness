@@ -3008,7 +3008,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut slots = self.begin()?;
         let rec = self.read_session(caller, session, &mut slots)?;
         let mut meta = rec.meta();
-        Transcript::new(&mut self.state, &rec.id, &mut meta).read(after, before, max)
+        let page = Transcript::new(&mut self.state, &rec.id, &mut meta).read(after, before, max)?;
+        if slots.drain_owed {
+            self.drain_owed();
+        }
+        Ok(page)
     }
 
     pub fn rename(&mut self, caller: &str, session: &str, title: &str) -> Result<(), KernelError> {
@@ -3242,7 +3246,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// nothing; an id of an older boot is no different to the code, and reaches it only if the
     /// host breaks R1 (items come on streams of this boot). When the session's live owner stream is full, the call is
     /// dropped whole and answers `Defer` (3, "Deferred batch"). This native entry point
-    /// assigns the next sequence number; the host supplies its own to `provider_batch`.
+    /// gives launch facts the next cursor. Ordinary native events are unnumbered, so a
+    /// delta-only item still writes nothing (9.4, P09). The host supplies its own batch sequence.
     pub fn provider_item(
         &mut self,
         stream: &str,
@@ -3262,8 +3267,16 @@ impl<S: State, H: Host> Kernel<S, H> {
                 pushes: Vec::new(),
             });
         };
-        let seq = key.last.saturating_add(1);
-        self.take_provider_events(stream, key, vec![(seq, event)])
+        if matches!(
+            &event,
+            ProviderEvent::Consent(_) | ProviderEvent::Workspace(_)
+        ) {
+            let seq = key.last.saturating_add(1);
+            return self.take_provider_events(stream, key, vec![(seq, event)]);
+        }
+        self.hold();
+        let step = self.item_step(stream, &key.session, event);
+        self.finish_items(step)
     }
 
     /// `stream-sink.ended` of a provider stream: it cannot defer, so it is applied in full (asks

@@ -409,6 +409,8 @@ fn fix1_an_early_timer_firing_after_a_restart_at_the_ceiling() {
     super::initialized(&mut k, "t1");
     k.attach("alice", &id, 0).unwrap();
     k.provider_item("t1", ask("a1")).unwrap();
+    // Closing both asks still grows state after freeing the initialized stream key.
+    k.provider_item("t1", ask("a2")).unwrap();
     let mut r = rec(&mut k, &id);
     r.deadlines.push(Deadline {
         what: "idle".into(),
@@ -422,6 +424,10 @@ fn fix1_an_early_timer_firing_after_a_restart_at_the_ceiling() {
     let r = rec(&mut k, &id);
     assert_eq!(r.boot, 2);
     assert!(matches!(r.turn, Turn::Unknown));
-    assert!(held(&k, false) > b.3, "the step wrote past the ceiling");
+    assert!(
+        held(&k, false) > b.3,
+        "the step wrote past the ceiling: {} bytes net",
+        held(&k, false) - b.3
+    );
     charged(&mut k, "alice", &id, &b);
 }
