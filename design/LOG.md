@@ -4,6 +4,26 @@ A record (`AGENTS.md`, "Contracts and records"): why the contracts changed, newe
 project has not run `spec-adopt` yet, so its config has only the older `spec = [...]` list and no
 `spec-lint`; entries cite sections, not ids.
 
+## 2026-11-27: S151, factory profiles (stage F design)
+
+The sketch (Deputy Paper): settle who writes a client mod's role profiles and its
+`access/<identity>`, with whose consent; absent entries stay denied; a requesting mod never
+provisions itself. N5 answered (a) by the human (PLAN, Human answers, 2026-11-27).
+
+- FUNCTIONAL: term "profile access"; AGT-F-1 and AGT-F-2 extended; AGT-F-56 (the participant
+  allows one version of one profile for one client, confirmed in the app, words named) and
+  AGT-F-57 (shown and withdrawn in the kernel's page; withdrawal ends running turns); J11
+  names the app's question; new journey AGT-J7 (the factory gets its profiles).
+- TECHNICAL: new 9.10 (one writer, `manage`, callable only by `page`; `clients` listed by a
+  client's own call; pinned entries `{profile, digest}`; the question through a proposed host
+  request `agent-access.ask`; the reach text; withdrawal in batches of 16; profiles and their
+  index; offers by collect with no source, adoption and stale). 2.1, 2.3, 8, 9.1, 9.3, 9.7
+  "Revoking", 12, 14 (new row, the console row and "Not protected"), 15 (three watane rows,
+  proposed, not accepted), 16 cases 78–85, 17 (stage F row, slices F-P1 to F-P3), 18.1.
+- N5 recorded as answered in VISION, FUNCTIONAL, TECHNICAL and AGENTS.md.
+- Open for the human: the consent-boundary changes and the proposed watane rows (the PR body
+  lists them, with the Door C choices for the deputy).
+
 ## 2026-11-26: page timer origin under D001
 
 The human: "a page-owned session's timer firing carries its owner's authority when it reads the kernel's own installed identity (its origin client, TECHNICAL 8); every other owner stays strict, and a non-page owner's fallback to the kernel identity is still refused."

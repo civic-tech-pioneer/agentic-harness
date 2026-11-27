@@ -12,8 +12,8 @@ more than they give.
 Ids in `Traces:` refer to `spec/FUNCTIONAL.md`, to the rows this file
 proposes for it (section 2), and to this file's own `AGT-F` ids. `N<n>`
 refers to the open points of the proposal (section 15), which the human
-answered on 2026-11-20 (N11 of section 5 too) except N5 (decided at stage
-F); a build slice that depends on N5 waits. An `AGT-F` id
+answered on 2026-11-20 (N11 of section 5 too); N5 was answered on
+2026-11-27: (a), the Claude grant with shell and web. An `AGT-F` id
 never changes; a new requirement takes the next free number, in the section
 where it belongs.
 
@@ -26,7 +26,8 @@ where it belongs.
 | backend | What runs the agent: Claude Code (the participant's `claude` program) or OpenAI (the participant's ChatGPT plan). |
 | profile | A named, complete setting of an agent: instructions, model, tools, permissions, skills, subagents, limits and output format. The participant makes it. |
 | overlay | A change that a client asks for when it starts a session. It can only narrow the profile. |
-| offer | A skill or a profile that a mod proposes. It has no effect until the participant adopts it. |
+| offer | A skill or a profile that a mod proposes. It has no effect until the participant adopts it, and adopting it gives no mod the right to use it. |
+| profile access | The participant's permission for one client to start sessions with one version of one profile. Only the participant gives it, in the kernel's own page, and confirms it in the app (AGT-F-56). |
 | skill | Instructions, and the files they need, that an agent can load when it needs them. |
 | child session | An OpenAI kernel session an OpenAI root starts for part of its task. It belongs to the root's client. |
 | live child | A child session whose delegation is still outstanding: the root has not yet received its outcome. The profile field `subagent-limits` caps live children (`TECHNICAL.md` 9.2); despite its name it does not limit Claude subagents. |
@@ -60,8 +61,8 @@ where it belongs.
 
 ### 3.1 Profiles and offers
 
-- **AGT-F-1** The kernel shall let only the participant, in the kernel's own page, create, change and delete profiles, and say which client may start a root session with which profile. The participant sets the profiles an OpenAI root may delegate to (AGT-F-37). Traces: F-AGENT-8, F-RUN-5.
-- **AGT-F-2** When a mod offers a skill or a profile, the kernel shall show its content to the participant and use it only after the participant adopts it. If the offered content changes, then the kernel shall stop using it until the participant adopts it again. Traces: F-AGENT-8, F-AGENT-4.
+- **AGT-F-1** The kernel shall let only the participant, in the kernel's own page, create, change and delete profiles, and say which client may start a root session with which profile (AGT-F-56). No client shall write a profile or a profile access, its own or another's. The participant sets the profiles an OpenAI root may delegate to (AGT-F-37). Traces: F-AGENT-8, F-RUN-5.
+- **AGT-F-2** When a mod offers a skill or a profile, the kernel shall show its content to the participant and use it only after the participant adopts it. If the offered content changes, then the kernel shall stop using it until the participant adopts it again. The kernel shall not name a mod as an offer's source, since watane does not say which mod answered. Adopting a profile gives no client access to it (AGT-F-56). Traces: F-AGENT-8, F-AGENT-4.
 - **AGT-F-3** When a client starts a session with an overlay, the kernel shall accept an overlay that appends to the instructions, adds skills, removes tools, adds deny rules or lowers a limit enabled for overlays, and shall refuse one that adds tools, allow rules, workspaces, subagent profiles or a weaker permission mode. Traces: F-AGENT-8.
 - **AGT-F-4** If a backend or a model cannot honour a field that a profile sets, then the kernel shall refuse the profile for that backend and model, and name every such field at once. It shall never drop a field. Traces: F-AGENT-8, F-QUAL-3.
 - **AGT-F-5** When a client asks to check a profile and overlay, the kernel shall return the refusals of AGT-F-4 without starting anything. Traces: F-AGENT-8.
@@ -112,6 +113,8 @@ where it belongs.
 
 - **AGT-F-28** The host shall ask the participant in the app before an origin client's agents first use a folder, the ChatGPT plan or a toolset. The question shall name the origin client, and for a folder the profile and the provider. No call shall wait for the answer. Traces: F-AGENT-7, F-AGENT-4, F-RUN-7.
 - **AGT-F-29** The app shall show these consents with the grants, and the participant shall withdraw each one. When one is withdrawn, the host shall end every session stream that depends on it. Traces: F-AGENT-7.
+- **AGT-F-56** A client shall start a session with a profile only after the participant has allowed that client that profile. The participant allows it in the kernel's own page, and the app then asks them. The question shall name the client as watane knows it, the profile, and what the profile can reach: its backend, its tools, whether it can run programs and use the web, what it may do without asking, and its toolsets and delegates. The permission shall hold for that client and that version of the profile only. If the profile changes, then the kernel shall not start that client's sessions with it until the participant allows the new version. No call shall wait for the answer. A client shall never give itself or another client a profile, and a client the participant never allowed shall be refused, its first-run console default (`scratch`) aside. Traces: F-AGENT-8, F-AGENT-4, F-AGENT-7.
+- **AGT-F-57** The kernel's own page shall show, for each client, the profiles it may use and the questions still open, and the participant shall withdraw each permission there. When one is withdrawn, the kernel shall refuse that client new work with that profile and end its running turns with it. Traces: F-AGENT-7, AGT-F-29.
 - **AGT-F-30** The plan of a mod whose calls reach a Claude Code grant shall say "Uses Claude Code through {provider}". Traces: F-INST-1, F-AGENT-7.
 - **AGT-F-31** A preview shall refuse the Claude Code grants and the ChatGPT plan; the maker tools shall offer a fake `claude` and a scripted OpenAI stream instead. Traces: F-MAKE-4.
 
@@ -157,7 +160,9 @@ by nothing else.
 Alice installs Notes and the agent kernel. The plan of Notes says it uses
 agents; the plan of the Claude Code provider says it starts Claude Code with
 her account, unchecked. In the kernel's page she makes a profile "Tidy":
-Sonnet, file tools, no shell, her own instructions, and lets Notes use it.
+Sonnet, file tools, no shell, her own instructions, and lets Notes use it;
+the app asks her once whether Notes may start agents with "Tidy", and names
+what "Tidy" can reach.
 She asks Notes to tidy her notes folder. The app asks whether Notes may have
 agents work in that folder with "Tidy" through the provider; she agrees. The
 agent's text streams into Notes as it works. The agent asks to delete a file;
@@ -204,6 +209,29 @@ profile is refused and a child cannot start a grandchild. Alice sees both
 children in the parent's transcript through her client. Alice cancels the
 product owner's session while the children are live, and both stop.
 
+### AGT-J7: The factory gets its profiles
+
+Alice installs the factory mod. Its page lists no profile it may use, says
+that she gives it profiles in the agent kernel's page, and links there. The
+factory offers two profiles, "implementer" (Claude, file tools, shell and
+web in Claude's sandbox) and "reviewer" (ChatGPT, no tools). In the
+kernel's page she reads both offers, which name no source, and adopts them.
+Nothing changes for the factory: it still lists no profile. She lets the
+factory use "implementer"; the app asks "Let Factory start agents with the
+profile "implementer"?" and lists what it can reach, and she agrees. She
+refuses "reviewer" for now. The factory lists "implementer" alone and starts
+the implementer in her checkout; its start of "reviewer" is refused. She
+edits "implementer" to add a deny rule. The running implementer keeps the
+version she allowed; the factory's next start with it is refused until she
+allows the new version. She allows it, and the app asks again; from then on
+the implementer started before gets no more work, and the factory starts a
+new one. The factory updates and
+changes its offer; the kernel's page shows the change, and new sessions of
+the adopted profile are refused until she adopts it again. She withdraws the
+factory's "implementer" in the kernel's page; the implementer's turn stops
+and its next input is refused. At no step did the factory, or an agent,
+write a profile or a permission.
+
 ### AGT-J6: Watching a session in the console
 
 Alice opens the agent kernel's page. She starts a session with "Tidy" on
@@ -223,7 +251,8 @@ same transcript shows, and the turn's state is the kernel's.
   decided; `TECHNICAL.md` section 9.2).
 - A worktree workspace for agents working in parallel (the factory).
 - A wait that the host holds for agents that drive sessions over MCP.
-- Codex as a third backend (N5, open until stage F).
+- Codex as a third backend (N5 answered (a) on 2026-11-27: not planned
+  unless the human reopens it).
 - File undo.
 - In the console, past its first target: a board of many sessions and their
   children; one review of all edits of a turn; fork and rewind; a message

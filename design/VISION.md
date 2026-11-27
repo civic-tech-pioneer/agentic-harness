@@ -6,9 +6,9 @@ Why this mod exists and what comes first. With `FUNCTIONAL.md` (what) and
 lower one is fixed. The human answered the open points of
 `ARCHITECTURE-PROPOSAL.md` (section 15, `N<n>`) on 2026-11-20, and each
 answer is a rule where its fact lives, as is N11 (`FUNCTIONAL.md` section
-5). One remains open: N5 (the factory's implementer, decided at stage F,
-`TECHNICAL.md` section 17). A build slice that depends on it waits for the
-answer. `AGENTS.md` says which
+5). The last, N5 (the factory's implementer), the human answered on
+2026-11-27: (a), the Claude grant with shell and web (`TECHNICAL.md`
+section 17). `AGENTS.md` says which
 files are contracts and which are records.
 
 The layer lives in this repository, the kernel `mods:agent` with its console.
@@ -131,7 +131,8 @@ three reasons:
 - The participant sees, in the app, every folder, account and toolset a mod's
   agents can reach, and withdraws each one.
 - The factory's roles (product owner, foreman, validator) run as sessions of
-  mods in the host (N5 decides the implementer).
+  mods in the host (N5, answered (a): the implementer is a Claude session
+  with shell and web).
 - The console matches the canvas target, built on the client interface alone.
   In it the human has watched every journey of `FUNCTIONAL.md` on the real
   programs.
