@@ -64,6 +64,27 @@ export function claudeGaps(stamps, other, from, to) {
   return maxima;
 }
 
+export function claudeSpacingReport(fake, wrapper, from, to, rate, times) {
+  const lines = ["Claude spacing maxima"];
+  for (const [stage, opposite, stamps, other] of [
+    ["fake stdout", "wrapper stdout", fake, wrapper],
+    ["wrapper stdout", "fake stdout", wrapper, fake],
+  ]) {
+    const maxima = claudeGaps(stamps, other, from, to);
+    for (const [kind, perSecond] of [["delta", rate.deltas], ["entry", rate.entries]]) {
+      const gap = maxima[kind];
+      const limit = times * 1000 / perSecond;
+      if (!gap) {
+        lines.push(`${stage} ${kind}: no consecutive stamps (limit ${limit} ms)`);
+        continue;
+      }
+      const parallel = gap.otherMs === null ? `missing stamps at ${opposite}` : `${gap.otherMs} ms at ${opposite}`;
+      lines.push(`${stage} ${kind} ${gap.ms} ms (${gap.ms > limit ? "over " : ""}limit ${limit} ms), ${gap.before} to ${gap.after}, ${parallel}`);
+    }
+  }
+  return lines.join(" | ");
+}
+
 export const ITEM_DELAY_MS = 100;
 // Only the final paced step can be cut. Allow one grid interval plus the same
 // scheduling slack as the cadence check between its first write and durable Stop.
