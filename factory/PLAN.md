@@ -27,7 +27,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
-S152 (upkeep, console, Codex build); S148 (stage F, `skill` on OpenAI, Codex build; r1 Claude routine `trig_01PLJdyL1p91vuV9bhofPZ2V` 06:41 UTC; r1: 1/8, adversary HELD, F1.1 stands (fix (a), skill snapshot out of loop/<id>), P1.2 to Upkeep, three risks accepted; answer r1 into the Codex task 07:03 UTC); S138, S142, S144, S145 merged.
+S152 (upkeep, console, Codex build; PR #68 at fa7784b3 07:17 UTC, CI gate red on replaced_S36_3 (passed in its own gate), rerun once 07:52 UTC); S148 (stage F, `skill` on OpenAI, Codex build; r1 Claude routine `trig_01PLJdyL1p91vuV9bhofPZ2V` 06:41 UTC; r1: 1/8, adversary HELD, F1.1 stands (fix (a), skill snapshot out of loop/<id>), P1.2 to Upkeep, three risks accepted; answer r1 into the Codex task 07:03 UTC; answers 5bbdd14a; r2 (07:29): 2/4, changes, F1.1 again on two paths (stalled area, cut by the deputy at r2: F2.1 a 1024-char description bound at check, F2.2 accepted as a stated per-child cost, risks accepted); answer r2 into the Codex task 07:47 UTC); S138, S142, S144, S145 merged.
 
 ## Sketched
 ### S152 (upkeep) the console's guards and tests after S145, console/ only
