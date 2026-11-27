@@ -1,6 +1,6 @@
 // TECHNICAL 18.4-18.6: the dock's Needs you pill, plan fold, composer, Stop and footer.
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emptyView, type Actions, type SessionView } from "../kit";
 import { Dock } from "./Dock";
@@ -52,6 +52,12 @@ describe("Dock", () => {
     const actions = dock(V({ turn: { state: "waiting", asks: [], expiresAt: 1 } as SessionView["turn"] }));
     await userEvent.setup().click(screen.getByRole("button", { name: "Stop" }));
     expect(actions.stop).toHaveBeenCalled();
+  });
+
+  it("ac1_escape_does_not_dispatch_stop_while_loading", () => {
+    const actions = dock(V({ loading: true }));
+    fireEvent.keyDown(box(), { key: "Escape" });
+    expect(actions.stop).not.toHaveBeenCalled();
   });
 
   it("ac5_stopping_label", () => {
