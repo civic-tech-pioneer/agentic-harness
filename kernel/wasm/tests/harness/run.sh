@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The Harness exposes client calls and subscriptions. Add an adapter to the disposable
 # component so the contract steps can invoke the production host-only timer callback.
+# WATANE_SRC locates the Watane source checkout for the Harness request assertions.
 set -euo pipefail
 kernel=$(cd "$(dirname "$0")/../../.." && pwd)
 watane=$(cd "${WATANE_SRC:-$kernel/../../watane}" && pwd)
@@ -18,6 +19,9 @@ cat >"$tmp/kernel/wasm/wit/deps/s153-client/world.wit" <<'WIT'
 package mods:s153-client@0.1.0;
 interface events {
   client-profiles: func();
+}
+world s153-client {
+  import events;
 }
 WIT
 python3 - "$tmp/kernel/wasm/wit/world.wit" "$tmp/kernel/wasm/deps.json" <<'PY'
