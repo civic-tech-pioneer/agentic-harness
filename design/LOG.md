@@ -40,6 +40,13 @@ provisions itself. N5 answered (a) by the human (PLAN, Human answers, 2026-11-27
   restore revives on purpose; offers: changed, gone, unchanged, and AGT-J7 reordered; manager
   responses metadata only, 256 KiB; 17 separates AGT-J7 on the fakes from JF1-2's real start
   and its waits (shell provider path and grant, V27).
+- The adversary on the r1 design (BREACHED 3): a loopback client could hold the one `manage`
+  question slot (now the latest caller wins, with a pairing code, and `manage.close`); a reused
+  `local/<slug>` identity against AGT-F-56 (AGT-F-56 now says a client is its watane identity,
+  the limit in 14); a later `allow` cancelled a withdrawal (now a session-id cutoff). Its risks
+  closed in the text: connection ids made and bound by the host, R1 and `ended` deletions
+  named in "One writer", delegates and skills, duplicate keys, offer order and crowding, the
+  same-origin console in "Not protected".
 
 ## 2026-11-26: page timer origin under D001
 
