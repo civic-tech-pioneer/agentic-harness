@@ -31,6 +31,16 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## Sketched
 
+### S166: kernel guard and core upkeep (upkeep lane)
+
+Sketched 2026-11-28 by Deputy Scissors. Builder codex by rule 3 (last two handed out: agentic-harness S165 codex, watane-factory JF1-1 claude); reviewer claude. Not yet dispatched.
+
+Issues, guards first: #133 (an OpenAI `Name(arg)` rule, path arguments included, is refused at the profile check naming its field, AGT-F-4; the tests in #133 and its comment), then core: #117 (an interrupt before `initialized` cancels the launch; Escape during Loading), #114 (case 22's idempotent half), then console polish where cheap: #124, #116, #111, #110, #104. The build team closes an issue already fixed on `main` with its commit; the PR body says `Fixes #n` for each other one.
+
+Outcomes: each issue's check (its test, red before the fix); `factory/gate.sh` and CI green; with #133, TECHNICAL 9.6 (:1784) and 11's OpenAI `allow`/`deny`/`ask` cells say what the code now does, and 14 "Not protected" drops the #133 gap.
+
+Touches: `kernel/`, `console/`, and in `design/TECHNICAL.md` only 9.6, 11 and 14's #133 lines. Constraints: no WIT or kernel interface change beyond the refusal #133 names (a refusal is the AGT-F-4 contract already); a weaker boundary is not this slice's (`BLOCKED`). Protects: *guard* (#133), *core* (#117, #114), *polish* (the rest). Upkeep is exempt from the size rule. spec-check not run: the only spec lines it touches are the ones S165 just reconciled.
+
 ### Stage B carry list (folded into stage B's end-to-end slices, never a slice of its own)
 
 - S34 RISK 1: write keys for build and config files beyond the list (`Cargo.toml`, `conftest.py`,
