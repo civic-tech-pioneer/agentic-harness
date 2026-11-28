@@ -651,7 +651,9 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
 /// OpenAI matches tool names only. Refuse every argument rule before compilation.
 pub(crate) fn openai_rule_problem(rule: &str) -> Option<String> {
     if rule.contains('(') {
-        return Some(format!("rule {rule:?}: an argument rule is refused on openai"));
+        return Some(format!(
+            "rule {rule:?}: an argument rule is refused on openai"
+        ));
     }
     let (head, rest) = match rule.find('(') {
         Some(i) => rule.split_at(i),
