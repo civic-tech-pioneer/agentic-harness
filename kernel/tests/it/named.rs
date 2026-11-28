@@ -145,5 +145,23 @@ fn regress_s40_7_a_path_rule_on_openai_is_named_once() {
         r#"{"backend":"openai","model":"gpt-5","tools":["Read","Edit"],"allow":["Read(/tmp/**)"]}"#;
     let mut k = kernel(&[("access/page", r#"["Tidy"]"#), ("profile/Tidy", tidy)]);
     let rs = k.check_named("page", "Tidy", "{}");
-    assert_eq!(fields(&rs), ["tools", "allow"], "{rs:?}");
+    assert_eq!(fields(&rs), ["allow", "tools"], "{rs:?}");
+}
+
+#[test]
+fn regress_s165_openai_arg_rule_is_refused() {
+    let mut k = kernel(&[("access/page", r#"["p"]"#), ("profile/p", r#"{"backend":"openai","model":"gpt-5","allow":["skill"],"deny":["skill(secret)"]}"#)]);
+    assert_eq!(fields(&k.check_named("page", "p", "{}")), ["deny"]);
+}
+
+#[test]
+fn adv_s165_openai_path_rule_on_tool_name_is_refused() {
+    let mut k = kernel(&[("access/page", r#"["p"]"#), ("profile/p", r#"{"backend":"openai","model":"gpt-5","deny":["notes_read(/secret/*)"]}"#)]);
+    assert_eq!(fields(&k.check_named("page", "p", "{}")), ["deny"]);
+}
+
+#[test]
+fn adv_s165_openai_dotdot_rule_is_refused() {
+    let mut k = kernel(&[("access/page", r#"["p"]"#), ("profile/p", r#"{"backend":"openai","model":"gpt-5","allow":["notes_read(..)"]}"#)]);
+    assert_eq!(fields(&k.check_named("page", "p", "{}")), ["allow"]);
 }
