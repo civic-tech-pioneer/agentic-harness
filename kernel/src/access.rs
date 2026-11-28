@@ -65,7 +65,22 @@ pub fn index(state: &mut impl State) -> Vec<ProfileIndexEntry> {
     state
         .get("profiles")
         .and_then(|raw| serde_json::from_slice::<Vec<ProfileIndexEntry>>(&raw).ok())
-        .filter(|rows| rows.len() <= 256)
+        .filter(|rows| {
+            let mut names = HashSet::new();
+            rows.len() <= 256
+                && rows.iter().all(|row| {
+                    !row.name.is_empty()
+                        && row.name.len() <= 64
+                        && row
+                            .name
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+                        && names.insert(&row.name)
+                        && valid_digest(&row.digest)
+                        && row.rev > 0
+                        && row.bytes <= 1_048_576
+                })
+        })
         .unwrap_or_default()
 }
 
