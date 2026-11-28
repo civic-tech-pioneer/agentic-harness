@@ -145,7 +145,7 @@ fn regress_s40_7_a_path_rule_on_openai_is_named_once() {
         r#"{"backend":"openai","model":"gpt-5","tools":["Read","Edit"],"allow":["Read(/tmp/**)"]}"#;
     let mut k = kernel(&[("access/page", r#"["Tidy"]"#), ("profile/Tidy", tidy)]);
     let rs = k.check_named("page", "Tidy", "{}");
-    assert_eq!(fields(&rs), ["allow", "tools"], "{rs:?}");
+    assert_eq!(fields(&rs), ["tools", "allow"], "{rs:?}");
 }
 
 #[test]
