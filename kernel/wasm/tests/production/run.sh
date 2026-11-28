@@ -32,6 +32,7 @@ edition = "2024"
 blake3 = "1"
 redb = "4.5"
 serde_json = "1"
+sha2 = "0.10"
 tempfile = "3"
 """)
 for name in ("dev", "host"):

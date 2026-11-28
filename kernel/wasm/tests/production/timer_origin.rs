@@ -1,9 +1,9 @@
 //! Slow S138 check. Only a real Watane scheduler and the kernel component exercise
 //! the production timer import and the host's disabled-owner fallback together.
 
-use agent_kernel::access::{digest, AccessEntry, ProfileIndexEntry};
 use redb::{Database, TableDefinition};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -35,23 +35,9 @@ fn seed_profile(home: &Path) {
             .open_table(TableDefinition::<&str, &[u8]>::new(&name))
             .unwrap();
         let profile: &[u8] = br#"{"backend":"openai","model":"gpt-5"}"#;
-        let hash = digest(profile);
-        let access = serde_json::to_vec(&vec![AccessEntry {
-            profile: "fixture".into(),
-            digest: hash.clone(),
-            rev: 1,
-        }])
-        .unwrap();
-        let index = serde_json::to_vec(&vec![ProfileIndexEntry {
-            name: "fixture".into(),
-            digest: hash,
-            rev: 1,
-            bytes: profile.len() as u32,
-            offer: None,
-            stale: false,
-            gone: false,
-        }])
-        .unwrap();
+        let hash = format!("{:x}", Sha256::digest(profile));
+        let access = serde_json::to_vec(&json!([{"profile":"fixture","digest":hash,"rev":1}])).unwrap();
+        let index = serde_json::to_vec(&json!([{"name":"fixture","digest":hash,"rev":1,"bytes":profile.len()}])).unwrap();
         state.insert("profile/fixture", profile).unwrap();
         state
             .insert("access/local/echo", access.as_slice())
