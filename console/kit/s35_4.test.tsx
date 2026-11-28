@@ -114,7 +114,7 @@ describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
     ["mismatch(tools)", "tools"],
     ["no-app", "app is unavailable"],
     ["no-account", "account is unavailable"],
-    ["consent-refused(account:openai)", "Consent was refused"],
+    ["consent-refused(account:openai)", "Consent was refused for the OpenAI account"],
     ["idle-timeout", "timed out"],
     ["lagging", "fell behind"],
     ["consumer-failed", "reader failed"],
