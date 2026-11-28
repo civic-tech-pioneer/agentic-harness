@@ -801,7 +801,8 @@ fn ac11_the_bounds_hold() {
             "quota",
             "quota/alice",
             "session/s1",
-            "slots"
+            "slots",
+            "withdrawing"
         ]
     );
     assert_eq!(k.state.counts().puts, 5);

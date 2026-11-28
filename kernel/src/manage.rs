@@ -150,7 +150,7 @@ pub(crate) fn valid_profile_text(text: &str) -> bool {
         return false;
     }
     let (profile, problems) = parse_profile(text);
-    problems.is_empty() && grammar_problems(&profile).is_empty() && reach(text, None).is_ok()
+    problems.is_empty() && grammar_problems(&profile).is_empty()
 }
 /// Parse once while refusing duplicate keys at every depth. A duplicate cannot change what the
 /// manager says the participant allowed when a later parser picks a different occurrence.
@@ -558,7 +558,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     fn names_profile(&mut self, profile: &str, except: Option<&str>) -> bool {
         let mut clients: Vec<String> = read(&mut self.state, "clients").unwrap_or_default();
         clients.push("page".into());
-        clients.into_iter().any(|client| {
+        clients.iter().any(|client| {
             access::entries(&mut self.state, &client)
                 .is_some_and(|entries| entries.iter().any(|e| e.profile == profile))
         }) || pending(&mut self.state)
@@ -573,8 +573,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                     }
                 })
             })
-            || read::<Value>(&mut self.state, "withdrawing")
-                .is_some_and(|v| v.to_string().contains(&format!("\"name\":\"{profile}\"")))
+            || clients
+                .iter()
+                .any(|client| crate::withdraw::has_withdrawing(&mut self.state, client, profile))
     }
     pub fn manage_open(&mut self, caller: &str) -> Result<String, KernelError> {
         let connection = self.connection_for(caller)?;
@@ -678,10 +679,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         if !problems.is_empty() || !grammar_problems(&parsed).is_empty() {
             return Err(refusal("profile", "invalid profile"));
         }
-        let index = access::index(&mut self.state);
+        let index = access::index_checked(&mut self.state)
+            .ok_or_else(|| refusal("profile", "unreadable profile index"))?;
         let old = index.iter().find(|p| p.name == name);
         if old.is_none() && index.len() >= 256 {
             return Err(refusal("name", "256 profiles"));
+        }
+        if old.is_some_and(|p| p.rev == u32::MAX) {
+            return Err(refusal("profile", "version limit reached"));
         }
         let digest = access::digest(profile.as_bytes());
         if old.is_some_and(|p| p.digest == digest) {
@@ -720,7 +725,8 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
     pub fn manage_delete_profile(&mut self, caller: &str, name: &str) -> Result<(), KernelError> {
         self.lease(caller)?;
-        let index = access::index(&mut self.state);
+        let index = access::index_checked(&mut self.state)
+            .ok_or_else(|| refusal("profile", "unreadable profile index"))?;
         let row = index
             .iter()
             .find(|p| p.name == name)
@@ -801,8 +807,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             read::<Pending>(&mut self.state, &format!("access-ask/{id}"))
                 .is_some_and(|q| matches!(q, Pending::Allow { client: c, .. } if c == client))
         });
-        let withdrawing = read::<Value>(&mut self.state, "withdrawing")
-            .is_some_and(|v| v.to_string().contains(&format!("\"client\":\"{client}\"")));
+        let withdrawing = crate::withdraw::has_client_withdrawing(&mut self.state, client);
         if !access::entries(&mut self.state, client)
             .unwrap_or_default()
             .is_empty()
@@ -826,7 +831,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if client != "page" && !clients.contains(&client.to_string()) {
             return Err(refusal("client", "not a client of the kernel"));
         }
-        let index = access::index(&mut self.state);
+        let index = access::index_checked(&mut self.state)
+            .ok_or_else(|| refusal("profile", "unreadable profile index"))?;
         let row = index
             .iter()
             .find(|p| p.name == profile)
@@ -941,14 +947,22 @@ impl<S: State, H: Host> Kernel<S, H> {
                 text,
                 offer,
             } => {
-                let mut index = access::index(&mut self.state);
+                let Some(mut index) = access::index_checked(&mut self.state) else {
+                    return;
+                };
                 let old = index.iter().position(|p| p.name == profile);
                 if old.as_ref().map(|i| index[*i].digest.clone()) != base
                     || (old.is_none() && index.len() >= 256)
                 {
                     return;
                 }
-                let rev = old.map_or(1, |i| index[i].rev.saturating_add(1));
+                let rev = match old {
+                    Some(i) => match index[i].rev.checked_add(1) {
+                        Some(rev) => rev,
+                        None => return,
+                    },
+                    None => 1,
+                };
                 let row = ProfileIndexEntry {
                     name: profile.clone(),
                     digest,
@@ -974,7 +988,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 digest,
                 rev,
             } => {
-                let index = access::index(&mut self.state);
+                let Some(index) = access::index_checked(&mut self.state) else {
+                    return;
+                };
                 if !index
                     .iter()
                     .any(|p| p.name == profile && p.digest == digest && p.rev == rev && !p.stale)
@@ -1015,7 +1031,9 @@ impl<S: State, H: Host> Kernel<S, H> {
                 );
             }
             Pending::Remove { profile, base } => {
-                let mut index = access::index(&mut self.state);
+                let Some(mut index) = access::index_checked(&mut self.state) else {
+                    return;
+                };
                 let Some(i) = index
                     .iter()
                     .position(|p| p.name == profile && p.digest == base)
@@ -1197,5 +1215,33 @@ mod tests {
         assert!(k.state.get("profile/p").is_some());
         k.manage_on_item("t3", &serde_json::json!({"type":"granted"}));
         assert!(k.state.get("profile/p").is_none());
+    }
+    #[test]
+    fn ac2_superseded_allow_reuses_the_reserved_slot() {
+        let mut k = Kernel::new(
+            MemState::new(),
+            FakeHost {
+                connection_id: Some("k1".into()),
+                ..FakeHost::default()
+            },
+        );
+        k.manage_open("page").unwrap();
+        k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
+        k.manage_put_profile("page", "p", r#"{"model":"a"}"#)
+            .unwrap();
+        k.manage_on_item("t2", &serde_json::json!({"type":"granted"}));
+        k.manage_on_ended("t2");
+        k.state.put("clients", br#"["local/c"]"#.to_vec()).unwrap();
+        k.manage_allow("page", "local/c", "p").unwrap();
+        k.manage_put_profile("page", "p", r#"{"model":"b"}"#)
+            .unwrap();
+        k.manage_on_item("t4", &serde_json::json!({"type":"granted"}));
+        k.manage_allow("page", "local/c", "p").unwrap();
+        assert_eq!(pending(&mut k.state), vec!["t4", "t5"]);
+        assert!(k.state.get("access-ask/t3").is_none());
+        k.manage_on_item("t3", &serde_json::json!({"type":"granted"}));
+        assert!(k.state.get("access/local/c").is_none());
+        k.manage_on_item("t5", &serde_json::json!({"type":"granted"}));
+        assert_eq!(access::entries(&mut k.state, "local/c").unwrap()[0].rev, 2);
     }
 }
