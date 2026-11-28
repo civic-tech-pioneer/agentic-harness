@@ -126,13 +126,17 @@ impl<S: State, H: Host> Kernel<S, H> {
             .find(|(o, d)| o.name == offer && d == digest)
             .map(|(o, _)| o.profile)
             .ok_or_else(|| manage::refusal("offer", "no longer offered"))?;
-        let index = access::index(&mut self.state);
+        let index = access::index_checked(&mut self.state)
+            .ok_or_else(|| manage::refusal("profile", "unreadable profile index"))?;
         let old = index.iter().find(|row| row.name == as_name);
         if old.is_some_and(|row| row.offer.as_ref().is_none_or(|link| link.name != offer)) {
             return Err(manage::refusal("as", "profile belongs to another offer"));
         }
         if old.is_none() && index.len() >= 256 {
             return Err(manage::refusal("as", "256 profiles"));
+        }
+        if old.is_some_and(|row| row.rev == u32::MAX) {
+            return Err(manage::refusal("profile", "version limit reached"));
         }
         let mut summary = manage::reach(&text, None)?;
         summary.push_str("\nAdopted from an offer");
@@ -146,6 +150,8 @@ impl<S: State, H: Host> Kernel<S, H> {
                 .and_then(|s| manage::field_digests(&s));
             let fields = manage::changed_fields(previous.as_ref(), &next);
             summary.push_str(&format!("\nChanged: {}", fields.join(", ")));
+        } else {
+            summary.push_str("\nNew profile");
         }
         if summary.len() > 4096 {
             return Err(manage::refusal("profile", "too wide to show"));

@@ -289,4 +289,15 @@ mod tests {
             serde_json::from_slice(&kernel.state.get("clients").unwrap()).unwrap();
         assert_eq!(clients, vec!["local/factory"]);
     }
+    #[test]
+    fn ac3_client_list_stops_at_sixty_four() {
+        let mut kernel = Kernel::new(MemState::new(), FakeHost::default());
+        for n in 0..65 {
+            kernel.profiles(&format!("local/c{n}"));
+        }
+        let clients: Vec<String> =
+            serde_json::from_slice(&kernel.state.get("clients").unwrap()).unwrap();
+        assert_eq!(clients.len(), 64);
+        assert!(!clients.contains(&"local/c64".to_string()));
+    }
 }

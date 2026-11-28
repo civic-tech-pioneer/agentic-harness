@@ -19,6 +19,12 @@ struct ProfileCutoff {
     name: String,
     below: u64,
 }
+fn load_withdrawing(state: &mut impl State) -> Result<Vec<Withdrawal>, ()> {
+    match state.get("withdrawing") {
+        None => Ok(Vec::new()),
+        Some(raw) => serde_json::from_slice(&raw).map_err(|_| ()),
+    }
+}
 
 fn number(id: &str) -> Option<u64> {
     id.strip_prefix('s')?.parse().ok()
@@ -27,20 +33,20 @@ fn cutoff(state: &mut impl State) -> u64 {
     state
         .get("next-id")
         .and_then(|v| std::str::from_utf8(&v).ok()?.parse().ok())
-        .unwrap_or(1)
+        .unwrap_or(u64::MAX)
 }
 
 pub(crate) fn has_withdrawing(state: &mut impl State, client: &str, profile: &str) -> bool {
-    read::<Vec<Withdrawal>>(state, "withdrawing")
-        .unwrap_or_default()
-        .iter()
-        .any(|r| r.client == client && r.profiles.iter().any(|p| p.name == profile))
+    load_withdrawing(state).map_or(true, |rows| {
+        rows.iter()
+            .any(|r| r.client == client && r.profiles.iter().any(|p| p.name == profile))
+    })
 }
 pub(crate) fn has_client_withdrawing(state: &mut impl State, client: &str) -> bool {
-    read::<Vec<Withdrawal>>(state, "withdrawing")
-        .unwrap_or_default()
-        .iter()
-        .any(|r| r.client == client && !r.profiles.is_empty())
+    load_withdrawing(state).map_or(true, |rows| {
+        rows.iter()
+            .any(|r| r.client == client && !r.profiles.is_empty())
+    })
 }
 
 impl<S: State, H: Host> Kernel<S, H> {
@@ -55,15 +61,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         let Some(n) = number(&root.id) else {
             return true;
         };
-        read::<Vec<Withdrawal>>(&mut self.state, "withdrawing")
-            .unwrap_or_default()
-            .iter()
-            .any(|w| {
+        load_withdrawing(&mut self.state).map_or(true, |rows| {
+            rows.iter().any(|w| {
                 w.client == owner
                     && w.profiles
                         .iter()
                         .any(|p| p.name == root.profile && n < p.below)
             })
+        })
     }
 
     pub fn manage_withdraw(
@@ -84,6 +89,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         {
             return Err(refusal("profile", "no such profile"));
         }
+        let mut rows = load_withdrawing(&mut self.state)
+            .map_err(|_| refusal("profile", "unreadable withdrawal state"))?;
+        let below = cutoff(&mut self.state);
         let mut entries = access::entries(&mut self.state, client).unwrap_or_default();
         entries.retain(|e| e.profile != profile);
         put(&mut self.state, &format!("access/{client}"), &entries);
@@ -97,8 +105,6 @@ impl<S: State, H: Host> Kernel<S, H> {
                 self.cancel_question(&id);
             }
         }
-        let mut rows: Vec<Withdrawal> = read(&mut self.state, "withdrawing").unwrap_or_default();
-        let below = cutoff(&mut self.state);
         if let Some(row) = rows.iter_mut().find(|r| r.client == client) {
             if let Some(p) = row.profiles.iter_mut().find(|p| p.name == profile) {
                 p.below = below;
@@ -155,22 +161,32 @@ impl<S: State, H: Host> Kernel<S, H> {
             if Record::load(&mut self.state, &rec.id).is_none_or(|r| !r.turn.is_active()) {
                 continue;
             }
-            let cascade = if rec.parent.is_none() {
-                1 + rec
-                    .children
+            let children: Vec<String> = if rec.parent.is_none() {
+                rec.children
                     .iter()
                     .filter(|id| {
                         Record::load(&mut self.state, id).is_some_and(|c| c.turn.is_active())
                     })
-                    .count()
+                    .cloned()
+                    .collect()
             } else {
-                1
+                Vec::new()
             };
+            let cascade = 1 + children.len();
             if ended > 0 && ended + cascade > 16 {
                 break;
             }
             if self.cancel(client, &rec.id).is_ok() {
-                ended += cascade;
+                ended += 1;
+                for child in children {
+                    if Record::load(&mut self.state, &child).is_some_and(|c| c.turn.is_active()) {
+                        if self.cancel(client, &child).is_ok() {
+                            ended += 1;
+                        }
+                    } else {
+                        ended += 1;
+                    }
+                }
             }
         }
         self.withdraw_ids(client, profile, below).len() as u32
@@ -298,6 +314,41 @@ mod tests {
         k.withdraw_firing();
         assert!(!has_withdrawing(&mut k.state, "local/c", "p"));
         assert!(!Record::load(&mut k.state, "s20").unwrap().turn.is_active());
+    }
+    #[test]
+    fn ac2_a_batch_ends_a_whole_root_cascade() {
+        let mut k = setup();
+        for n in 1..=20 {
+            add(&mut k, n, "p");
+        }
+        let mut root = Record::load(&mut k.state, "s1").unwrap();
+        root.children = vec!["s2".into(), "s3".into(), "s4".into()];
+        root.save(&mut k.state).unwrap();
+        for n in 2..=4 {
+            let mut child = Record::load(&mut k.state, &format!("s{n}")).unwrap();
+            child.parent = Some("s1".into());
+            child.save(&mut k.state).unwrap();
+        }
+        k.state.put("next-id", b"21".to_vec()).unwrap();
+        assert_eq!(k.manage_withdraw("page", "local/c", "p").unwrap(), 4);
+        for n in 1..=4 {
+            assert!(!Record::load(&mut k.state, &format!("s{n}"))
+                .unwrap()
+                .turn
+                .is_active());
+        }
+    }
+    #[test]
+    fn ac2_unreadable_withdrawal_state_fails_closed() {
+        let mut k = setup();
+        k.state.put("withdrawing", b"broken".to_vec()).unwrap();
+        assert!(has_withdrawing(&mut k.state, "local/c", "p"));
+        assert_eq!(
+            k.manage_withdraw("page", "local/c", "p")
+                .unwrap_err()
+                .code(),
+            "refused"
+        );
     }
 
     #[test]

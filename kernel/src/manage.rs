@@ -921,6 +921,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         Ok(())
     }
     pub fn manage_on_item(&mut self, stream: &str, item: &Value) {
+        if read::<Value>(&mut self.state, &format!("stream/{stream}"))
+            .as_ref()
+            .and_then(|v| v.get("kind"))
+            .and_then(Value::as_str)
+            != Some("access")
+        {
+            return;
+        }
         if item != &serde_json::json!({"type":"granted"}) {
             return;
         }
@@ -1051,6 +1059,14 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.state.delete(&format!("access-ask/{stream}"));
     }
     pub fn manage_on_ended(&mut self, stream: &str) {
+        if read::<Value>(&mut self.state, &format!("stream/{stream}"))
+            .as_ref()
+            .and_then(|v| v.get("kind"))
+            .and_then(Value::as_str)
+            != Some("access")
+        {
+            return;
+        }
         if read::<BoundStream>(&mut self.state, "manage-ask").is_some_and(|a| a.stream == stream) {
             self.state.delete("manage-ask");
         }
@@ -1243,5 +1259,66 @@ mod tests {
         assert!(k.state.get("access/local/c").is_none());
         k.manage_on_item("t5", &serde_json::json!({"type":"granted"}));
         assert_eq!(access::entries(&mut k.state, "local/c").unwrap()[0].rev, 2);
+    }
+    #[test]
+    fn ac1_access_sink_ignores_other_stream_kinds() {
+        let mut k = Kernel::new(MemState::new(), FakeHost::default());
+        let value = serde_json::json!({"kind":"provider","session":"s1"});
+        put(&mut k.state, "stream/t1", &value);
+        k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
+        k.manage_on_ended("t1");
+        assert_eq!(read::<Value>(&mut k.state, "stream/t1"), Some(value));
+    }
+    #[test]
+    fn ac1_pairing_code_is_six_rfc4648_base32_characters_of_connection_hash() {
+        assert_eq!(code("k1"), "NK47D2");
+        assert_eq!(code("k2"), "AFPX42");
+        assert_eq!(code("k3"), "F5IFFS");
+    }
+    #[test]
+    fn ac2_pending_allow_reserves_the_sixty_fourth_entry() {
+        let mut k = Kernel::new(
+            MemState::new(),
+            FakeHost {
+                connection_id: Some("k1".into()),
+                ..FakeHost::default()
+            },
+        );
+        k.manage_open("page").unwrap();
+        k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
+        k.state.put("clients", br#"["local/c"]"#.to_vec()).unwrap();
+        let text = b"{}";
+        let digest = access::digest(text);
+        let index: Vec<_> = (0..65)
+            .map(|n| ProfileIndexEntry {
+                name: format!("p{n}"),
+                digest: digest.clone(),
+                rev: 1,
+                bytes: 2,
+                offer: None,
+                stale: false,
+                gone: false,
+            })
+            .collect();
+        put(&mut k.state, "profiles", &index);
+        for n in 0..65 {
+            k.state
+                .put(&format!("profile/p{n}"), text.to_vec())
+                .unwrap();
+        }
+        let entries: Vec<_> = (0..63)
+            .map(|n| AccessEntry {
+                profile: format!("p{n}"),
+                digest: digest.clone(),
+                rev: 1,
+            })
+            .collect();
+        put(&mut k.state, "access/local/c", &entries);
+        k.manage_allow("page", "local/c", "p63").unwrap();
+        assert_eq!(
+            k.manage_allow("page", "local/c", "p64").unwrap_err().code(),
+            "refused"
+        );
+        assert_eq!(pending(&mut k.state), vec!["t2"]);
     }
 }
