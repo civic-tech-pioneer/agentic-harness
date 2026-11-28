@@ -205,7 +205,7 @@ export function DecisionRow({ row }: { row: Of<"decision"> }) {
 export function FooterRow({ row }: { row: Of<"footer"> }) {
   const duration = row.stopped !== undefined ? `Stopped at the ${row.stopped} after ${row.seconds} s`
     : row.interrupted ? `Stopped after ${row.seconds} s`
-    : row.failed ? (row.seconds > 0 ? `Turn failed after ${row.seconds} s` : "Turn failed")
+    : row.failed ? "Turn failed"
     : `Completed in ${row.seconds} s`;
   const parts = [duration, plural(row.tools, "tool", "tools")];
   if (row.tokens !== undefined) parts.push(`${row.tokens >= 1000 ? `${Math.round(row.tokens / 1000)}k` : row.tokens} tokens`);

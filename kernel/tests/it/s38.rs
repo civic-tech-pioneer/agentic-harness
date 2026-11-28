@@ -563,3 +563,37 @@ fn ac3_read_drains_owed_work_only_after_success() {
     k.read("page", &id, 0, None, 1).unwrap();
     assert!(!agent_kernel::active::Slots::load(&mut k.state).drain_owed);
 }
+
+#[test]
+fn late_consent_line_after_initialized_is_ignored() {
+    let mut k = Kernel::new(MemState::default(), FakeHost::default());
+    let id = k
+        .start_in_folder("page", "first", "scratch", "{}", "hello", FOLDER)
+        .unwrap()
+        .value;
+    let stream = Record::load(&mut k.state, &id).unwrap().streams[0].clone();
+    let key = format!("stream/{stream}");
+    let pending = json!({"type": "consent-pending", "what": WHAT}).to_string();
+    let initialized = json!({"type": "initialized", "workspace": FOLDER}).to_string();
+    k.provider_lines(&stream, vec![(1, pending.clone().into_bytes())])
+        .unwrap();
+    k.provider_lines(&stream, vec![(2, initialized.into_bytes())])
+        .unwrap();
+    let late = k
+        .provider_lines(&stream, vec![(3, pending.into_bytes())])
+        .unwrap();
+    assert!(
+        late.pushes.is_empty(),
+        "late line published {:?}",
+        late.pushes
+    );
+    let stored: serde_json::Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
+    assert_eq!(stored["last"], 3);
+    assert_eq!(stored["launching"], false);
+    assert!(stored.get("consent").is_none());
+    k.interrupt("page", &id, None).unwrap();
+    assert!(Record::load(&mut k.state, &id)
+        .unwrap()
+        .streams
+        .contains(&stream));
+}

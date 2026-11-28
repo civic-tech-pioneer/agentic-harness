@@ -3450,6 +3450,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 facts
                     .into_iter()
                     .flat_map(|f| match f {
+                        Fact::ConsentPending(_) if launching == Some(false) => Vec::new(),
                         Fact::ConsentPending(what) => {
                             consent = Some(what.clone());
                             vec![ProviderEvent::Consent(Some(what))]

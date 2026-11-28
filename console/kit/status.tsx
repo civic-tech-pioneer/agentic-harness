@@ -48,15 +48,29 @@ function workspaceFolder(what: string): string | undefined {
 
 /** 18.5: put known provider outcomes in participant-facing words. */
 function failedWords(stop: { error: string; cause?: string }): string {
-  if (stop.cause === "no-binary") return "Choose a Claude Code binary in Settings → Claude Code";
+  const reason = stop.cause ?? stop.error;
+  if (reason === "no-binary") return "Choose a Claude Code binary in Settings → Claude Code";
   if (stop.error === "judge" && stop.cause === undefined) return "your judge denied it";
-  const refused = stop.cause?.match(/^consent-refused\((.*)\)$/s);
+  const refused = reason.match(/^consent-refused\((.*)\)$/s);
   const folder = refused ? workspaceFolder(refused[1]!) : undefined;
   if (folder) return `Workspace access was refused for ${folder}`;
-  const version = stop.cause?.match(/^version (\S+) < (\S+)$/);
+  if (refused) return `Consent was refused for ${refused[1]}`;
+  const version = reason.match(/^version (\S+) < (\S+)$/);
   if (version) return `Claude Code ${version[1]} is too old. Version ${version[2]} or later is required.`;
-  if (stop.error === "provider-ended") return "Connection to Claude Code ended";
-  return stop.error;
+  if (stop.error !== "provider-ended") return reason;
+  if (reason === "gone" || reason.startsWith("failed: ")) return "Connection to Claude Code ended";
+  const mismatch = reason.match(/^mismatch\((.*)\)$/s);
+  if (mismatch) return `Claude Code ${mismatch[1]} did not match the launch`;
+  if (reason === "no-app") return "The app is unavailable";
+  if (reason === "no-account") return "The required account is unavailable";
+  const outcomes: Record<string, string> = {
+    "idle-timeout": "The connection timed out while idle",
+    lagging: "The connection fell behind",
+    "consumer-failed": "The session reader failed",
+    cancelled: "The session was cancelled",
+    replaced: "The session connection was replaced",
+  };
+  return outcomes[reason] ?? reason;
 }
 
 function spec(view: SessionView, now: number, answered: number, actions: Actions): Spec {
