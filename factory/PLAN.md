@@ -30,6 +30,18 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
  S138, S142, S144, S145, S148, S151, S152, S153, S154, S156, S160, S163 merged.
 
 ## Sketched
+
+### S165: the design lane, spec-side upkeep (upkeep lane, design/ only)
+
+Sketched 2026-11-28 by Deputy Scissors. In flight (cloud, builder codex by rule 3: last two handed out were watane S164 codex, watane-factory JF1-1 claude); reviewer claude.
+
+Story: a reader of `design/` finds what is built and what the human and the deputies decided written where it belongs, with no drift between TECHNICAL, FUNCTIONAL and the code.
+
+Issues, in this order: #97 (the human's S151-H H2 answer: pkg limits the `agent-access` import), #122 (the deputy decisions in `factory/decisions/LOG.md` before 2026-11-28 into the specs that own them), #125, then the `spec`-labelled ones: #98, #99, #101, #102, #103, #105, #106, #107, #108, #109, #113, #118, #119.
+
+Outcomes (each issue's check): every listed issue is either fixed by the PR (`Fixes #n` in its body) or closed with the commit on `main` that already fixed it; `factory/gate.sh` passes; no clause the PR adds contradicts another level of the chain.
+
+Touches: `design/` (VISION untouched), `factory/decisions/`. Constraints: no code, WIT or kernel interface change; a change to VISION or a weaker boundary in section 14 is not this slice's: stop and say `BLOCKED` with the clause. Where an issue asks for a decision the specs leave open, pick the reading of the spec's literal words and name it in the PR body. Upkeep is exempt from the size rule. spec-check not run: the slice is itself the drift fix, and the review checks the chain.
 ### Stage B carry list (folded into stage B's end-to-end slices, never a slice of its own)
 
 - S34 RISK 1: write keys for build and config files beyond the list (`Cargo.toml`, `conftest.py`,
