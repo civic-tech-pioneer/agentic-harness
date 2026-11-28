@@ -33,7 +33,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ### S166: kernel guard and core upkeep (upkeep lane)
 
-Sketched 2026-11-28 by Deputy Scissors. Builder codex by rule 3 (last two handed out: agentic-harness S165 codex, watane-factory JF1-1 claude); reviewer claude. Not yet dispatched.
+Sketched 2026-11-28 by Deputy Scissors. Builder codex by rule 3 (last two handed out: agentic-harness S165 codex, watane-factory JF1-1 claude); reviewer claude. In flight (cloud, Codex task https://chatgpt.com/local/6b0ab34b-3ee0-83ed-86da-d9ed2b21807d on GPT-6 Sol, 10:56 UTC).
 
 Issues, guards first: #133 (an OpenAI `Name(arg)` rule, path arguments included, is refused at the profile check naming its field, AGT-F-4; the tests in #133 and its comment), then core: #117 (an interrupt before `initialized` cancels the launch; Escape during Loading), #114 (case 22's idempotent half), then console polish where cheap: #124, #116, #111, #110, #104. The build team closes an issue already fixed on `main` with its commit; the PR body says `Fixes #n` for each other one.
 
