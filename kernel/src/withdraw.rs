@@ -239,7 +239,8 @@ mod tests {
         k.manage_open("page").unwrap();
         k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
         put(&mut k.state, "clients", &vec!["local/c"]);
-        let digest = "a".repeat(64);
+        let digest = access::digest(b"{}");
+        k.state.put("profile/p", b"{}".to_vec()).unwrap();
         put(
             &mut k.state,
             "profiles",
@@ -247,7 +248,7 @@ mod tests {
                 name: "p".into(),
                 digest: digest.clone(),
                 rev: 1,
-                bytes: 1,
+                bytes: 2,
                 offer: None,
                 stale: false,
                 gone: false,
@@ -269,10 +270,12 @@ mod tests {
     }
 
     fn add(k: &mut Kernel<MemState, FakeHost>, n: u64, profile: &str) {
+        let digest = access::digest(b"{}");
         let rec = Record {
             id: format!("s{n}"),
             owner: "local/c".into(),
             profile: profile.into(),
+            profile_digest: Some(digest),
             turn: Turn::Running {
                 since: 0,
                 activity: None,
@@ -311,6 +314,12 @@ mod tests {
         assert!(has_withdrawing(&mut k.state, "local/c", "p"));
         let old = Record::load(&mut k.state, "s20").unwrap();
         assert!(k.withdrawing("local/c", &old));
+        k.manage_allow("page", "local/c", "p").unwrap();
+        k.manage_on_item("t2", &serde_json::json!({"type":"granted"}));
+        assert!(
+            !k.may_work("local/c", &old),
+            "re-allow cannot resume old work during the timer batch"
+        );
         k.withdraw_firing();
         assert!(!has_withdrawing(&mut k.state, "local/c", "p"));
         assert!(!Record::load(&mut k.state, "s20").unwrap().turn.is_active());
@@ -347,6 +356,32 @@ mod tests {
             k.manage_withdraw("page", "local/c", "p")
                 .unwrap_err()
                 .code(),
+            "refused"
+        );
+    }
+    #[test]
+    fn ac1_real_pinned_session_loses_new_input_on_withdrawal() {
+        let mut k = Kernel::new(
+            MemState::new(),
+            FakeHost {
+                generation: 1,
+                connection_id: Some("c1".into()),
+                ..FakeHost::default()
+            },
+        );
+        k.manage_open("page").unwrap();
+        k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
+        k.manage_put_profile("page", "p", "{}").unwrap();
+        k.manage_on_item("t2", &serde_json::json!({"type":"granted"}));
+        k.manage_on_ended("t2");
+        put(&mut k.state, "clients", &vec!["local/c"]);
+        k.manage_allow("page", "local/c", "p").unwrap();
+        k.manage_on_item("t3", &serde_json::json!({"type":"granted"}));
+        let id = k.start("local/c", "start", "p", "{}", "hi").unwrap().value;
+        k.state.put("next-id", b"2".to_vec()).unwrap();
+        k.manage_withdraw("page", "local/c", "p").unwrap();
+        assert_eq!(
+            k.say("local/c", &id, "later", "hi").unwrap_err().code(),
             "refused"
         );
     }
