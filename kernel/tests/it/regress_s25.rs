@@ -14,7 +14,7 @@ fn kernel() -> Kernel<MemState, FakeHost> {
     )
     .unwrap();
     for who in ["alice", "bob"] {
-        st.put(&format!("access/{who}"), br#"["p"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["p"]"#.to_vec())
             .unwrap();
     }
     Slots {

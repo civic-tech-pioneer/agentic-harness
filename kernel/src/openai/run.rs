@@ -15,7 +15,7 @@ use crate::openai::tools::{Call, Policy, SetupError, ToolSet, JOB};
 use crate::openai::wire::{user_message, BodyArgs, Wire, WireItem, COMPACT_THRESHOLD};
 use crate::openai::{skill, task};
 use crate::overlay::apply_overlay;
-use crate::profile::{parse_profile, Profile, Skill, SystemPrompt};
+use crate::profile::{parse_profile, Backend, Profile, Skill, SystemPrompt};
 use crate::queue::Queue;
 use crate::quota::Past;
 use crate::record::{Activity, Deadline, Record, Stop, Turn};
@@ -321,12 +321,20 @@ impl<S: State, H: Host> Kernel<S, H> {
             // applies, also to a turn in flight); the rest stays as compiled at `start`, and such
             // a root names no delegates. Saved with the loop's next change.
             if let Some(rec) = Record::load(&mut self.state, id) {
-                let c = self.compiled_of(&rec);
-                ls.policy.max_turns = c.max_turns;
-                ls.policy.max_tool_errors = c.max_tool_errors;
-                ls.policy.max_tokens = c.max_tokens;
+                if let Some(text) = self.profile_json(&rec.profile) {
+                    if rec
+                        .profile_digest
+                        .as_deref()
+                        .is_none_or(|d| crate::access::digest(text.as_bytes()) == d)
+                    {
+                        let c = self.compiled_of(&rec);
+                        ls.policy.max_turns = c.max_turns;
+                        ls.policy.max_tool_errors = c.max_tool_errors;
+                        ls.policy.max_tokens = c.max_tokens;
+                        ls.limits_compiled = true;
+                    }
+                }
             }
-            ls.limits_compiled = true;
         }
         Some(ls)
     }
@@ -350,6 +358,18 @@ impl<S: State, H: Host> Kernel<S, H> {
     pub(crate) fn loop_for(&mut self, rec: &Record) -> LoopState {
         if let Some(ls) = self.loop_load(&rec.id) {
             return ls;
+        }
+        // Recovery must not compile a profile version the record never held. `prelaunch` refuses
+        // this marker before it can start a request; timer-origin cleanup may still stop it.
+        let Some(text) = self.profile_json(&rec.profile) else {
+            return LoopState::default();
+        };
+        if rec
+            .profile_digest
+            .as_deref()
+            .is_some_and(|d| crate::access::digest(text.as_bytes()) != d)
+        {
+            return LoopState::default();
         }
         let compiled = self.compiled_of(rec);
         // Recovery from a missing loop has no trusted listing to advertise.
@@ -569,6 +589,13 @@ impl<S: State, H: Host> Kernel<S, H> {
         interrupting: bool,
         mut ls: LoopState,
     ) -> Result<Prelaunch, KernelError> {
+        if !ls.limits_compiled {
+            return Err(KernelError::Refused(vec![crate::error::Problem::new(
+                "profile",
+                "changed since the participant allowed it",
+            )
+            .refusal(Backend::Openai, &ls.model)]));
+        }
         let Some(input) = input else {
             return Ok(Prelaunch {
                 ls,
@@ -588,7 +615,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 return Err(KernelError::Busy(format!(
                     "no request slot is free ({} in all, {} per owner)",
                     self.limits.request, self.limits.owner_request
-                )))
+                )));
             }
             _ => {}
         }
@@ -626,6 +653,19 @@ impl<S: State, H: Host> Kernel<S, H> {
         launched: Option<Launch>,
         attempt: u32,
     ) -> Result<(), KernelError> {
+        if !ls.limits_compiled {
+            let reason = "changed since the participant allowed it";
+            ls.last_error = Some(reason.into());
+            return self.end_turn(
+                rec,
+                ls,
+                cx,
+                Stop::Failed {
+                    error: "refused".into(),
+                    cause: Some(reason.into()),
+                },
+            );
+        }
         let launch = match launched {
             Some(l) => l,
             None => self.launch(rec, ls, cx.slots, cx.a, &pending, 0),
@@ -1352,7 +1392,22 @@ impl<S: State, H: Host> Kernel<S, H> {
             now,
             dirty: false,
         };
-        act(self, &mut rec, &mut ls, &mut cx)?;
+        if !ls.limits_compiled {
+            let reason = "changed since the participant allowed it";
+            self.openai_stop(&mut rec, &mut ls, &mut cx)?;
+            ls.last_error = Some(reason.into());
+            self.end_turn(
+                &mut rec,
+                &mut ls,
+                &mut cx,
+                Stop::Failed {
+                    error: "refused".into(),
+                    cause: Some(reason.into()),
+                },
+            )?;
+        } else {
+            act(self, &mut rec, &mut ls, &mut cx)?;
+        }
         let mut dirty = cx.dirty;
         self.settle_openai(
             &mut rec, &before, &mut slots, &mut acct, was, now, &mut dirty,
@@ -2038,5 +2093,30 @@ fn ended_failure(key: &StreamKey, cause: Option<&str>, now: u64) -> Failure {
         }
         _ => answer::ended(cause, false)
             .unwrap_or_else(|| Failure::Fatal("the response ended before it completed".into())),
+    }
+}
+
+#[cfg(test)]
+mod stage_f_recovery_tests {
+    use super::*;
+    use crate::sessions::FakeHost;
+    use crate::state::MemState;
+
+    #[test]
+    fn missing_loop_does_not_compile_changed_profile_bytes() {
+        let old = br#"{"backend":"openai","model":"gpt-5","max-tokens":100}"#;
+        let new = br#"{"backend":"openai","model":"gpt-5","max-tokens":200}"#;
+        let mut state = MemState::new();
+        state.put("profile/o", new.to_vec()).unwrap();
+        let mut kernel = Kernel::new(state, FakeHost::default());
+        let rec = Record {
+            id: "s1".into(),
+            profile: "o".into(),
+            profile_digest: Some(crate::access::digest(old)),
+            ..Record::default()
+        };
+        let recovered = kernel.loop_for(&rec);
+        assert!(!recovered.limits_compiled);
+        assert_eq!(recovered.policy.max_tokens, None);
     }
 }

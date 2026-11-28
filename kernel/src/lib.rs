@@ -1,5 +1,6 @@
 //! The agent kernel's native part: errors (TECHNICAL 12), the profile check (4.1, 9.2, 11), the transcript (9.4).
 
+pub mod access;
 pub mod active;
 pub mod adapters;
 pub mod broker;
@@ -8,7 +9,9 @@ pub mod check;
 pub mod delegation;
 pub mod error;
 pub mod launch;
+pub mod manage;
 pub mod named;
+pub mod offers;
 pub mod openai;
 pub mod overlay;
 pub mod profile;
@@ -20,6 +23,7 @@ pub mod rules;
 pub mod sessions;
 pub mod state;
 pub mod transcript;
+pub mod withdraw;
 
 pub use check::check;
 pub use error::{KernelError, Problem, Refusal};

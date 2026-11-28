@@ -15,7 +15,7 @@ fn kernel() -> K {
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
     st.put("profile/np", NP.as_bytes().to_vec()).unwrap();
     for who in ["alice", "bob", "carol"] {
-        st.put(&format!("access/{who}"), br#"["p","np"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["p","np"]"#.to_vec())
             .unwrap();
     }
     Slots {
@@ -514,7 +514,7 @@ impl State for Spy {
 fn ac8_start_and_an_opening_say_write_slots_and_the_owner_account_once() {
     let mut st = Spy::default();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()

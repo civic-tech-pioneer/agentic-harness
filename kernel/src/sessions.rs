@@ -5,6 +5,7 @@
 //! a client key only when the call changed something (9.1), and reads and writes only what its
 //! inputs name: no listing of keys.
 
+use crate::access;
 use crate::active::{self, Slots};
 use crate::adapters::claude::{facts, unread_init, ClaudeAdapter, Fact};
 use crate::adapters::{self, Kind};
@@ -12,6 +13,7 @@ use crate::broker;
 use crate::check::check;
 use crate::error::{KernelError, Refusal};
 use crate::launch::launch;
+use crate::manage::{AccessError, AccessQuestion, OfferedProfile};
 use crate::openai::run::{Cx, REQUEST};
 use crate::openai::tools::JOB;
 use crate::overlay::{apply_overlay, parse_overlay, Overlay};
@@ -52,6 +54,18 @@ const PAGE: &str = "page";
 
 /// What the kernel needs of the host (2.1): the generation, the clock, ids, timers, requests.
 pub trait Host {
+    /// Fake of TECHNICAL 15 `caller.connection()`; only page chains carry an id.
+    fn connection(&mut self) -> Option<String> {
+        None
+    }
+    /// Fake of TECHNICAL 15 `agent-access.ask` (a request, not an authority).
+    fn access_ask(&mut self, _question: AccessQuestion) -> Result<String, AccessError> {
+        Err(AccessError::NotPage)
+    }
+    /// Fake of the 2.3 offers collect; the host supplies answers in subscriber order.
+    fn offers_profiles(&mut self) -> Vec<OfferedProfile> {
+        Vec::new()
+    }
     /// `host-info.generation()` (2.1, G1).
     fn generation(&mut self) -> u64;
     /// Milliseconds.
@@ -227,6 +241,11 @@ pub enum Request {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostCall {
+    AccessAsk {
+        question: AccessQuestion,
+        stream: String,
+    },
+    OffersProfiles,
     Generation,
     TimerAfter {
         id: String,
@@ -283,6 +302,9 @@ pub enum HostCall {
 /// A host for tests: a settable clock and generation, ids `s1`, `s2`, ..., and a log of what was asked.
 #[derive(Debug, Default)]
 pub struct FakeHost {
+    pub connection_id: Option<String>,
+    pub access_error: Option<AccessError>,
+    pub offered_profiles: Vec<OfferedProfile>,
     pub generation: u64,
     pub now: u64,
     pub firing_origin: Option<String>,
@@ -320,6 +342,25 @@ impl FakeHost {
 }
 
 impl Host for FakeHost {
+    fn connection(&mut self) -> Option<String> {
+        self.connection_id.clone()
+    }
+    fn access_ask(&mut self, question: AccessQuestion) -> Result<String, AccessError> {
+        if let Some(error) = self.access_error {
+            return Err(error);
+        }
+        self.next_stream += 1;
+        let stream = format!("t{}", self.next_stream);
+        self.calls.push(HostCall::AccessAsk {
+            question,
+            stream: stream.clone(),
+        });
+        Ok(stream)
+    }
+    fn offers_profiles(&mut self) -> Vec<OfferedProfile> {
+        self.calls.push(HostCall::OffersProfiles);
+        self.offered_profiles.clone()
+    }
     fn generation(&mut self) -> u64 {
         self.calls.push(HostCall::Generation);
         self.generation
@@ -918,11 +959,12 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// Starts a top-level call: reads `slots` and the host's generation (R1). When they differ,
     /// this call starts the restart pass: the new boot, the stream slot counts zeroed (`timers`
     /// stays), the cursor at page 0, and the timer `restart` with delay 0. It steps no session.
-    fn begin(&mut self) -> Result<Slots, KernelError> {
+    pub(crate) fn begin(&mut self) -> Result<Slots, KernelError> {
         self.open_meter();
         let mut slots = Slots::load(&mut self.state);
         let boot = self.host.generation();
         if boot != slots.boot {
+            self.cleanup_access_after_restart();
             slots.boot = boot;
             slots.provider = 0;
             slots.request = 0;
@@ -1075,9 +1117,22 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// The launch of a session that needs a new provider stream (9.5): its profile with the
     /// overlay its `start` took, in its workspace, resuming the Claude session it kept.
     fn launch_of(&mut self, rec: &Record, resume: bool) -> Result<String, KernelError> {
+        if !self.may_work(&rec.owner, rec) {
+            return Err(self.work_access_error(&rec.owner, rec));
+        }
         let json = self
             .profile_json(&rec.profile)
             .ok_or_else(|| refused("profile", "no such profile"))?;
+        if rec
+            .profile_digest
+            .as_deref()
+            .is_some_and(|d| access::digest(json.as_bytes()) != d)
+        {
+            return Err(refused(
+                "profile",
+                "changed since the participant allowed it",
+            ));
+        }
         // A later launch is checked as `start` is (9.2, 11, 14), against the refuse table of the
         // session's backend: the one its stream runs, whatever the edited profile now says.
         let overlay = rec.overlay.clone().unwrap_or_default();
@@ -2036,15 +2091,47 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// 9.1, 9.7: whether `access/<owner>` names the profile; absent or unreadable allows none.
     /// The console's first run (S35): with no `access/page` at all, the page may use `scratch`.
     pub(crate) fn may_use(&mut self, owner: &str, profile: &str) -> bool {
-        match self.state.get(&format!("access/{owner}")) {
-            None => {
-                owner == PAGE
-                    && profile == SCRATCH
-                    && self.state.get(&format!("profile/{SCRATCH}")).is_none()
+        self.access_digest(owner, profile).is_some() || self.scratch_allowed(owner, profile)
+    }
+
+    fn scratch_allowed(&mut self, owner: &str, profile: &str) -> bool {
+        owner == PAGE
+            && profile == SCRATCH
+            && self.state.get("access/page").is_none()
+            && self.state.get(&format!("profile/{SCRATCH}")).is_none()
+    }
+
+    pub(crate) fn access_digest(&mut self, owner: &str, profile: &str) -> Option<String> {
+        let entries = access::entries(&mut self.state, owner)?;
+        let entry = entries.iter().find(|entry| entry.profile == profile)?;
+        let index = access::index(&mut self.state);
+        access::holds(entry, &index).then(|| entry.digest.clone())
+    }
+
+    pub(crate) fn profile_access_error(&mut self, owner: &str, profile: &str) -> KernelError {
+        if access::entries(&mut self.state, owner)
+            .is_some_and(|entries| entries.iter().any(|e| e.profile == profile))
+        {
+            if access::index(&mut self.state)
+                .iter()
+                .any(|row| row.name == profile && row.stale)
+            {
+                return refused("profile", "its offer changed");
             }
-            Some(b) => serde_json::from_slice::<Vec<String>>(&b)
-                .is_ok_and(|names| names.iter().any(|n| n == profile)),
+            refused("profile", "changed since the participant allowed it")
+        } else {
+            Self::revoked()
         }
+    }
+
+    pub(crate) fn work_access_error(&mut self, owner: &str, rec: &Record) -> KernelError {
+        if let Some(root) = &rec.parent {
+            return match Record::load(&mut self.state, root) {
+                Some(root_rec) => self.profile_access_error(&root_rec.owner, &root_rec.profile),
+                None => Self::revoked(),
+            };
+        }
+        self.profile_access_error(owner, &rec.profile)
     }
 
     /// 9.7 "Revoking": whether a call that gives the session more work may go on. A root is
@@ -2052,11 +2139,21 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// owner (it has no entry of its own), and a missing root is refused: fail closed.
     pub(crate) fn may_work(&mut self, owner: &str, rec: &Record) -> bool {
         match &rec.parent {
-            None => self.may_use(owner, &rec.profile),
+            None => self.record_may_work(owner, rec),
             Some(root) => match Record::load(&mut self.state, root) {
-                Some(r) => self.may_use(&r.owner, &r.profile),
+                Some(r) => self.record_may_work(&r.owner, &r),
                 None => false,
             },
+        }
+    }
+
+    fn record_may_work(&mut self, owner: &str, rec: &Record) -> bool {
+        if self.withdrawing(owner, rec) {
+            return false;
+        }
+        match &rec.profile_digest {
+            Some(digest) => self.access_digest(owner, &rec.profile).as_deref() == Some(digest),
+            None => self.scratch_allowed(owner, &rec.profile),
         }
     }
 
@@ -2138,11 +2235,21 @@ impl<S: State, H: Host> Kernel<S, H> {
         check_slash(input)?;
         // 9.1: the profiles this caller may use; absent or unreadable allows none.
         if !self.may_use(caller, profile) {
-            return Err(Self::revoked());
+            return Err(self.profile_access_error(caller, profile));
         }
         let Some(json) = self.profile_json(profile) else {
             return Err(refused("profile", "no such profile"));
         };
+        if self
+            .access_digest(caller, profile)
+            .as_deref()
+            .is_some_and(|d| access::digest(json.as_bytes()) != d)
+        {
+            return Err(refused(
+                "profile",
+                "changed since the participant allowed it",
+            ));
+        }
         let parsed = parse_profile(&json).0;
         let backend = parsed
             .backend
@@ -2202,6 +2309,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             owner: caller.to_string(),
             key: key.to_string(),
             profile: profile.to_string(),
+            profile_digest: self.access_digest(caller, profile),
             backend: backend.as_str().to_string(),
             boot: slots.boot,
             created: now,
@@ -2319,7 +2427,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         check_slash(input)?;
         let mut rec = self.load_owned(caller, session)?;
         if !self.may_work(caller, &rec) {
-            return Err(Self::revoked());
+            return Err(self.work_access_error(caller, &rec));
         }
         let mut acct = self.accounts(caller);
         let past = acct.past;
@@ -2480,7 +2588,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut rec = self.load_owned(caller, session)?;
         let d = parse_decision(decision)?;
         if d.allow && !self.may_work(caller, &rec) {
-            return Err(Self::revoked());
+            return Err(self.work_access_error(caller, &rec));
         }
         let mut acct = self.accounts(caller);
         let past = acct.past;
@@ -2711,7 +2819,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             check_input(input)?;
             check_slash(input)?;
             if !self.may_work(caller, &rec) {
-                return Err(Self::revoked());
+                return Err(self.work_access_error(caller, &rec));
             }
             self.refuse_past(&acct)?;
         }
@@ -2881,6 +2989,17 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// `idle {interrupted}`, the queue is kept, the host ends the stream. An OpenAI root also
     /// cancels each live child (9.7).
     pub fn cancel(&mut self, caller: &str, session: &str) -> Result<Called<()>, KernelError> {
+        let result = self.cancel_session(caller, session)?;
+        self.after_call();
+        Ok(result)
+    }
+
+    /// Cancel without draining work from other owners; used by the withdrawal timer.
+    pub(crate) fn cancel_session(
+        &mut self,
+        caller: &str,
+        session: &str,
+    ) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
         let past = acct.past;
@@ -2901,7 +3020,6 @@ impl<S: State, H: Host> Kernel<S, H> {
         // 9.3 "Past": a cancel closes the session's work, so it cannot fail on quota.
         self.finish_as(Some(&mut rec), &mut acct, true)?;
         let pushes = self.flush(work, rec.live.as_deref());
-        self.after_call();
         Ok(Called { value: (), pushes })
     }
 
@@ -4319,7 +4437,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let mut work = Work::default();
         if let Ok(mut slots) = self.begin() {
-            if id == RESTART {
+            if id == "withdraw" {
+                self.withdraw_firing();
+            } else if id == RESTART {
                 // A firing that still fails (its page or `slots` cannot be written) re-arms nothing.
                 let _ = self.restart_firing(&mut slots, &mut work);
             } else if let Some(session) = id.strip_prefix("s/") {

@@ -16,7 +16,7 @@ const UUID: &str = "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11";
 fn kernel() -> K {
     let mut st = MemState::default();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()

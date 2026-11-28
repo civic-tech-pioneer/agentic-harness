@@ -17,3 +17,4 @@ claude-codes = { version = "=2.1.330", default-features = false, features = ["ty
 agent-client-protocol-schema = { version = "=1.20.0", default-features = false }
 url = "=2.5.4"
 sha2 = "=0.10.9"
+serde_json_canonicalizer = "=0.4.1"

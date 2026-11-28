@@ -13,7 +13,7 @@ const TEN: u64 = 600_000;
 fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()

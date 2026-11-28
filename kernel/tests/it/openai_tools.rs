@@ -32,7 +32,7 @@ fn kernel_with(profile_json: &str, tools: Vec<Tool>) -> K {
     st.put("profile/o", profile_json.as_bytes().to_vec())
         .unwrap();
     for who in ["alice", "bob", "carol"] {
-        st.put(&format!("access/{who}"), br#"["o"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["o"]"#.to_vec())
             .unwrap();
     }
     Slots {
@@ -171,6 +171,35 @@ fn jobs(k: &mut K, id: &str) -> Vec<(String, String)> {
             )
         })
         .collect()
+}
+
+#[test]
+fn validator_withdraw_firing_starts_no_toolset_call() {
+    let mut k = kernel();
+    let calls: Vec<Value> = (1..=8)
+        .map(|n| call_of(&format!("c{n}"), "notes_a", "{}"))
+        .collect();
+    let a = session_with_calls(&mut k, "alice", "k", &calls);
+    let _b = session_with_calls(&mut k, "bob", "k", &calls);
+    let c = session_with_calls(&mut k, "carol", "k", &calls);
+    assert_eq!(jobs(&mut k, &c).len(), 0, "carol waits in the FIFO");
+    k.state
+        .put(
+            "withdrawing",
+            br#"[{"client":"alice","profiles":[{"name":"o","below":1000}]}]"#.to_vec(),
+        )
+        .unwrap();
+    k.host.calls.clear();
+    k.timer("withdraw");
+    assert!(!rec(&mut k, &a).turn.is_active());
+    assert!(
+        calls_of(&k).is_empty(),
+        "the withdraw timer made no toolset call"
+    );
+    assert!(
+        starts(&k).is_empty(),
+        "the withdraw timer made no model request"
+    );
 }
 
 fn job_item(k: &mut K, stream: &str, v: Value) {
@@ -363,7 +392,7 @@ fn s138_ac3_a_foreign_ask_expiry_never_reaches_the_tool_or_model() {
 #[test]
 fn s138_a_page_owned_toolset_retries_its_first_describe() {
     let mut k = kernel();
-    k.state.put("access/page", br#"["o"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/page", br#"["o"]"#.to_vec()).unwrap();
     k.host.tools_describe_error = Some("unknown-handle".into());
     let id = k.start("page", "page", "o", "{}", IN).unwrap().value;
     assert!(starts(&k).is_empty());
@@ -648,9 +677,7 @@ fn ac2_no_live_owner_stream_denies_at_once() {
 #[test]
 fn ac2_an_agent_owner_is_denied_at_once() {
     let mut k = kernel_with(&profile(""), vec![tool("notes_a", true, true)]);
-    k.state
-        .put("access/agent:h1", br#"["o"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(&mut k.state, "access/agent:h1", br#"["o"]"#.to_vec()).unwrap();
     let id = session_with_calls(&mut k, "agent:h1", "k", &[call_of("c1", "notes_a", "{}")]);
     assert!(rec(&mut k, &id).open.is_empty());
     assert_eq!(

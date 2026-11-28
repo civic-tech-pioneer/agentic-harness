@@ -14,7 +14,7 @@ fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
     for who in ["alice", "bob"] {
-        st.put(&format!("access/{who}"), br#"["p"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["p"]"#.to_vec())
             .unwrap();
     }
     // The host is at boot 1 and the kernel has seen it: no restart pass starts (R1).
@@ -33,9 +33,12 @@ fn kernel() -> K {
 }
 
 fn started(k: &mut K, owner: &str, key: &str) -> String {
-    k.state
-        .put(&format!("access/{owner}"), br#"["p"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(
+        &mut k.state,
+        &format!("access/{owner}"),
+        br#"["p"]"#.to_vec(),
+    )
+    .unwrap();
     let id = k.start(owner, key, "p", "{}", IN).unwrap().value;
     k.attach(owner, &id, 0).unwrap();
     id
@@ -479,7 +482,7 @@ fn ac4_ask_waits_and_turn_end_starts_the_next_queued_input() {
 fn ac5_active_index_follows_the_turn() {
     let mut k = kernel();
     // no owner stream attached: the counted writes are the start's own
-    k.state.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     k.state.reset_counts();
     let id = k.start("alice", "k", "p", "{}", IN).unwrap().value;
     let c = k.state.counts();
@@ -1234,9 +1237,7 @@ fn ac4_an_openai_profile_without_a_model_is_refused() {
     k.state
         .put("profile/o", br#"{"backend":"openai"}"#.to_vec())
         .unwrap();
-    k.state
-        .put("access/alice", br#"["p","o"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["p","o"]"#.to_vec()).unwrap();
     let before = k.state.len();
     let KernelError::Refused(rs) = k.start("alice", "k", "o", "{}", IN).unwrap_err() else {
         panic!("not refused")

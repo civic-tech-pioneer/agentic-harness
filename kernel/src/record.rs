@@ -189,6 +189,9 @@ pub struct Record {
     pub owner: String,
     pub key: String,
     pub profile: String,
+    /// Exact stored bytes of the root profile allowed at start (9.10).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_digest: Option<String>,
     pub backend: String,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -256,6 +259,7 @@ impl Default for Record {
             owner: String::new(),
             key: String::new(),
             profile: String::new(),
+            profile_digest: None,
             backend: String::new(),
             title: String::new(),
             handle: None,

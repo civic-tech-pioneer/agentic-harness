@@ -161,7 +161,21 @@ impl<S: State, H: Host> Kernel<S, H> {
         };
         // Step 1: the root's access again, against the root's owner (a child's own is its root's).
         if !self.may_work(&rec.owner.clone(), rec) {
-            let out = refused_out(&refusal("profile", "this client may not use this profile"));
+            let root = rec
+                .parent
+                .as_deref()
+                .and_then(|id| Record::load(&mut self.state, id));
+            let owner = root
+                .as_ref()
+                .map_or(rec.owner.as_str(), |r| r.owner.as_str());
+            let profile = root
+                .as_ref()
+                .map_or(rec.profile.as_str(), |r| r.profile.as_str());
+            let reason = match self.profile_access_error(owner, profile) {
+                crate::error::KernelError::Refused(mut rs) => rs.remove(0).reason,
+                _ => "this client may not use this profile".into(),
+            };
+            let out = refused_out(&refusal("profile", &reason));
             return self.end_call(rec, ls, cx, at, out);
         }
         let args: Value = item["arguments"]
@@ -187,7 +201,17 @@ impl<S: State, H: Host> Kernel<S, H> {
             rec.parent.is_some(),
             live,
             &name,
-            |n| self.profile_json(n),
+            |n| {
+                // A changed offer is unadopted at admission, even while its old bytes remain.
+                if crate::access::index(&mut self.state)
+                    .iter()
+                    .any(|row| row.name == n && row.stale)
+                {
+                    None
+                } else {
+                    self.profile_json(n)
+                }
+            },
             |s| {
                 skill::revision(s)
                     .as_ref()

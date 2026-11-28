@@ -17,7 +17,7 @@ fn kernel() -> K {
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
     st.put("profile/np", NP.as_bytes().to_vec()).unwrap();
     for who in ["alice", "bob"] {
-        st.put(&format!("access/{who}"), br#"["p","np"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["p","np"]"#.to_vec())
             .unwrap();
     }
     Slots {

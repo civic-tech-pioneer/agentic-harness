@@ -22,7 +22,7 @@ fn kernel() -> K {
         br#"{"mode":"manual","persist":false}"#.to_vec(),
     )
     .unwrap();
-    st.put("access/alice", br#"["p","np"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p","np"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()
@@ -280,7 +280,7 @@ fn messages_of(k: &mut K, owner: &str, id: &str) -> usize {
 #[test]
 fn ac3_the_past_flag_is_per_call() {
     let mut k = kernel();
-    k.state.put("access/bob", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/bob", br#"["p"]"#.to_vec()).unwrap();
     let a = k.start("alice", "k1", "p", "{}", IN).unwrap().value;
     k.attach("alice", &a, 0).unwrap();
     let b = k.start("bob", "k2", "p", "{}", IN).unwrap().value;

@@ -14,7 +14,7 @@ const ASK: &str = r#"{"type":"ask","id":"a1","tool_use_id":"tu1","tool":"Read","
 fn session(direct: bool) -> (K, String, String) {
     let mut st = MemState::default();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()
