@@ -10,6 +10,7 @@ The design boundary in TECHNICAL 14 is unchanged.
 The earlier product decisions have been reconciled into their owning sections
 of `design/TECHNICAL.md`; superseded choices and slice scheduling notes are
 historical records, not active design rules.
+
 ## Reconciliation index
 
 | Former LOG decisions | Owning contract |
