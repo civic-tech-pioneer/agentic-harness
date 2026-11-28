@@ -33,7 +33,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ### S168: stage F, factory profiles in the kernel (F-P1, main line)
 
-Sketched 2026-11-28 by Deputy Rock. Builder codex by rule 3 (last two handed out: watane S167 claude, agentic-harness S166 codex); reviewer claude. In flight (cloud, builder codex): task pending.
+Sketched 2026-11-28 by Deputy Rock. Builder codex by rule 3 (last two handed out: watane S167 claude, agentic-harness S166 codex); reviewer claude. In flight (cloud, Codex task https://chatgpt.com/local/6b0ac8e6-0d30-83ed-b093-a4e25ea3906a on GPT-6 Sol, 12:29 UTC; BLOCKED at 4caecfd7 12:31 UTC (9.10 item 2 "reads nothing else" vs reading `manage-ask`/`manage-lease`), answered 12:33 UTC by Deputy Rock, rung 1).
 
 Story: Alice decides which of her profiles a client mod may use, sees what each grants, and can withdraw it; a mod never provisions itself. This is TECHNICAL 17's row F-P1, built from 9.10 as S151 designed it: `manage` with its owner and lease checks, `clients`, the pinned `access/` format (every test that seeds `access/` moves to it) and `access-fields/`, `profile-digest` and "Revoking" by digest, the questions (`manage`, `allow`, `store`, `remove`) and their answers on a fake `agent-access`, their restart cleanup, `withdraw` and its timer, the profile index, offers collect, `adopt` and stale, the reach text.
 
@@ -64,6 +64,8 @@ Touches: `kernel/` (and `design/` only where the code shows 9.10 wrong: a fix to
 Upkeep is GitHub issues labelled `upkeep` (with `guard`, `core` or `polish`, and `spec` for spec-side items), filed from this list on 2026-11-28 as #97 to #121 (deputy skill, section 2).
 
 ## Deputy decisions
+
+- 2026-11-28 (Deputy Rock, S168 BLOCKED): `manage.open` reads `manage-ask` and `manage-lease`; "reads nothing else" in 9.10 item 2 means no profile, client, access or access-fields state. Clause: 9.10 item 2 itself (its same-connection, other-connection and lease rules) and the Bounds row. The build team rewords the sentence. Undo: reword back.
 
 - 2026-11-28 (Deputy Scissors, S165 r3 P3.4): the `factory/decisions/LOG.md` reconciliation index stays as coarse as it is; the entries it indexes are already in the specs. Undo: a finer index in any later design-lane slice.
 
