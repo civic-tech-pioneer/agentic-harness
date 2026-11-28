@@ -173,6 +173,35 @@ fn jobs(k: &mut K, id: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+#[test]
+fn validator_withdraw_firing_starts_no_toolset_call() {
+    let mut k = kernel();
+    let calls: Vec<Value> = (1..=8)
+        .map(|n| call_of(&format!("c{n}"), "notes_a", "{}"))
+        .collect();
+    let a = session_with_calls(&mut k, "alice", "k", &calls);
+    let _b = session_with_calls(&mut k, "bob", "k", &calls);
+    let c = session_with_calls(&mut k, "carol", "k", &calls);
+    assert_eq!(jobs(&mut k, &c).len(), 0, "carol waits in the FIFO");
+    k.state
+        .put(
+            "withdrawing",
+            br#"[{"client":"alice","profiles":[{"name":"o","below":1000}]}]"#.to_vec(),
+        )
+        .unwrap();
+    k.host.calls.clear();
+    k.timer("withdraw");
+    assert!(!rec(&mut k, &a).turn.is_active());
+    assert!(
+        calls_of(&k).is_empty(),
+        "the withdraw timer made no toolset call"
+    );
+    assert!(
+        starts(&k).is_empty(),
+        "the withdraw timer made no model request"
+    );
+}
+
 fn job_item(k: &mut K, stream: &str, v: Value) {
     let last = k
         .state

@@ -126,6 +126,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         put(&mut self.state, "withdrawing", &rows);
         let left = self.withdraw_batch(client, profile, below);
         self.withdraw_cleanup(client, profile, left);
+        self.after_call();
         Ok(left)
     }
 
@@ -176,11 +177,11 @@ impl<S: State, H: Host> Kernel<S, H> {
             if ended > 0 && ended + cascade > 16 {
                 break;
             }
-            if self.cancel(client, &rec.id).is_ok() {
+            if self.cancel_session(client, &rec.id).is_ok() {
                 ended += 1;
                 for child in children {
                     if Record::load(&mut self.state, &child).is_some_and(|c| c.turn.is_active()) {
-                        if self.cancel(client, &child).is_ok() {
+                        if self.cancel_session(client, &child).is_ok() {
                             ended += 1;
                         }
                     } else {
@@ -402,5 +403,76 @@ mod tests {
             .calls
             .iter()
             .any(|c| matches!(c, HostCall::AccessAsk { .. })));
+    }
+
+    #[test]
+    fn val_withdraw_cancels_pending_allow_and_rearms_latest_cutoff() {
+        let mut k = setup();
+        add(&mut k, 1, "p");
+        k.state.put("next-id", b"2".to_vec()).unwrap();
+        put(&mut k.state, "access/local/c", &Vec::<AccessEntry>::new());
+        k.manage_allow("page", "local/c", "p").unwrap();
+        let ask = k
+            .host
+            .calls
+            .iter()
+            .rev()
+            .find_map(|c| match c {
+                HostCall::AccessAsk { stream, .. } => Some(stream.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert!(k.state.get(&format!("access-ask/{ask}")).is_some(), "ask {ask} was not pending");
+        k.manage_withdraw("page", "local/c", "p").unwrap();
+        assert!(k.state.get(&format!("access-ask/{ask}")).is_none());
+        assert!(k
+            .host
+            .calls
+            .iter()
+            .any(|c| matches!(c, HostCall::CancelStream { stream } if stream == &ask)), "calls: {:?}", k.host.calls);
+
+        add(&mut k, 2, "p");
+        k.state.put("next-id", b"3".to_vec()).unwrap();
+        k.manage_withdraw("page", "local/c", "p").unwrap();
+        let rows: Vec<Withdrawal> = read(&mut k.state, "withdrawing").unwrap_or_default();
+        assert!(rows.is_empty() || rows[0].profiles[0].below == 3);
+    }
+
+    #[test]
+    fn val_withdraw_cutoff_profile_and_client_are_exact() {
+        let mut k = setup();
+        add(&mut k, 1, "p");
+        add(&mut k, 2, "other");
+        add(&mut k, 3, "p");
+        k.state.put("next-id", b"3".to_vec()).unwrap();
+        put(
+            &mut k.state,
+            "withdrawing",
+            &vec![Withdrawal {
+                client: "local/c".into(),
+                profiles: vec![ProfileCutoff {
+                    name: "p".into(),
+                    below: 3,
+                }],
+            }],
+        );
+        let (one, two, three) = (
+            Record::load(&mut k.state, "s1").unwrap(),
+            Record::load(&mut k.state, "s2").unwrap(),
+            Record::load(&mut k.state, "s3").unwrap(),
+        );
+        assert!(k.withdrawing("local/c", &one));
+        assert!(!k.withdrawing("local/c", &two));
+        assert!(!k.withdrawing("local/c", &three));
+        assert!(!k.withdrawing("local/other", &one));
+    }
+
+    #[test]
+    fn val_withdraw_missing_root_fails_closed_for_child() {
+        let mut k = setup();
+        add(&mut k, 2, "p");
+        let mut child = Record::load(&mut k.state, "s2").unwrap();
+        child.parent = Some("missing".into());
+        assert!(k.withdrawing("local/c", &child));
     }
 }
