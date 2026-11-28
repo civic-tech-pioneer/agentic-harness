@@ -16,7 +16,6 @@ pub struct CatalogModel {
     pub efforts: Vec<String>,
 }
 
-
 /// Applies the refuse table; every refusal is returned at once.
 pub fn refuse(
     p: &Profile,
