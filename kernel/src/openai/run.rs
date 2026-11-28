@@ -10,23 +10,23 @@
 use crate::active::Slots;
 use crate::adapters::responses;
 use crate::error::KernelError;
-use crate::openai::answer::{self, backoff_ms, Failure, Sse};
-use crate::openai::tools::{Call, Policy, SetupError, ToolSet, JOB};
-use crate::openai::wire::{user_message, BodyArgs, Wire, WireItem, COMPACT_THRESHOLD};
+use crate::openai::answer::{self, Failure, Sse, backoff_ms};
+use crate::openai::tools::{Call, JOB, Policy, SetupError, ToolSet};
+use crate::openai::wire::{BodyArgs, COMPACT_THRESHOLD, Wire, WireItem, user_message};
 use crate::openai::{skill, task};
 use crate::overlay::apply_overlay;
-use crate::profile::{parse_profile, Profile, Skill, SystemPrompt};
+use crate::profile::{Profile, Skill, SystemPrompt, parse_profile};
 use crate::queue::Queue;
 use crate::quota::Past;
 use crate::record::{Activity, Deadline, Record, Stop, Turn};
 use crate::sessions::{
-    delta_only, input_text, wire_update, Acct, Called, Host, Kernel, Push, SinkOutcome, Step,
-    StreamError, StreamKey, Work,
+    Acct, Called, Host, Kernel, Push, SinkOutcome, Step, StreamError, StreamKey, Work, delta_only,
+    input_text, wire_update,
 };
 use crate::state::State;
 use crate::transcript::Transcript;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// The `kind` of a request stream's `stream/<id>` (9.1).
 pub(crate) const REQUEST: &str = "request";
@@ -321,22 +321,20 @@ impl<S: State, H: Host> Kernel<S, H> {
             // applies, also to a turn in flight); the rest stays as compiled at `start`, and such
             // a root names no delegates. Saved with the loop's next change.
             if let Some(rec) = Record::load(&mut self.state, id) {
-                if self.may_work(&rec.owner, &rec) {
-                    if let Some(text) = self.profile_json(&rec.profile) {
-                        if rec
-                            .profile_digest
-                            .as_deref()
-                            .is_none_or(|d| crate::access::digest(text.as_bytes()) == d)
-                        {
-                            let c = self.compiled_of(&rec);
-                            ls.policy.max_turns = c.max_turns;
-                            ls.policy.max_tool_errors = c.max_tool_errors;
-                            ls.policy.max_tokens = c.max_tokens;
-                        }
+                if let Some(text) = self.profile_json(&rec.profile) {
+                    if rec
+                        .profile_digest
+                        .as_deref()
+                        .is_none_or(|d| crate::access::digest(text.as_bytes()) == d)
+                    {
+                        let c = self.compiled_of(&rec);
+                        ls.policy.max_turns = c.max_turns;
+                        ls.policy.max_tool_errors = c.max_tool_errors;
+                        ls.policy.max_tokens = c.max_tokens;
+                        ls.limits_compiled = true;
                     }
                 }
             }
-            ls.limits_compiled = true;
         }
         Some(ls)
     }
@@ -598,7 +596,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 return Err(KernelError::Busy(format!(
                     "no request slot is free ({} in all, {} per owner)",
                     self.limits.request, self.limits.owner_request
-                )))
+                )));
             }
             _ => {}
         }
@@ -636,6 +634,19 @@ impl<S: State, H: Host> Kernel<S, H> {
         launched: Option<Launch>,
         attempt: u32,
     ) -> Result<(), KernelError> {
+        if !ls.limits_compiled {
+            let reason = "changed since the participant allowed it";
+            ls.last_error = Some(reason.into());
+            return self.end_turn(
+                rec,
+                ls,
+                cx,
+                Stop::Failed {
+                    error: "refused".into(),
+                    cause: Some(reason.into()),
+                },
+            );
+        }
         let launch = match launched {
             Some(l) => l,
             None => self.launch(rec, ls, cx.slots, cx.a, &pending, 0),
@@ -1362,7 +1373,22 @@ impl<S: State, H: Host> Kernel<S, H> {
             now,
             dirty: false,
         };
-        act(self, &mut rec, &mut ls, &mut cx)?;
+        if !ls.limits_compiled {
+            let reason = "changed since the participant allowed it";
+            self.openai_stop(&mut rec, &mut ls, &mut cx)?;
+            ls.last_error = Some(reason.into());
+            self.end_turn(
+                &mut rec,
+                &mut ls,
+                &mut cx,
+                Stop::Failed {
+                    error: "refused".into(),
+                    cause: Some(reason.into()),
+                },
+            )?;
+        } else {
+            act(self, &mut rec, &mut ls, &mut cx)?;
+        }
         let mut dirty = cx.dirty;
         self.settle_openai(
             &mut rec, &before, &mut slots, &mut acct, was, now, &mut dirty,
@@ -1995,11 +2021,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.deliver(&own, rec.live.as_deref());
         work.pushes.extend(own);
         self.deliver_peer(&mut work);
-        if kept {
-            Drain::Kept
-        } else {
-            Drain::Gone
-        }
+        if kept { Drain::Kept } else { Drain::Gone }
     }
 
     // ---- attach

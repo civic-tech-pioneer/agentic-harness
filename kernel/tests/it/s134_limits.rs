@@ -5,7 +5,7 @@
 use agent_kernel::active::Slots;
 use agent_kernel::adapters::claude::ClaudeAdapter;
 use agent_kernel::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 type K = Kernel<MemState, FakeHost>;
 
@@ -521,10 +521,11 @@ fn ac7_error_max_turns_then_idle_ends_the_turn_stopped_max_turns() {
     assert!(live.iter().any(|w| w["type"] == "turn"
         && w["state"]["stop"] == json!({"kind":"stopped","limit":"max-turns"})));
     let page = k.read("alice", &id, 0, None, 256).unwrap();
-    assert!(page
-        .entries
-        .iter()
-        .any(|e| e.contains(r#""kind":"turn""#) && e.contains("max-turns")));
+    assert!(
+        page.entries
+            .iter()
+            .any(|e| e.contains(r#""kind":"turn""#) && e.contains("max-turns"))
+    );
 }
 
 #[test]
@@ -645,4 +646,46 @@ fn r1_f1_8_a_loop_saved_before_stage_f_gets_the_profiles_limits() {
     reply_with(&mut k, &id, &[text("big")], Some((60, 50)));
     assert_eq!(stop_of(&mut k, &id), stopped("max-tokens"));
     assert_eq!(lp(&mut k, &id)["limits-compiled"], true);
+}
+
+#[test]
+fn legacy_record_without_digest_keeps_profile_caps() {
+    let mut k = kernel(r#", "max-tokens":100"#);
+    let id = start(&mut k);
+    let key = format!("loop/{id}");
+    let mut v: Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
+    v.as_object_mut().unwrap().remove("limits-compiled");
+    v["policy"].as_object_mut().unwrap().remove("max-tokens");
+    k.state.put(&key, serde_json::to_vec(&v).unwrap()).unwrap();
+    let key = format!("session/{id}");
+    let mut v: Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
+    v.as_object_mut().unwrap().remove("profile-digest");
+    k.state.put(&key, serde_json::to_vec(&v).unwrap()).unwrap();
+    reply_with(&mut k, &id, &[text("big")], Some((60, 50)));
+    assert_eq!(stop_of(&mut k, &id), stopped("max-tokens"));
+}
+
+#[test]
+fn changed_profile_ends_openai_step_refused() {
+    let mut k = kernel(r#", "max-tokens":100"#);
+    let id = start(&mut k);
+    let key = format!("loop/{id}");
+    let mut v: Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
+    v.as_object_mut().unwrap().remove("limits-compiled");
+    v["policy"].as_object_mut().unwrap().remove("max-tokens");
+    k.state.put(&key, serde_json::to_vec(&v).unwrap()).unwrap();
+    k.state
+        .put(
+            "profile/o",
+            br#"{"backend":"openai","model":"gpt-5","max-tokens":200}"#.to_vec(),
+        )
+        .unwrap();
+    reply_with(&mut k, &id, &[text("reply")], Some((10, 5)));
+    assert_eq!(
+        stop_of(&mut k, &id),
+        Stop::Failed {
+            error: "refused".into(),
+            cause: Some("changed since the participant allowed it".into())
+        }
+    );
 }
