@@ -9,6 +9,7 @@ pub mod check;
 pub mod delegation;
 pub mod error;
 pub mod launch;
+pub mod manage;
 pub mod named;
 pub mod openai;
 pub mod overlay;

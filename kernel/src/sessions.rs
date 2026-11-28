@@ -13,6 +13,7 @@ use crate::broker;
 use crate::check::check;
 use crate::error::{KernelError, Refusal};
 use crate::launch::launch;
+use crate::manage::{AccessError, AccessQuestion, OfferedProfile};
 use crate::openai::run::{Cx, REQUEST};
 use crate::openai::tools::JOB;
 use crate::overlay::{apply_overlay, parse_overlay, Overlay};
@@ -53,6 +54,18 @@ const PAGE: &str = "page";
 
 /// What the kernel needs of the host (2.1): the generation, the clock, ids, timers, requests.
 pub trait Host {
+    /// Fake of TECHNICAL 15 `caller.connection()`; only page chains carry an id.
+    fn connection(&mut self) -> Option<String> {
+        None
+    }
+    /// Fake of TECHNICAL 15 `agent-access.ask` (a request, not an authority).
+    fn access_ask(&mut self, _question: AccessQuestion) -> Result<String, AccessError> {
+        Err(AccessError::NotPage)
+    }
+    /// Fake of the 2.3 offers collect; the host supplies answers in subscriber order.
+    fn offers_profiles(&mut self) -> Vec<OfferedProfile> {
+        Vec::new()
+    }
     /// `host-info.generation()` (2.1, G1).
     fn generation(&mut self) -> u64;
     /// Milliseconds.
@@ -228,6 +241,11 @@ pub enum Request {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostCall {
+    AccessAsk {
+        question: AccessQuestion,
+        stream: String,
+    },
+    OffersProfiles,
     Generation,
     TimerAfter {
         id: String,
@@ -284,6 +302,9 @@ pub enum HostCall {
 /// A host for tests: a settable clock and generation, ids `s1`, `s2`, ..., and a log of what was asked.
 #[derive(Debug, Default)]
 pub struct FakeHost {
+    pub connection_id: Option<String>,
+    pub access_error: Option<AccessError>,
+    pub offered_profiles: Vec<OfferedProfile>,
     pub generation: u64,
     pub now: u64,
     pub firing_origin: Option<String>,
@@ -321,6 +342,25 @@ impl FakeHost {
 }
 
 impl Host for FakeHost {
+    fn connection(&mut self) -> Option<String> {
+        self.connection_id.clone()
+    }
+    fn access_ask(&mut self, question: AccessQuestion) -> Result<String, AccessError> {
+        if let Some(error) = self.access_error {
+            return Err(error);
+        }
+        self.next_stream += 1;
+        let stream = format!("t{}", self.next_stream);
+        self.calls.push(HostCall::AccessAsk {
+            question,
+            stream: stream.clone(),
+        });
+        Ok(stream)
+    }
+    fn offers_profiles(&mut self) -> Vec<OfferedProfile> {
+        self.calls.push(HostCall::OffersProfiles);
+        self.offered_profiles.clone()
+    }
     fn generation(&mut self) -> u64 {
         self.calls.push(HostCall::Generation);
         self.generation
@@ -919,11 +959,12 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// Starts a top-level call: reads `slots` and the host's generation (R1). When they differ,
     /// this call starts the restart pass: the new boot, the stream slot counts zeroed (`timers`
     /// stays), the cursor at page 0, and the timer `restart` with delay 0. It steps no session.
-    fn begin(&mut self) -> Result<Slots, KernelError> {
+    pub(crate) fn begin(&mut self) -> Result<Slots, KernelError> {
         self.open_meter();
         let mut slots = Slots::load(&mut self.state);
         let boot = self.host.generation();
         if boot != slots.boot {
+            self.cleanup_access_after_restart();
             slots.boot = boot;
             slots.provider = 0;
             slots.request = 0;
