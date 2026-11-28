@@ -159,10 +159,10 @@ fn ac4_a_stored_profile_scratch_needs_access_page() {
     k.start("page", "k2", "scratch", "{}", IN).unwrap();
 }
 
-/// The relaunch is a Claude stream: it is checked by Claude's refuse table even when the edited
-/// profile now names another backend (whose table would let `ask-expiry` pass).
+/// An edited profile is refused before relaunch, even when its new backend differs from the
+/// session's backend.
 #[test]
-fn validator_a_relaunch_is_checked_by_the_sessions_backend() {
+fn validator_edited_profile_refuses_before_relaunch() {
     let mut k = kernel();
     let id = released(&mut k);
     let edited = r#"{"backend":"openai","model":"gpt-5","ask-expiry":30}"#;
@@ -170,7 +170,10 @@ fn validator_a_relaunch_is_checked_by_the_sessions_backend() {
         .put("profile/p", edited.as_bytes().to_vec())
         .unwrap();
     match k.say("alice", &id, "s1", "again") {
-        Err(KernelError::Refused(r)) => assert_eq!(r[0].field, "profile"),
+        Err(KernelError::Refused(r)) => assert_eq!(
+            (r[0].field.as_str(), r[0].reason.as_str()),
+            ("profile", "changed since the participant allowed it")
+        ),
         other => panic!("{other:?}"),
     }
     assert!(last_launch(&k).is_none());

@@ -116,6 +116,49 @@ mod tests {
     }
 
     #[test]
+    fn ac1_entries_require_lowercase_sha256_positive_revision_and_bounded_names() {
+        let d = digest(b"profile");
+        let mut state = MemState::new();
+        for (name, hash, rev) in [
+            ("p".to_string(), d.to_uppercase(), 1),
+            ("p".to_string(), d[..63].to_string(), 1),
+            ("p".to_string(), format!("{d}0"), 1),
+            ("p".to_string(), d.clone(), 0),
+            ("a b".to_string(), d.clone(), 1),
+            ("x".repeat(65), d.clone(), 1),
+        ] {
+            state
+                .put(
+                    "access/alice",
+                    serde_json::to_vec(&vec![AccessEntry {
+                        profile: name,
+                        digest: hash,
+                        rev,
+                    }])
+                    .unwrap(),
+                )
+                .unwrap();
+            assert!(entries(&mut state, "alice").is_none());
+        }
+    }
+
+    #[test]
+    fn ac1_sixty_five_entries_grant_nothing() {
+        let mut state = MemState::new();
+        let rows: Vec<_> = (0..65)
+            .map(|i| AccessEntry {
+                profile: format!("p{i}"),
+                digest: digest(b"profile"),
+                rev: 1,
+            })
+            .collect();
+        state
+            .put("access/alice", serde_json::to_vec(&rows).unwrap())
+            .unwrap();
+        assert!(entries(&mut state, "alice").is_none());
+    }
+
+    #[test]
     fn ac1_entry_holds_only_at_the_allowed_version() {
         let digest = digest(b"profile");
         let entry = AccessEntry {
@@ -299,5 +342,19 @@ mod tests {
             serde_json::from_slice(&kernel.state.get("clients").unwrap()).unwrap();
         assert_eq!(clients.len(), 64);
         assert!(!clients.contains(&"local/c64".to_string()));
+    }
+
+    #[test]
+    fn ac3_client_identity_over_128_bytes_is_not_registered() {
+        let mut kernel = Kernel::new(MemState::new(), FakeHost::default());
+        let too_long = format!("local/{}", "x".repeat(123));
+        assert_eq!(too_long.len(), 129);
+        kernel.check_named(&too_long, "p", "{}");
+        assert!(kernel.state.get("clients").is_none());
+        let at_limit = format!("local/{}", "x".repeat(122));
+        kernel.profiles(&at_limit);
+        let clients: Vec<String> =
+            serde_json::from_slice(&kernel.state.get("clients").unwrap()).unwrap();
+        assert_eq!(clients, vec![at_limit]);
     }
 }

@@ -189,11 +189,43 @@ fn ac1_a_profile_name_outside_the_grammar_is_denied() {
             br#"{"model":"sonnet"}"#.to_vec(),
         )
         .unwrap();
+    // Seed a raw pinned grant for the bad name: the fixture helper must not quietly omit it.
+    let bad = br#"{"model":"sonnet"}"#;
+    let digest = agent_kernel::access::digest(bad);
+    k.state
+        .put(
+            "access/alice",
+            serde_json::to_vec(&json!([{"profile":"a b","digest":digest,"rev":1}])).unwrap(),
+        )
+        .unwrap();
+    k.state
+        .put(
+            "profiles",
+            serde_json::to_vec(&json!([{"name":"a b","digest":digest,"rev":1,"bytes":bad.len()}]))
+                .unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        k.start("alice", "bad", "a b", "{}", IN),
+        Err(KernelError::Refused(ref v)) if v[0].field == "profile"
+    ));
+    k.state
+        .put(
+            "access/alice",
+            serde_json::to_vec(&json!([{"profile":long,"digest":digest,"rev":1}])).unwrap(),
+        )
+        .unwrap();
+    k.state
+        .put(
+            "profiles",
+            serde_json::to_vec(&json!([{"name":long,"digest":digest,"rev":1,"bytes":bad.len()}]))
+                .unwrap(),
+        )
+        .unwrap();
+    let r = k.start("alice", "long-bad", &long, "{}", IN);
+    assert!(matches!(r, Err(KernelError::Refused(ref v)) if v[0].field == "profile"));
+    k.state.delete("profiles");
     crate::fixture_access::put(&mut k.state, "access/alice", br#"["long"]"#.to_vec()).unwrap();
-    for (n, name) in ["a b", long.as_str()].into_iter().enumerate() {
-        let r = k.start("alice", &format!("k{n}"), name, "{}", IN);
-        assert!(matches!(r, Err(KernelError::Refused(ref v)) if v[0].field == "profile"));
-    }
     let id = k.start("alice", "valid", "long", "{}", IN).unwrap().value;
     assert!(!id.is_empty());
 }

@@ -20,7 +20,7 @@ fn fields(rs: &[agent_kernel::Refusal]) -> Vec<&str> {
 }
 
 #[test]
-fn ac3_a_name_the_caller_may_not_use_is_one_refusal_whether_or_not_it_exists() {
+fn ac3_ungranted_name_is_one_revoked_refusal_whether_or_not_it_exists() {
     let mut k = kernel(&[("access/alice", r#"["p"]"#), ("profile/other", "{}")]);
     for name in ["other", "ghost"] {
         let rs = k.check_named("alice", name, "{}");
@@ -29,6 +29,7 @@ fn ac3_a_name_the_caller_may_not_use_is_one_refusal_whether_or_not_it_exists() {
     let a = k.check_named("alice", "other", "{}");
     let b = k.check_named("alice", "ghost", "{}");
     assert_eq!(a[0].reason, b[0].reason);
+    assert_eq!(a[0].reason, "this client may not use this profile");
     assert_eq!(fields(&k.check_named("bob", "p", "{}")), ["profile"]);
 }
 
@@ -118,7 +119,7 @@ fn ac4_the_page_with_no_access_gets_scratch_only() {
 }
 
 #[test]
-fn ac4_at_most_64_profiles_and_65_reads() {
+fn ac4_at_most_64_profiles_and_67_reads() {
     let mut entries: Vec<(String, String)> = Vec::new();
     let names: Vec<String> = (0..64).map(|i| format!("p{i}")).collect();
     entries.push((
@@ -138,6 +139,17 @@ fn ac4_at_most_64_profiles_and_65_reads() {
     assert_eq!(ps.len(), 64);
     assert_eq!(ps[63].name, "p63");
     assert!(k.state.counts().gets <= 67, "{}", k.state.counts().gets);
+
+    // A raw 65-entry grant is unreadable as a whole, even if each entry is pinned.
+    let mut grants: Vec<agent_kernel::access::AccessEntry> =
+        serde_json::from_slice(&k.state.get("access/alice").unwrap()).unwrap();
+    grants.push(grants[0].clone());
+    grants[64].profile = "p64".into();
+    k.state
+        .put("access/alice", serde_json::to_vec(&grants).unwrap())
+        .unwrap();
+    assert!(k.profiles("alice").is_empty());
+    assert_eq!(k.check_named("alice", "p0", "{}")[0].field, "profile");
 }
 
 /// S40-7 (stage D on watane's host): a path rule on an OpenAI profile was named twice, once by the
