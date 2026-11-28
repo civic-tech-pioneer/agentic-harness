@@ -1214,6 +1214,12 @@ mod tests {
         assert_eq!(changed_fields(Some(&old), &nested), vec!["subagent-limits"]);
     }
     #[test]
+    fn val_field_digest_is_rfc8785_key_order_independent() {
+        let a = field_digests(r#"{"subagent-limits":{"live":2,"depth":1}}"#).unwrap();
+        let b = field_digests(r#"{"subagent-limits":{"depth":1,"live":2}}"#).unwrap();
+        assert!(changed_fields(Some(&a), &b).is_empty());
+    }
+    #[test]
     fn ac2_remove_requires_a_fresh_answer_and_no_grant() {
         let mut k = Kernel::new(
             MemState::new(),

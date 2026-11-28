@@ -178,8 +178,28 @@ impl<S: State, H: Host> Kernel<S, H> {
 
 #[cfg(test)]
 mod tests {
+    use super::AccessQuestion;
     use crate::manage::OfferedProfile;
-    use crate::{FakeHost, Kernel, MemState};
+    use crate::{FakeHost, HostCall, Kernel, MemState};
+
+    #[test]
+    fn adopt_question_says_watane_does_not_name_the_mod() {
+        let mut k = Kernel::new(MemState::new(), FakeHost {
+            connection_id: Some("c".into()), ..Default::default()
+        });
+        k.manage_open("page").unwrap();
+        k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
+        let profile = "{}";
+        k.host.offered_profiles.push(OfferedProfile {
+            name: "p".into(), description: "d".into(), profile: profile.into()
+        });
+        k.manage_adopt("page", "p", &crate::access::digest(profile.as_bytes()), "mine").unwrap();
+        let text = k.host.calls.iter().rev().find_map(|call| match call {
+            HostCall::AccessAsk { question: AccessQuestion::Store { text, .. }, .. } => Some(text),
+            _ => None,
+        }).unwrap();
+        assert!(text.ends_with("New profile\nAdopted from an offer; watane does not say which mod offered it"), "{text}");
+    }
 
     #[test]
     fn ac1_collect_bounds_deduplicates_and_pages() {
