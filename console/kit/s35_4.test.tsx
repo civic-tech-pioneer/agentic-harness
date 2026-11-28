@@ -125,6 +125,11 @@ describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
     expect(word()).toContain(words);
   });
 
+  it("ac1_openai_account_refusal_names_the_account_not_the_token", () => {
+    status({ ...emptyView, turn: { state: "idle", stop: { kind: "failed", error: "consent-refused(account:openai)" } } } as SessionView);
+    expect(word()).toBe("Failed: Consent was refused for the OpenAI account");
+  });
+
   it("ac2_openai_workspace_refusal_reads_in_words", () => {
     status({ ...emptyView, turn: { state: "idle", stop: { kind: "failed", error: "consent-refused(workspace:/home/alice/notes)" } } } as SessionView);
     expect(word()).toBe("Failed: Workspace access was refused for /home/alice/notes");
