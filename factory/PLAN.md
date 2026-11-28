@@ -27,19 +27,19 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ## In flight
 
- S138, S142, S144, S145, S148, S151, S152, S153, S154, S156, S160, S163, S165 merged.
+ S138, S142, S144, S145, S148, S151, S152, S153, S154, S156, S160, S163, S165, S166 merged.
 
 ## Sketched
 
-### S166: kernel guard and core upkeep (upkeep lane)
+### S168: stage F, factory profiles in the kernel (F-P1, main line)
 
-Sketched 2026-11-28 by Deputy Scissors. Builder codex by rule 3 (last two handed out: agentic-harness S165 codex, watane-factory JF1-1 claude); reviewer claude. In flight (cloud, Codex task https://chatgpt.com/local/6b0ab34b-3ee0-83ed-86da-d9ed2b21807d on GPT-6 Sol, 10:56 UTC; BLOCKED #114 at 4f87788f (9.3 forbids the reissue), answered 11:15 UTC by Deputy Scissors: option B, #114 leaves the slice for its own (spec change first; comment on #114)).
+Sketched 2026-11-28 by Deputy Rock. Builder codex by rule 3 (last two handed out: watane S167 claude, agentic-harness S166 codex); reviewer claude. In flight (cloud, builder codex): task pending.
 
-Issues, guards first: #133 (an OpenAI `Name(arg)` rule, path arguments included, is refused at the profile check naming its field, AGT-F-4; the tests in #133 and its comment), then core: #117 (an interrupt before `initialized` cancels the launch; Escape during Loading), then console polish where cheap: #124, #116, #111, #110, #104. The build team closes an issue already fixed on `main` with its commit; the PR body says `Fixes #n` for each other one.
+Story: Alice decides which of her profiles a client mod may use, sees what each grants, and can withdraw it; a mod never provisions itself. This is TECHNICAL 17's row F-P1, built from 9.10 as S151 designed it: `manage` with its owner and lease checks, `clients`, the pinned `access/` format (every test that seeds `access/` moves to it) and `access-fields/`, `profile-digest` and "Revoking" by digest, the questions (`manage`, `allow`, `store`, `remove`) and their answers on a fake `agent-access`, their restart cleanup, `withdraw` and its timer, the profile index, offers collect, `adopt` and stale, the reach text.
 
-Outcomes: each issue's check (its test, red before the fix); `factory/gate.sh` and CI green; with #133, TECHNICAL 9.6 (:1784) and 11's OpenAI `allow`/`deny`/`ask` cells say what the code now does, and 14 "Not protected" drops the #133 gap.
+Outcomes: cases 78 to 84 of 16 pass on the kernel with the host request and `caller.connection` faked in the kernel crate; an absent `access/` entry stays denied and no client writes its own; a withdrawn profile stops new starts; `factory/gate.sh` and CI green.
 
-Touches: `kernel/`, `console/`, and in `design/TECHNICAL.md` only 9.6, 11 and 14's #133 lines. Constraints: no WIT or kernel interface change beyond the refusal #133 names (a refusal is the AGT-F-4 contract already); a weaker boundary is not this slice's (`BLOCKED`). Protects: *guard* (#133), *core* (#117, #114), *polish* (the rest). Upkeep is exempt from the size rule. spec-check not run: the only spec lines it touches are the ones S165 just reconciled.
+Touches: `kernel/` (and `design/` only where the code shows 9.10 wrong: a fix to the spec line, named in the PR body). Interfaces: `agent-access` and `caller.connection` exactly as TECHNICAL 15 (S151-H, accepted) writes them; watane builds them in F-P2 later, so fake them, do not change them. Constraints: no change to the consent boundary of 14 beyond 9.10's words (`BLOCKED` with the clause); the manager view and wasm export are F-P3's, not this slice's. Boundary: consent (14), so the adversary runs. spec-check not run: 9.10 is S151's design, four review rounds and the human's S151-H answer; a contradiction the build meets comes back as `BLOCKED`.
 
 ### Stage B carry list (folded into stage B's end-to-end slices, never a slice of its own)
 
