@@ -1,8 +1,9 @@
 //! Slow S138 check. Only a real Watane scheduler and the kernel component exercise
 //! the production timer import and the host's disabled-owner fallback together.
 
+use agent_kernel::access::{digest, AccessEntry, ProfileIndexEntry};
 use redb::{Database, TableDefinition};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -34,17 +35,40 @@ fn seed_profile(home: &Path) {
             .open_table(TableDefinition::<&str, &[u8]>::new(&name))
             .unwrap();
         let profile: &[u8] = br#"{"backend":"openai","model":"gpt-5"}"#;
-        let access: &[u8] = br#"["fixture"]"#;
+        let hash = digest(profile);
+        let access = serde_json::to_vec(&vec![AccessEntry {
+            profile: "fixture".into(),
+            digest: hash.clone(),
+            rev: 1,
+        }])
+        .unwrap();
+        let index = serde_json::to_vec(&vec![ProfileIndexEntry {
+            name: "fixture".into(),
+            digest: hash,
+            rev: 1,
+            bytes: profile.len() as u32,
+            offer: None,
+            stale: false,
+            gone: false,
+        }])
+        .unwrap();
         state.insert("profile/fixture", profile).unwrap();
-        state.insert("access/local/echo", access).unwrap();
+        state
+            .insert("access/local/echo", access.as_slice())
+            .unwrap();
+        state.insert("profiles", index.as_slice()).unwrap();
         let mut sizes = txn
             .open_table(TableDefinition::<&str, u64>::new("sizes"))
             .unwrap();
         sizes
             .insert(
                 id.as_str(),
-                ("profile/fixture".len() + profile.len() + "access/local/echo".len() + access.len())
-                    as u64,
+                ("profile/fixture".len()
+                    + profile.len()
+                    + "access/local/echo".len()
+                    + access.len()
+                    + "profiles".len()
+                    + index.len()) as u64,
             )
             .unwrap();
     }

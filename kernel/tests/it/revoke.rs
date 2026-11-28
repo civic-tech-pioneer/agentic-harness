@@ -14,7 +14,7 @@ const IN: &str = r#"[{"type":"text","text":"hi"}]"#;
 fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()
@@ -34,7 +34,7 @@ fn rec(k: &mut K, id: &str) -> Record {
 }
 
 fn revoke(k: &mut K, value: &[u8]) {
-    k.state.put("access/alice", value.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", value.to_vec()).unwrap();
 }
 
 /// A session with one queued input.

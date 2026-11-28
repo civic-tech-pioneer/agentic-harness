@@ -15,7 +15,7 @@ fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
     for who in ["alice", "bob"] {
-        st.put(&format!("access/{who}"), br#"["p"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["p"]"#.to_vec())
             .unwrap();
     }
     Slots {
@@ -33,9 +33,12 @@ fn kernel() -> K {
 }
 
 fn started(k: &mut K, owner: &str, key: &str) -> String {
-    k.state
-        .put(&format!("access/{owner}"), br#"["p"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(
+        &mut k.state,
+        &format!("access/{owner}"),
+        br#"["p"]"#.to_vec(),
+    )
+    .unwrap();
     let id = k.start(owner, key, "p", "{}", IN).unwrap().value;
     k.attach(owner, &id, 0).unwrap();
     id

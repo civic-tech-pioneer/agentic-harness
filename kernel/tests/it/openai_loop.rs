@@ -17,7 +17,7 @@ fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/o", P.as_bytes().to_vec()).unwrap();
     for who in ["alice", "bob"] {
-        st.put(&format!("access/{who}"), br#"["o"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["o"]"#.to_vec())
             .unwrap();
     }
     Slots {
@@ -732,7 +732,7 @@ fn ac7_cancel_ends_the_stream_and_delete_removes_the_loop_and_the_wire() {
 #[test]
 fn ac8_a_request_with_no_slot_is_refused_busy_and_an_owner_at_its_cap_never_blocks_another() {
     let mut k = kernel();
-    k.state.put("access/carol", br#"["o"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/carol", br#"["o"]"#.to_vec()).unwrap();
     let mut a = Vec::new();
     let mut b = Vec::new();
     for n in 0..4 {
@@ -823,7 +823,7 @@ fn ac9_a_restart_with_no_slot_free_takes_no_place_in_the_fifo() {
     for n in 0..4 {
         other.push(started(&mut k, "bob", &format!("b{n}")));
     }
-    k.state.put("access/carol", br#"["o"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/carol", br#"["o"]"#.to_vec()).unwrap();
     for n in 0..4 {
         other.push(started(&mut k, "carol", &format!("c{n}")));
     }
@@ -1191,7 +1191,7 @@ fn review_completion_only_compaction_preserves_quota_stop() {
 #[test]
 fn regress_s138_a_page_owned_pause_resumes_at_the_reset() {
     let mut k = kernel();
-    k.state.put("access/page", br#"["o"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/page", br#"["o"]"#.to_vec()).unwrap();
     let id = started(&mut k, "page", "page");
     k.arm_page_origin();
     k.host.firing_origin = Some("published/kernel".into());

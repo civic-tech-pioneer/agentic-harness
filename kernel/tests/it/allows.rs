@@ -18,7 +18,7 @@ fn kernel() -> K {
         br#"{"mode":"manual","tools":["Read"],"max-turns":20}"#.to_vec(),
     )
     .unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()
@@ -263,7 +263,7 @@ fn ac4_a_revoked_profile_does_not_answer_from_the_allow() {
         assert!(waiting(&mut k, &s));
         assert!(!requests(&k).iter().any(|r| r["ask"] == "a2"));
         // restoring access answers the next matching ask from the allow again
-        k.state.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+        crate::fixture_access::put(&mut k.state, "access/alice", br#"["p"]"#.to_vec()).unwrap();
         bash(&mut k, &mut a, &s, "a3", "npm test");
         assert_eq!(rec(&mut k, &s).pending_answers["a3"].by, "session-allow");
         // without an owner stream a revoked allow is the no-owner deny

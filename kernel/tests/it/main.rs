@@ -23,6 +23,7 @@ mod broker;
 mod check;
 mod errors;
 mod example;
+mod fixture_access;
 mod grammar;
 mod idle;
 mod meter;

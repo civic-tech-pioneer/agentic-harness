@@ -64,7 +64,7 @@ fn kernel(with_skills: bool) -> K {
     )
     .unwrap();
     for who in OWNERS {
-        st.put(&format!("access/{who}"), br#"["root"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["root"]"#.to_vec())
             .unwrap();
     }
     Slots {
@@ -361,6 +361,14 @@ fn s148_delegate_skill_admission_state_bytes_at_limit() {
         let bytes = serde_json::to_vec(&doc).unwrap();
         profile_bytes = bytes.len() as u64;
         k.state.put(&key, bytes).unwrap();
+    }
+    for who in OWNERS {
+        crate::fixture_access::put(
+            &mut k.state,
+            &format!("access/{who}"),
+            br#"["root"]"#.to_vec(),
+        )
+        .unwrap();
     }
     let root = k.start("alice", "load", "root", "{}", IN).unwrap().value;
     let before = k.state.counts();

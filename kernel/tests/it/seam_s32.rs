@@ -15,7 +15,7 @@ const IN: &str = r#"[{"type":"text","text":"hi"}]"#;
 fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()
@@ -197,7 +197,7 @@ fn gone_scenario(err: Option<StreamError>) {
         {
             let mut st = MemState::new();
             st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-            st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+            crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
             Slots {
                 boot: 1,
                 ..Slots::default()
@@ -438,7 +438,7 @@ impl State for Spy {
 fn ac7_the_last_seq_is_one_write_per_batch_and_the_bytes_stay_exact() {
     let mut st = Spy::default();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()

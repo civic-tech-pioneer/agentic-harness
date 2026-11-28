@@ -12,7 +12,7 @@ fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
     for who in ["alice", "bob"] {
-        st.put(&format!("access/{who}"), br#"["p"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["p"]"#.to_vec())
             .unwrap();
     }
     Slots {
@@ -77,8 +77,8 @@ fn adv_s21_start_uses_a_profile_the_client_has_no_access_to() {
     k.state
         .put("profile/shell", shell.as_bytes().to_vec())
         .unwrap();
-    k.state.put("access/bob", br#"["shell"]"#.to_vec()).unwrap();
-    k.state.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/bob", br#"["shell"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     let r = k.start("alice", "k", "shell", "{}", IN);
     assert!(
         matches!(&r, Err(KernelError::Refused(v)) if v.iter().any(|x| x.field == "profile")),
@@ -143,7 +143,7 @@ fn ac1_unreadable_access_allows_none_and_writes_nothing() {
     assert!(k.state.get("key/alice/k").is_none());
     assert!(k.state.get("owner/alice/0").is_none());
     assert_eq!(k.host.next_id, 0);
-    k.state.put("access/alice", br#"["q"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["q"]"#.to_vec()).unwrap();
     k.state.reset_counts();
     for who in ["alice", "carol"] {
         let r = k.start(who, "k", "p", "{}", IN);
@@ -161,8 +161,7 @@ fn ac1_unreadable_access_allows_none_and_writes_nothing() {
 fn ac2_owners_with_slashes_do_not_share_a_state_key() {
     let mut k = kernel();
     for who in ["page/x", "page", "100%"] {
-        k.state
-            .put(&format!("access/{who}"), br#"["p"]"#.to_vec())
+        crate::fixture_access::put(&mut k.state, &format!("access/{who}"), br#"["p"]"#.to_vec())
             .unwrap();
     }
     let a = k.start("page/x", "k", "p", "{}", IN).unwrap().value;

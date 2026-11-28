@@ -12,7 +12,7 @@ const P: &str = r#"{"mode":"manual","tools":["Read"],"max-turns":20}"#;
 fn kernel() -> K {
     let mut st = MemState::new();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    st.put("access/ann", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/ann", br#"["p"]"#.to_vec()).unwrap();
     let host = FakeHost {
         generation: 7,
         now: 5000,

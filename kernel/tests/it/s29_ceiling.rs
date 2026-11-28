@@ -17,8 +17,8 @@ fn kernel() -> K {
         br#"{"mode":"manual","tools":["Read"],"max-turns":20}"#.to_vec(),
     )
     .unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
-    st.put("access/bob", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/bob", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()

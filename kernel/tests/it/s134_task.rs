@@ -40,8 +40,8 @@ fn kernel(root_extra: &str) -> K {
         openai(r#","toolsets":["notes"],"allow":["notes_*"]"#).into_bytes(),
     )
     .unwrap();
-    st.put("access/alice", br#"["root"]"#.to_vec()).unwrap();
-    st.put("access/bob", br#"["o"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["root"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/bob", br#"["o"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()
@@ -132,6 +132,7 @@ fn reply(k: &mut K, id: &str, output: &[Value]) {
 }
 
 fn start_root(k: &mut K) -> String {
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["root"]"#.to_vec()).unwrap();
     k.start("alice", "k", "root", "{}", IN).unwrap().value
 }
 
@@ -260,9 +261,12 @@ fn ac1_the_toolsets_tools_come_before_task() {
 fn ac1_no_delegates_a_child_and_a_summary_send_no_task() {
     // No delegates.
     let mut k = kernel("");
-    k.state
-        .put("access/alice", br#"["root","foreman"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(
+        &mut k.state,
+        "access/alice",
+        br#"["root","foreman"]"#.to_vec(),
+    )
+    .unwrap();
     let plain = k.start("alice", "p", "foreman", "{}", IN).unwrap().value;
     assert!(bodies(&k)[0].get("tools").is_none(), "{}", bodies(&k)[0]);
     reply(&mut k, &plain, &[text("x")]);
@@ -541,9 +545,7 @@ fn ac4_a_child_request_that_stops_busy_gives_busy() {
                 .into_bytes(),
         )
         .unwrap();
-    k.state
-        .put("access/alice", br#"["root","o"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["root","o"]"#.to_vec()).unwrap();
     k.limits.owner_request = 3;
     let root = start_root(&mut k);
     reply(&mut k, &root, &[task("c1", "foreman", "go")]);
@@ -558,6 +560,7 @@ fn ac4_a_child_request_that_stops_busy_gives_busy() {
         ],
         Some((10, 5)),
     );
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["root","o"]"#.to_vec()).unwrap();
     k.start("alice", "o1", "o", "{}", IN).unwrap();
     k.provider_ended_with(&s, None).unwrap();
     k.start("alice", "o2", "o", "{}", IN).unwrap();
@@ -889,6 +892,7 @@ fn ac9_a_toolset_function_named_task_fails_a_delegating_root_before_any_request(
     for name in ["task", "skill"] {
         let mut k = kernel("");
         k.host.tools = vec![tool("notes_a", true), tool(name, true)];
+        crate::fixture_access::put(&mut k.state, "access/bob", br#"["o"]"#.to_vec()).unwrap();
         let id = k.start("bob", "b", "o", "{}", IN).unwrap().value;
         assert_eq!(bodies(&k).len(), 1, "{name}: the request is sent");
         assert!(rec(&mut k, &id).turn.is_active(), "{name}");
@@ -1184,6 +1188,7 @@ fn r2_f2_1_a_toolset_task_in_a_session_without_delegates_runs_as_its_tool() {
             openai(r#","toolsets":["notes"],"allow":["notes_*","task"]"#).into_bytes(),
         )
         .unwrap();
+    crate::fixture_access::put(&mut k.state, "access/bob", br#"["o"]"#.to_vec()).unwrap();
     let id = k.start("bob", "b", "o", "{}", IN).unwrap().value;
     let call = json!({"type":"function_call","id":"f","call_id":"t1","name":"task",
         "arguments": json!({"profile": "foreman", "input": "x"}).to_string()});
@@ -1269,6 +1274,9 @@ fn set_skills(k: &mut K, profile: &str, skills: &[Value]) {
     let mut p: Value = serde_json::from_slice(&k.state.get(&key).unwrap()).unwrap();
     p["skills"] = json!(skills);
     k.state.put(&key, serde_json::to_vec(&p).unwrap()).unwrap();
+    if profile == "root" {
+        crate::fixture_access::put(&mut k.state, "access/alice", br#"["root"]"#.to_vec()).unwrap();
+    }
 }
 
 fn skill_call(id: &str, args: Value) -> Value {

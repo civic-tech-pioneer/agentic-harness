@@ -29,7 +29,7 @@ fn claude_kernel() -> K {
             br#"{"mode":"manual","tools":["Read"],"max-turns":20}"#.to_vec(),
         )
         .unwrap();
-    k.state.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     k
 }
 

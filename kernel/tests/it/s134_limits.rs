@@ -29,7 +29,7 @@ fn kernel(extra: &str) -> K {
     );
     let mut st = MemState::new();
     st.put("profile/o", profile.into_bytes()).unwrap();
-    st.put("access/alice", br#"["o"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["o"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()
@@ -458,7 +458,7 @@ const ONE_MODEL: &str = r#","model_usage_since_last_result":{"claude-sonnet":{"i
 fn claude() -> (K, String, String, String) {
     let mut st = MemState::new();
     st.put("profile/p", CP.as_bytes().to_vec()).unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()

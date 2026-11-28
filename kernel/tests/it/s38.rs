@@ -268,7 +268,7 @@ fn ac1_scratch_session_lists_no_workspace_and_bad_folders_are_refused() {
             br#"{"backend":"openai","model":"gpt-5"}"#.to_vec(),
         )
         .unwrap();
-    k.state.put("access/page", br#"["o"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/page", br#"["o"]"#.to_vec()).unwrap();
     let e = k
         .start_in_folder("page", "openai", "o", "{}", "hello", FOLDER)
         .unwrap_err();

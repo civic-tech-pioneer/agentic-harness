@@ -32,7 +32,7 @@ fn kernel_with(profile_json: &str, tools: Vec<Tool>) -> K {
     st.put("profile/o", profile_json.as_bytes().to_vec())
         .unwrap();
     for who in ["alice", "bob", "carol"] {
-        st.put(&format!("access/{who}"), br#"["o"]"#.to_vec())
+        crate::fixture_access::put(&mut st, &format!("access/{who}"), br#"["o"]"#.to_vec())
             .unwrap();
     }
     Slots {
@@ -363,7 +363,7 @@ fn s138_ac3_a_foreign_ask_expiry_never_reaches_the_tool_or_model() {
 #[test]
 fn s138_a_page_owned_toolset_retries_its_first_describe() {
     let mut k = kernel();
-    k.state.put("access/page", br#"["o"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/page", br#"["o"]"#.to_vec()).unwrap();
     k.host.tools_describe_error = Some("unknown-handle".into());
     let id = k.start("page", "page", "o", "{}", IN).unwrap().value;
     assert!(starts(&k).is_empty());
@@ -648,9 +648,7 @@ fn ac2_no_live_owner_stream_denies_at_once() {
 #[test]
 fn ac2_an_agent_owner_is_denied_at_once() {
     let mut k = kernel_with(&profile(""), vec![tool("notes_a", true, true)]);
-    k.state
-        .put("access/agent:h1", br#"["o"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(&mut k.state, "access/agent:h1", br#"["o"]"#.to_vec()).unwrap();
     let id = session_with_calls(&mut k, "agent:h1", "k", &[call_of("c1", "notes_a", "{}")]);
     assert!(rec(&mut k, &id).open.is_empty());
     assert_eq!(

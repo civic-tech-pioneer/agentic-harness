@@ -40,8 +40,8 @@ fn kernel(root_extra: &str) -> K {
         openai(r#","toolsets":["notes"],"allow":["notes_*"]"#).into_bytes(),
     )
     .unwrap();
-    st.put("access/alice", br#"["root"]"#.to_vec()).unwrap();
-    st.put("access/bob", br#"["o"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["root"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/bob", br#"["o"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()
@@ -132,6 +132,7 @@ fn reply(k: &mut K, id: &str, output: &[Value]) {
 }
 
 fn start_root(k: &mut K) -> String {
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["root"]"#.to_vec()).unwrap();
     k.start("alice", "k", "root", "{}", IN).unwrap().value
 }
 
@@ -523,9 +524,12 @@ fn r1_f1_2_a_paused_childs_resume_checks_the_roots_access() {
         rec(&mut k, &a).turn
     );
     pause(&mut k, &b, 60);
-    k.state
-        .put("access/alice", br#"["foreman","validator"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(
+        &mut k.state,
+        "access/alice",
+        br#"["foreman","validator"]"#.to_vec(),
+    )
+    .unwrap();
     k.host.now += 61_000;
     k.host.firing_origin = Some("alice".into());
     k.timer(&format!("s/{b}"));

@@ -39,7 +39,7 @@ const UUID: &str = "5b1f0a52-3c1e-4c53-9d0e-7a1d3f6c2b11";
 fn kernel() -> K {
     let mut st = Spy::default();
     st.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    st.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut st, "access/alice", br#"["p"]"#.to_vec()).unwrap();
     Slots {
         boot: 1,
         ..Slots::default()
@@ -159,9 +159,7 @@ fn ac1_the_launch_is_the_document_of_4_1() {
             br#"{"model":"sonnet","tools":["Read"],"max-turns":20}"#.to_vec(),
         )
         .unwrap();
-    k.state
-        .put("access/alice", br#"["p","q"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["p","q"]"#.to_vec()).unwrap();
     k.start(
         "alice",
         "k1",
@@ -176,7 +174,7 @@ fn ac1_the_launch_is_the_document_of_4_1() {
 }
 
 #[test]
-fn ac1_a_profile_name_outside_the_grammar_gives_no_profile_field() {
+fn ac1_a_profile_name_outside_the_grammar_is_denied() {
     let mut k = kernel();
     k.state
         .put("profile/a b", br#"{"model":"sonnet"}"#.to_vec())
@@ -191,15 +189,13 @@ fn ac1_a_profile_name_outside_the_grammar_gives_no_profile_field() {
             br#"{"model":"sonnet"}"#.to_vec(),
         )
         .unwrap();
-    let access = json!(["a b", &long, "long"]).to_string();
-    k.state.put("access/alice", access.into_bytes()).unwrap();
-    for (n, name) in ["a b", long.as_str(), "long"].into_iter().enumerate() {
-        k.start("alice", &format!("k{n}"), name, "{}", IN).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["long"]"#.to_vec()).unwrap();
+    for (n, name) in ["a b", long.as_str()].into_iter().enumerate() {
+        let r = k.start("alice", &format!("k{n}"), name, "{}", IN);
+        assert!(matches!(r, Err(KernelError::Refused(ref v)) if v[0].field == "profile"));
     }
-    let l = launches(&k);
-    assert!(l[0].0.get("profile").is_none());
-    assert!(l[1].0.get("profile").is_none());
-    assert_eq!(l[2].0["profile"], "long");
+    let id = k.start("alice", "valid", "long", "{}", IN).unwrap().value;
+    assert!(!id.is_empty());
 }
 
 // AC2
@@ -586,9 +582,7 @@ fn ac7_a_profile_with_persist_false_resumes_nothing_and_no_workspace_means_scrat
             br#"{"model":"sonnet","persist":false}"#.to_vec(),
         )
         .unwrap();
-    k.state
-        .put("access/alice", br#"["p","np"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["p","np"]"#.to_vec()).unwrap();
     let id = k.start("alice", "k1", "np", "{}", IN).unwrap().value;
     let t = rec(&mut k, &id).streams[0].clone();
     // the Claude session id is kept, but never resumed; no `initialized` came: scratch
@@ -696,15 +690,13 @@ fn ac9_the_page_gets_the_built_in_scratch_profile_on_first_run() {
     // an unreadable `access/page` allows none; a stored one without scratch no longer allows it
     k.state.put("access/page", b"x".to_vec()).unwrap();
     assert!(refused(k.start("page", "k4", "scratch", "{}", IN)));
-    k.state.put("access/page", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/page", br#"["p"]"#.to_vec()).unwrap();
     assert!(refused(k.start("page", "k5", "scratch", "{}", IN)));
     // a stored profile replaces the built-in
     k.state
         .put("profile/scratch", br#"{"model":"haiku"}"#.to_vec())
         .unwrap();
-    k.state
-        .put("access/page", br#"["scratch"]"#.to_vec())
-        .unwrap();
+    crate::fixture_access::put(&mut k.state, "access/page", br#"["scratch"]"#.to_vec()).unwrap();
     k.start("page", "k6", "scratch", "{}", IN).unwrap();
     assert_eq!(launches(&k).pop().unwrap().0["model"], "haiku");
 }
@@ -748,8 +740,8 @@ fn failing_start<S: State>(st: S) -> (S, KernelError) {
     };
     let mut k = Kernel::new(st, host);
     k.state.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    k.state.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
-    k.state.put("access/bob", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/bob", br#"["p"]"#.to_vec()).unwrap();
     k.start("alice", "k1", "p", "{}", IN).unwrap();
     let account = {
         let b = k.state.get("quota").unwrap();
@@ -797,8 +789,8 @@ fn ac10_r1_only_the_failed_call_is_discarded() {
     };
     let mut k = Kernel::new(Buffered::new(MemState::new()), host());
     k.state.put("profile/p", P.as_bytes().to_vec()).unwrap();
-    k.state.put("access/alice", br#"["p"]"#.to_vec()).unwrap();
-    k.state.put("access/bob", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/alice", br#"["p"]"#.to_vec()).unwrap();
+    crate::fixture_access::put(&mut k.state, "access/bob", br#"["p"]"#.to_vec()).unwrap();
     k.start("alice", "k1", "p", "{}", IN).unwrap();
     // the wrapper commits a call that succeeded ...
     let mut committed = k.state.into_inner().commit();
