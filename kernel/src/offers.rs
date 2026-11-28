@@ -139,7 +139,6 @@ impl<S: State, H: Host> Kernel<S, H> {
             return Err(manage::refusal("profile", "version limit reached"));
         }
         let mut summary = manage::reach(&text, None)?;
-        summary.push_str("\nAdopted from an offer");
         if old.is_some() {
             let next = manage::field_digests(&text)
                 .ok_or_else(|| manage::refusal("profile", "invalid profile"))?;
@@ -149,10 +148,13 @@ impl<S: State, H: Host> Kernel<S, H> {
                 .and_then(|bytes| String::from_utf8(bytes).ok())
                 .and_then(|s| manage::field_digests(&s));
             let fields = manage::changed_fields(previous.as_ref(), &next);
-            summary.push_str(&format!("\nChanged: {}", fields.join(", ")));
+            if !fields.is_empty() {
+                summary.push_str(&format!("\nChanged: {}", fields.join(", ")));
+            }
         } else {
             summary.push_str("\nNew profile");
         }
+        summary.push_str("\nAdopted from an offer; watane does not say which mod offered it");
         if summary.len() > 4096 {
             return Err(manage::refusal("profile", "too wide to show"));
         }
@@ -184,21 +186,47 @@ mod tests {
 
     #[test]
     fn adopt_question_says_watane_does_not_name_the_mod() {
-        let mut k = Kernel::new(MemState::new(), FakeHost {
-            connection_id: Some("c".into()), ..Default::default()
-        });
+        let mut k = Kernel::new(
+            MemState::new(),
+            FakeHost {
+                connection_id: Some("c".into()),
+                ..Default::default()
+            },
+        );
         k.manage_open("page").unwrap();
         k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
         let profile = "{}";
         k.host.offered_profiles.push(OfferedProfile {
-            name: "p".into(), description: "d".into(), profile: profile.into()
+            name: "p".into(),
+            description: "d".into(),
+            profile: profile.into(),
         });
-        k.manage_adopt("page", "p", &crate::access::digest(profile.as_bytes()), "mine").unwrap();
-        let text = k.host.calls.iter().rev().find_map(|call| match call {
-            HostCall::AccessAsk { question: AccessQuestion::Store { text, .. }, .. } => Some(text),
-            _ => None,
-        }).unwrap();
-        assert!(text.ends_with("New profile\nAdopted from an offer; watane does not say which mod offered it"), "{text}");
+        k.manage_adopt(
+            "page",
+            "p",
+            &crate::access::digest(profile.as_bytes()),
+            "mine",
+        )
+        .unwrap();
+        let text = k
+            .host
+            .calls
+            .iter()
+            .rev()
+            .find_map(|call| match call {
+                HostCall::AccessAsk {
+                    question: AccessQuestion::Store { text, .. },
+                    ..
+                } => Some(text),
+                _ => None,
+            })
+            .unwrap();
+        assert!(
+            text.ends_with(
+                "New profile\nAdopted from an offer; watane does not say which mod offered it"
+            ),
+            "{text}"
+        );
     }
 
     #[test]
@@ -278,5 +306,52 @@ mod tests {
         let row = &k.manage_profiles("page", None, 10).unwrap()[0];
         assert!(!row.stale);
         assert_eq!(row.rev, 2);
+    }
+    #[test]
+    fn val_collect_filters_invalid_names_and_long_descriptions_and_deduplicates() {
+        let mut k = Kernel::new(
+            MemState::new(),
+            FakeHost {
+                connection_id: Some("c".into()),
+                ..Default::default()
+            },
+        );
+        k.manage_open("page").unwrap();
+        k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
+        k.host.offered_profiles = vec![
+            OfferedProfile {
+                name: "bad name".into(),
+                description: "d".into(),
+                profile: "{}".into(),
+            },
+            OfferedProfile {
+                name: "too-long".into(),
+                description: "d".repeat(257),
+                profile: "{}".into(),
+            },
+            OfferedProfile {
+                name: "ok".into(),
+                description: "d".into(),
+                profile: "{}".into(),
+            },
+            OfferedProfile {
+                name: "ok".into(),
+                description: "d".into(),
+                profile: "{}".into(),
+            },
+        ];
+        let offers = k.manage_offers("page", 0, 16).unwrap();
+        assert_eq!(offers.len(), 1);
+        assert_eq!(offers[0].name, "ok");
+        k.manage_adopt("page", "ok", &offers[0].digest, "mine")
+            .unwrap();
+        k.manage_on_item("t2", &serde_json::json!({"type":"granted"}));
+        let offers = k.manage_offers("page", 0, 16).unwrap();
+        assert_eq!(offers[0].adopted_as, ["mine"]);
+        k.host.offered_profiles.clear();
+        k.manage_offers("page", 0, 16).unwrap();
+        let profile = k.manage_profiles("page", None, 16).unwrap().remove(0);
+        assert_eq!(profile.offer.as_deref(), Some("ok"));
+        assert!(!profile.stale);
     }
 }

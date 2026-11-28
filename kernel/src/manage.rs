@@ -266,7 +266,10 @@ pub(crate) fn field_digests(text: &str) -> Option<BTreeMap<String, String>> {
                     .unwrap_or_else(|| default_field(name));
                 (
                     name.to_string(),
-                    access::digest(serde_json::to_string(&value).unwrap().as_bytes()),
+                    access::digest(
+                        &serde_json_canonicalizer::to_vec(&value)
+                            .expect("JSON value canonicalizes"),
+                    ),
                 )
             })
             .collect(),
@@ -501,13 +504,10 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
     pub(crate) fn lease(&mut self, caller: &str) -> Result<BoundStream, KernelError> {
         let connection = self.connection_for(caller)?;
+        self.begin()?;
         let lease: BoundStream =
             read(&mut self.state, "manage-lease").ok_or(KernelError::NotOwner)?;
         if lease.connection != connection {
-            return Err(KernelError::NotOwner);
-        }
-        self.begin()?;
-        if read::<BoundStream>(&mut self.state, "manage-lease").as_ref() != Some(&lease) {
             return Err(KernelError::NotOwner);
         }
         Ok(lease)
@@ -539,49 +539,47 @@ impl<S: State, H: Host> Kernel<S, H> {
         ids.retain(|id| id != stream);
         put(&mut self.state, "access-asks", &ids);
     }
-    fn questions_for(&mut self, client: &str, profile: &str) -> Vec<(String, Pending)> {
-        pending(&mut self.state)
-            .into_iter()
-            .filter_map(|id| {
-                let q: Pending = read(&mut self.state, &format!("access-ask/{id}"))?;
-                match &q {
-                    Pending::Allow {
-                        client: c,
-                        profile: p,
-                        ..
-                    } if c == client && p == profile => Some((id, q)),
-                    _ => None,
-                }
-            })
-            .collect()
-    }
-    fn names_profile(&mut self, profile: &str, except: Option<&str>) -> bool {
+    fn names_profile(&mut self, profile: &str, except: Option<&str>) -> Vec<String> {
         let mut clients: Vec<String> = read(&mut self.state, "clients").unwrap_or_default();
         clients.push("page".into());
-        clients.iter().any(|client| {
-            access::entries(&mut self.state, client)
-                .is_some_and(|entries| entries.iter().any(|e| e.profile == profile))
-        }) || pending(&mut self.state)
+        let mut named: Vec<String> = clients
+            .iter()
+            .filter(|client| {
+                access::entries(&mut self.state, client)
+                    .is_some_and(|entries| entries.iter().any(|e| e.profile == profile))
+            })
+            .cloned()
+            .collect();
+        for id in pending(&mut self.state)
             .into_iter()
             .filter(|id| Some(id.as_str()) != except)
-            .any(|id| {
-                read::<Pending>(&mut self.state, &format!("access-ask/{id}")).is_some_and(|q| {
-                    match q {
-                        Pending::Allow { profile: p, .. }
-                        | Pending::Store { profile: p, .. }
-                        | Pending::Remove { profile: p, .. } => p == profile,
-                    }
-                })
-            })
-            || clients
-                .iter()
-                .any(|client| crate::withdraw::has_withdrawing(&mut self.state, client, profile))
+        {
+            match read::<Pending>(&mut self.state, &format!("access-ask/{id}")) {
+                Some(Pending::Allow {
+                    client, profile: p, ..
+                }) if p == profile => named.push(client),
+                Some(Pending::Store { profile: p, .. } | Pending::Remove { profile: p, .. })
+                    if p == profile =>
+                {
+                    named.push("open question".into())
+                }
+                _ => {}
+            }
+        }
+        for client in clients {
+            if crate::withdraw::has_withdrawing(&mut self.state, &client, profile) {
+                named.push(client);
+            }
+        }
+        named.sort();
+        named.dedup();
+        named
     }
     pub fn manage_open(&mut self, caller: &str) -> Result<String, KernelError> {
         let connection = self.connection_for(caller)?;
         self.begin()?;
         let existing: Option<BoundStream> = read(&mut self.state, "manage-ask");
-        let _lease: Option<BoundStream> = read(&mut self.state, "manage-lease");
+        let active_lease: Option<BoundStream> = read(&mut self.state, "manage-lease");
         if existing
             .as_ref()
             .is_some_and(|a| a.connection == connection)
@@ -593,8 +591,14 @@ impl<S: State, H: Host> Kernel<S, H> {
             .access_ask(AccessQuestion::Manage)
             .map_err(|e| KernelError::Backend(e.code().into()))?;
         if let Some(old) = existing {
-            self.host.cancel_stream(&old.stream);
-            self.state.delete(&format!("stream/{}", old.stream));
+            // A corrupt duplicate stream id must not cancel a live lease while replacing a question.
+            if active_lease
+                .as_ref()
+                .is_none_or(|lease| lease.stream != old.stream)
+            {
+                self.host.cancel_stream(&old.stream);
+                self.state.delete(&format!("stream/{}", old.stream));
+            }
         }
         let pairing = code(&connection);
         put(
@@ -732,8 +736,12 @@ impl<S: State, H: Host> Kernel<S, H> {
             .find(|p| p.name == name)
             .ok_or_else(|| refusal("profile", "no such profile"))?;
         let base = row.digest.clone();
-        if self.names_profile(name, None) {
-            return Err(refusal("profile", "allowed or asked"));
+        let named = self.names_profile(name, None);
+        if !named.is_empty() {
+            return Err(refusal(
+                "profile",
+                &format!("allowed for {}", named.join(", ")),
+            ));
         }
         self.question(
             AccessQuestion::Remove {
@@ -849,19 +857,36 @@ impl<S: State, H: Host> Kernel<S, H> {
         {
             return Ok(());
         }
-        let old = self.questions_for(client, profile);
-        if old.iter().any(|(_, q)| matches!(q, Pending::Allow { digest: d, rev: r, .. } if d == &digest && *r == rev)) { return Ok(()); }
         let ids = pending(&mut self.state);
+        let questions: Vec<_> = ids
+            .iter()
+            .map(|id| {
+                (
+                    id.clone(),
+                    read::<Pending>(&mut self.state, &format!("access-ask/{id}")),
+                )
+            })
+            .collect();
+        let old: Vec<_> = questions
+            .iter()
+            .filter_map(|(id, q)| match q {
+                Some(Pending::Allow {
+                    client: c,
+                    profile: p,
+                    ..
+                }) if c == client && p == profile => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        if questions.iter().any(|(_, q)| matches!(q, Some(Pending::Allow { client: c, profile: p, digest: d, rev: r }) if c == client && p == profile && d == &digest && *r == rev)) { return Ok(()); }
         if ids.len() - old.len() >= 2 {
             return Err(KernelError::Busy("2 profile questions".into()));
         }
-        let reserved = ids
+        let reserved = questions
             .iter()
-            .filter(|id| {
-                read::<Pending>(&mut self.state, &format!("access-ask/{id}")).is_some_and(|q| {
-                    matches!(q, Pending::Allow { client: c, profile: p, .. }
-                if c == client && !entries.iter().any(|e| e.profile == p) && p != profile)
-                })
+            .filter(|(_, q)| {
+                matches!(q, Some(Pending::Allow { client: c, profile: p, .. })
+                if c == client && !entries.iter().any(|e| e.profile == *p) && p != profile)
             })
             .count();
         if !entries.iter().any(|e| e.profile == profile) && entries.len() + reserved >= 64 {
@@ -880,11 +905,14 @@ impl<S: State, H: Host> Kernel<S, H> {
             );
             let new_fields =
                 field_digests(&text).ok_or_else(|| refusal("profile", "invalid profile"))?;
-            reach.push_str(&format!(
-                "\nChanged since the version {} has: {}",
-                shown(client),
-                changed_fields(old_fields.as_ref(), &new_fields).join(", ")
-            ));
+            let changed = changed_fields(old_fields.as_ref(), &new_fields);
+            if !changed.is_empty() {
+                reach.push_str(&format!(
+                    "\nChanged since the version {} has: {}",
+                    shown(client),
+                    changed.join(", ")
+                ));
+            }
             if reach.len() > 4096 {
                 return Err(refusal("profile", "too wide to show"));
             }
@@ -897,8 +925,10 @@ impl<S: State, H: Host> Kernel<S, H> {
                 reach,
             })
             .map_err(|e| KernelError::Backend(e.code().into()))?;
-        for (id, _) in old {
-            self.cancel_question(&id);
+        for id in &old {
+            self.host.cancel_stream(id);
+            self.state.delete(&format!("access-ask/{id}"));
+            self.state.delete(&format!("stream/{id}"));
         }
         put(
             &mut self.state,
@@ -915,7 +945,8 @@ impl<S: State, H: Host> Kernel<S, H> {
             &format!("stream/{stream}"),
             &serde_json::json!({"kind":"access"}),
         );
-        let mut ids = pending(&mut self.state);
+        let mut ids = ids;
+        ids.retain(|id| !old.contains(id));
         ids.push(stream);
         put(&mut self.state, "access-asks", &ids);
         Ok(())
@@ -1048,7 +1079,7 @@ impl<S: State, H: Host> Kernel<S, H> {
                 else {
                     return;
                 };
-                if self.names_profile(&profile, Some(stream)) {
+                if !self.names_profile(&profile, Some(stream)).is_empty() {
                     return;
                 }
                 index.remove(i);
@@ -1326,5 +1357,106 @@ mod tests {
             "refused"
         );
         assert_eq!(pending(&mut k.state), vec!["t2"]);
+    }
+    #[test]
+    fn val_open_replaces_other_connection_question_but_not_lease_until_grant() {
+        let mut k = Kernel::new(
+            MemState::new(),
+            FakeHost {
+                connection_id: Some("a".into()),
+                ..FakeHost::default()
+            },
+        );
+        k.manage_open("page").unwrap();
+        k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
+        k.host.connection_id = Some("b".into());
+        k.manage_open("page").unwrap();
+        assert_eq!(
+            read::<BoundStream>(&mut k.state, "manage-lease")
+                .unwrap()
+                .connection,
+            "a"
+        );
+        k.host.connection_id = Some("c".into());
+        k.manage_open("page").unwrap();
+        assert!(k.state.get("stream/t2").is_none());
+        assert_eq!(
+            read::<BoundStream>(&mut k.state, "manage-lease")
+                .unwrap()
+                .connection,
+            "a"
+        );
+        k.manage_on_item("t3", &serde_json::json!({"type":"granted"}));
+        assert_eq!(
+            read::<BoundStream>(&mut k.state, "manage-lease")
+                .unwrap()
+                .connection,
+            "c"
+        );
+        assert!(k.state.get("stream/t1").is_none());
+        k.manage_close("page").unwrap();
+        assert!(k.state.get("manage-lease").is_none());
+    }
+    #[test]
+    fn val_store_answer_rechecks_base_before_writing() {
+        let mut k = Kernel::new(
+            MemState::new(),
+            FakeHost {
+                connection_id: Some("a".into()),
+                ..FakeHost::default()
+            },
+        );
+        k.manage_open("page").unwrap();
+        k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
+        k.manage_put_profile("page", "p", r#"{"model":"first"}"#)
+            .unwrap();
+        k.manage_on_item("t2", &serde_json::json!({"type":"granted"}));
+        k.manage_on_ended("t2");
+        k.manage_put_profile("page", "p", r#"{"model":"second"}"#)
+            .unwrap();
+        let mut index = access::index(&mut k.state);
+        index[0].digest = access::digest(br#"{"model":"changed"}"#);
+        put(&mut k.state, "profiles", &index);
+        k.manage_on_item("t3", &serde_json::json!({"type":"granted"}));
+        assert_eq!(k.state.get("profile/p").unwrap(), br#"{"model":"first"}"#);
+    }
+    #[test]
+    fn val_restore_allow_does_not_claim_empty_changed_fields() {
+        let mut k = Kernel::new(
+            MemState::new(),
+            FakeHost {
+                connection_id: Some("a".into()),
+                ..FakeHost::default()
+            },
+        );
+        k.manage_open("page").unwrap();
+        k.manage_on_item("t1", &serde_json::json!({"type":"granted"}));
+        k.manage_put_profile("page", "p", r#"{"model":"first"}"#)
+            .unwrap();
+        k.manage_on_item("t2", &serde_json::json!({"type":"granted"}));
+        k.manage_on_ended("t2");
+        k.state.put("clients", br#"["local/c"]"#.to_vec()).unwrap();
+        k.manage_allow("page", "local/c", "p").unwrap();
+        k.manage_on_item("t3", &serde_json::json!({"type":"granted"}));
+        k.manage_on_ended("t3");
+        let index = access::index(&mut k.state);
+        let mut new = index[0].clone();
+        new.rev += 1;
+        put(&mut k.state, "profiles", &vec![new]);
+        k.manage_allow("page", "local/c", "p").unwrap();
+        let reach = k
+            .host
+            .calls
+            .iter()
+            .rev()
+            .find_map(|c| match c {
+                crate::HostCall::AccessAsk {
+                    question: AccessQuestion::Allow { reach, .. },
+                    ..
+                } => Some(reach),
+                _ => None,
+            })
+            .unwrap();
+        assert!(!reach.contains("Changed since the version"));
     }
 }
