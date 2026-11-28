@@ -1705,8 +1705,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   `Name(arg)` rule, including one for `skill`, with a refusal naming its
   `allow`, `ask` or `deny` field (AGT-F-4). The OpenAI call carries no rule
   argument, so it cannot honor an argument pattern; use a bare name for a
-  rule intended to match. The check-side code gap is tracked by #133 and
-  recorded in 14, Not protected. Claude's `Skill(name)` uses the skill name as its
+  rule intended to match. Claude's `Skill(name)` uses the skill name as its
   scope key. `ask-expiry` is in seconds and 600 when the profile sets
   none. An OpenAI ask's id is its call's `call_id`; the owner's `answer` decides
   it at once (decision entry `by: owner`), `{allow, for: session}` is refused
@@ -1772,7 +1771,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   admitting only the `watane` server (4.4, 15), so that no other server's
   tool can carry that name.
 
-- **As built (S31; check gap #133).** The OpenAI matcher is `Rules::compile(allow, ask,
+- **As built (S31; profile check fixed S166).** The OpenAI matcher is `Rules::compile(allow, ask,
   deny)` and `Rules::decide(tool, arg)` in `kernel/src/rules.rs`, pure, not
   yet called (the loop of 9.5, stage D, calls it; `ask-expiry` waits for it).
   A rule is `Name` (1 to 64 of `A-Za-z0-9_-`) or `Name(arg)`, `arg`
@@ -1782,8 +1781,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   to `.` or `..`, or containing `**`), is a problem at compilation. `*` is
   any run, `?` one character, over the whole `arg`; a call without an `arg`
   matches only bare rules. Today the profile check rejects path rules but
-  accepts other `Name(arg)` rules that this matcher cannot use; #133 will
-  make it refuse them as the contract above requires. For Claude
+  refuses every `Name(arg)` rule, including path arguments, before this matcher runs. For Claude
   (`kernel/src/broker.rs`,
   `kernel/src/sessions.rs`):
   - **As built (S34): the scope functions.** The kernel sets an ask's
@@ -2882,9 +2880,9 @@ these caps.
 | `fallback-models` | flags | refused unless empty |
 | `effort` | `--effort=` | `reasoning.effort` if the model lists that level; else refused |
 | `tools` | `--tools=` | refused unless empty |
-| `allow`, `deny` | flags | the broker; a path rule refused |
+| `allow`, `deny` | flags | the broker; a `Name(arg)` rule refused, path rules included (9.6) |
 | `mode` | flag | `manual`, `dont-ask`; others refused |
-| `ask`, `pre-tool-check` | stdio, hook | the broker |
+| `ask`, `pre-tool-check` | stdio, hook | the broker; an `ask` `Name(arg)` rule refused, path rules included (9.6) |
 | `skills` | plugin folder | the `skill` function below. Each skill must contain exactly `SKILL.md`; missing or extra files are refused on `skills[i].files` |
 | `subagents`, `subagent-depth` | flags, env | refused |
 | `delegates`, `subagent-limits` | refused | stage F, `task` and root limits (9.7) |
@@ -2994,11 +2992,7 @@ stage E).
 | Only the participant gives a client a profile (S151) | one writer: `manage`, callable only by `page` on the participant's lease (9.10); a profile is stored, edited, restored, adopted or deleted only on the host's granted item of a `store` or `remove` question about that exact text, and an access entry only on a granted `allow` question whose words the app owns and which names the client and the installation as watane knows them, the profile and its reach (the host ends the question if that installation changes); a client is listed only by its own call; an entry pins the profile's version (its digest and the index's `rev`), and a changed, restored or stale profile allows no new input or launch until a new allow; capacity counts open questions, and a write past 64 entries writes nothing; absent or unreadable entries allow none; adopting an offer writes no entry; `withdraw` refuses new input at once, the kernel's own timer ends the running turns, children included, without the page, and until it completes no session it will end takes new work, a re-allow of the same version included (9.10, 9.7 "Revoking") | `kernel/src/manage.rs` (planned, 1), `kernel/src/named.rs` (the pinned entries read by `start`, `check`, `profiles`), `kernel/src/sessions.rs` (`may_work`: the record's `profile-digest`; the `withdraw` timer), `kernel/wasm/src/lib.rs` (`manage`'s owner and lease check by `caller.identity()` and `caller.connection()`, the access stream's routing), `kernel/wasm/wit/world.wit`; watane `host/` (`agent-access`, `caller.connection`, planned), `app/` (its consent words) |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs` (also the OpenAI rule names, 9.6), `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/named.rs` (`check` and `profiles` read `access/` first, 9.1), `kernel/src/error.rs` |
 
-Not protected: until #133 changes the profile check, an OpenAI
-`Name(arg)` rule (including `skill(name)`) is accepted yet cannot match a
-call because the OpenAI call is matched by name alone. A participant's deny
-rule can therefore be silently skipped, contrary to AGT-F-4; the intended
-check is in 9.6. Esc on a stale view after the kernel ended a turn can
+Not protected: Esc on a stale view after the kernel ended a turn can
 interrupt the next turn, including its queued input; `persist: false` is not
 built for OpenAI root or child sessions; a message finished between its
 transcript write and `response.completed` can be shown after a host restart
