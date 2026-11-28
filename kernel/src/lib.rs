@@ -1,5 +1,6 @@
 //! The agent kernel's native part: errors (TECHNICAL 12), the profile check (4.1, 9.2, 11), the transcript (9.4).
 
+pub mod access;
 pub mod active;
 pub mod adapters;
 pub mod broker;

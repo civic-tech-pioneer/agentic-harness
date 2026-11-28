@@ -5,6 +5,7 @@
 //! a client key only when the call changed something (9.1), and reads and writes only what its
 //! inputs name: no listing of keys.
 
+use crate::access;
 use crate::active::{self, Slots};
 use crate::adapters::claude::{facts, unread_init, ClaudeAdapter, Fact};
 use crate::adapters::{self, Kind};
@@ -1075,9 +1076,25 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// The launch of a session that needs a new provider stream (9.5): its profile with the
     /// overlay its `start` took, in its workspace, resuming the Claude session it kept.
     fn launch_of(&mut self, rec: &Record, resume: bool) -> Result<String, KernelError> {
+        if !self.may_work(&rec.owner, rec) {
+            return Err(refused(
+                "profile",
+                "changed since the participant allowed it",
+            ));
+        }
         let json = self
             .profile_json(&rec.profile)
             .ok_or_else(|| refused("profile", "no such profile"))?;
+        if rec
+            .profile_digest
+            .as_deref()
+            .is_some_and(|d| access::digest(json.as_bytes()) != d)
+        {
+            return Err(refused(
+                "profile",
+                "changed since the participant allowed it",
+            ));
+        }
         // A later launch is checked as `start` is (9.2, 11, 14), against the refuse table of the
         // session's backend: the one its stream runs, whatever the edited profile now says.
         let overlay = rec.overlay.clone().unwrap_or_default();
@@ -2036,14 +2053,30 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// 9.1, 9.7: whether `access/<owner>` names the profile; absent or unreadable allows none.
     /// The console's first run (S35): with no `access/page` at all, the page may use `scratch`.
     pub(crate) fn may_use(&mut self, owner: &str, profile: &str) -> bool {
-        match self.state.get(&format!("access/{owner}")) {
-            None => {
-                owner == PAGE
-                    && profile == SCRATCH
-                    && self.state.get(&format!("profile/{SCRATCH}")).is_none()
-            }
-            Some(b) => serde_json::from_slice::<Vec<String>>(&b)
-                .is_ok_and(|names| names.iter().any(|n| n == profile)),
+        self.access_digest(owner, profile).is_some() || self.scratch_allowed(owner, profile)
+    }
+
+    fn scratch_allowed(&mut self, owner: &str, profile: &str) -> bool {
+        owner == PAGE
+            && profile == SCRATCH
+            && self.state.get("access/page").is_none()
+            && self.state.get(&format!("profile/{SCRATCH}")).is_none()
+    }
+
+    pub(crate) fn access_digest(&mut self, owner: &str, profile: &str) -> Option<String> {
+        let entries = access::entries(&mut self.state, owner)?;
+        let entry = entries.iter().find(|entry| entry.profile == profile)?;
+        let index = access::index(&mut self.state);
+        access::holds(entry, &index).then(|| entry.digest.clone())
+    }
+
+    pub(crate) fn profile_access_error(&mut self, owner: &str, profile: &str) -> KernelError {
+        if access::entries(&mut self.state, owner)
+            .is_some_and(|entries| entries.iter().any(|e| e.profile == profile))
+        {
+            refused("profile", "changed since the participant allowed it")
+        } else {
+            Self::revoked()
         }
     }
 
@@ -2052,11 +2085,18 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// owner (it has no entry of its own), and a missing root is refused: fail closed.
     pub(crate) fn may_work(&mut self, owner: &str, rec: &Record) -> bool {
         match &rec.parent {
-            None => self.may_use(owner, &rec.profile),
+            None => self.record_may_work(owner, rec),
             Some(root) => match Record::load(&mut self.state, root) {
-                Some(r) => self.may_use(&r.owner, &r.profile),
+                Some(r) => self.record_may_work(&r.owner, &r),
                 None => false,
             },
+        }
+    }
+
+    fn record_may_work(&mut self, owner: &str, rec: &Record) -> bool {
+        match &rec.profile_digest {
+            Some(digest) => self.access_digest(owner, &rec.profile).as_deref() == Some(digest),
+            None => self.scratch_allowed(owner, &rec.profile),
         }
     }
 
@@ -2138,11 +2178,21 @@ impl<S: State, H: Host> Kernel<S, H> {
         check_slash(input)?;
         // 9.1: the profiles this caller may use; absent or unreadable allows none.
         if !self.may_use(caller, profile) {
-            return Err(Self::revoked());
+            return Err(self.profile_access_error(caller, profile));
         }
         let Some(json) = self.profile_json(profile) else {
             return Err(refused("profile", "no such profile"));
         };
+        if self
+            .access_digest(caller, profile)
+            .as_deref()
+            .is_some_and(|d| access::digest(json.as_bytes()) != d)
+        {
+            return Err(refused(
+                "profile",
+                "changed since the participant allowed it",
+            ));
+        }
         let parsed = parse_profile(&json).0;
         let backend = parsed
             .backend
@@ -2202,6 +2252,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             owner: caller.to_string(),
             key: key.to_string(),
             profile: profile.to_string(),
+            profile_digest: self.access_digest(caller, profile),
             backend: backend.as_str().to_string(),
             boot: slots.boot,
             created: now,
