@@ -559,7 +559,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut clients: Vec<String> = read(&mut self.state, "clients").unwrap_or_default();
         clients.push("page".into());
         clients.iter().any(|client| {
-            access::entries(&mut self.state, &client)
+            access::entries(&mut self.state, client)
                 .is_some_and(|entries| entries.iter().any(|e| e.profile == profile))
         }) || pending(&mut self.state)
             .into_iter()

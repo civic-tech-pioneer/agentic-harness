@@ -253,13 +253,15 @@ mod tests {
     }
 
     fn add(k: &mut Kernel<MemState, FakeHost>, n: u64, profile: &str) {
-        let mut rec = Record::default();
-        rec.id = format!("s{n}");
-        rec.owner = "local/c".into();
-        rec.profile = profile.into();
-        rec.turn = Turn::Running {
-            since: 0,
-            activity: None,
+        let rec = Record {
+            id: format!("s{n}"),
+            owner: "local/c".into(),
+            profile: profile.into(),
+            turn: Turn::Running {
+                since: 0,
+                activity: None,
+            },
+            ..Record::default()
         };
         rec.save(&mut k.state).unwrap();
         let mut ids: Vec<String> = read(&mut k.state, "owner/local%2Fc/0").unwrap_or_default();
@@ -295,7 +297,7 @@ mod tests {
         assert!(k.withdrawing("local/c", &old));
         k.withdraw_firing();
         assert!(!has_withdrawing(&mut k.state, "local/c", "p"));
-        assert!(Record::load(&mut k.state, "s20").unwrap().turn.is_active() == false);
+        assert!(!Record::load(&mut k.state, "s20").unwrap().turn.is_active());
     }
 
     #[test]
