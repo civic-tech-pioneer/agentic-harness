@@ -11,6 +11,7 @@ pub mod error;
 pub mod launch;
 pub mod manage;
 pub mod named;
+pub mod offers;
 pub mod openai;
 pub mod overlay;
 pub mod profile;
@@ -22,6 +23,7 @@ pub mod rules;
 pub mod sessions;
 pub mod state;
 pub mod transcript;
+pub mod withdraw;
 
 pub use check::check;
 pub use error::{KernelError, Problem, Refusal};

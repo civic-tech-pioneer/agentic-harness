@@ -89,14 +89,14 @@ pub struct ClientInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct BoundStream {
+pub(crate) struct BoundStream {
     stream: String,
     connection: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
-enum Pending {
+pub(crate) enum Pending {
     Allow {
         client: String,
         profile: String,
@@ -117,7 +117,7 @@ enum Pending {
     },
 }
 
-fn refusal(field: &str, reason: &str) -> KernelError {
+pub(crate) fn refusal(field: &str, reason: &str) -> KernelError {
     KernelError::Refused(vec![Refusal {
         field: field.into(),
         backend: String::new(),
@@ -126,10 +126,10 @@ fn refusal(field: &str, reason: &str) -> KernelError {
     }])
 }
 
-fn read<T: for<'de> Deserialize<'de>>(state: &mut impl State, key: &str) -> Option<T> {
+pub(crate) fn read<T: for<'de> Deserialize<'de>>(state: &mut impl State, key: &str) -> Option<T> {
     state.get(key).and_then(|b| serde_json::from_slice(&b).ok())
 }
-fn put<T: Serialize>(state: &mut impl State, key: &str, value: &T) {
+pub(crate) fn put<T: Serialize>(state: &mut impl State, key: &str, value: &T) {
     let _ = state.put(
         key,
         serde_json::to_vec(value).expect("manager state serializes"),
@@ -138,12 +138,19 @@ fn put<T: Serialize>(state: &mut impl State, key: &str, value: &T) {
 fn pending(state: &mut impl State) -> Vec<String> {
     read(state, "access-asks").unwrap_or_default()
 }
-fn valid_name(name: &str) -> bool {
+pub(crate) fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
         && name
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+}
+pub(crate) fn valid_profile_text(text: &str) -> bool {
+    if text.len() > 1_048_576 || serde_json::from_str::<Strict>(text).is_err() {
+        return false;
+    }
+    let (profile, problems) = parse_profile(text);
+    problems.is_empty() && grammar_problems(&profile).is_empty() && reach(text, None).is_ok()
 }
 /// Parse once while refusing duplicate keys at every depth. A duplicate cannot change what the
 /// manager says the participant allowed when a later parser picks a different occurrence.
@@ -245,7 +252,7 @@ fn default_field(name: &str) -> Value {
         _ => Value::Null,
     }
 }
-fn field_digests(text: &str) -> Option<BTreeMap<String, String>> {
+pub(crate) fn field_digests(text: &str) -> Option<BTreeMap<String, String>> {
     let Strict(Value::Object(map)) = serde_json::from_str::<Strict>(text).ok()? else {
         return None;
     };
@@ -265,7 +272,7 @@ fn field_digests(text: &str) -> Option<BTreeMap<String, String>> {
             .collect(),
     )
 }
-fn changed_fields(
+pub(crate) fn changed_fields(
     old: Option<&BTreeMap<String, String>>,
     new: &BTreeMap<String, String>,
 ) -> Vec<String> {
@@ -306,7 +313,7 @@ fn shown(value: &str) -> String {
         })
         .collect()
 }
-fn reach(text: &str, client: Option<&str>) -> Result<String, KernelError> {
+pub(crate) fn reach(text: &str, client: Option<&str>) -> Result<String, KernelError> {
     let (p, problems) = parse_profile(text);
     if !problems.is_empty() {
         return Err(refusal("profile", "invalid profile"));
@@ -492,7 +499,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         self.host.connection().ok_or(KernelError::NotOwner)
     }
-    fn lease(&mut self, caller: &str) -> Result<BoundStream, KernelError> {
+    pub(crate) fn lease(&mut self, caller: &str) -> Result<BoundStream, KernelError> {
         let connection = self.connection_for(caller)?;
         let lease: BoundStream =
             read(&mut self.state, "manage-lease").ok_or(KernelError::NotOwner)?;
@@ -505,7 +512,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         Ok(lease)
     }
-    fn question(&mut self, q: AccessQuestion, data: Pending) -> Result<(), KernelError> {
+    pub(crate) fn question(&mut self, q: AccessQuestion, data: Pending) -> Result<(), KernelError> {
         let mut ids = pending(&mut self.state);
         if ids.len() >= 2 {
             return Err(KernelError::Busy("2 profile questions".into()));
@@ -524,7 +531,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         put(&mut self.state, "access-asks", &ids);
         Ok(())
     }
-    fn cancel_question(&mut self, stream: &str) {
+    pub(crate) fn cancel_question(&mut self, stream: &str) {
         self.host.cancel_stream(stream);
         self.state.delete(&format!("access-ask/{stream}"));
         self.state.delete(&format!("stream/{stream}"));
