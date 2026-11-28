@@ -321,10 +321,20 @@ impl<S: State, H: Host> Kernel<S, H> {
             // applies, also to a turn in flight); the rest stays as compiled at `start`, and such
             // a root names no delegates. Saved with the loop's next change.
             if let Some(rec) = Record::load(&mut self.state, id) {
-                let c = self.compiled_of(&rec);
-                ls.policy.max_turns = c.max_turns;
-                ls.policy.max_tool_errors = c.max_tool_errors;
-                ls.policy.max_tokens = c.max_tokens;
+                if self.may_work(&rec.owner, &rec) {
+                    if let Some(text) = self.profile_json(&rec.profile) {
+                        if rec
+                            .profile_digest
+                            .as_deref()
+                            .is_none_or(|d| crate::access::digest(text.as_bytes()) == d)
+                        {
+                            let c = self.compiled_of(&rec);
+                            ls.policy.max_turns = c.max_turns;
+                            ls.policy.max_tool_errors = c.max_tool_errors;
+                            ls.policy.max_tokens = c.max_tokens;
+                        }
+                    }
+                }
             }
             ls.limits_compiled = true;
         }
