@@ -58,7 +58,7 @@ function failedWords(stop: { error: string; cause?: string }): string {
   const version = reason.match(/^version (\S+) < (\S+)$/);
   if (version) return `Claude Code ${version[1]} is too old. Version ${version[2]} or later is required.`;
   if (stop.error !== "provider-ended") return reason;
-  if (reason === "gone" || reason.startsWith("failed: ")) return "Connection to Claude Code ended";
+  if (stop.cause === undefined || reason === "gone" || reason.startsWith("failed: ")) return "Connection to Claude Code ended";
   const mismatch = reason.match(/^mismatch\((.*)\)$/s);
   if (mismatch) return `Claude Code ${mismatch[1]} did not match the launch`;
   if (reason === "no-app") return "The app is unavailable";
