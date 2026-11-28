@@ -1,6 +1,10 @@
 # The factory's slow loop (.claude/factory/README.md, "Two feedback loops"): the project's gate
 # (factory/config.toml `gate`) on a clean runner, for every pull request to main and every push to
 # main. The ruleset requires its `gate` check. Written by the factory's sync.sh: edit it there.
+# The same guardrails as watane's own CI: a change to planning files only (PLAN.md, DONE.md,
+# decisions) skips the gate but still reports the check; factory/PLAN.md stays at most 500 lines;
+# a gate that fails and then passes on a rerun of the same commit is flaky: it opens a `flaky`
+# issue instead of failing the job.
 name: factory
 
 on:
@@ -12,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  issues: write  # the gate's flaky rerun files `flaky` issues
 
 concurrency:
   group: factory-${{ github.ref }}
@@ -25,13 +30,69 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # factory/PLAN.md holds the present only (deputy skill, section 0): prune it, never raise this.
+      - name: PLAN.md at most 500 lines
+        run: |
+          [ -f factory/PLAN.md ] || exit 0
+          n=$(wc -l < factory/PLAN.md)
+          echo "factory/PLAN.md: $n lines"
+          [ "$n" -le 500 ] || { echo "::error file=factory/PLAN.md::$n lines, over 500: move history to DONE.md, upkeep to issues, settled decisions to their spec"; exit 1; }
+      - name: Planning files only?
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          code=true
+          if [ "${{ github.event_name }}" != workflow_dispatch ] && [ -n "$BASE" ] \
+             && files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BASE...$HEAD" --jq '.files[].filename'); then
+            # The compare API lists at most 300 files: that many is never planning only.
+            n=$(printf '%s\n' "$files" | grep -c .)
+            if [ "$n" -gt 0 ] && [ "$n" -lt 300 ] \
+               && ! printf '%s\n' "$files" | grep -qvE '^factory/(PLAN\.md|DONE\.md|decisions/)'; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >>"$GITHUB_OUTPUT"
+          echo "code changed: $code"
       - name: watane-dev from watane's release (a mod's gate needs it)
-        if: hashFiles('wit/world.wit') != ''
+        if: hashFiles('wit/world.wit') != '' && steps.scope.outputs.code == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download v0.1.0 --repo civic-tech-pioneer/watane -p 'watane-*-aarch64-apple-darwin.tar.gz' -O - | tar xz -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP"/watane-*/bin >> "$GITHUB_PATH"
           rustup target add wasm32-wasip2
+      # ponytail: the whole gate is the unit of a rerun (a gate is any script); per-test reruns, as
+      # watane's test-flaky.sh does, when a project's gate reports test names.
       - name: gate
-        run: bash -c "$(sed -n 's/^gate *= *"\(.*\)".*/\1/p' factory/config.toml | head -1)"
+        if: steps.scope.outputs.code == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gate=$(sed -n 's/^gate *= *"\(.*\)".*/\1/p' factory/config.toml | head -1)
+          bash -c "$gate" && exit 0
+          for attempt in 1 2; do
+            echo "::group::gate rerun $attempt"
+            if bash -c "$gate"; then
+              echo "::endgroup::"
+              echo "::warning::flaky: the gate failed, then passed on rerun $attempt"
+              title="flaky: gate ($RUNNER_OS)"
+              body="The gate failed and then passed on rerun $attempt of the same commit (\`$GITHUB_SHA\`, ref \`$GITHUB_REF\`): $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+              n=$(gh issue list --label flaky --state open --search "\"$title\" in:title" --json number,title \
+                    --jq ".[] | select(.title == \"$title\") | .number" 2>/dev/null | head -1)
+              if [ -n "$n" ]; then
+                gh issue comment "$n" --body "$body" >/dev/null || echo "::warning::could not comment on #$n"
+              else
+                gh issue create --title "$title" --label flaky --label upkeep --body "$body
+
+          Find the failing check in the first run's log and its cause (factory/README.md, \"Flaky tests\")." >/dev/null \
+                  || echo "::warning::could not open a flaky issue"
+              fi
+              exit 0
+            fi
+            echo "::endgroup::"
+          done
+          echo "::error::the gate failed on every run"
+          exit 1
