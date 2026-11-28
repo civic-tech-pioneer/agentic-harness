@@ -33,7 +33,7 @@ A's backend is pure watane; its console part (TECHNICAL 17) is this repository's
 
 ### S165: the design lane, spec-side upkeep (upkeep lane, design/ only)
 
-Sketched 2026-11-28 by Deputy Scissors. In flight (cloud, Codex task https://chatgpt.com/local/6b0a975c-c378-83ed-a1f9-cf3be32ed06e on GPT-6 Sol, 09:25 UTC; builder codex by rule 3: last two handed out were watane S164 codex, watane-factory JF1-1 claude); reviewer claude.
+Sketched 2026-11-28 by Deputy Scissors. In flight (cloud, Codex task https://chatgpt.com/local/6b0a975c-c378-83ed-a1f9-cf3be32ed06e on GPT-6 Sol, 08:56 UTC; builder codex by rule 3: last two handed out were watane S164 codex, watane-factory JF1-1 claude); reviewer claude. DELIVERED as PR #129 at 321f2466 (+88/-192, CI green); r1 Claude review routine `trig_01PgGb2NiiyapP7NqFcxVvwa` 09:27 UTC.
 
 Story: a reader of `design/` finds what is built and what the human and the deputies decided written where it belongs, with no drift between TECHNICAL, FUNCTIONAL and the code.
 
