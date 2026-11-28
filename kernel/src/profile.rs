@@ -650,25 +650,19 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
 
 /// OpenAI matches tool names only. Refuse every argument rule before compilation.
 pub(crate) fn openai_rule_problem(rule: &str) -> Option<String> {
+    if crate::refuse::is_path_rule(rule) {
+        return None; // The refuse table names this field once.
+    }
     if rule.contains('(') {
-        if ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit"]
-            .contains(&rule.split('(').next().unwrap_or(""))
-        {
-            return None; // The refuse table names this field once.
-        }
         return Some(format!(
             "rule {rule:?}: an argument rule is refused on openai"
         ));
     }
-    let (head, rest) = match rule.find('(') {
-        Some(i) => rule.split_at(i),
-        None => (rule, ""),
-    };
-    let plain: String = head
+    let plain: String = rule
         .chars()
         .map(|c| if matches!(c, '*' | '?') { 'x' } else { c })
         .collect();
-    let list = [format!("{plain}{rest}")];
+    let list = [plain];
     let (_, problems) = crate::rules::Rules::compile(&list, &[], &[]);
     problems
         .into_iter()

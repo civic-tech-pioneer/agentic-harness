@@ -18,7 +18,7 @@ pub struct CatalogModel {
 
 const PATH_TOOLS: [&str; 6] = ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit"];
 
-fn is_path_rule(rule: &str) -> bool {
+pub(crate) fn is_path_rule(rule: &str) -> bool {
     rule.split_once('(')
         .is_some_and(|(name, _)| PATH_TOOLS.contains(&name))
 }
