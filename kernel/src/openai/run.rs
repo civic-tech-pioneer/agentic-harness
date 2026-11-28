@@ -15,7 +15,7 @@ use crate::openai::tools::{Call, JOB, Policy, SetupError, ToolSet};
 use crate::openai::wire::{BodyArgs, COMPACT_THRESHOLD, Wire, WireItem, user_message};
 use crate::openai::{skill, task};
 use crate::overlay::apply_overlay;
-use crate::profile::{Profile, Skill, SystemPrompt, parse_profile};
+use crate::profile::{Backend, Profile, Skill, SystemPrompt, parse_profile};
 use crate::queue::Queue;
 use crate::quota::Past;
 use crate::record::{Activity, Deadline, Record, Stop, Turn};
@@ -359,6 +359,18 @@ impl<S: State, H: Host> Kernel<S, H> {
         if let Some(ls) = self.loop_load(&rec.id) {
             return ls;
         }
+        // Recovery must not compile a profile version the record never held. `prelaunch` refuses
+        // this marker before it can start a request; timer-origin cleanup may still stop it.
+        let Some(text) = self.profile_json(&rec.profile) else {
+            return LoopState::default();
+        };
+        if rec
+            .profile_digest
+            .as_deref()
+            .is_some_and(|d| crate::access::digest(text.as_bytes()) != d)
+        {
+            return LoopState::default();
+        }
         let compiled = self.compiled_of(rec);
         // Recovery from a missing loop has no trusted listing to advertise.
         Self::loop_from_profile(compiled, &[])
@@ -577,6 +589,12 @@ impl<S: State, H: Host> Kernel<S, H> {
         interrupting: bool,
         mut ls: LoopState,
     ) -> Result<Prelaunch, KernelError> {
+        if !ls.limits_compiled {
+            return Err(KernelError::Refused(vec![
+                crate::error::Problem::new("profile", "changed since the participant allowed it")
+                    .refusal(Backend::Openai, &ls.model),
+            ]));
+        }
         let Some(input) = input else {
             return Ok(Prelaunch {
                 ls,
@@ -2070,5 +2088,30 @@ fn ended_failure(key: &StreamKey, cause: Option<&str>, now: u64) -> Failure {
         }
         _ => answer::ended(cause, false)
             .unwrap_or_else(|| Failure::Fatal("the response ended before it completed".into())),
+    }
+}
+
+#[cfg(test)]
+mod stage_f_recovery_tests {
+    use super::*;
+    use crate::sessions::FakeHost;
+    use crate::state::MemState;
+
+    #[test]
+    fn missing_loop_does_not_compile_changed_profile_bytes() {
+        let old = br#"{"backend":"openai","model":"gpt-5","max-tokens":100}"#;
+        let new = br#"{"backend":"openai","model":"gpt-5","max-tokens":200}"#;
+        let mut state = MemState::new();
+        state.put("profile/o", new.to_vec()).unwrap();
+        let mut kernel = Kernel::new(state, FakeHost::default());
+        let rec = Record {
+            id: "s1".into(),
+            profile: "o".into(),
+            profile_digest: Some(crate::access::digest(old)),
+            ..Record::default()
+        };
+        let recovered = kernel.loop_for(&rec);
+        assert!(!recovered.limits_compiled);
+        assert_eq!(recovered.policy.max_tokens, None);
     }
 }
