@@ -5,7 +5,7 @@ when a Codex build team cannot run the adversary's exploit-development step,
 the build team supplies defensive boundary checks and guard tests, and the
 Claude review team runs the adversary in round 1. The check moves; it is not
 dropped. The factory's foreman instructions should state this division of work.
-The design boundary in TECHNICAL 14 is unchanged.
+The design boundary in TECHNICAL 14 is unchanged. This entry remains open under #122 until the deputy proposes the factory change.
 
 The earlier product decisions have been reconciled into their owning sections
 of `design/TECHNICAL.md`; superseded choices and slice scheduling notes are

@@ -195,7 +195,9 @@ connection: func() -> option<string>;   // accepted by the human (S151-H, 2026-1
 
 **Access questions** (accepted S151-H, 2026-11-28; watane implementation pending, 15). `agent-access.ask`
 asks the participant, in the app, one of four questions about the calling
-mod's profiles: `manage`, whether its page may open the profile manager
+mod's profiles. By S151-H H2, only `mods:agent` may import `agent-access`
+(the pkg row in 15; implementation in watane pending). The questions are:
+`manage`, whether its page may open the profile manager
 (9.10, "The manager's authority"); `allow`, whether `client` may start
 agents with the profile `profile`; `store`, whether to store a new text of
 `profile` (new, edited, restored or adopted); `remove`, whether to delete
@@ -340,8 +342,8 @@ provider makes no judge call for a call it refuses (10). `not-owner` and
 `claude-types` (2.1). The kernel's identity is one fixed published value
 `<publisher>/agent`, pinned at build time and compared exactly. A development
 build uses `local/agent` for the unpublished kernel (10, R-B3). Whether
-a release build must refuse this development default remains open (S39 r1;
-14, Not protected).
+a release build must refuse this development default is S39 r1's deferred
+question (14, Not protected).
 
 Native `provider_item` assigns a `Consent` or `Workspace` event cursor
 `last + 1`. A producer must not mix it with numbered `provider_batch` or
@@ -999,8 +1001,8 @@ wire") are this JSON; the entry has no `activity`.
   pending answer is its decision (9.8 rule 4). OpenAI keeps `interrupted`.
   The stream key's `launching` field is `true` until Workspace/initialization,
   then `false`; older keys lack it. A late `Consent(Some)` on a key with
-  `launching: false` is ignored. Native `provider_item` advances `last` and
-  sets `launching` to `false` at Workspace as the numbered path does.
+  `launching: false` is ignored. Native `provider_item` advances `last`
+  for Consent and Workspace events and sets `launching` to `false` at Workspace as the numbered path does.
 - `interrupt` ends the turn (`idle {interrupted}`) in the call, then starts the
   replacement if given. `claude` ends the interrupted turn later with a `result` and an
   `idle` of its own; the record counts these in `owed-idles` (one per `interrupt` sent to a
@@ -1692,15 +1694,19 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
 
 - Rules: deny, then ask, then allow; the strictest match wins. A rule that
   does not parse disables its tool. A tool that no rule names asks.
-- Matching for OpenAI: tool names and `Name(arg)` with `*` and `?` globs;
-  path rules are refused at compilation. Settled by S40-4: the name of a
+- Matching for OpenAI: tool names, with `*` and `?` globs over names;
+  path rules and `Name(arg)` rules are refused by the profile check.
+  Settled by S40-4: the name of a
   rule may hold `*` and `?` too (`notes_*`); it is replaced by the described
   tools whose names it matches before the rules compile, and the profile
   check accepts such a rule for `backend: "openai"` (the allowlist of Claude's
   tools applies to Claude profiles only). A call is matched by its tool's name
-  alone (no `arg`). Thus an OpenAI `Name(arg)` rule, including one for
-  `skill`, is accepted but cannot match a call; use a bare name for a
-  rule intended to match. Claude's `Skill(name)` uses the skill name as its
+  alone (no `arg`). The profile check refuses an OpenAI
+  `Name(arg)` rule, including one for `skill`, with a refusal naming its
+  `allow`, `ask` or `deny` field (AGT-F-4). The OpenAI call carries no rule
+  argument, so it cannot honor an argument pattern; use a bare name for a
+  rule intended to match. The check-side code gap is tracked by #133 and
+  recorded in 14, Not protected. Claude's `Skill(name)` uses the skill name as its
   scope key. `ask-expiry` is in seconds and 600 when the profile sets
   none. An OpenAI ask's id is its call's `call_id`; the owner's `answer` decides
   it at once (decision entry `by: owner`), `{allow, for: session}` is refused
@@ -1766,7 +1772,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   admitting only the `watane` server (4.4, 15), so that no other server's
   tool can carry that name.
 
-- **As built (S31).** The OpenAI matcher is `Rules::compile(allow, ask,
+- **As built (S31; check gap #133).** The OpenAI matcher is `Rules::compile(allow, ask,
   deny)` and `Rules::decide(tool, arg)` in `kernel/src/rules.rs`, pure, not
   yet called (the loop of 9.5, stage D, calls it; `ask-expiry` waits for it).
   A rule is `Name` (1 to 64 of `A-Za-z0-9_-`) or `Name(arg)`, `arg`
@@ -1775,7 +1781,10 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   readable name, and a path rule (`arg` starting `/`, `~`, `./`, `../`, equal
   to `.` or `..`, or containing `**`), is a problem at compilation. `*` is
   any run, `?` one character, over the whole `arg`; a call without an `arg`
-  matches only bare rules. For Claude (`kernel/src/broker.rs`,
+  matches only bare rules. Today the profile check rejects path rules but
+  accepts other `Name(arg)` rules that this matcher cannot use; #133 will
+  make it refuse them as the contract above requires. For Claude
+  (`kernel/src/broker.rs`,
   `kernel/src/sessions.rs`):
   - **As built (S34): the scope functions.** The kernel sets an ask's
     `reach` when it stores the ask, replacing any `reach` the item carries;
@@ -2985,7 +2994,11 @@ stage E).
 | Only the participant gives a client a profile (S151) | one writer: `manage`, callable only by `page` on the participant's lease (9.10); a profile is stored, edited, restored, adopted or deleted only on the host's granted item of a `store` or `remove` question about that exact text, and an access entry only on a granted `allow` question whose words the app owns and which names the client and the installation as watane knows them, the profile and its reach (the host ends the question if that installation changes); a client is listed only by its own call; an entry pins the profile's version (its digest and the index's `rev`), and a changed, restored or stale profile allows no new input or launch until a new allow; capacity counts open questions, and a write past 64 entries writes nothing; absent or unreadable entries allow none; adopting an offer writes no entry; `withdraw` refuses new input at once, the kernel's own timer ends the running turns, children included, without the page, and until it completes no session it will end takes new work, a re-allow of the same version included (9.10, 9.7 "Revoking") | `kernel/src/manage.rs` (planned, 1), `kernel/src/named.rs` (the pinned entries read by `start`, `check`, `profiles`), `kernel/src/sessions.rs` (`may_work`: the record's `profile-digest`; the `withdraw` timer), `kernel/wasm/src/lib.rs` (`manage`'s owner and lease check by `caller.identity()` and `caller.connection()`, the access stream's routing), `kernel/wasm/wit/world.wit`; watane `host/` (`agent-access`, `caller.connection`, planned), `app/` (its consent words) |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs` (also the OpenAI rule names, 9.6), `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/named.rs` (`check` and `profiles` read `access/` first, 9.1), `kernel/src/error.rs` |
 
-Not protected: Esc on a stale view after the kernel ended a turn can
+Not protected: until #133 changes the profile check, an OpenAI
+`Name(arg)` rule (including `skill(name)`) is accepted yet cannot match a
+call because the OpenAI call is matched by name alone. A participant's deny
+rule can therefore be silently skipped, contrary to AGT-F-4; the intended
+check is in 9.6. Esc on a stale view after the kernel ended a turn can
 interrupt the next turn, including its queued input; `persist: false` is not
 built for OpenAI root or child sessions; a message finished between its
 transcript write and `response.completed` can be shown after a host restart
@@ -3001,8 +3014,7 @@ check disagrees; a legacy `stream/<id>` key without `launching` may reopen
 its folder-consent wait on a late `Consent(Some)` after initialization (page
 only; the console's Stop then sends `cancel`, ending the stream); a failed
 replacement in `MemState` cannot exhibit host rollback; a reused ask id on
-a replacement stream may get a second decision in the record after the old
-ask closed as denied, without running another tool; a legacy key without
+the replacement stream gets a second decision; a legacy key without
 `launching` that holds a consent or has `last > 0` is interrupted, not
 cancelled, by a kernel `interrupt` before initialization; skill outputs have no separate
 budget (owner byte quota and `BODY_MAX` bound them); the skill listing is
@@ -3012,25 +3024,25 @@ D metrics; a picked folder gives no file-write scope key; an Edit send
 refused after leaving the session keeps only the original text, and a reload
 while an accepted take's reply is in flight can offer it once more.
 
-**Earlier accepted limits:** The 32 MiB reserve is shared, with a bound per
-call: about 45 owners crossing at once with full open asks can exceed it,
+**Not protected (continued; earlier accepted limits):** The 32 MiB
+reserve is shared, with a bound per call: about 45 owners crossing at once with full open asks can exceed it,
 after which the host's 256 MiB state limit can refuse stopping writes. A
 256-byte decision `reason` can escape to about 1.5 KiB. An adapter-made
-decided ask is stored as given. For a moment after `cancel`, the host may
-run one more `claude` than the kernel counts. Past quota, the transcript's
+decided ask below quota is stored as given (no adapter currently makes one); past quota, a decision carries the ask's index rather
+than its body (9.3). For a moment after `cancel`, the host may run one
+more `claude` than the kernel counts (the host's own caps bound it). Past quota, the transcript's
 last `turn` entry can trail the record. A deferred `ended` can be finished
 `consumer-failed` by the host backstop; `ended` on an older-boot record
-remains an accepted limit. A part group over 256 parts read mid-group shows
-one unknown row that can only expire. A failed restart step in `MemState`
+remains an accepted limit only if the host breaks R1. A part group over 256
+parts read mid-group shows one unknown row that can only expire. A failed restart step in `MemState`
 can leave duplicate lines on a timer firing (the real host rolls a call back
 whole). There is no migration for the changed `allows` shape because nothing
-was deployed. Whether a forbidden path is refused at call or apply remains
-a host-interface question (S38 Q2.2).
+was deployed.
 
-Further limits: work already compiled when its profile is edited, goes stale or is withdrawn: a Claude turn running on its start's launch flags and an OpenAI tool job already dispatched go on to their end (no new input or launch follows, 9.10), except that `withdraw` ends them, in batches (9.10 "The batch": at most 16 turns, or 21 when a batch's first cascade alone passes 16) that the kernel's own timer completes, so ending them all can take several firings; a script in the kernel's page, or a loopback client acting as it (V27), can at any time ask the app to open the profile manager, and the participant may grant it believing the manager asked; while the participant holds the profile manager open, a script running in its page or a client on the same page connection can read what the manager shows (profiles, clients, entries, offers) and raise questions, so the participant may be asked a question she did not start (the pairing code shows which window asks; a `store` question names the changed fields, not their values, which the manager shows); the manager and the console are documents of one origin, so a script in the console can open or script the manager's window and call through its connection: the connection binding stops a second client (a loopback agent), not a script of the kernel's own origin; such an agent can keep raising `manage` questions, and each of the participant's own `open` calls cancels its question and asks hers, so a loop costs her only refusals, and disabling the client's mod in the app ends it; a script in the page can end the lease or take access away (`withdraw`, `forget`) while the lease is open, never widen anything; a client is its watane identity: an update of the mod under the same identity keeps its entries (as watane keeps its own consents across an update, 8), and a mod that later takes a `local/<slug>` identity a removed mod held inherits that identity's entries, since the kernel hears of no removal (an open question ends at the host; a granted entry stays until withdrawn; install-generation binding, S133 P1.12, later); a superseding `allow` at the host's stream cap is refused `too-many` and the old question stays open (9.10 "Allowing" step 3), failing closed; the participant's own answer to a wide profile, shown whole; a changed offer is seen only when the page collects, and until then the adopted text she answered for runs (9.10); a same-name offer from another mod can mark an adoption stale, failing closed, or, by offering the old text again, keep a changed offer looking unchanged, since a collect names no source (AGT-F-2 holds per offered text: the adopted text never changes without her answer); a hostile offering mod can crowd the 64 offers a collect keeps; the judge account reaches any `POST` path of the origin the
+**Not protected (continued):** Work already compiled when its profile is edited, goes stale or is withdrawn: a Claude turn running on its start's launch flags and an OpenAI tool job already dispatched go on to their end (no new input or launch follows, 9.10), except that `withdraw` ends them, in batches (9.10 "The batch": at most 16 turns, or 21 when a batch's first cascade alone passes 16) that the kernel's own timer completes, so ending them all can take several firings; a script in the kernel's page, or a loopback client acting as it (V27), can at any time ask the app to open the profile manager, and the participant may grant it believing the manager asked; while the participant holds the profile manager open, a script running in its page or a client on the same page connection can read what the manager shows (profiles, clients, entries, offers) and raise questions, so the participant may be asked a question she did not start (the pairing code shows which window asks; a `store` question names the changed fields, not their values, which the manager shows); the manager and the console are documents of one origin, so a script in the console can open or script the manager's window and call through its connection: the connection binding stops a second client (a loopback agent), not a script of the kernel's own origin; such an agent can keep raising `manage` questions, and each of the participant's own `open` calls cancels its question and asks hers, so a loop costs her only refusals, and disabling the client's mod in the app ends it; a script in the page can end the lease or take access away (`withdraw`, `forget`) while the lease is open, never widen anything; a client is its watane identity: an update of the mod under the same identity keeps its entries (as watane keeps its own consents across an update, 8), and a mod that later takes a `local/<slug>` identity a removed mod held inherits that identity's entries, since the kernel hears of no removal (an open question ends at the host; a granted entry stays until withdrawn; install-generation binding, S133 P1.12, later); a superseding `allow` at the host's stream cap is refused `too-many` and the old question stays open (9.10 "Allowing" step 3), failing closed; the participant's own answer to a wide profile, shown whole; a changed offer is seen only when the page collects, and until then the adopted text she answered for runs (9.10); a same-name offer from another mod can mark an adoption stale, failing closed, or, by offering the old text again, keep a changed offer looking unchanged, since a collect names no source (AGT-F-2 holds per offered text: the adopted text never changes without her answer); a hostile offering mod can crowd the 64 offers a collect keeps; the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose allowlisted names can reach loopback, LAN and link-local addresses (V27, breached; the shell grant waits on the human), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
-(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6). The subagent slash-prompt probe V26 held and the shell network probe V27 breached (16).
+(spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, a Claude `interrupt` before `initialized`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6). The subagent slash-prompt probe V26 held and the shell network probe V27 breached (16).
 
 **Known limit (S38):** Host 19.7 uses `gone` for consent withdrawal and other
 provider-stream endings. The console displays “Connection to Claude Code ended”
@@ -3053,6 +3065,7 @@ the change, and the section here it comes from.
 - [ ] `spec/TECHNICAL.md` W5: previews refuse the grants and accounts (8).
 - [ ] `spec/TECHNICAL.md` new W row: the agent layer's boundary (14).
 - [ ] `host/TECHNICAL.md` H1 to H5 and H7 (3, 4, 5, 6, 7).
+- [ ] `host/TECHNICAL.md` 19.3/19.7: S38 Q2.2, whether a forbidden folder path is refused at call or at apply, remains an open host question; 2.3 and 4.6 here require host refusal but do not settle its step.
 - [ ] `host/TECHNICAL.md` 9.3: page connection ids and their own queues (3).
 - [ ] `host/TECHNICAL.md` 8.5: the step 11 `watane.js` passes the `connection` message (`{type, id}`) to the page's handlers too, so a page learns that its `/events` connection was replaced and reattaches its streams (18.2; S32). Without it, a `changed` cannot be told from a reconnect.
 - [ ] `host/TECHNICAL.md` host state: timers per mod, kept across restarts (7).
@@ -3695,7 +3708,7 @@ machine. A stage is done only within its budgets.
   subwindow and remeasured (watane `slice/s100` at fdb3d9a); S36 r4 made the windows slide
   (`console/test/host/load_check.mjs`, a pure function with its test); S36 r5 made it a maximum spacing of 25 ms and
   250 ms, which the real run failed by timer jitter alone (review r6: worst 28.5 ms); S36 r6 set it at twice the nominal
-  spacing and remeasured (the figures above).. A host that exits as a zombie no one reaps (a container's init) counts as
+  spacing and remeasured (the figures above). A host that exits as a zombie no one reaps (a container's init) counts as
   stopped (`/proc/<pid>/stat`).
 - **Stage F** (S134-7, 2026-11-26; `Linux 6.18.44-fc-v880`, 4 cpus, a cloud VM). State bytes
   only, on the fake host: `cargo test s134_stage_f_state_bytes_per_step -- --ignored --nocapture`
