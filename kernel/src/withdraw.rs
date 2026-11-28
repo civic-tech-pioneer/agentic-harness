@@ -422,14 +422,20 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        assert!(k.state.get(&format!("access-ask/{ask}")).is_some(), "ask {ask} was not pending");
+        assert!(
+            k.state.get(&format!("access-ask/{ask}")).is_some(),
+            "ask {ask} was not pending"
+        );
         k.manage_withdraw("page", "local/c", "p").unwrap();
         assert!(k.state.get(&format!("access-ask/{ask}")).is_none());
-        assert!(k
-            .host
-            .calls
-            .iter()
-            .any(|c| matches!(c, HostCall::CancelStream { stream } if stream == &ask)), "calls: {:?}", k.host.calls);
+        assert!(
+            k.host
+                .calls
+                .iter()
+                .any(|c| matches!(c, HostCall::CancelStream { stream } if stream == &ask)),
+            "calls: {:?}",
+            k.host.calls
+        );
 
         add(&mut k, 2, "p");
         k.state.put("next-id", b"3".to_vec()).unwrap();

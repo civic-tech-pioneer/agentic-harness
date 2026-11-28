@@ -49,12 +49,12 @@ use crate::openai::skill;
 use crate::openai::tools::CallState;
 use crate::profile::{Backend, Profile};
 use crate::queue::check_input;
-use crate::record::{ID_BYTES, Record, Stop, Turn};
-use crate::sessions::{Host, Kernel, Work, add_signed, check_slash};
+use crate::record::{Record, Stop, Turn, ID_BYTES};
+use crate::sessions::{add_signed, check_slash, Host, Kernel, Work};
 use crate::state::State;
 use crate::transcript::NewEntry;
-use crate::{Change, active};
-use serde_json::{Value, json};
+use crate::{active, Change};
+use serde_json::{json, Value};
 
 /// The name of the built-in function (9.7).
 pub(crate) const TASK: &str = "task";

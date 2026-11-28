@@ -5,7 +5,7 @@
 use agent_kernel::active::Slots;
 use agent_kernel::adapters::claude::ClaudeAdapter;
 use agent_kernel::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 type K = Kernel<MemState, FakeHost>;
 
@@ -521,11 +521,10 @@ fn ac7_error_max_turns_then_idle_ends_the_turn_stopped_max_turns() {
     assert!(live.iter().any(|w| w["type"] == "turn"
         && w["state"]["stop"] == json!({"kind":"stopped","limit":"max-turns"})));
     let page = k.read("alice", &id, 0, None, 256).unwrap();
-    assert!(
-        page.entries
-            .iter()
-            .any(|e| e.contains(r#""kind":"turn""#) && e.contains("max-turns"))
-    );
+    assert!(page
+        .entries
+        .iter()
+        .any(|e| e.contains(r#""kind":"turn""#) && e.contains("max-turns")));
 }
 
 #[test]

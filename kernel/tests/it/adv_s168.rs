@@ -1,7 +1,7 @@
 use agent_kernel::active::Slots;
 use agent_kernel::manage::OfferedProfile;
 use agent_kernel::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 const IN: &str = r#"[{"type":"text","text":"hi"}]"#;
 fn openai(x: &str) -> String {
@@ -70,11 +70,9 @@ fn adv_s168_stale_delegate_still_admitted_by_task() {
     ok(&mut k);
     k.host.offered_profiles[0].profile = openai(r#", "max-turns":5"#);
     k.manage_offers("page", 0, 16).unwrap();
-    assert!(
-        access::index(&mut k.state)
-            .iter()
-            .any(|r| r.name == "helper" && r.stale)
-    );
+    assert!(access::index(&mut k.state)
+        .iter()
+        .any(|r| r.name == "helper" && r.stale));
     let id = k.start("local/c", "k", "root", "{}", IN).unwrap().value;
     let lp: Value = serde_json::from_slice(&k.state.get(&format!("loop/{id}")).unwrap()).unwrap();
     let stream = lp["stream"].as_str().unwrap().to_string();

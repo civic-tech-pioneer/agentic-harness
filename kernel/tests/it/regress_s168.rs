@@ -48,23 +48,37 @@ fn regress_s168_say_on_edited_profile_says_changed() {
 #[test]
 fn stale_profile_is_refused_its_offer_changed_until_readopted() {
     let mut st = MemState::new();
-    Slots { boot: 1, ..Slots::default() }.save(&mut st).unwrap();
-    let mut k = Kernel::new(st, FakeHost {
-        generation: 1,
-        connection_id: Some("k1".into()),
-        offered_profiles: vec![OfferedProfile {
-            name: "suggested".into(), description: "d".into(), profile: P.into(),
-        }],
-        ..FakeHost::default()
-    });
+    Slots {
+        boot: 1,
+        ..Slots::default()
+    }
+    .save(&mut st)
+    .unwrap();
+    let mut k = Kernel::new(
+        st,
+        FakeHost {
+            generation: 1,
+            connection_id: Some("k1".into()),
+            offered_profiles: vec![OfferedProfile {
+                name: "suggested".into(),
+                description: "d".into(),
+                profile: P.into(),
+            }],
+            ..FakeHost::default()
+        },
+    );
     k.profiles("local/c");
     k.manage_open("page").unwrap();
     k.manage_on_item("t1", &json!({"type":"granted"}));
-    k.manage_adopt("page", "suggested", &access::digest(P.as_bytes()), "mine").unwrap();
+    k.manage_adopt("page", "suggested", &access::digest(P.as_bytes()), "mine")
+        .unwrap();
     grant(&mut k, "t2");
     k.manage_allow("page", "local/c", "mine").unwrap();
     grant(&mut k, "t3");
     k.host.offered_profiles[0].profile = P2.into();
     k.manage_offers("page", 0, 16).unwrap();
-    assert_eq!(k.check_named("local/c", "mine", "{}")[0].reason, "its offer changed");
+    assert_eq!(
+        k.check_named("local/c", "mine", "{}")[0].reason,
+        "its offer changed"
+    );
 }

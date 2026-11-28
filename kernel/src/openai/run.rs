@@ -10,23 +10,23 @@
 use crate::active::Slots;
 use crate::adapters::responses;
 use crate::error::KernelError;
-use crate::openai::answer::{self, Failure, Sse, backoff_ms};
-use crate::openai::tools::{Call, JOB, Policy, SetupError, ToolSet};
-use crate::openai::wire::{BodyArgs, COMPACT_THRESHOLD, Wire, WireItem, user_message};
+use crate::openai::answer::{self, backoff_ms, Failure, Sse};
+use crate::openai::tools::{Call, Policy, SetupError, ToolSet, JOB};
+use crate::openai::wire::{user_message, BodyArgs, Wire, WireItem, COMPACT_THRESHOLD};
 use crate::openai::{skill, task};
 use crate::overlay::apply_overlay;
-use crate::profile::{Backend, Profile, Skill, SystemPrompt, parse_profile};
+use crate::profile::{parse_profile, Backend, Profile, Skill, SystemPrompt};
 use crate::queue::Queue;
 use crate::quota::Past;
 use crate::record::{Activity, Deadline, Record, Stop, Turn};
 use crate::sessions::{
-    Acct, Called, Host, Kernel, Push, SinkOutcome, Step, StreamError, StreamKey, Work, delta_only,
-    input_text, wire_update,
+    delta_only, input_text, wire_update, Acct, Called, Host, Kernel, Push, SinkOutcome, Step,
+    StreamError, StreamKey, Work,
 };
 use crate::state::State;
 use crate::transcript::Transcript;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 /// The `kind` of a request stream's `stream/<id>` (9.1).
 pub(crate) const REQUEST: &str = "request";
@@ -590,10 +590,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         mut ls: LoopState,
     ) -> Result<Prelaunch, KernelError> {
         if !ls.limits_compiled {
-            return Err(KernelError::Refused(vec![
-                crate::error::Problem::new("profile", "changed since the participant allowed it")
-                    .refusal(Backend::Openai, &ls.model),
-            ]));
+            return Err(KernelError::Refused(vec![crate::error::Problem::new(
+                "profile",
+                "changed since the participant allowed it",
+            )
+            .refusal(Backend::Openai, &ls.model)]));
         }
         let Some(input) = input else {
             return Ok(Prelaunch {
@@ -2039,7 +2040,11 @@ impl<S: State, H: Host> Kernel<S, H> {
         self.deliver(&own, rec.live.as_deref());
         work.pushes.extend(own);
         self.deliver_peer(&mut work);
-        if kept { Drain::Kept } else { Drain::Gone }
+        if kept {
+            Drain::Kept
+        } else {
+            Drain::Gone
+        }
     }
 
     // ---- attach
