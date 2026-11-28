@@ -16,6 +16,13 @@ pub struct CatalogModel {
     pub efforts: Vec<String>,
 }
 
+const PATH_TOOLS: [&str; 6] = ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit"];
+
+fn is_path_rule(rule: &str) -> bool {
+    rule.split_once('(')
+        .is_some_and(|(name, _)| PATH_TOOLS.contains(&name))
+}
+
 /// Applies the refuse table; every refusal is returned at once.
 pub fn refuse(
     p: &Profile,
@@ -69,6 +76,12 @@ pub fn refuse(
             }
             if !p.tools.is_empty() {
                 add("tools", "refused unless empty on openai");
+            }
+            if p.allow.iter().any(|r| is_path_rule(r)) {
+                add("allow", "an argument rule is refused on openai");
+            }
+            if p.deny.iter().any(|r| is_path_rule(r)) {
+                add("deny", "an argument rule is refused on openai");
             }
             if p.mode
                 .as_deref()

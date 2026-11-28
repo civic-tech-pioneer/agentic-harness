@@ -70,7 +70,7 @@ fn ac2_openai_subagent_limits_by_key() {
 fn root(extra: Value) -> Profile {
     let p = merge(
         oa(json!({"delegates": ["kid"], "mode": "manual", "ask": true,
-            "allow": ["Tool(a)", "Tool(x1)"], "deny": ["Tool(d)"], "toolsets": ["t1", "t2"],
+            "allow": ["Tool_a", "Tool_x1"], "deny": ["Tool_d"], "toolsets": ["t1", "t2"],
             "max-turns": 10, "max-tool-errors": 5, "max-tokens": 1000, "ask-expiry": 60,
             "persist": true})),
         extra,
@@ -82,8 +82,8 @@ fn root(extra: Value) -> Profile {
 
 fn kid(extra: Value) -> String {
     merge(
-        oa(json!({"mode": "manual", "ask": true, "allow": ["Tool(a)"],
-            "deny": ["Tool(d)", "Tool(e)"], "toolsets": ["t1"],
+        oa(json!({"mode": "manual", "ask": true, "allow": ["Tool_a"],
+            "deny": ["Tool_d", "Tool_e"], "toolsets": ["t1"],
             "max-turns": 10, "max-tool-errors": 5, "max-tokens": 1000, "ask-expiry": 60,
             "persist": true})),
         extra,
@@ -168,11 +168,11 @@ fn ac6_each_row_gives_its_field_only() {
         ["pre-tool-check"]
     );
     assert_eq!(
-        fail(&r, kid(json!({"allow": ["Tool(a)", "Tool(zz)"]}))),
+        fail(&r, kid(json!({"allow": ["Tool_a", "Tool_zz"]}))),
         ["allow"]
     );
-    assert_eq!(fail(&r, kid(json!({"allow": ["Tool(x*)"]}))), ["allow"]);
-    assert_eq!(fail(&r, kid(json!({"deny": ["Tool(e)"]}))), ["deny"]);
+    assert_eq!(fail(&r, kid(json!({"allow": ["Tool_x*"]}))), ["allow"]);
+    assert_eq!(fail(&r, kid(json!({"deny": ["Tool_e"]}))), ["deny"]);
     assert_eq!(fail(&r, kid(json!({"max-turns": 11}))), ["max-turns"]);
     assert_eq!(fail(&r, kid(json!({"max-turns": null}))), ["max-turns"]);
     assert_eq!(
@@ -223,11 +223,11 @@ fn ac6_unbounded_root_caps_pass_and_several_failures_come_together() {
 fn ac7_equal_and_narrower_are_admitted_and_returned() {
     let r = root(json!({}));
     let c = run(&r, kid(json!({}))).unwrap();
-    assert_eq!(c.allow, ["Tool(a)"]);
+    assert_eq!(c.allow, ["Tool_a"]);
     assert_eq!(c.max_tokens, Some(1000));
     let narrow = kid(
         json!({"allow": [], "toolsets": [], "max-turns": 1, "max-tool-errors": 1,
-        "max-tokens": 1, "ask-expiry": 0, "deny": ["Tool(d)", "Tool(q)"]}),
+        "max-tokens": 1, "ask-expiry": 0, "deny": ["Tool_d", "Tool_q"]}),
     );
     assert!(run(&r, narrow).is_ok());
 }
@@ -236,13 +236,13 @@ fn ac7_equal_and_narrower_are_admitted_and_returned() {
 fn ac8_the_roots_effective_profile_is_the_compiled_one() {
     use agent_kernel::{apply_overlay, parse_overlay};
     let r = root(json!({}));
-    let (o, _) = parse_overlay(&json!({"max-turns": 3, "deny+": ["Tool(f)"]}).to_string());
+    let (o, _) = parse_overlay(&json!({"max-turns": 3, "deny+": ["Tool_f"]}).to_string());
     let (compiled, ps) = apply_overlay(&r, &o);
     assert!(ps.is_empty());
     assert_eq!(fail(&compiled, kid(json!({}))), ["deny", "max-turns"]);
     assert!(run(
         &compiled,
-        kid(json!({"max-turns": 3, "deny": ["Tool(d)", "Tool(f)"]}))
+        kid(json!({"max-turns": 3, "deny": ["Tool_d", "Tool_f"]}))
     )
     .is_ok());
 }
