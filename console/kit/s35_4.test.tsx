@@ -106,6 +106,26 @@ describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
     expect(word()).toBe("Failed: Claude Code 2.1.200 is too old. Version 2.1.295 or later is required.");
     expect(v.turn).toMatchObject({ stop: { cause: "version 2.1.200 < 2.1.295" } });
   });
+  it.each([
+    ["mismatch(tools)", "tools"],
+    ["no-app", "app is unavailable"],
+    ["no-account", "account is unavailable"],
+    ["consent-refused(account:openai)", "Consent was refused"],
+    ["idle-timeout", "timed out"],
+    ["lagging", "fell behind"],
+    ["consumer-failed", "reader failed"],
+    ["cancelled", "cancelled"],
+    ["replaced", "replaced"],
+  ])("ac2_failed_%s_keeps_its_reason_in_words", (cause, words) => {
+    status({ ...emptyView, turn: { state: "idle", stop: { kind: "failed", error: "provider-ended", cause } } } as SessionView);
+    expect(word()).toContain(words);
+  });
+
+  it("ac2_openai_workspace_refusal_reads_in_words", () => {
+    status({ ...emptyView, turn: { state: "idle", stop: { kind: "failed", error: "consent-refused(workspace:/home/alice/notes)" } } } as SessionView);
+    expect(word()).toBe("Failed: Workspace access was refused for /home/alice/notes");
+  });
+
 });
 
 describe("S35-4 AC4a", () => {

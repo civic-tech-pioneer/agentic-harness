@@ -107,9 +107,10 @@ it("ac1_reports_a_failed_turn_in_words_and_moves_the_session_to_Recent", async (
 
   push([1, synced(0)], [2, turn({ state: "running", since: 1 })]);
   await waitFor(() => expect(group()).toHaveTextContent("Running"));
-  push([3, turn({ state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "failed" } })]);
+  push([3, turn({ state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "failed: provider crashed" } })]);
 
   expect(await screen.findByText("Failed: Connection to Claude Code ended")).toBeVisible();
+  expect(screen.queryByText(/provider crashed/)).toBeNull();
   expect(container.querySelector(".wa-footer")).toHaveTextContent("Turn failed · 0 tools");
   expect(group()).toHaveTextContent("Recent");
 });
