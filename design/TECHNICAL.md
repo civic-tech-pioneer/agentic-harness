@@ -2302,7 +2302,7 @@ app, which the host alone produces (2.1):
    `agent-access.ask(manage)` (2.1), writes `manage-ask {stream,
    connection}` (the caller's `caller.connection()`; `none` is
    `not-owner`) and `stream/<stream>` `{kind: "access"}`, and returns at
-   once the pairing code of that connection (below); it reads nothing else. The latest caller wins: a `manage` question
+   once the pairing code of that connection (below); it reads only `manage-ask` and `manage-lease`, no profile, client, access or `access-fields/` state. The latest caller wins: a `manage` question
    open for the same connection asks nothing; one open for another
    connection is cancelled (`streams.cancel`, its keys deleted) and the
    caller's is asked instead; a lease held by another connection stays until
