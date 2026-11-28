@@ -93,6 +93,10 @@ describe("S35-4 AC3 (18.3, 18.5 from the fake claude's turn)", () => {
       expect((document.body.textContent ?? "").split("This is the fake claude.").length - 1).toBe(1);
     }
   });
+  it("ac1_provider_ended_with_no_cause_reads_as_the_ended_connection", () => {
+    status({ ...emptyView, turn: { state: "idle", stop: { kind: "failed", error: "provider-ended" } } } as SessionView);
+    expect(word()).toBe("Failed: Connection to Claude Code ended");
+  });
   it("ac3_failed_no_binary_says_it_in_words_with_the_triangle", () => {
     const v = { ...emptyView, turn: { state: "idle", stop: { kind: "failed", error: "provider-ended", cause: "no-binary" } } } as SessionView;
     status(v);
