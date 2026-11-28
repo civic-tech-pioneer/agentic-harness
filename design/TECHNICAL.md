@@ -3043,6 +3043,10 @@ participant entered; `claude` itself within its limits; a prompt injection withi
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose allowlisted names can reach loopback, LAN and link-local addresses (V27, breached; the shell grant waits on the human), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
 (spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, a Claude `interrupt` before `initialized`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6). The subagent slash-prompt probe V26 held and the shell network probe V27 breached (16).
 
+**Not protected (continued):** If storage keeps failing while a withdrawal is pending, its zero-delay firing can keep retrying the first item and delay later withdrawals; this takes both a storage error and a withdrawal.
+
+**Not protected (continued):** An existing child whose delegate profile goes stale can still take input while its root remains fresh; 9.7 checks children through their root, while new child admission checks the delegate's stale flag.
+
 **Known limit (S38):** Host 19.7 uses `gone` for consent withdrawal and other
 provider-stream endings. The console displays “Connection to Claude Code ended”
 and keeps the transcript through the last finished message.
@@ -3516,10 +3520,11 @@ of `spec/VISION.md`.
     shows a code, and the two are equal to each other and to the first 6
     characters of the base32 SHA-256 of `k3`'s id, while `k1`'s code
     differs; a second `open` from `k3` asks nothing and returns the same
-    code. Across every `sessions` call, `offers` collect,
-    timer firing and stream item but a question's answer, no write touches
+    code. Across every `sessions` call, timer firing and stream item but a
+    question's answer, no write touches
     `profile/`, `profiles`, `access/`, `access-fields/`, `access-ask/` or
-    `manage-lease`; `profiles` and `check` by `local/c` add it to `clients`
+    `manage-lease`; `offers` collect may update an adopted profile's `stale`
+    flag in `profiles`, never its text or a grant; `profiles` and `check` by `local/c` add it to `clients`
     once, by `page` and `agent:h` never, and not past 64.
 79. (9.10 "Profiles", "The answers") Kernel crate, lease held:
     `put-profile` stores nothing and raises one `store` question whose
@@ -3579,7 +3584,7 @@ of `spec/VISION.md`.
     Restart: with two open questions, a `manage` question and a lease, a new generation's first
     call deletes their keys, `access-asks` and `manage-lease`, and a new
     `allow` asks again.
-82. (9.10 "Withdrawing") Kernel crate: `local/c` has 20 running roots of `p`
+82. (9.10 "Withdrawing") Kernel crate: the test seeds `local/c` with 20 running roots of `p`
     (two with 3 live children each) and 2 of `q`; `withdraw(local/c, p)`
     refuses `say` on every `p` session at once, ends its first batch as 9.10 "The batch" states (16 turns,
     the children of its cascades counted, no cascade split), returns the rest and sets `withdraw`; the page makes no other

@@ -1118,10 +1118,7 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// overlay its `start` took, in its workspace, resuming the Claude session it kept.
     fn launch_of(&mut self, rec: &Record, resume: bool) -> Result<String, KernelError> {
         if !self.may_work(&rec.owner, rec) {
-            return Err(refused(
-                "profile",
-                "changed since the participant allowed it",
-            ));
+            return Err(self.work_access_error(&rec.owner, rec));
         }
         let json = self
             .profile_json(&rec.profile)
@@ -2115,10 +2112,26 @@ impl<S: State, H: Host> Kernel<S, H> {
         if access::entries(&mut self.state, owner)
             .is_some_and(|entries| entries.iter().any(|e| e.profile == profile))
         {
+            if access::index(&mut self.state)
+                .iter()
+                .any(|row| row.name == profile && row.stale)
+            {
+                return refused("profile", "its offer changed");
+            }
             refused("profile", "changed since the participant allowed it")
         } else {
             Self::revoked()
         }
+    }
+
+    pub(crate) fn work_access_error(&mut self, owner: &str, rec: &Record) -> KernelError {
+        if let Some(root) = &rec.parent {
+            return match Record::load(&mut self.state, root) {
+                Some(root_rec) => self.profile_access_error(&root_rec.owner, &root_rec.profile),
+                None => Self::revoked(),
+            };
+        }
+        self.profile_access_error(owner, &rec.profile)
     }
 
     /// 9.7 "Revoking": whether a call that gives the session more work may go on. A root is
@@ -2414,7 +2427,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         check_slash(input)?;
         let mut rec = self.load_owned(caller, session)?;
         if !self.may_work(caller, &rec) {
-            return Err(Self::revoked());
+            return Err(self.work_access_error(caller, &rec));
         }
         let mut acct = self.accounts(caller);
         let past = acct.past;
@@ -2575,7 +2588,7 @@ impl<S: State, H: Host> Kernel<S, H> {
         let mut rec = self.load_owned(caller, session)?;
         let d = parse_decision(decision)?;
         if d.allow && !self.may_work(caller, &rec) {
-            return Err(Self::revoked());
+            return Err(self.work_access_error(caller, &rec));
         }
         let mut acct = self.accounts(caller);
         let past = acct.past;
@@ -2806,7 +2819,7 @@ impl<S: State, H: Host> Kernel<S, H> {
             check_input(input)?;
             check_slash(input)?;
             if !self.may_work(caller, &rec) {
-                return Err(Self::revoked());
+                return Err(self.work_access_error(caller, &rec));
             }
             self.refuse_past(&acct)?;
         }
@@ -2976,6 +2989,17 @@ impl<S: State, H: Host> Kernel<S, H> {
     /// `idle {interrupted}`, the queue is kept, the host ends the stream. An OpenAI root also
     /// cancels each live child (9.7).
     pub fn cancel(&mut self, caller: &str, session: &str) -> Result<Called<()>, KernelError> {
+        let result = self.cancel_session(caller, session)?;
+        self.after_call();
+        Ok(result)
+    }
+
+    /// Cancel without draining work from other owners; used by the withdrawal timer.
+    pub(crate) fn cancel_session(
+        &mut self,
+        caller: &str,
+        session: &str,
+    ) -> Result<Called<()>, KernelError> {
         let mut slots = self.begin()?;
         let mut acct = self.accounts(caller);
         let past = acct.past;
@@ -2996,7 +3020,6 @@ impl<S: State, H: Host> Kernel<S, H> {
         // 9.3 "Past": a cancel closes the session's work, so it cannot fail on quota.
         self.finish_as(Some(&mut rec), &mut acct, true)?;
         let pushes = self.flush(work, rec.live.as_deref());
-        self.after_call();
         Ok(Called { value: (), pushes })
     }
 

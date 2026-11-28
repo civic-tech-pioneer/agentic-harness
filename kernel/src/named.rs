@@ -1,5 +1,5 @@
 //! The calls of 2.3 that work by profile name: `check(profile, overlay)` and `profiles()` (9.1).
-//! Both read state only; neither starts anything.
+//! Both register eligible callers in `clients` and read profile state; neither starts anything.
 
 use crate::access;
 use crate::check::check;
@@ -104,6 +104,8 @@ impl<S: State, H: Host> Kernel<S, H> {
         if caller == "page" || caller.starts_with("agent:") || caller.len() > 128 {
             return;
         }
+        // An unreadable client registry grants nothing. Replacing it with a fresh list is safe:
+        // clients is a display/discovery list, never a source of profile authority.
         let mut clients: Vec<String> = self
             .state
             .get("clients")
