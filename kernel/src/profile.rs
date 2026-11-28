@@ -651,6 +651,11 @@ fn runner_problem(arg: &str) -> Option<&'static str> {
 /// OpenAI matches tool names only. Refuse every argument rule before compilation.
 pub(crate) fn openai_rule_problem(rule: &str) -> Option<String> {
     if rule.contains('(') {
+        if ["Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit"]
+            .contains(&rule.split('(').next().unwrap_or(""))
+        {
+            return None; // The refuse table names this field once.
+        }
         return Some(format!(
             "rule {rule:?}: an argument rule is refused on openai"
         ));
