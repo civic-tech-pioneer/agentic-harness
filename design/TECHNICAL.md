@@ -171,7 +171,7 @@ interface host-info {                                // no grant (the human, 202
   generation: func() -> u64;  // the host's start number (rule G1)
 }
 
-interface agent-access {                             // proposed (S151, 15): no grant; a request (7)
+interface agent-access {                             // pkg import limited to mods:agent (15); a request (7)
   enum access-error { not-page, no-mod, too-large, too-many }
   variant question {
     manage,                                          // open the profile manager (a lease, 9.10)
@@ -341,6 +341,11 @@ provider makes no judge call for a call it refuses (10). `not-owner` and
 `<publisher>/agent`, pinned at build time and compared exactly. A development
 build uses `local/agent` for the unpublished kernel (10, R-B3).
 
+Native `provider_item` assigns a `Consent` or `Workspace` event cursor
+`last + 1`. A producer must not mix it with numbered `provider_batch` or
+`provider_lines` on the same stream: colliding numbers are discarded as
+repeats. Use one delivery path for a stream.
+
 ### 2.3 Kernel (`mods:agent@0.1.0`)
 
 ```wit
@@ -409,6 +414,10 @@ at most 1 MiB and 64 KiB; 9.10 "Bounds").
 
 `input`, `overlay`, `decision` and `caps` are JSON: ACP content blocks, an
 overlay document (9.2), a decision (below), and ACP client capabilities.
+
+`start-in-folder` has the same key kind and idempotence rule as `start`.
+It refuses a non-Claude profile, invalid or forbidden folder, or path over
+4,096 bytes before launching (4.6); the `folder` refusal names that field.
 
 `answer`'s `decision` has exactly one of `allow` or `deny`, its value `true`:
 
@@ -527,7 +536,8 @@ ends at a line `---`. Its keys are `name` and `description`, each once; an
 indented line continues the key above it and may not contain `:`; any other line is refused. Every
 character is printable ASCII (space to `~`). A description has at most
 1,024 characters before escaping. Trim the value and each continuation
-and count one space between them. Each refusal names its reason.
+and count one space between them, including when the `description:` value
+is empty before its first continuation. Each refusal names its reason.
 
 ### 4.2 Grants and tools
 
@@ -685,7 +695,7 @@ and `.husky/**`. No launch can remove them.
   resolves and validates it before asking (host 19.3, 19.7), and
   `initialized.workspace` is its canonical path. `list` returns the picked
   path for display, canonical once available. The requested path never grants
-  file reach. Canonical, symlinks resolved. Refused: `/`, the home
+  file reach or a file-write scope key. Canonical, symlinks resolved. Refused: `/`, the home
   folder, the watane home and its ancestors, `~/.claude`, `~/.codex`,
   `~/.ssh`, `~/.aws`, `~/Library/Keychains`, the run and scratch trees;
   compared without case on a case-insensitive file system.
@@ -860,7 +870,7 @@ The kernel's state (host 7: key-value, 4 MiB per value, no prefix scan):
 | `skill-revisions/<id>` | a session's skill names and SHA-256 file digests, pinned alongside the files for admission and deletion (9.7, 11) |
 | `quota/<owner>` | `{bytes, sessions, pages}`: the owner's bytes and live session count, the bytes counting every key the owner causes (9.3, Quota), and `pages` the entry count of each `owner/<owner>/<n>` page; later its live session timers (9.3) and its slot counts per kind (9.5), the slot counts tagged with the generation of `slots` (9.3): counts of an older boot read as zero, so the restart pass need not find every owner. Absent reads as all zero |
 | `quota` | `{bytes, sessions}`: the kernel-wide account, bytes and sessions of all owners (9.3); absent reads as zero |
-| `stream/<id>` | `{session, kind, last?}` (`kind`: `provider`, `request`, `job`, `owner`, or `access` with no `session`: an access question, 9.10), written in the call that opens or receives the stream, deleted on its `ended` (9.4). `last` is the last item `seq` an items call took on a provider stream (2.1, case 7); absent is 0; one write per batch |
+| `stream/<id>` | `{session, kind, last?, consent?, launching?}` (`kind`: `provider`, `request`, `job`, `owner`, or `access` with no `session`: an access question, 9.10), written in the call that opens or receives the stream, deleted on its `ended` (9.4). `last` is the last item `seq` an items call took on a provider stream (2.1, case 7); absent is 0. `launching` is `Some(true)` before initialization and `Some(false)` after Workspace; absent on a legacy key. `consent` is the current pending host question and is cleared on Workspace. A call that advances `last` writes these together; one write per batch |
 | `adapter/<stream>` | the Claude adapter's state for a provider stream (9.8, "Adapter state"), written with `stream/<id>`'s `last` and deleted with it; counted in the session's `bytes` |
 | `live/<session>` | the id of the session's live owner stream: written by `attach`, deleted when it ends (9.4) |
 | `active/<n>`, n 0..3 | A1: page n of the sessions whose turn is `running`, `waiting` or `paused`, each entry the pair `[id, boot]` (not an object, so that 256 entries with 64-byte ids fit the 24 KiB page; `boot`: the generation of the session's last restart step, or of the call that added it). At most 256 entries per page, so at most 1 024 listed sessions; a page is at most 24 KiB (a session id is at most 64 bytes, 9.3). The record's `active-page` names the page that holds the session while it is listed. Kept by every turn change that enters or leaves the index (9.3, A2); it is what the restart pass reads in place of a prefix scan |
@@ -967,7 +977,8 @@ The turn state is this JSON, one line per state:
 `activity` is optional and live only; `checking` has `on` the ask id, or
 `"input"` for a check of the input. `asks` and `expires-at` of `waiting` count asks
 (`kind: "ask"`) only, not checks; `expires-at` is the earliest open ask's. `until` of `paused` is absent for a pause with no time. `stop.kind`
-`interrupted` is as `completed`. `seconds`, `tools` and `tokens` are the turn's
+`interrupted` has the footer “Stopped after N s · M tools”; `completed`
+has “Completed in N s · M tools”. `seconds`, `tools` and `tokens` are the turn's
 wall time, tool calls and tokens, for the footer of 18.3; each is optional.
 The body of a `turn` entry (9.4) and the `state` of a `turn` item (9.4, "The
 wire") are this JSON; the entry has no `activity`.
@@ -978,6 +989,13 @@ wire") are this JSON; the entry has no `activity`.
   lists the queue; `unqueue` removes one input not yet taken, and refuses
   (`unknown-input`) one that is gone. Each change pushes `{"type":"queue",
   "inputs":[…]}` under `_meta.watane`.
+- Before `initialized`, `interrupt` cancels the launching provider stream,
+  closes its open asks as cancelled with deny reason `cancel`, and releases it;
+  a replacement opens a new stream. The launch key's `launching` field is
+  `Some(true)` until Workspace/initialization, then `Some(false)`; older keys
+  without the field have `None`. A late `Consent(Some)` on a key with
+  `launching: Some(false)` is ignored. The native `provider_item` path advances
+  `last` and clears `launching` at Workspace as the numbered path does.
 - `interrupt` ends the turn (`idle {interrupted}`) in the call, then starts the
   replacement if given. `claude` ends the interrupted turn later with a `result` and an
   `idle` of its own; the record counts these in `owed-idles` (one per `interrupt` sent to a
@@ -1672,7 +1690,10 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
   tools whose names it matches before the rules compile, and the profile
   check accepts such a rule for `backend: "openai"` (the allowlist of Claude's
   tools applies to Claude profiles only). A call is matched by its tool's name
-  alone (no `arg`). `ask-expiry` is in seconds and 600 when the profile sets
+  alone (no `arg`). Thus an OpenAI `Name(arg)` rule, including one for
+  `skill`, is accepted but cannot match a call; use a bare name for a
+  rule intended to match. Claude's `Skill(name)` uses the skill name as its
+  scope key. `ask-expiry` is in seconds and 600 when the profile sets
   none. An OpenAI ask's id is its call's `call_id`; the owner's `answer` decides
   it at once (decision entry `by: owner`), `{allow, for: session}` is refused
   `{field: "decision"}` (no scope function for a toolset's tool), and the ask
@@ -1761,7 +1782,7 @@ In the `queue` item, `input` is the input's JSON as a string (2.3
       `path`, `glob`, `type`, `output_mode`, `-A`, `-B`, `-C`, `-n`, `-i`,
       `multiline`, `head_limit`, `offset`. Values of keys that are not part
       of the key are not read.
-    - *Files.* The ask's `path` (the item's top-level `path`, 4.5 step 4;
+    - *Files.* For a session started with `start-in-folder`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` have no session-allow scope key, even after the picked folder is initialized. Other file tools follow the ordinary key rule below. The ask's `path` (the item's top-level `path`, 4.5 step 4;
       never `file_path`, `notebook_path` or `path` of the `input`, which are
       only checked as known keys) is a string under the record's `folder`
       (an absolute path, no trailing `/`, no `(`, `)` or control character),
@@ -2955,7 +2976,22 @@ stage E).
 | Only the participant gives a client a profile (S151) | one writer: `manage`, callable only by `page` on the participant's lease (9.10); a profile is stored, edited, restored, adopted or deleted only on the host's granted item of a `store` or `remove` question about that exact text, and an access entry only on a granted `allow` question whose words the app owns and which names the client and the installation as watane knows them, the profile and its reach (the host ends the question if that installation changes); a client is listed only by its own call; an entry pins the profile's version (its digest and the index's `rev`), and a changed, restored or stale profile allows no new input or launch until a new allow; capacity counts open questions, and a write past 64 entries writes nothing; absent or unreadable entries allow none; adopting an offer writes no entry; `withdraw` refuses new input at once, the kernel's own timer ends the running turns, children included, without the page, and until it completes no session it will end takes new work, a re-allow of the same version included (9.10, 9.7 "Revoking") | `kernel/src/manage.rs` (planned, 1), `kernel/src/named.rs` (the pinned entries read by `start`, `check`, `profiles`), `kernel/src/sessions.rs` (`may_work`: the record's `profile-digest`; the `withdraw` timer), `kernel/wasm/src/lib.rs` (`manage`'s owner and lease check by `caller.identity()` and `caller.connection()`, the access stream's routing), `kernel/wasm/wit/world.wit`; watane `host/` (`agent-access`, `caller.connection`, planned), `app/` (its consent words) |
 | A profile or overlay cannot widen what the participant set | compilation and the refuse table (9.2, 11; AGT-F-3, AGT-F-4) | `kernel/src/profile.rs` (also the OpenAI rule names, 9.6), `kernel/src/overlay.rs`, `kernel/src/refuse.rs`, `kernel/src/check.rs`, `kernel/src/named.rs` (`check` and `profiles` read `access/` first, 9.1), `kernel/src/error.rs` |
 
-Not protected: work already compiled when its profile is edited, goes stale or is withdrawn: a Claude turn running on its start's launch flags and an OpenAI tool job already dispatched go on to their end (no new input or launch follows, 9.10), except that `withdraw` ends them, in batches (9.10 "The batch": at most 16 turns, or 21 when a batch's first cascade alone passes 16) that the kernel's own timer completes, so ending them all can take several firings; a script in the kernel's page, or a loopback client acting as it (V27), can at any time ask the app to open the profile manager, and the participant may grant it believing the manager asked; while the participant holds the profile manager open, a script running in its page or a client on the same page connection can read what the manager shows (profiles, clients, entries, offers) and raise questions, so the participant may be asked a question she did not start (the pairing code shows which window asks; a `store` question names the changed fields, not their values, which the manager shows); the manager and the console are documents of one origin, so a script in the console can open or script the manager's window and call through its connection: the connection binding stops a second client (a loopback agent), not a script of the kernel's own origin; such an agent can keep raising `manage` questions, and each of the participant's own `open` calls cancels its question and asks hers, so a loop costs her only refusals, and disabling the client's mod in the app ends it; a script in the page can end the lease or take access away (`withdraw`, `forget`) while the lease is open, never widen anything; a client is its watane identity: an update of the mod under the same identity keeps its entries (as watane keeps its own consents across an update, 8), and a mod that later takes a `local/<slug>` identity a removed mod held inherits that identity's entries, since the kernel hears of no removal (an open question ends at the host; a granted entry stays until withdrawn; install-generation binding, S133 P1.12, later); a superseding `allow` at the host's stream cap is refused `too-many` and the old question stays open (9.10 "Allowing" step 3), failing closed; the participant's own answer to a wide profile, shown whole; a changed offer is seen only when the page collects, and until then the adopted text she answered for runs (9.10); a same-name offer from another mod can mark an adoption stale, failing closed, or, by offering the old text again, keep a changed offer looking unchanged, since a collect names no source (AGT-F-2 holds per offered text: the adopted text never changes without her answer); a hostile offering mod can crowd the 64 offers a collect keeps; the judge account reaches any `POST` path of the origin the
+Not protected: Esc on a stale view after the kernel ended a turn can interrupt the next turn, including its queued input; the Stage D click measurement starts at the earliest click among concurrent sessions and leaves a few milliseconds before later clicks unchecked; `persist: false` is not built for OpenAI root or child sessions; a message finished between its transcript write and `response.completed` can be shown after a host restart yet be missing from the model history, so the participant may repeat it; after a host restart an OpenAI session's open tool jobs are aborted, including idempotent ones, with no toolset reopening or reissue; a full kernel-facing stream at a launch deadline or an early Claude ending can lose the immediate denial or cancellation reason text although the action itself is immediate; a hand-published provider release that bypasses `publish-test-mods.sh` may trust the dev default `local/agent`, and that script checks the channel publisher after signing; a late `consent-pending` needs a forged wrapped line and a disagreeing host check to be misleading; consent withdrawal and other provider endings both use host `gone`, so the console gives the same “Connection to Claude Code ended” words; a legacy `stream/<id>` key without `launching` may reopen
+its folder-consent wait on a late `Consent(Some)` after initialization (page
+only; Stop still interrupts); a failed turn may show a “Completed in 0 s · 0
+tools” footer beside “Failed: failed” and remain under RUNNING; a failed
+replacement in `MemState` cannot exhibit host rollback; a reused ask id on a
+replacement stream may get a second decision; cancelling a launch also denies
+its open asks; a legacy key whose consent was never cleared can take the
+cancel path instead of the interrupt path; skill outputs have no separate
+budget (the owner byte quota and `BODY_MAX` bound them); the skill listing
+is not trimmed (it is the owner's own profile); a malformed skill call is
+answered before broker rules; an unreadable wire stamp can hide a lost batch
+in Stage D metrics; the Stage D instrumented load needs the pinned preview
+binaries and was not run in S152; a picked folder gives no file-write scope
+key; an Edit send refused after leaving the session keeps only the original
+text, and a reload while an accepted take's reply is in flight can offer it
+once more; work already compiled when its profile is edited, goes stale or is withdrawn: a Claude turn running on its start's launch flags and an OpenAI tool job already dispatched go on to their end (no new input or launch follows, 9.10), except that `withdraw` ends them, in batches (9.10 "The batch": at most 16 turns, or 21 when a batch's first cascade alone passes 16) that the kernel's own timer completes, so ending them all can take several firings; a script in the kernel's page, or a loopback client acting as it (V27), can at any time ask the app to open the profile manager, and the participant may grant it believing the manager asked; while the participant holds the profile manager open, a script running in its page or a client on the same page connection can read what the manager shows (profiles, clients, entries, offers) and raise questions, so the participant may be asked a question she did not start (the pairing code shows which window asks; a `store` question names the changed fields, not their values, which the manager shows); the manager and the console are documents of one origin, so a script in the console can open or script the manager's window and call through its connection: the connection binding stops a second client (a loopback agent), not a script of the kernel's own origin; such an agent can keep raising `manage` questions, and each of the participant's own `open` calls cancels its question and asks hers, so a loop costs her only refusals, and disabling the client's mod in the app ends it; a script in the page can end the lease or take access away (`withdraw`, `forget`) while the lease is open, never widen anything; a client is its watane identity: an update of the mod under the same identity keeps its entries (as watane keeps its own consents across an update, 8), and a mod that later takes a `local/<slug>` identity a removed mod held inherits that identity's entries, since the kernel hears of no removal (an open question ends at the host; a granted entry stays until withdrawn; install-generation binding, S133 P1.12, later); a superseding `allow` at the host's stream cap is refused `too-many` and the old question stays open (9.10 "Allowing" step 3), failing closed; the participant's own answer to a wide profile, shown whole; a changed offer is seen only when the page collects, and until then the adopted text she answered for runs (9.10); a same-name offer from another mod can mark an adoption stale, failing closed, or, by offering the old text again, keep a changed offer looking unchanged, since a collect names no source (AGT-F-2 holds per offered text: the adopted text never changes without her answer); a hostile offering mod can crowd the 64 offers a collect keeps; the judge account reaches any `POST` path of the origin the
 participant entered; `claude` itself within its limits; a prompt injection within
 what the profile allows; an allowed package-runner word (`test`, `install`, `add`, `ci`, `uv pip`, `sync`, ...) runs the project's own scripts, and an allowed command's own options (`git -c`, GNU `sed`'s `e`) can run others, and so can an allowed first word that the list of 4.1 misses (no such list is complete): inside the shell grant's sandbox (4.2) only, whose allowlisted names can reach loopback, LAN and link-local addresses (V27, breached; the shell grant waits on the human), and only for a profile the participant made or adopted (AGT-F-2) with that allow rule; kept client keys are charged forever (9.3), so owners acting together can fill the kernel's account for good: an accepted limit until a later slice frees kept keys (PLAN); plan usage; another program of the same user
 (spec 6); a reader that takes the first of two equal keys would read a stored line `{"i":7,…,"i":4}` differently (every reader here, serde_json and `JSON.parse`, takes the last, and the `i` of a line's place overrides it anyway, 9.4); a duplicate key nested in an ask's `input` is read last-wins, so the ask shows the call that will run only while the host serializes the item itself (watane `host/src/agent/claude/control.rs`, 4.5) rather than passing `claude`'s bytes (the host rule of 4.5 step 4); a checked provider, a trusted holder that forwards every host item, can push its own `ask-resolved` or a false `outcome`, and no rule tells its item from the host's on a `direct: false` stream: the record then shows a decision `claude` did not get, or closes an ask the host still holds (the host denies it at its `expires-at`), the record only, since no tool runs because of it (the kernel's answers reach `claude` only through that provider, which may deny any call anyway, 10); a check whose hook times out: `claude` starts its hook timer when it writes the line, a little before the host pushes the item, so an answer that lands in that gap is recorded (`answered`, `none`) while `claude` already blocked the tool, the record only (the checked provider answers 2 s before its deadline, 10, so only a stuck provider reaches it); at the kernel's own closing steps (`cancel`, R4, the provider stream's `ended`, 9.8 rule 4) the decision can differ from what `claude` did: a pending answer is recorded although the request may not have applied or the checked provider may have held it (an `allow` the judge never cleared, while no tool runs, as the process or stream is gone), and an open check is recorded `deny, by: kernel` although the provider's `none` may have reached the host, and the tool run, with its `answered` item lost at the stream's end: the record only; a Bash session allow holds the text of one command, and that command can reach other files after an allowed `cd` or a change to a file it reads (inside the sandbox, 9.6); a `WebFetch` session allow on a host also reaches the same host with or without `www.` when the allowed server redirects there (`claude`'s own redirect rule, 9.6). The subagent slash-prompt probe V26 held and the shell network probe V27 breached (16).
@@ -3009,7 +3045,7 @@ the change, and the section here it comes from.
 - [ ] watane licence files: MIT OR Apache-2.0 for all of watane (13; N8).
 - [ ] **Proposed by S151, not yet accepted** (a consent-boundary change, for the human): `host/TECHNICAL.md` 19.1 and 19.7: the interface `agent-access` with `ask(question)` as 2.1 "Access questions" writes it: the questions `manage`, `allow(client, profile, reach)`, `store(profile, text)` and `remove(profile)`; a request, only in a chain that started at the calling mod's own page (`not-page`) and bound to that page connection (the question ends `consent-refused`, a granted `manage` stream `closed`, when it closes); `client` an installed mod other than the caller or `page` (`no-mod`), and an open `allow` question ends `consent-refused` when that installation is removed, replaced or updated; texts plain of at most 4 KiB, 4 open per mod (a granted `manage` stream counts), a host-produced stream with one `granted` item then `closed` (`manage`: open until the participant ends it in the app, the page connection closes, or 30 minutes), `consent-refused(...)` on a refusal or after 600 s, refused at once in a preview or with no app, `streams.cancel` withdraws the question or ends the lease, nothing kept; `Confirm::consent` gains the kinds `profile-manager`, `profile-access {client, profile, reach}` and `profile-change {profile, text}`; and `caller.connection()`, the chain's page connection id for a caller `page` (8.2), which the host makes (at least 128 random bits), never reuses within a boot, and binds to the transport that opened the connection, never taking it from a request on another; dev 19.9 gains a fake answer for each (granted or refused) for previews and tests (2.1, 8, 9.10).
 - [ ] **Proposed by S151, not yet accepted**: `app/TECHNICAL.md` 19.2: the words of the profile manager, profile access and profile change questions (8), {client} and {kernel} as the names watane shows, the client's installation named, {reach} and the change text shown as plain text, never markup; the open lease shown with an "End" action (8, 9.10).
-- [ ] **Proposed by S151, not yet accepted**: `pkg/TECHNICAL.md` 4.5: a row for the `agent-access` import (2.1). Open for the human: any mod may import it and raise a question about its own profiles, which grants nothing in the kernel but can confuse the participant; pkg could limit the import to `mods:agent` (S151 adversary).
+- [ ] **S151-H H2 decided; implementation in watane pending**: `pkg/TECHNICAL.md` 4.5: a row for the `agent-access` import (2.1). The human chose H2: pkg limits this import to `mods:agent`; another mod cannot raise its own profile question through it (S151-H).
 
 ## 16. Test plan
 
@@ -3596,10 +3632,10 @@ machine. A stage is done only within its budgets.
   stretch, all through a common window of at least 6 s ending at the first Stop (8.0 s in each pass), as a
   maximum spacing (S36 r5 F5.5, r6 F6.3, the deputy's rules): for each fake and kind, no gap between consecutive
   stamps, nor from the window's start to the first or from the last to its end, exceeds twice the nominal
-  spacing, 40 ms for deltas and 400 ms for entries; and only for the items written in it (S36 r2 F2.3: a run with
+  spacing in that original r6 record, 40 ms for deltas and 400 ms for entries; and only for the items written in it (S36 r2 F2.3: a run with
   one idle client fails; S36 r3 F3.5: sources that load in turn, not together, fail; S36 r4 F4.3: bursts at the
   edges of 2 s bins around an idle 2 s fail; S36 r6 F6.3: the real run's jitter, gaps of 28.5 ms and 205 ms,
-  passes, and a gap over 40 ms or 400 ms fails, at the edges too; r5's 25 ms rule failed every real run by
+  passes, and a gap over 40 ms or 400 ms fails, at the edges too in that record; r5's 25 ms rule failed every real run by
   up to 3.5 ms of timer jitter). The passes below were measured under the r6 check. Each page session is paired with its fake by identity (the fake's
   first input, `load <k>`, which a test-only wrapper that stamps each stdout write records), and
   every line its fake wrote before Stop reached its page exactly once (about 1 750 per run, none
@@ -3617,9 +3653,9 @@ machine. A stage is done only within its budgets.
   paired sessions with fakes by their delays; S36 r1 (F1.8) replaced it with these browser
   measurements; S36 r2 added the common-window rate check and remeasured; S36 r3 made it hold in every 2 s
   subwindow and remeasured (watane `slice/s100` at fdb3d9a); S36 r4 made the windows slide
-  (`console/test/host/load_check.mjs`, a pure function with its test); S36 r5 made it a maximum spacing of 25 ms and
+  (`console/test/host/load_check.mjs`, a pure function with its test; `--controlled-cut` exercises the cut classifier); S36 r5 made it a maximum spacing of 25 ms and
   250 ms, which the real run failed by timer jitter alone (review r6: worst 28.5 ms); S36 r6 set it at twice the nominal
-  spacing and remeasured (the figures above). A host that exits as a zombie no one reaps (a container's init) counts as
+  spacing and remeasured (the figures above). The later approved Stage B/C check uses three times the nominal source spacing: 60 ms between deltas and 600 ms between entries, including both window edges (`load_check.mjs`); the earlier figures are a historical measurement under the stricter two-times check. The Stage D runner checks Claude output gaps against 60 ms. A controlled cut demonstrates that the trace classifies a cut; it does not establish that the original S131 F1.8 miss was a cut. In S159 the 48.1 ms gap was in the wrapper after the fake wrote, while the fake itself took 40.5 ms against its 40 ms target. A host that exits as a zombie no one reaps (a container's init) counts as
   stopped (`/proc/<pid>/stat`).
 - **Stage F** (S134-7, 2026-11-26; `Linux 6.18.44-fc-v880`, 4 cpus, a cloud VM). State bytes
   only, on the fake host: `cargo test s134_stage_f_state_bytes_per_step -- --ignored --nocapture`
@@ -3899,12 +3935,18 @@ The frames give layout, spacing and words; these values are fixed:
 
 ### 18.5 The status line
 
+At a turn's start with no named activity, the word is “Working”; a streaming
+thought changes it to “Thinking”. A consent wait names the folder when the
+host provides one: “Waiting for your answer in watane for <folder>”. Its
+“Open the question” action remains disabled until the host/page interface
+can open the native question. During this wait the console shows “Esc to stop”; Esc sends `sessions.cancel`. The subject remains in the status word as the full folder path, which may wrap on a narrow screen; the whole status line is announced as one live region.
+
 | Turn | Word | Shape | Time | Acts |
 |---|---|---|---|---|
 | `running` | the activity: Thinking, Reading `<file>`, Writing; Working when no activity is named (S35) | dot | elapsed | Esc stops |
 | `running {checking}` | Checking with your judge | square | elapsed | |
 | `running {compacting}` | Making room | dot | elapsed | |
-| `running {consent}` | Waiting for your answer in watane | diamond | | open the question |
+| `running {consent}` | Waiting for your answer in watane for `<folder>` when known | diamond | | Esc to stop; Open the question (disabled until the host/page can open it) |
 | `waiting` | Waiting for you | diamond | time left to `expires-at` | Needs you |
 | `paused {until}` | Paused until hh:mm | two bars | | Resume now |
 | `idle {completed}` | Idle | ring | | |
@@ -3952,7 +3994,7 @@ out. Stop shows "Stopping…" until a `turn` update says idle, or shows another 
   is free, also in a full queue); a refused `say` comes back as "Send" says.
   Stop and send calls `unqueue`, then `interrupt` with the input (the
   replacement runs before queued inputs, 2.3); a refused `interrupt` copies the
-  text into an empty composer with the error, as "Send" does. Edit and Stop and send
+  text into an empty composer; the error stays on the taken item's row. Edit and Stop and send
   while the composer holds text do nothing but say "Finish or clear your
   message first". What a queue action took is kept on a list per session,
   outside the dock (the deputy's rules, S36 r4 and r5): an item (its text,
@@ -3976,10 +4018,10 @@ out. Stop shows "Stopping…" until a `turn` update says idle, or shows another 
   switch; a reply that ends after she switched writes to its own session's
   list. Memory is the list's truth while the page lives; `sessionStorage` is
   only a mirror, written after memory and read once on the page's first look
-  (back after a reload): a failed write leaves memory as it is. Each item
+  (back after a reload): a failed write leaves memory as it is. The queue preview is a convenience and does not catch a duplicate error elsewhere in the view. Each item
   under the queue shows its text, its last error, Undo (a `say` that puts it
   back in the queue), Stop and send again for a stop and send's, and
-  Discard; one call in flight at a time. Remove is `unqueue`, and its item
+  Discard (except during the ordinary six-second Undo window); one call in flight at a time. Remove is `unqueue`, and its item
   stores the absolute time 6 s on, when its ordinary Undo ends: past it
   (also after a reload) Undo is hidden, unless it was refused or is in
   flight, and the item stays with Discard. Each ordinary Undo has its own
@@ -3989,8 +4031,8 @@ out. Stop shows "Stopping…" until a `turn` update says idle, or shows another 
   (accepted by the deputy, S36 r6): if the browser fails to delete the
   mirror (`removeItem` throws), an item the kernel accepted, gone from the
   live list, comes back after a reload; it needs a storage failure. The controls are off under "Another tab". A
-  full queue turns Send off and says why (the placeholder, or the line above
-  the composer while it holds text): 32 inputs, or a `say` refused
+  full queue turns Send off and says why in the composer control row (the
+  placeholder may also say it): 32 inputs, or a `say` refused
   `queue-full` (the 2 MiB limit), also one that ends after she typed again,
   which keeps Send off until the queue's length changes or the turn ends.
   Each session has a capacity epoch, one more for every queue or turn update
@@ -4052,6 +4094,9 @@ out. Stop shows "Stopping…" until a `turn` update says idle, or shows another 
     rows a message costs at most 8 times what it costs at 300 rows, and at
     most 50 µs (`console/kit/s7_fix1.test.ts`; copying the rows array on a
     change is what still grows).
+  - The 100 ms Stop measurement starts when the browser's click handler runs.
+    It does not include input queueing behind a busy render, so it does not
+    measure the entire click as felt by the participant.
   - The long fixture runs in `npm test` (`console/src/long_S7.test.tsx`): 5 000
     entries and the stream at 50 deltas a second; p95 over 20 samples: input
     at most 50 ms, Stop at most 100 ms, scroll at most 100 ms, stream at most
