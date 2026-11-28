@@ -2135,6 +2135,9 @@ impl<S: State, H: Host> Kernel<S, H> {
     }
 
     fn record_may_work(&mut self, owner: &str, rec: &Record) -> bool {
+        if self.withdrawing(owner, rec) {
+            return false;
+        }
         match &rec.profile_digest {
             Some(digest) => self.access_digest(owner, &rec.profile).as_deref() == Some(digest),
             None => self.scratch_allowed(owner, &rec.profile),
@@ -4411,7 +4414,9 @@ impl<S: State, H: Host> Kernel<S, H> {
         }
         let mut work = Work::default();
         if let Ok(mut slots) = self.begin() {
-            if id == RESTART {
+            if id == "withdraw" {
+                self.withdraw_firing();
+            } else if id == RESTART {
                 // A firing that still fails (its page or `slots` cannot be written) re-arms nothing.
                 let _ = self.restart_firing(&mut slots, &mut work);
             } else if let Some(session) = id.strip_prefix("s/") {
