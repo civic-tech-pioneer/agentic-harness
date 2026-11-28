@@ -54,6 +54,7 @@ function failedWords(stop: { error: string; cause?: string }): string {
   const refused = reason.match(/^consent-refused\((.*)\)$/s);
   const folder = refused ? workspaceFolder(refused[1]!) : undefined;
   if (folder) return `Workspace access was refused for ${folder}`;
+  if (refused?.[1] === "account:openai") return "Consent was refused for the OpenAI account";
   if (refused) return `Consent was refused for ${refused[1]}`;
   const version = reason.match(/^version (\S+) < (\S+)$/);
   if (version) return `Claude Code ${version[1]} is too old. Version ${version[2]} or later is required.`;
